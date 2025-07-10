@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Casual Workers - Workforce Scheduler</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">Workforce Scheduler</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/dashboard">Dashboard</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/schedule">Full Schedule</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/employees">Employees</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/casual-workers">Casual Workers</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid mt-4">
+        <div class="row">
+            <div class="col-12">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h2><i class="bi bi-people-fill"></i> Casual Worker Pool</h2>
+                    <div>
+                        <a href="/register-casual" class="btn btn-success" target="_blank">
+                            <i class="bi bi-person-plus"></i> Share Registration Link
+                        </a>
+                        <button class="btn btn-primary" onclick="window.print()">
+                            <i class="bi bi-printer"></i> Print List
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Stats Cards -->
+                <div class="row mb-4">
+                    <div class="col-md-3">
+                        <div class="card bg-primary text-white">
+                            <div class="card-body">
+                                <h5 class="card-title">Total Workers</h5>
+                                <h2 class="display-4">{{ workers|length }}</h2>
+                                <p class="mb-0">Registered</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card bg-success text-white">
+                            <div class="card-body">
+                                <h5 class="card-title">Available Now</h5>
+                                <h2 class="display-4">{{ workers|selectattr('status', 'equalto', 'available')|list|length }}</h2>
+                                <p class="mb-0">Ready to Work</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card bg-warning text-white">
+                            <div class="card-body">
+                                <h5 class="card-title">Currently Working</h5>
+                                <h2 class="display-4">{{ workers|selectattr('status', 'equalto', 'working')|list|length }}</h2>
+                                <p class="mb-0">On Assignment</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card bg-info text-white">
+                            <div class="card-body">
+                                <h5 class="card-title">Quick Response</h5>
+                                <h2 class="display-4">{{ workers|selectattr('availability', 'string', 'short_notice')|list|length }}</h2>
+                                <p class="mb-0">Same Day Available</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Filters -->
+                <div class="card mb-4">
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-4">
+                                <label class="form-label">Filter by Status:</label>
+                                <select class="form-select" id="statusFilter">
+                                    <option value="">All Workers</option>
+                                    <option value="available">Available</option>
+                                    <option value="working">Currently Working</option>
+                                    <option value="unavailable">Unavailable</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Filter by Skills:</label>
+                                <input type="text" class="form-control" id="skillsFilter" placeholder="e.g., forklift, customer service">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Search by Name:</label>
+                                <input type="text" class="form-control" id="nameSearch" placeholder="Enter worker name">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Workers Table -->
+                <div class="card">
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-hover" id="workersTable">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Contact Info</th>
+                                        <th>Skills</th>
+                                        <th>Availability</th>
+                                        <th>Rating</th>
+                                        <th>Status</th>
+                                        <th>Last Worked</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for worker in workers %}
+                                    <tr data-status="{{ worker.status }}" data-skills="{{ worker.skills|lower }}" data-name="{{ worker.name|lower }}">
+                                        <td>
+                                            <strong>{{ worker.name }}</strong>
+                                            {% if worker.availability and 'short_notice' in worker.availability %}
+                                                <span class="badge bg-success ms-2">
+                                                    <i class="bi bi-lightning"></i> Quick
+                                                </span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <small>
+                                                <i class="bi bi-envelope"></i> {{ worker.email }}<br>
+                                                <i class="bi bi-phone"></i> {{ worker.phone }}
+                                            </small>
+                                        </td>
+                                        <td>
+                                            {% if worker.skills %}
+                                                <span data-bs-toggle="tooltip" title="{{ worker.skills }}">
+                                                    {{ worker.skills[:100] }}{% if worker.skills|length > 100 %}...{% endif %}
+                                                </span>
+                                            {% else %}
+                                                <span class="text-muted">General labor</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if worker.availability %}
+                                                {% set avail = worker.availability|safe %}
+                                                {% if 'weekday_morning' in avail %}
+                                                    <span class="badge bg-light text-dark">Morning</span>
+                                                {% endif %}
+                                                {% if 'weekday_afternoon' in avail %}
+                                                    <span class="badge bg-light text-dark">Afternoon</span>
+                                                {% endif %}
+                                                {% if 'weekday_evening' in avail %}
+                                                    <span class="badge bg-light text-dark">Evening</span>
+                                                {% endif %}
+                                                {% if 'weekends' in avail %}
+                                                    <span class="badge bg-light text-dark">Weekends</span>
+                                                {% endif %}
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <div class="text-warning">
+                                                {% for i in range(worker.rating|int) %}<i class="bi bi-star-fill"></i>{% endfor %}
+                                                {% for i in range(5 - worker.rating|int) %}<i class="bi bi-star"></i>{% endfor %}
+                                                <small class="text-muted d-block">({{ worker.rating }})</small>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            {% if worker.status == 'available' %}
+                                                <span class="badge bg-success">Available</span>
+                                            {% elif worker.status == 'working' %}
+                                                <span class="badge bg-warning">Working</span>
+                                            {% else %}
+                                                <span class="badge bg-secondary">Unavailable</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if worker.last_worked %}
+                                                {{ worker.last_worked.strftime('%m/%d/%Y') }}
+                                            {% else %}
+                                                <span class="text-muted">Never</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <div class="btn-group" role="group">
+                                                {% if worker.status == 'available' %}
+                                                    <button class="btn btn-sm btn-primary" 
+                                                            data-bs-toggle="modal" 
+                                                            data-bs-target="#assignModal"
+                                                            data-worker-id="{{ worker.id }}"
+                                                            data-worker-name="{{ worker.name }}">
+                                                        <i class="bi bi-calendar-plus"></i> Assign
+                                                    </button>
+                                                {% endif %}
+                                                <button class="btn btn-sm btn-info" 
+                                                        data-bs-toggle="modal" 
+                                                        data-bs-target="#detailsModal"
+                                                        data-worker-id="{{ worker.id }}">
+                                                    <i class="bi bi-eye"></i> Details
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Assignment Modal (same as in dashboard) -->
+    <div class="modal fade" id="assignModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi bi-calendar-plus"></i> Assign Casual Work
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <form method="POST" action="/request-casual">
+                    <div class="modal-body">
+                        <input type="hidden" id="worker_id" name="worker_id">
+                        <div class="alert alert-info">
+                            <i class="bi bi-person"></i> Assigning work to: <strong id="worker_name"></strong>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="date" class="form-label">Date</label>
+                            <input type="date" class="form-control" id="date" name="date" required>
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="start_time" class="form-label">Start Time</label>
+                                    <input type="time" class="form-control" id="start_time" name="start_time" required>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="end_time" class="form-label">End Time</label>
+                                    <input type="time" class="form-control" id="end_time" name="end_time" required>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="position" class="form-label">Position/Task</label>
+                            <input type="text" class="form-control" id="position" name="position" 
+                                   placeholder="e.g., Warehouse Assistant, Event Staff" required>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-send"></i> Send Work Request
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Initialize tooltips
+        var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+        var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl)
+        });
+
+        // Handle assignment modal
+        document.getElementById('assignModal').addEventListener('show.bs.modal', function (event) {
+            var button = event.relatedTarget;
+            var workerId = button.getAttribute('data-worker-id');
+            var workerName = button.getAttribute('data-worker-name');
+            
+            document.getElementById('worker_id').value = workerId;
+            document.getElementById('worker_name').textContent = workerName;
+            
+            // Set default date to today
+            document.getElementById('date').valueAsDate = new Date();
+        });
+
+        // Filter functionality
+        const statusFilter = document.getElementById('statusFilter');
+        const skillsFilter = document.getElementById('skillsFilter');
+        const nameSearch = document.getElementById('nameSearch');
+        const tableRows = document.querySelectorAll('#workersTable tbody tr');
+
+        function filterTable() {
+            const status = statusFilter.value;
+            const skills = skillsFilter.value.toLowerCase();
+            const name = nameSearch.value.toLowerCase();
+
+            tableRows.forEach(row => {
+                const rowStatus = row.getAttribute('data-status');
+                const rowSkills = row.getAttribute('data-skills');
+                const rowName = row.getAttribute('data-name');
+
+                let show = true;
+
+                if (status && rowStatus !== status) show = false;
+                if (skills && !rowSkills.includes(skills)) show = false;
+                if (name && !rowName.includes(name)) show = false;
+
+                row.style.display = show ? '' : 'none';
+            });
+        }
+
+        statusFilter.addEventListener('change', filterTable);
+        skillsFilter.addEventListener('input', filterTable);
+        nameSearch.addEventListener('input', filterTable);
+    </script>
+</body>
+</html>
