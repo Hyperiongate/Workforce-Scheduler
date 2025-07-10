@@ -604,6 +604,29 @@ def reset_passwords():
     except Exception as e:
         return f"Error resetting passwords: {str(e)}"
 
+# Fix supervisor status route
+@app.route('/fix-supervisor')
+def fix_supervisor():
+    """Fix Mike's supervisor status"""
+    if not request.args.get('confirm') == 'yes':
+        return "Add ?confirm=yes to fix Mike's supervisor status"
+    
+    try:
+        # Find Mike and make him a supervisor
+        mike = Employee.query.filter_by(email='mike@example.com').first()
+        if mike:
+            mike.is_supervisor = True
+            db.session.commit()
+            return f"""
+            <h3>Fixed!</h3>
+            <p>Mike Johnson is now a supervisor: {mike.is_supervisor}</p>
+            <p>Please <a href="/logout">logout</a> and <a href="/login">login again</a> to see the supervisor dashboard.</p>
+            """
+        else:
+            return "Mike not found in database!"
+    except Exception as e:
+        return f"Error: {str(e)}"
+
 # Debug route to check employees
 @app.route('/debug-employees')
 def debug_employees():
