@@ -178,7 +178,7 @@
                             <td>${shift.position}</td>
                             <td>${shift.time}</td>
                             <td>${shift.employee}</td>
-                            <td><span class="badge bg-success">${shift.status}</span></td>
+                            <td><span class="badge bg-${shift.status === 'absent' ? 'danger' : 'success'}">${shift.status}</span></td>
                             <td>
                                 <button class="btn btn-sm btn-warning" onclick="markAbsent('${shift.employee}')">
                                     Mark Absent
@@ -204,13 +204,21 @@
                         },
                         body: JSON.stringify({ employee: employee })
                     });
+                    
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    
                     const data = await response.json();
                     if (data.success) {
                         alert(data.message);
                         loadTodaySchedule(); // Reload the schedule
+                    } else {
+                        alert(data.message || 'Failed to report absence');
                     }
                 } catch (error) {
                     console.error('Error reporting absence:', error);
+                    alert('Error connecting to server. Please try again.');
                 }
             }
         }
@@ -218,7 +226,42 @@
         // Mark absent function
         function markAbsent(employee) {
             if (confirm(`Mark ${employee} as absent and send coverage request?`)) {
-                reportAbsence();
+                // Pre-fill the employee name in the prompt
+                const name = prompt("Enter employee name:", employee);
+                if (name) {
+                    reportAbsence(name);
+                }
+            }
+        }
+
+        // Modified reportAbsence to accept a name parameter
+        async function reportAbsence(employeeName) {
+            const employee = employeeName || prompt("Enter employee name:");
+            if (employee) {
+                try {
+                    const response = await fetch('/api/absence/report', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ employee: employee })
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    
+                    const data = await response.json();
+                    if (data.success) {
+                        alert(data.message);
+                        loadTodaySchedule(); // Reload the schedule
+                    } else {
+                        alert(data.message || 'Failed to report absence');
+                    }
+                } catch (error) {
+                    console.error('Error reporting absence:', error);
+                    alert('Error connecting to server. Please try again.');
+                }
             }
         }
 
