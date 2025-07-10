@@ -276,51 +276,91 @@ def dashboard():
 @app.route('/employee/dashboard')
 @login_required
 def employee_dashboard():
-    # Get employee's upcoming shifts
-    today = date.today()
-    upcoming_shifts = Schedule.query.filter(
-        Schedule.employee_id == current_user.id,
-        Schedule.date >= today
-    ).order_by(Schedule.date, Schedule.start_time).limit(10).all()
-    
-    # Calculate weekly hours
-    week_start = today - timedelta(days=today.weekday())
-    week_end = week_start + timedelta(days=6)
-    weekly_schedules = Schedule.query.filter(
-        Schedule.employee_id == current_user.id,
-        Schedule.date >= week_start,
-        Schedule.date <= week_end
-    ).all()
-    weekly_hours = sum(s.hours or 0 for s in weekly_schedules)
-    
-    # Get next shift
-    next_shift = Schedule.query.filter(
-        Schedule.employee_id == current_user.id,
-        Schedule.date >= today
-    ).order_by(Schedule.date, Schedule.start_time).first()
-    
-    # Get pending swap requests
-    swap_requests = ShiftSwapRequest.query.filter(
-        (ShiftSwapRequest.target_employee_id == current_user.id) | 
-        (ShiftSwapRequest.requester_id == current_user.id),
-        ShiftSwapRequest.status == 'pending'
-    ).all()
-    
-    # Get recent suggestions
-    recent_suggestions = ScheduleSuggestion.query.filter_by(
-        employee_id=current_user.id
-    ).order_by(ScheduleSuggestion.created_at.desc()).limit(5).all()
-    
-    return render_template('employee_dashboard.html',
-                         upcoming_shifts=upcoming_shifts,
-                         weekly_hours=round(weekly_hours, 1),
-                         next_shift=next_shift,
-                         pending_swaps=len(swap_requests),
-                         swap_requests=swap_requests,
-                         recent_suggestions=recent_suggestions,
-                         time_off_days=15,  # Placeholder
-                         today=today,
-                         current_date=today.strftime('%A, %B %d, %Y'))
+    try:
+        # Get employee's upcoming shifts
+        today = date.today()
+        upcoming_shifts = []
+        weekly_hours = 0
+        next_shift = None
+        swap_requests = []
+        recent_suggestions = []
+        
+        # Try to get upcoming shifts
+        try:
+            upcoming_shifts = Schedule.query.filter(
+                Schedule.employee_id == current_user.id,
+                Schedule.date >= today
+            ).order_by(Schedule.date, Schedule.start_time).limit(10).all()
+            
+            # Make sure each schedule has hours calculated
+            for shift in upcoming_shifts:
+                if shift.hours is None:
+                    shift.calculate_hours()
+        except Exception as e:
+            print(f"Error getting upcoming shifts: {e}")
+        
+        # Calculate weekly hours
+        try:
+            week_start = today - timedelta(days=today.weekday())
+            week_end = week_start + timedelta(days=6)
+            weekly_schedules = Schedule.query.filter(
+                Schedule.employee_id == current_user.id,
+                Schedule.date >= week_start,
+                Schedule.date <= week_end
+            ).all()
+            
+            # Calculate hours for each schedule if not already done
+            for schedule in weekly_schedules:
+                if schedule.hours is None:
+                    schedule.calculate_hours()
+            
+            weekly_hours = sum(s.hours or 0 for s in weekly_schedules)
+        except Exception as e:
+            print(f"Error calculating weekly hours: {e}")
+        
+        # Get next shift
+        try:
+            next_shift = Schedule.query.filter(
+                Schedule.employee_id == current_user.id,
+                Schedule.date >= today
+            ).order_by(Schedule.date, Schedule.start_time).first()
+        except Exception as e:
+            print(f"Error getting next shift: {e}")
+        
+        # Get pending swap requests
+        try:
+            swap_requests = ShiftSwapRequest.query.filter(
+                (ShiftSwapRequest.target_employee_id == current_user.id) | 
+                (ShiftSwapRequest.requester_id == current_user.id),
+                ShiftSwapRequest.status == 'pending'
+            ).all()
+        except Exception as e:
+            print(f"Error getting swap requests: {e}")
+        
+        # Get recent suggestions
+        try:
+            recent_suggestions = ScheduleSuggestion.query.filter_by(
+                employee_id=current_user.id
+            ).order_by(ScheduleSuggestion.created_at.desc()).limit(5).all()
+        except Exception as e:
+            print(f"Error getting suggestions: {e}")
+        
+        return render_template('employee_dashboard.html',
+                             upcoming_shifts=upcoming_shifts,
+                             weekly_hours=round(weekly_hours, 1),
+                             next_shift=next_shift,
+                             pending_swaps=len(swap_requests),
+                             swap_requests=swap_requests,
+                             recent_suggestions=recent_suggestions,
+                             time_off_days=15,  # Placeholder
+                             today=today,
+                             current_date=today.strftime('%A, %B %d, %Y'),
+                             current_user=current_user)
+                             
+    except Exception as e:
+        print(f"Employee dashboard error: {str(e)}")
+        flash('Error loading dashboard. Please try again.', 'error')
+        return redirect(url_for('index'))
 
 # Shift Swap Request
 @app.route('/employee/request-swap', methods=['POST'])
