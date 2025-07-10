@@ -25,8 +25,6 @@ login_manager.login_view = 'login'
 
 @login_manager.user_loader
 def load_user(user_id):
-    # Force a fresh load from database to ensure we get current data
-    db.session.expire_all()
     return Employee.query.get(int(user_id))
 
 # Database initialization function
@@ -237,19 +235,18 @@ def login():
         password = request.form.get('password')
         remember = request.form.get('remember', False)
         
-        # Get fresh employee data
         employee = Employee.query.filter_by(email=email).first()
         
         if employee and employee.password_hash and check_password_hash(employee.password_hash, password):
-            # Force refresh the employee object before login
-            db.session.refresh(employee)
             login_user(employee, remember=remember)
+            next_page = request.args.get('next')
             
-            # Double-check supervisor status after login
-            if employee.is_supervisor:
-                return redirect(url_for('dashboard'))
+            # Force check supervisor status from database
+            fresh_employee = Employee.query.get(employee.id)
+            if fresh_employee.is_supervisor == True:
+                return redirect(next_page) if next_page else redirect(url_for('dashboard'))
             else:
-                return redirect(url_for('employee_dashboard'))
+                return redirect(next_page) if next_page else redirect(url_for('employee_dashboard'))
         else:
             flash('Invalid email or password', 'error')
     
@@ -259,16 +256,17 @@ def login():
 @login_required
 def logout():
     logout_user()
-    session.clear()  # Clear all session data
     return redirect(url_for('index'))
 
 @app.route('/dashboard')
 @login_required
 def dashboard():
-    # Force refresh current user data
-    db.session.refresh(current_user)
+    # Force refresh user data from database
+    current_user_id = current_user.id
+    fresh_user = db.session.query(Employee).filter_by(id=current_user_id).first()
     
-    if not current_user.is_supervisor:
+    # Check fresh data from database
+    if not fresh_user or fresh_user.is_supervisor != True:
         return redirect(url_for('employee_dashboard'))
     
     # Get open coverage requests
@@ -614,59 +612,26 @@ def reset_passwords():
     except Exception as e:
         return f"Error resetting passwords: {str(e)}"
 
-# Force supervisor fix route
-@app.route('/force-supervisor-fix')
-def force_supervisor_fix():
-    """Force fix supervisor status and clear all sessions"""
+# Fix supervisor status route
+@app.route('/fix-supervisor')
+def fix_supervisor():
+    """Fix Mike's supervisor status"""
     if not request.args.get('confirm') == 'yes':
-        return """
-        <h3>This will:</h3>
-        <ul>
-            <li>Force update Mike's supervisor status</li>
-            <li>Clear all sessions</li>
-            <li>Show current database state</li>
-        </ul>
-        <a href="/force-supervisor-fix?confirm=yes">Click here to proceed</a>
-        """
+        return "Add ?confirm=yes to fix Mike's supervisor status"
     
     try:
-        # Force update in database with raw SQL to be sure
-        with db.engine.connect() as conn:
-            # First check current status
-            result = conn.execute(text("SELECT id, name, email, is_supervisor FROM employee WHERE email = 'mike@example.com'"))
-            mike_data = result.fetchone()
-            
-            if mike_data:
-                # Force update
-                conn.execute(text("UPDATE employee SET is_supervisor = TRUE WHERE email = 'mike@example.com'"))
-                conn.commit()
-                
-                # Verify update
-                result = conn.execute(text("SELECT id, name, email, is_supervisor FROM employee"))
-                employees = result.fetchall()
-                
-                output = "<h3>Database Updated!</h3>"
-                output += "<h4>All Employees:</h4><ul>"
-                for emp in employees:
-                    output += f"<li>{emp.name} ({emp.email}) - Supervisor: <strong>{emp.is_supervisor}</strong></li>"
-                output += "</ul>"
-                
-                # Clear Flask session
-                session.clear()
-                
-                output += '<br><strong style="color: red;">IMPORTANT NEXT STEPS:</strong>'
-                output += '<ol>'
-                output += '<li>Close ALL browser tabs for this site</li>'
-                output += '<li>Clear your browser cookies for workforce-scheduler.onrender.com</li>'
-                output += '<li>Or use a completely different browser/incognito mode</li>'
-                output += '<li>Then login fresh with mike@example.com / admin123</li>'
-                output += '</ol>'
-                output += '<br><a href="/logout">Click here to logout first</a>'
-                
-                return output
-            else:
-                return "Mike not found in database!"
-                
+        # Find Mike and make him a supervisor
+        mike = Employee.query.filter_by(email='mike@example.com').first()
+        if mike:
+            mike.is_supervisor = True
+            db.session.commit()
+            return f"""
+            <h3>Fixed!</h3>
+            <p>Mike Johnson is now a supervisor: {mike.is_supervisor}</p>
+            <p>Please <a href="/logout">logout</a> and <a href="/login">login again</a> to see the supervisor dashboard.</p>
+            """
+        else:
+            return "Mike not found in database!"
     except Exception as e:
         return f"Error: {str(e)}"
 
@@ -675,8 +640,7 @@ def force_supervisor_fix():
 @login_required
 def check_session():
     """Check what's in the current session"""
-    # Refresh user data
-    db.session.refresh(current_user)
+    fresh_user = Employee.query.get(current_user.id)
     
     return f"""
     <h3>Current Session Debug:</h3>
@@ -685,15 +649,101 @@ def check_session():
         <li>User Name: {current_user.name}</li>
         <li>User Email: {current_user.email}</li>
         <li>Is Authenticated: {current_user.is_authenticated}</li>
-        <li>Is Supervisor (from user object): <strong>{current_user.is_supervisor}</strong></li>
+        <li>Is Supervisor (from session): <strong>{current_user.is_supervisor}</strong></li>
+        <li>Is Supervisor (fresh from DB): <strong>{fresh_user.is_supervisor}</strong></li>
         <li>Session Data: {dict(session)}</li>
     </ul>
     <br>
-    <h4>Database Check:</h4>
-    {Employee.query.filter_by(email=current_user.email).first().is_supervisor}
-    <br><br>
+    <h4>If supervisor status differs above, the session is caching old data!</h4>
+    <br>
     <a href="/dashboard">Try Dashboard</a> | <a href="/logout">Logout</a>
     """
+
+# Force supervisor access route
+@app.route('/supervisor-dashboard')
+@login_required
+def supervisor_dashboard():
+    """Direct supervisor dashboard access"""
+    # Get fresh user data
+    fresh_user = Employee.query.get(current_user.id)
+    
+    # If not supervisor, deny access
+    if fresh_user.is_supervisor != True:
+        flash('Access denied. Supervisors only.', 'error')
+        return redirect(url_for('employee_dashboard'))
+    
+    # Get open coverage requests
+    coverage_requests = CoverageRequest.query.filter_by(status='open').all()
+    
+    # Get available casual workers
+    casual_workers = CasualWorker.query.filter_by(status='available').limit(5).all()
+    
+    # Get today's schedules
+    today = date.today()
+    schedules = Schedule.query.filter_by(date=today).all()
+    
+    return render_template('dashboard.html', 
+                         schedules=schedules,
+                         coverage_requests=coverage_requests,
+                         casual_workers=casual_workers)
+
+# Nuclear fix route
+@app.route('/nuclear-fix')
+def nuclear_fix():
+    """Nuclear option - recreate Mike as supervisor"""
+    if not request.args.get('confirm') == 'yes':
+        return """
+        <h3>WARNING: This will:</h3>
+        <ul>
+            <li>Delete and recreate Mike Johnson</li>
+            <li>Ensure he's properly set as supervisor</li>
+            <li>Reset his password to admin123</li>
+        </ul>
+        <a href="/nuclear-fix?confirm=yes">Yes, do it!</a>
+        """
+    
+    try:
+        # Delete Mike if he exists
+        mike = Employee.query.filter_by(email='mike@example.com').first()
+        if mike:
+            db.session.delete(mike)
+            db.session.commit()
+        
+        # Create Mike fresh as supervisor
+        new_mike = Employee(
+            name='Mike Johnson',
+            email='mike@example.com',
+            phone='555-0103',
+            crew='Day Shift',
+            is_supervisor=True,
+            password_hash=generate_password_hash('admin123'),
+            is_active=True
+        )
+        db.session.add(new_mike)
+        db.session.commit()
+        
+        # Verify
+        mike_check = Employee.query.filter_by(email='mike@example.com').first()
+        
+        return f"""
+        <h3>Mike Recreated!</h3>
+        <ul>
+            <li>Name: {mike_check.name}</li>
+            <li>Email: {mike_check.email}</li>
+            <li>Is Supervisor: <strong>{mike_check.is_supervisor}</strong></li>
+            <li>ID: {mike_check.id}</li>
+        </ul>
+        <br>
+        <strong>Now login with:</strong><br>
+        Email: mike@example.com<br>
+        Password: admin123<br>
+        <br>
+        <a href="/login">Go to Login</a>
+        """
+        
+    except Exception as e:
+        db.session.rollback()
+        return f"Error: {str(e)}"
 
 # Debug route to check employees
 @app.route('/debug-employees')
@@ -893,64 +943,6 @@ def update_suggestion(suggestion_id):
         flash('Suggestion updated!', 'success')
     
     return redirect(url_for('view_suggestions'))
-
-# Nuclear fix route
-@app.route('/nuclear-fix')
-def nuclear_fix():
-    """Nuclear option - recreate Mike as supervisor"""
-    if not request.args.get('confirm') == 'yes':
-        return """
-        <h3>WARNING: This will:</h3>
-        <ul>
-            <li>Delete and recreate Mike Johnson</li>
-            <li>Ensure he's properly set as supervisor</li>
-            <li>Reset his password to admin123</li>
-        </ul>
-        <a href="/nuclear-fix?confirm=yes">Yes, do it!</a>
-        """
-    
-    try:
-        # Delete Mike if he exists
-        mike = Employee.query.filter_by(email='mike@example.com').first()
-        if mike:
-            db.session.delete(mike)
-            db.session.commit()
-        
-        # Create Mike fresh as supervisor
-        new_mike = Employee(
-            name='Mike Johnson',
-            email='mike@example.com',
-            phone='555-0103',
-            crew='Day Shift',
-            is_supervisor=True,
-            password_hash=generate_password_hash('admin123'),
-            is_active=True
-        )
-        db.session.add(new_mike)
-        db.session.commit()
-        
-        # Verify
-        mike_check = Employee.query.filter_by(email='mike@example.com').first()
-        
-        return f"""
-        <h3>Mike Recreated!</h3>
-        <ul>
-            <li>Name: {mike_check.name}</li>
-            <li>Email: {mike_check.email}</li>
-            <li>Is Supervisor: <strong>{mike_check.is_supervisor}</strong></li>
-            <li>ID: {mike_check.id}</li>
-        </ul>
-        <br>
-        <strong>Now login with:</strong><br>
-        Email: mike@example.com<br>
-        Password: admin123<br>
-        <br>
-        <a href="/login">Go to Login</a>
-        """
-        
-    except Exception as e:
-        db.session.rollback()
-        return f"Error: {str(e)}"
 
 # Overtime Algorithm
 def calculate_overtime_eligibility(week_start, week_end):
