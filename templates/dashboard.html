@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Supervisor Dashboard - Workforce Scheduler</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">Workforce Scheduler</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/dashboard">Dashboard</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/schedule">Full Schedule</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/employees">Employees</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid mt-4">
+        <h2>Supervisor Dashboard</h2>
+        
+        <!-- Today's Overview -->
+        <div class="row mt-4">
+            <div class="col-md-3">
+                <div class="card bg-primary text-white">
+                    <div class="card-body">
+                        <h5 class="card-title">Scheduled Today</h5>
+                        <h2 class="display-4">12</h2>
+                        <p class="mb-0">Employees</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card bg-success text-white">
+                    <div class="card-body">
+                        <h5 class="card-title">Present</h5>
+                        <h2 class="display-4">10</h2>
+                        <p class="mb-0">Checked In</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card bg-warning text-white">
+                    <div class="card-body">
+                        <h5 class="card-title">Pending</h5>
+                        <h2 class="display-4">2</h2>
+                        <p class="mb-0">Not Checked In</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card bg-danger text-white">
+                    <div class="card-body">
+                        <h5 class="card-title">Absent</h5>
+                        <h2 class="display-4">0</h2>
+                        <p class="mb-0">Called Out</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Today's Schedule -->
+        <div class="row mt-4">
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">Today's Schedule</h5>
+                        <span class="text-muted" id="currentDate"></span>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Position</th>
+                                        <th>Time</th>
+                                        <th>Employee</th>
+                                        <th>Status</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="scheduleTableBody">
+                                    <!-- Schedule will be loaded here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Actions -->
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">Quick Actions</h5>
+                    </div>
+                    <div class="card-body">
+                        <button class="btn btn-primary w-100 mb-2" onclick="reportAbsence()">
+                            <i class="bi bi-exclamation-circle"></i> Report Absence
+                        </button>
+                        <button class="btn btn-success w-100 mb-2">
+                            <i class="bi bi-plus-circle"></i> Add Shift
+                        </button>
+                        <button class="btn btn-info w-100 mb-2">
+                            <i class="bi bi-envelope"></i> Send Coverage Request
+                        </button>
+                        <button class="btn btn-warning w-100">
+                            <i class="bi bi-people"></i> View Available Staff
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Pending Requests -->
+                <div class="card mt-3">
+                    <div class="card-header">
+                        <h5 class="mb-0">Pending Requests</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="alert alert-info mb-2">
+                            <strong>John Doe</strong><br>
+                            Vacation Request: Dec 25-27
+                            <div class="mt-2">
+                                <button class="btn btn-sm btn-success">Approve</button>
+                                <button class="btn btn-sm btn-danger">Deny</button>
+                            </div>
+                        </div>
+                        <div class="alert alert-warning mb-0">
+                            <strong>Jane Smith</strong><br>
+                            Shift Swap Request: Dec 24
+                            <div class="mt-2">
+                                <button class="btn btn-sm btn-success">Approve</button>
+                                <button class="btn btn-sm btn-danger">Deny</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Set current date
+        document.getElementById('currentDate').textContent = new Date().toLocaleDateString('en-US', { 
+            weekday: 'long', 
+            year: 'numeric', 
+            month: 'long', 
+            day: 'numeric' 
+        });
+
+        // Load today's schedule
+        async function loadTodaySchedule() {
+            try {
+                const response = await fetch('/api/schedule/today');
+                const data = await response.json();
+                
+                if (data.success) {
+                    const tbody = document.getElementById('scheduleTableBody');
+                    tbody.innerHTML = '';
+                    
+                    data.shifts.forEach(shift => {
+                        const row = tbody.insertRow();
+                        row.innerHTML = `
+                            <td>${shift.position}</td>
+                            <td>${shift.time}</td>
+                            <td>${shift.employee}</td>
+                            <td><span class="badge bg-success">${shift.status}</span></td>
+                            <td>
+                                <button class="btn btn-sm btn-warning" onclick="markAbsent('${shift.employee}')">
+                                    Mark Absent
+                                </button>
+                            </td>
+                        `;
+                    });
+                }
+            } catch (error) {
+                console.error('Error loading schedule:', error);
+            }
+        }
+
+        // Report absence function
+        async function reportAbsence() {
+            const employee = prompt("Enter employee name:");
+            if (employee) {
+                try {
+                    const response = await fetch('/api/absence/report', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ employee: employee })
+                    });
+                    const data = await response.json();
+                    if (data.success) {
+                        alert(data.message);
+                        loadTodaySchedule(); // Reload the schedule
+                    }
+                } catch (error) {
+                    console.error('Error reporting absence:', error);
+                }
+            }
+        }
+
+        // Mark absent function
+        function markAbsent(employee) {
+            if (confirm(`Mark ${employee} as absent and send coverage request?`)) {
+                reportAbsence();
+            }
+        }
+
+        // Load schedule on page load
+        loadTodaySchedule();
+    </script>
+</body>
+</html>
