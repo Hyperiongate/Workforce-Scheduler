@@ -4,7 +4,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import os
 from datetime import datetime, date, timedelta
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import inspect
+from sqlalchemy import inspect, text
 from models import (db, Employee, Position, Schedule, Skill, TimeOffRequest, CoverageRequest, 
                    CasualWorker, CasualAssignment, ShiftSwapRequest, ScheduleSuggestion,
                    EmployeeSkill, PositionSkill)
@@ -25,6 +25,8 @@ login_manager.login_view = 'login'
 
 @login_manager.user_loader
 def load_user(user_id):
+    # Force a fresh load from database to ensure we get current data
+    db.session.expire_all()
     return Employee.query.get(int(user_id))
 
 # Database initialization function
@@ -175,29 +177,29 @@ def migrate_database():
             employee_columns = [col['name'] for col in inspector.get_columns('employee')]
             
             if 'password_hash' not in employee_columns:
-                conn.execute(db.text('ALTER TABLE employee ADD COLUMN password_hash VARCHAR(200)'))
+                conn.execute(text('ALTER TABLE employee ADD COLUMN password_hash VARCHAR(200)'))
                 # Set default passwords for existing employees
-                conn.execute(db.text("UPDATE employee SET password_hash = :hash"), 
+                conn.execute(text("UPDATE employee SET password_hash = :hash"), 
                            {'hash': generate_password_hash('password123')})
                 conn.commit()
             
             if 'overtime_eligible' not in employee_columns:
-                conn.execute(db.text('ALTER TABLE employee ADD COLUMN overtime_eligible BOOLEAN DEFAULT TRUE'))
+                conn.execute(text('ALTER TABLE employee ADD COLUMN overtime_eligible BOOLEAN DEFAULT TRUE'))
                 conn.commit()
             
             if 'max_hours_per_week' not in employee_columns:
-                conn.execute(db.text('ALTER TABLE employee ADD COLUMN max_hours_per_week INTEGER DEFAULT 40'))
+                conn.execute(text('ALTER TABLE employee ADD COLUMN max_hours_per_week INTEGER DEFAULT 40'))
                 conn.commit()
             
             # Check and add missing columns to Schedule table
             schedule_columns = [col['name'] for col in inspector.get_columns('schedule')]
             
             if 'hours' not in schedule_columns:
-                conn.execute(db.text('ALTER TABLE schedule ADD COLUMN hours FLOAT'))
+                conn.execute(text('ALTER TABLE schedule ADD COLUMN hours FLOAT'))
                 conn.commit()
             
             if 'is_overtime' not in schedule_columns:
-                conn.execute(db.text('ALTER TABLE schedule ADD COLUMN is_overtime BOOLEAN DEFAULT FALSE'))
+                conn.execute(text('ALTER TABLE schedule ADD COLUMN is_overtime BOOLEAN DEFAULT FALSE'))
                 conn.commit()
             
             # Check and add missing columns to CasualWorker table
@@ -205,7 +207,7 @@ def migrate_database():
                 casual_columns = [col['name'] for col in inspector.get_columns('casual_worker')]
                 
                 if 'password_hash' not in casual_columns:
-                    conn.execute(db.text('ALTER TABLE casual_worker ADD COLUMN password_hash VARCHAR(200)'))
+                    conn.execute(text('ALTER TABLE casual_worker ADD COLUMN password_hash VARCHAR(200)'))
                     conn.commit()
         
         # Create any missing tables
@@ -235,15 +237,19 @@ def login():
         password = request.form.get('password')
         remember = request.form.get('remember', False)
         
+        # Get fresh employee data
         employee = Employee.query.filter_by(email=email).first()
         
         if employee and employee.password_hash and check_password_hash(employee.password_hash, password):
+            # Force refresh the employee object before login
+            db.session.refresh(employee)
             login_user(employee, remember=remember)
-            next_page = request.args.get('next')
+            
+            # Double-check supervisor status after login
             if employee.is_supervisor:
-                return redirect(next_page) if next_page else redirect(url_for('dashboard'))
+                return redirect(url_for('dashboard'))
             else:
-                return redirect(next_page) if next_page else redirect(url_for('employee_dashboard'))
+                return redirect(url_for('employee_dashboard'))
         else:
             flash('Invalid email or password', 'error')
     
@@ -253,11 +259,15 @@ def login():
 @login_required
 def logout():
     logout_user()
+    session.clear()  # Clear all session data
     return redirect(url_for('index'))
 
 @app.route('/dashboard')
 @login_required
 def dashboard():
+    # Force refresh current user data
+    db.session.refresh(current_user)
+    
     if not current_user.is_supervisor:
         return redirect(url_for('employee_dashboard'))
     
@@ -604,28 +614,86 @@ def reset_passwords():
     except Exception as e:
         return f"Error resetting passwords: {str(e)}"
 
-# Fix supervisor status route
-@app.route('/fix-supervisor')
-def fix_supervisor():
-    """Fix Mike's supervisor status"""
+# Force supervisor fix route
+@app.route('/force-supervisor-fix')
+def force_supervisor_fix():
+    """Force fix supervisor status and clear all sessions"""
     if not request.args.get('confirm') == 'yes':
-        return "Add ?confirm=yes to fix Mike's supervisor status"
+        return """
+        <h3>This will:</h3>
+        <ul>
+            <li>Force update Mike's supervisor status</li>
+            <li>Clear all sessions</li>
+            <li>Show current database state</li>
+        </ul>
+        <a href="/force-supervisor-fix?confirm=yes">Click here to proceed</a>
+        """
     
     try:
-        # Find Mike and make him a supervisor
-        mike = Employee.query.filter_by(email='mike@example.com').first()
-        if mike:
-            mike.is_supervisor = True
-            db.session.commit()
-            return f"""
-            <h3>Fixed!</h3>
-            <p>Mike Johnson is now a supervisor: {mike.is_supervisor}</p>
-            <p>Please <a href="/logout">logout</a> and <a href="/login">login again</a> to see the supervisor dashboard.</p>
-            """
-        else:
-            return "Mike not found in database!"
+        # Force update in database with raw SQL to be sure
+        with db.engine.connect() as conn:
+            # First check current status
+            result = conn.execute(text("SELECT id, name, email, is_supervisor FROM employee WHERE email = 'mike@example.com'"))
+            mike_data = result.fetchone()
+            
+            if mike_data:
+                # Force update
+                conn.execute(text("UPDATE employee SET is_supervisor = TRUE WHERE email = 'mike@example.com'"))
+                conn.commit()
+                
+                # Verify update
+                result = conn.execute(text("SELECT id, name, email, is_supervisor FROM employee"))
+                employees = result.fetchall()
+                
+                output = "<h3>Database Updated!</h3>"
+                output += "<h4>All Employees:</h4><ul>"
+                for emp in employees:
+                    output += f"<li>{emp.name} ({emp.email}) - Supervisor: <strong>{emp.is_supervisor}</strong></li>"
+                output += "</ul>"
+                
+                # Clear Flask session
+                session.clear()
+                
+                output += '<br><strong style="color: red;">IMPORTANT NEXT STEPS:</strong>'
+                output += '<ol>'
+                output += '<li>Close ALL browser tabs for this site</li>'
+                output += '<li>Clear your browser cookies for workforce-scheduler.onrender.com</li>'
+                output += '<li>Or use a completely different browser/incognito mode</li>'
+                output += '<li>Then login fresh with mike@example.com / admin123</li>'
+                output += '</ol>'
+                output += '<br><a href="/logout">Click here to logout first</a>'
+                
+                return output
+            else:
+                return "Mike not found in database!"
+                
     except Exception as e:
         return f"Error: {str(e)}"
+
+# Check session route
+@app.route('/check-session')
+@login_required
+def check_session():
+    """Check what's in the current session"""
+    # Refresh user data
+    db.session.refresh(current_user)
+    
+    return f"""
+    <h3>Current Session Debug:</h3>
+    <ul>
+        <li>User ID: {current_user.id}</li>
+        <li>User Name: {current_user.name}</li>
+        <li>User Email: {current_user.email}</li>
+        <li>Is Authenticated: {current_user.is_authenticated}</li>
+        <li>Is Supervisor (from user object): <strong>{current_user.is_supervisor}</strong></li>
+        <li>Session Data: {dict(session)}</li>
+    </ul>
+    <br>
+    <h4>Database Check:</h4>
+    {Employee.query.filter_by(email=current_user.email).first().is_supervisor}
+    <br><br>
+    <a href="/dashboard">Try Dashboard</a> | <a href="/logout">Logout</a>
+    """
 
 # Debug route to check employees
 @app.route('/debug-employees')
