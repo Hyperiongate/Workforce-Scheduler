@@ -277,7 +277,7 @@ def dashboard():
                          casual_workers=casual_workers)
 
 # Employee Dashboard
-@app.route('/employee/dashboard')
+@app.route('/employee-dashboard')
 @login_required
 def employee_dashboard():
     try:
