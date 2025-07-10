@@ -400,4 +400,4 @@ def register_casual():
             return redirect(url_for('register_casual'))
         except Exception as e:
             flash('Registration failed. Email may already be registered.', 'error')
-            return redirect(url_
+            return redirect(url_for('register_casual'))
