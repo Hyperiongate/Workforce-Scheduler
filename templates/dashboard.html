@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Supervisor Dashboard - Workforce Scheduler</title>
+    <title>Employee Dashboard - {{ current_user.name }}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
 </head>
@@ -17,16 +17,16 @@
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav ms-auto">
                     <li class="nav-item">
-                        <a class="nav-link active" href="/dashboard">Dashboard</a>
+                        <a class="nav-link active" href="/employee/dashboard">My Dashboard</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="/schedule">Full Schedule</a>
+                        <a class="nav-link" href="/employee/schedule">My Schedule</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="/employees">Employees</a>
+                        <a class="nav-link" href="/employee/requests">My Requests</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="/casual-workers">Casual Workers</a>
+                        <a class="nav-link" href="/logout">Logout</a>
                     </li>
                 </ul>
             </div>
@@ -34,294 +34,281 @@
     </nav>
 
     <div class="container-fluid mt-4">
-        <h2>Supervisor Dashboard</h2>
-        
-        <!-- Today's Overview -->
+        <div class="row">
+            <div class="col-12">
+                <h2>Welcome, {{ current_user.name }}!</h2>
+                <p class="text-muted">Employee Dashboard - {{ current_date }}</p>
+            </div>
+        </div>
+
+        <!-- Quick Stats -->
         <div class="row mt-4">
             <div class="col-md-3">
                 <div class="card bg-primary text-white">
                     <div class="card-body">
-                        <h5 class="card-title">Scheduled Today</h5>
-                        <h2 class="display-4">12</h2>
-                        <p class="mb-0">Employees</p>
+                        <h5 class="card-title">This Week</h5>
+                        <h2 class="display-4">{{ weekly_hours }}</h2>
+                        <p class="mb-0">Hours Scheduled</p>
                     </div>
                 </div>
             </div>
             <div class="col-md-3">
                 <div class="card bg-success text-white">
                     <div class="card-body">
-                        <h5 class="card-title">Present</h5>
-                        <h2 class="display-4">10</h2>
-                        <p class="mb-0">Checked In</p>
+                        <h5 class="card-title">Next Shift</h5>
+                        <h4>{{ next_shift.date.strftime('%m/%d') if next_shift else 'None' }}</h4>
+                        <p class="mb-0">{{ next_shift.start_time.strftime('%I:%M %p') if next_shift else 'No shifts scheduled' }}</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card bg-info text-white">
+                    <div class="card-body">
+                        <h5 class="card-title">Swap Requests</h5>
+                        <h2 class="display-4">{{ pending_swaps }}</h2>
+                        <p class="mb-0">Pending</p>
                     </div>
                 </div>
             </div>
             <div class="col-md-3">
                 <div class="card bg-warning text-white">
                     <div class="card-body">
-                        <h5 class="card-title">Pending</h5>
-                        <h2 class="display-4">2</h2>
-                        <p class="mb-0">Not Checked In</p>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card bg-danger text-white">
-                    <div class="card-body">
-                        <h5 class="card-title">Absent</h5>
-                        <h2 class="display-4">0</h2>
-                        <p class="mb-0">Called Out</p>
+                        <h5 class="card-title">Time Off</h5>
+                        <h2 class="display-4">{{ time_off_days }}</h2>
+                        <p class="mb-0">Days Remaining</p>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Today's Schedule -->
         <div class="row mt-4">
+            <!-- My Schedule -->
             <div class="col-md-8">
                 <div class="card">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <h5 class="mb-0">Today's Schedule</h5>
-                        <span class="text-muted" id="currentDate"></span>
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="bi bi-calendar-week"></i> My Upcoming Shifts
+                        </h5>
                     </div>
                     <div class="card-body">
                         <div class="table-responsive">
                             <table class="table table-hover">
                                 <thead>
                                     <tr>
+                                        <th>Date</th>
                                         <th>Position</th>
                                         <th>Time</th>
-                                        <th>Employee</th>
-                                        <th>Status</th>
+                                        <th>Hours</th>
                                         <th>Actions</th>
                                     </tr>
                                 </thead>
-                                <tbody id="scheduleTableBody">
-                                    <!-- Schedule will be loaded here -->
+                                <tbody>
+                                    {% for schedule in upcoming_shifts %}
+                                    <tr>
+                                        <td>
+                                            <strong>{{ schedule.date.strftime('%a, %b %d') }}</strong>
+                                            {% if schedule.date == today %}
+                                                <span class="badge bg-success">Today</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>{{ schedule.position.name }}</td>
+                                        <td>{{ schedule.start_time.strftime('%I:%M %p') }} - {{ schedule.end_time.strftime('%I:%M %p') }}</td>
+                                        <td>{{ schedule.hours or 'TBD' }} hrs</td>
+                                        <td>
+                                            <button class="btn btn-sm btn-primary" 
+                                                    data-bs-toggle="modal" 
+                                                    data-bs-target="#swapModal"
+                                                    data-schedule-id="{{ schedule.id }}"
+                                                    data-schedule-info="{{ schedule.date }} - {{ schedule.position.name }}">
+                                                <i class="bi bi-arrow-left-right"></i> Request Swap
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    {% else %}
+                                    <tr>
+                                        <td colspan="5" class="text-center text-muted">No upcoming shifts scheduled</td>
+                                    </tr>
+                                    {% endfor %}
                                 </tbody>
                             </table>
                         </div>
                     </div>
                 </div>
 
-                <!-- Casual Worker Pool Section -->
+                <!-- Shift Swap Requests -->
                 <div class="card mt-4">
                     <div class="card-header bg-info text-white">
                         <h5 class="mb-0">
-                            <i class="bi bi-people"></i> Available Casual Workers
-                            {% if casual_workers %}
-                                <span class="badge bg-light text-dark float-end">{{ casual_workers|length }} Available</span>
-                            {% endif %}
+                            <i class="bi bi-arrow-left-right"></i> Shift Swap Requests
                         </h5>
                     </div>
                     <div class="card-body">
-                        {% if casual_workers %}
-                            <div class="table-responsive">
-                                <table class="table table-hover">
-                                    <thead>
-                                        <tr>
-                                            <th>Name</th>
-                                            <th>Contact</th>
-                                            <th>Skills</th>
-                                            <th>Rating</th>
-                                            <th>Actions</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {% for worker in casual_workers %}
-                                        <tr>
-                                            <td>
-                                                <strong>{{ worker.name }}</strong>
-                                                {% if worker.availability and 'short_notice' in worker.availability %}
-                                                    <span class="badge bg-success ms-2">
-                                                        <i class="bi bi-lightning"></i> Quick Response
-                                                    </span>
-                                                {% endif %}
-                                            </td>
-                                            <td>
-                                                <small>
-                                                    <i class="bi bi-envelope"></i> {{ worker.email }}<br>
-                                                    <i class="bi bi-phone"></i> {{ worker.phone }}
-                                                </small>
-                                            </td>
-                                            <td>
-                                                {% if worker.skills %}
-                                                    <span class="text-truncate d-inline-block" style="max-width: 200px;" 
-                                                          data-bs-toggle="tooltip" title="{{ worker.skills }}">
-                                                        {{ worker.skills }}
-                                                    </span>
-                                                {% else %}
-                                                    <span class="text-muted">General labor</span>
-                                                {% endif %}
-                                            </td>
-                                            <td>
-                                                <div class="text-warning">
-                                                    {% for i in range(worker.rating|int) %}<i class="bi bi-star-fill"></i>{% endfor %}
-                                                    {% for i in range(5 - worker.rating|int) %}<i class="bi bi-star"></i>{% endfor %}
-                                                    <small class="text-muted">({{ worker.rating }})</small>
-                                                </div>
-                                            </td>
-                                            <td>
-                                                <button class="btn btn-sm btn-primary" 
-                                                        data-bs-toggle="modal" 
-                                                        data-bs-target="#assignModal"
-                                                        data-worker-id="{{ worker.id }}"
-                                                        data-worker-name="{{ worker.name }}">
-                                                    <i class="bi bi-calendar-plus"></i> Assign Work
-                                                </button>
-                                            </td>
-                                        </tr>
-                                        {% endfor %}
-                                    </tbody>
-                                </table>
+                        {% if swap_requests %}
+                            {% for swap in swap_requests %}
+                            <div class="alert alert-info">
+                                <div class="row">
+                                    <div class="col-md-8">
+                                        <strong>{{ swap.requester.name }}</strong> wants to swap:<br>
+                                        Your: {{ swap.target_schedule.date }} - {{ swap.target_schedule.position.name }}<br>
+                                        For: {{ swap.requester_schedule.date }} - {{ swap.requester_schedule.position.name }}
+                                    </div>
+                                    <div class="col-md-4 text-end">
+                                        <span class="badge bg-warning">{{ swap.status }}</span><br>
+                                        <small>{{ swap.created_at.strftime('%m/%d %I:%M %p') }}</small>
+                                    </div>
+                                </div>
                             </div>
-                            
-                            <div class="mt-3">
-                                <a href="/casual-workers" class="btn btn-outline-info">
-                                    <i class="bi bi-people"></i> View All Casual Workers
-                                </a>
-                                <a href="/register-casual" class="btn btn-outline-success" target="_blank">
-                                    <i class="bi bi-person-plus"></i> Share Registration Link
-                                </a>
-                            </div>
+                            {% endfor %}
                         {% else %}
-                            <div class="text-center py-4">
-                                <i class="bi bi-people display-4 text-muted"></i>
-                                <p class="text-muted mt-2">No casual workers currently available.</p>
-                                <a href="/register-casual" class="btn btn-primary" target="_blank">
-                                    <i class="bi bi-share"></i> Share Registration Link
-                                </a>
-                            </div>
+                            <p class="text-muted">No pending swap requests</p>
                         {% endif %}
                     </div>
                 </div>
             </div>
 
-            <!-- Quick Actions -->
+            <!-- Right Column -->
             <div class="col-md-4">
+                <!-- Quick Actions -->
                 <div class="card">
                     <div class="card-header">
                         <h5 class="mb-0">Quick Actions</h5>
                     </div>
                     <div class="card-body">
-                        <button class="btn btn-primary w-100 mb-2" onclick="reportAbsence()">
-                            <i class="bi bi-exclamation-circle"></i> Report Absence
+                        <button class="btn btn-primary w-100 mb-2" data-bs-toggle="modal" data-bs-target="#suggestionModal">
+                            <i class="bi bi-lightbulb"></i> Make a Suggestion
                         </button>
-                        <button class="btn btn-success w-100 mb-2">
-                            <i class="bi bi-plus-circle"></i> Add Shift
+                        <button class="btn btn-warning w-100 mb-2">
+                            <i class="bi bi-calendar-x"></i> Request Time Off
                         </button>
                         <button class="btn btn-info w-100 mb-2">
-                            <i class="bi bi-envelope"></i> Send Coverage Request
+                            <i class="bi bi-clock-history"></i> View Availability
                         </button>
-                        <button class="btn btn-warning w-100" onclick="window.location.href='/casual-workers'">
-                            <i class="bi bi-people"></i> Manage Casual Workers
+                        <button class="btn btn-success w-100">
+                            <i class="bi bi-person-badge"></i> Update Profile
                         </button>
                     </div>
                 </div>
 
-                <!-- Coverage Requests -->
-                {% if coverage_requests %}
+                <!-- Recent Suggestions -->
                 <div class="card mt-3">
-                    <div class="card-header bg-danger text-white">
+                    <div class="card-header">
                         <h5 class="mb-0">
-                            <i class="bi bi-exclamation-triangle"></i> Open Coverage Requests
-                            <span class="badge bg-white text-danger">{{ coverage_requests|length }}</span>
+                            <i class="bi bi-lightbulb"></i> My Recent Suggestions
                         </h5>
                     </div>
                     <div class="card-body">
-                        {% for request in coverage_requests %}
-                        <div class="alert alert-danger mb-2">
-                            <strong>Coverage Needed!</strong><br>
-                            Position: {{ request.schedule.position.name if request.schedule.position else 'Unknown' }}<br>
-                            Time: {{ request.schedule.start_time.strftime('%I:%M %p') }} - {{ request.schedule.end_time.strftime('%I:%M %p') }}
-                            <div class="mt-2">
-                                <button class="btn btn-sm btn-light" 
-                                        data-bs-toggle="modal" 
-                                        data-bs-target="#quickAssignModal">
-                                    <i class="bi bi-person-plus"></i> Assign Casual Worker
-                                </button>
+                        {% if recent_suggestions %}
+                            {% for suggestion in recent_suggestions %}
+                            <div class="mb-3 p-2 border rounded">
+                                <strong>{{ suggestion.title }}</strong><br>
+                                <small class="text-muted">{{ suggestion.created_at.strftime('%m/%d') }}</small>
+                                <span class="badge bg-{{ 'success' if suggestion.status == 'implemented' else 'secondary' }} float-end">
+                                    {{ suggestion.status }}
+                                </span>
                             </div>
-                        </div>
-                        {% endfor %}
-                    </div>
-                </div>
-                {% endif %}
-
-                <!-- Pending Requests -->
-                <div class="card mt-3">
-                    <div class="card-header">
-                        <h5 class="mb-0">Pending Requests</h5>
-                    </div>
-                    <div class="card-body">
-                        <div class="alert alert-info mb-2">
-                            <strong>John Doe</strong><br>
-                            Vacation Request: Dec 25-27
-                            <div class="mt-2">
-                                <button class="btn btn-sm btn-success">Approve</button>
-                                <button class="btn btn-sm btn-danger">Deny</button>
-                            </div>
-                        </div>
-                        <div class="alert alert-warning mb-0">
-                            <strong>Jane Smith</strong><br>
-                            Shift Swap Request: Dec 24
-                            <div class="mt-2">
-                                <button class="btn btn-sm btn-success">Approve</button>
-                                <button class="btn btn-sm btn-danger">Deny</button>
-                            </div>
-                        </div>
+                            {% endfor %}
+                        {% else %}
+                            <p class="text-muted">No suggestions submitted yet</p>
+                        {% endif %}
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Quick Assignment Modal -->
-    <div class="modal fade" id="assignModal" tabindex="-1">
-        <div class="modal-dialog">
+    <!-- Shift Swap Modal -->
+    <div class="modal fade" id="swapModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title">
-                        <i class="bi bi-calendar-plus"></i> Assign Casual Work
+                        <i class="bi bi-arrow-left-right"></i> Request Shift Swap
                     </h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
-                <form method="POST" action="/request-casual">
+                <form method="POST" action="/employee/request-swap">
                     <div class="modal-body">
-                        <input type="hidden" id="worker_id" name="worker_id">
+                        <input type="hidden" id="my_schedule_id" name="my_schedule_id">
+                        
                         <div class="alert alert-info">
-                            <i class="bi bi-person"></i> Assigning work to: <strong id="worker_name"></strong>
+                            <strong>Your Shift:</strong> <span id="my_shift_info"></span>
                         </div>
+
+                        <p>Select a shift you'd like to swap for:</p>
                         
                         <div class="mb-3">
-                            <label for="date" class="form-label">Date</label>
-                            <input type="date" class="form-control" id="date" name="date" required>
-                        </div>
-                        
-                        <div class="row">
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label for="start_time" class="form-label">Start Time</label>
-                                    <input type="time" class="form-control" id="start_time" name="start_time" required>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label for="end_time" class="form-label">End Time</label>
-                                    <input type="time" class="form-control" id="end_time" name="end_time" required>
-                                </div>
+                            <label class="form-label">Available Shifts from Other Employees</label>
+                            <div class="list-group" id="availableShifts">
+                                <!-- Available shifts will be loaded here -->
                             </div>
                         </div>
-                        
+
                         <div class="mb-3">
-                            <label for="position" class="form-label">Position/Task</label>
-                            <input type="text" class="form-control" id="position" name="position" 
-                                   placeholder="e.g., Warehouse Assistant, Event Staff" required>
+                            <label for="reason" class="form-label">Reason for Swap (Optional)</label>
+                            <textarea class="form-control" id="reason" name="reason" rows="2" 
+                                      placeholder="e.g., Doctor's appointment, family event"></textarea>
                         </div>
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                         <button type="submit" class="btn btn-primary">
-                            <i class="bi bi-send"></i> Send Work Request
+                            <i class="bi bi-send"></i> Submit Swap Request
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Suggestion Modal -->
+    <div class="modal fade" id="suggestionModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi bi-lightbulb"></i> Make a Schedule Suggestion
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <form method="POST" action="/employee/submit-suggestion">
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label for="suggestion_type" class="form-label">Type of Suggestion</label>
+                            <select class="form-select" id="suggestion_type" name="suggestion_type" required>
+                                <option value="">Select type...</option>
+                                <option value="shift_preference">Shift Preference</option>
+                                <option value="availability_change">Availability Change</option>
+                                <option value="scheduling_process">Scheduling Process</option>
+                                <option value="fairness">Schedule Fairness</option>
+                                <option value="general">General Suggestion</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="title" class="form-label">Brief Title</label>
+                            <input type="text" class="form-control" id="title" name="title" 
+                                   placeholder="e.g., Weekend rotation improvement" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="description" class="form-label">Detailed Description</label>
+                            <textarea class="form-control" id="description" name="description" rows="4" required
+                                      placeholder="Please describe your suggestion in detail. How would this improve the schedule?"></textarea>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="priority" class="form-label">Priority Level</label>
+                            <select class="form-select" id="priority" name="priority">
+                                <option value="low">Low - Nice to have</option>
+                                <option value="medium" selected>Medium - Would help significantly</option>
+                                <option value="high">High - Critical issue</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-send"></i> Submit Suggestion
                         </button>
                     </div>
                 </form>
@@ -331,103 +318,42 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        // Initialize tooltips
-        var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
-        var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
-            return new bootstrap.Tooltip(tooltipTriggerEl)
-        });
-
-        // Set current date
-        document.getElementById('currentDate').textContent = new Date().toLocaleDateString('en-US', { 
-            weekday: 'long', 
-            year: 'numeric', 
-            month: 'long', 
-            day: 'numeric' 
-        });
-
-        // Handle modal data
-        document.getElementById('assignModal').addEventListener('show.bs.modal', function (event) {
-            var button = event.relatedTarget;
-            var workerId = button.getAttribute('data-worker-id');
-            var workerName = button.getAttribute('data-worker-name');
+        // Handle shift swap modal
+        document.getElementById('swapModal').addEventListener('show.bs.modal', async function (event) {
+            const button = event.relatedTarget;
+            const scheduleId = button.getAttribute('data-schedule-id');
+            const scheduleInfo = button.getAttribute('data-schedule-info');
             
-            document.getElementById('worker_id').value = workerId;
-            document.getElementById('worker_name').textContent = workerName;
+            document.getElementById('my_schedule_id').value = scheduleId;
+            document.getElementById('my_shift_info').textContent = scheduleInfo;
             
-            // Set default date to today
-            document.getElementById('date').valueAsDate = new Date();
-        });
-
-        // Load today's schedule
-        async function loadTodaySchedule() {
+            // Load available shifts for swapping
             try {
-                const response = await fetch('/api/schedule/today');
+                const response = await fetch(`/api/available-swaps/${scheduleId}`);
                 const data = await response.json();
                 
-                if (data.success) {
-                    const tbody = document.getElementById('scheduleTableBody');
-                    tbody.innerHTML = '';
-                    
+                const shiftsContainer = document.getElementById('availableShifts');
+                shiftsContainer.innerHTML = '';
+                
+                if (data.shifts && data.shifts.length > 0) {
                     data.shifts.forEach(shift => {
-                        const row = tbody.insertRow();
-                        row.innerHTML = `
-                            <td>${shift.position}</td>
-                            <td>${shift.time}</td>
-                            <td>${shift.employee}</td>
-                            <td><span class="badge bg-${shift.status === 'absent' ? 'danger' : 'success'}">${shift.status}</span></td>
-                            <td>
-                                <button class="btn btn-sm btn-warning" onclick="markAbsent('${shift.employee}')">
-                                    Mark Absent
-                                </button>
-                            </td>
+                        const shiftOption = document.createElement('label');
+                        shiftOption.className = 'list-group-item';
+                        shiftOption.innerHTML = `
+                            <input class="form-check-input me-2" type="radio" name="target_schedule_id" value="${shift.id}" required>
+                            <strong>${shift.employee_name}</strong> - ${shift.date} ${shift.position}<br>
+                            <small>${shift.time}</small>
+                            ${shift.skills_match ? '<span class="badge bg-success ms-2">Skills Match</span>' : '<span class="badge bg-warning ms-2">Different Skills</span>'}
                         `;
+                        shiftsContainer.appendChild(shiftOption);
                     });
+                } else {
+                    shiftsContainer.innerHTML = '<p class="text-muted">No eligible shifts available for swapping</p>';
                 }
             } catch (error) {
-                console.error('Error loading schedule:', error);
+                console.error('Error loading shifts:', error);
             }
-        }
-
-        // Report absence function
-        async function reportAbsence(employeeName) {
-            const employee = employeeName || prompt("Enter employee name:");
-            if (employee) {
-                try {
-                    const response = await fetch('/api/absence/report', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({ employee: employee })
-                    });
-                    
-                    if (!response.ok) {
-                        throw new Error('Network response was not ok');
-                    }
-                    
-                    const data = await response.json();
-                    if (data.success) {
-                        alert(data.message);
-                        loadTodaySchedule(); // Reload the schedule
-                    } else {
-                        alert(data.message || 'Failed to report absence');
-                    }
-                } catch (error) {
-                    console.error('Error reporting absence:', error);
-                    alert('Error connecting to server. Please try again.');
-                }
-            }
-        }
-
-        // Mark absent function
-        function markAbsent(employee) {
-            if (confirm(`Mark ${employee} as absent and send coverage request?`)) {
-                reportAbsence(employee);
-            }
-        }
-
-        // Load schedule on page load
-        loadTodaySchedule();
+        });
     </script>
 </body>
 </html>
