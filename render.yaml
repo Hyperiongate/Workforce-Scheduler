@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: workforce-scheduler
+    env: python
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "gunicorn app:app"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.9.12
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: workforce-db
+          property: connectionString
+
+databases:
+  - name: workforce-db
+    databaseName: workforce_scheduler
+    user: workforce_user
+    plan: free
