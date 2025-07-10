@@ -93,3 +93,37 @@ class CoverageRequest(db.Model):
     status = db.Column(db.String(20), default='open')  # open, filled, cancelled
     
     schedule = db.relationship('Schedule', backref='coverage_requests')
+
+# NEW MODELS FOR CASUAL WORKERS
+class CasualWorker(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    email = db.Column(db.String(120), unique=True, nullable=False)
+    phone = db.Column(db.String(20), nullable=False)
+    skills = db.Column(db.Text)  # Comma-separated skills
+    availability = db.Column(db.Text)  # JSON string of available days/times
+    status = db.Column(db.String(20), default='available')  # available, working, unavailable
+    rating = db.Column(db.Float, default=5.0)
+    notes = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    last_worked = db.Column(db.Date)
+    
+    # Track work history
+    assignments = db.relationship('CasualAssignment', backref='worker', lazy=True)
+    
+    def __repr__(self):
+        return f'<CasualWorker {self.name}>'
+
+class CasualAssignment(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    worker_id = db.Column(db.Integer, db.ForeignKey('casual_worker.id'), nullable=False)
+    date = db.Column(db.Date, nullable=False)
+    start_time = db.Column(db.Time, nullable=False)
+    end_time = db.Column(db.Time, nullable=False)
+    position = db.Column(db.String(100))
+    status = db.Column(db.String(20), default='pending')  # pending, confirmed, completed, cancelled
+    notes = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    def __repr__(self):
+        return f'<CasualAssignment {self.date} - {self.position}>'
