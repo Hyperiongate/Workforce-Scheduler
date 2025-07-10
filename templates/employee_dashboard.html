@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Employee Dashboard - {{ current_user.name }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">Workforce Scheduler</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/employee/dashboard">My Dashboard</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/employee/schedule">My Schedule</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/employee/requests">My Requests</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/logout">Logout</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid mt-4">
+        <div class="row">
+            <div class="col-12">
+                <h2>Welcome, {{ current_user.name }}!</h2>
+                <p class="text-muted">Employee Dashboard - {{ current_date }}</p>
+            </div>
+        </div>
+
+        <!-- Quick Stats -->
+        <div class="row mt-4">
+            <div class="col-md-3">
+                <div class="card bg-primary text-white">
+                    <div class="card-body">
+                        <h5 class="card-title">This Week</h5>
+                        <h2 class="display-4">{{ weekly_hours }}</h2>
+                        <p class="mb-0">Hours Scheduled</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card bg-success text-white">
+                    <div class="card-body">
+                        <h5 class="card-title">Next Shift</h5>
+                        <h4>{{ next_shift.date.strftime('%m/%d') if next_shift else 'None' }}</h4>
+                        <p class="mb-0">{{ next_shift.start_time.strftime('%I:%M %p') if next_shift else 'No shifts scheduled' }}</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card bg-info text-white">
+                    <div class="card-body">
+                        <h5 class="card-title">Swap Requests</h5>
+                        <h2 class="display-4">{{ pending_swaps }}</h2>
+                        <p class="mb-0">Pending</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card bg-warning text-white">
+                    <div class="card-body">
+                        <h5 class="card-title">Time Off</h5>
+                        <h2 class="display-4">{{ time_off_days }}</h2>
+                        <p class="mb-0">Days Remaining</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mt-4">
+            <!-- My Schedule -->
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="bi bi-calendar-week"></i> My Upcoming Shifts
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Position</th>
+                                        <th>Time</th>
+                                        <th>Hours</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for schedule in upcoming_shifts %}
+                                    <tr>
+                                        <td>
+                                            <strong>{{ schedule.date.strftime('%a, %b %d') }}</strong>
+                                            {% if schedule.date == today %}
+                                                <span class="badge bg-success">Today</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>{{ schedule.position.name if schedule.position else 'TBD' }}</td>
+                                        <td>
+                                            {% if schedule.start_time and schedule.end_time %}
+                                                {{ schedule.start_time.strftime('%I:%M %p') }} - {{ schedule.end_time.strftime('%I:%M %p') }}
+                                            {% else %}
+                                                TBD
+                                            {% endif %}
+                                        </td>
+                                        <td>{{ schedule.hours|round(1) if schedule.hours else 'TBD' }} hrs</td>
+                                        <td>
+                                            <button class="btn btn-sm btn-primary" 
+                                                    data-bs-toggle="modal" 
+                                                    data-bs-target="#swapModal"
+                                                    data-schedule-id="{{ schedule.id }}"
+                                                    data-schedule-info="{{ schedule.date }} - {{ schedule.position.name if schedule.position else 'TBD' }}">
+                                                <i class="bi bi-arrow-left-right"></i> Request Swap
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    {% else %}
+                                    <tr>
+                                        <td colspan="5" class="text-center text-muted">No upcoming shifts scheduled</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Shift Swap Requests -->
+                <div class="card mt-4">
+                    <div class="card-header bg-info text-white">
+                        <h5 class="mb-0">
+                            <i class="bi bi-arrow-left-right"></i> Shift Swap Requests
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        {% if swap_requests %}
+                            {% for swap in swap_requests %}
+                            <div class="alert alert-info">
+                                <div class="row">
+                                    <div class="col-md-8">
+                                        <strong>{{ swap.requester.name if swap.requester else 'Unknown' }}</strong> wants to swap:<br>
+                                        {% if swap.target_schedule %}
+                                            Your: {{ swap.target_schedule.date }} - {{ swap.target_schedule.position.name if swap.target_schedule.position else 'TBD' }}<br>
+                                        {% endif %}
+                                        {% if swap.requester_schedule %}
+                                            For: {{ swap.requester_schedule.date }} - {{ swap.requester_schedule.position.name if swap.requester_schedule.position else 'TBD' }}
+                                        {% endif %}
+                                    </div>
+                                    <div class="col-md-4 text-end">
+                                        <span class="badge bg-warning">{{ swap.status }}</span><br>
+                                        <small>{{ swap.created_at.strftime('%m/%d %I:%M %p') if swap.created_at else '' }}</small>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <p class="text-muted">No pending swap requests</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column -->
+            <div class="col-md-4">
+                <!-- Quick Actions -->
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">Quick Actions</h5>
+                    </div>
+                    <div class="card-body">
+                        <button class="btn btn-primary w-100 mb-2" data-bs-toggle="modal" data-bs-target="#suggestionModal">
+                            <i class="bi bi-lightbulb"></i> Make a Suggestion
+                        </button>
+                        <button class="btn btn-warning w-100 mb-2">
+                            <i class="bi bi-calendar-x"></i> Request Time Off
+                        </button>
+                        <button class="btn btn-info w-100 mb-2">
+                            <i class="bi bi-clock-history"></i> View Availability
+                        </button>
+                        <button class="btn btn-success w-100">
+                            <i class="bi bi-person-badge"></i> Update Profile
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Recent Suggestions -->
+                <div class="card mt-3">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="bi bi-lightbulb"></i> My Recent Suggestions
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        {% if recent_suggestions %}
+                            {% for suggestion in recent_suggestions %}
+                            <div class="mb-3 p-2 border rounded">
+                                <strong>{{ suggestion.title }}</strong><br>
+                                <small class="text-muted">{{ suggestion.created_at.strftime('%m/%d') }}</small>
+                                <span class="badge bg-{{ 'success' if suggestion.status == 'implemented' else 'secondary' }} float-end">
+                                    {{ suggestion.status }}
+                                </span>
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <p class="text-muted">No suggestions submitted yet</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Shift Swap Modal -->
+    <div class="modal fade" id="swapModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi bi-arrow-left-right"></i> Request Shift Swap
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <form method="POST" action="/employee/request-swap">
+                    <div class="modal-body">
+                        <input type="hidden" id="my_schedule_id" name="my_schedule_id">
+                        
+                        <div class="alert alert-info">
+                            <strong>Your Shift:</strong> <span id="my_shift_info"></span>
+                        </div>
+
+                        <p>Select a shift you'd like to swap for:</p>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Available Shifts from Other Employees</label>
+                            <div class="list-group" id="availableShifts">
+                                <!-- Available shifts will be loaded here -->
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="reason" class="form-label">Reason for Swap (Optional)</label>
+                            <textarea class="form-control" id="reason" name="reason" rows="2" 
+                                      placeholder="e.g., Doctor's appointment, family event"></textarea>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-send"></i> Submit Swap Request
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Suggestion Modal -->
+    <div class="modal fade" id="suggestionModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi bi-lightbulb"></i> Make a Schedule Suggestion
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <form method="POST" action="/employee/submit-suggestion">
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label for="suggestion_type" class="form-label">Type of Suggestion</label>
+                            <select class="form-select" id="suggestion_type" name="suggestion_type" required>
+                                <option value="">Select type...</option>
+                                <option value="shift_preference">Shift Preference</option>
+                                <option value="availability_change">Availability Change</option>
+                                <option value="scheduling_process">Scheduling Process</option>
+                                <option value="fairness">Schedule Fairness</option>
+                                <option value="general">General Suggestion</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="title" class="form-label">Brief Title</label>
+                            <input type="text" class="form-control" id="title" name="title" 
+                                   placeholder="e.g., Weekend rotation improvement" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="description" class="form-label">Detailed Description</label>
+                            <textarea class="form-control" id="description" name="description" rows="4" required
+                                      placeholder="Please describe your suggestion in detail. How would this improve the schedule?"></textarea>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="priority" class="form-label">Priority Level</label>
+                            <select class="form-select" id="priority" name="priority">
+                                <option value="low">Low - Nice to have</option>
+                                <option value="medium" selected>Medium - Would help significantly</option>
+                                <option value="high">High - Critical issue</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-send"></i> Submit Suggestion
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Handle shift swap modal
+        document.getElementById('swapModal').addEventListener('show.bs.modal', async function (event) {
+            const button = event.relatedTarget;
+            const scheduleId = button.getAttribute('data-schedule-id');
+            const scheduleInfo = button.getAttribute('data-schedule-info');
+            
+            document.getElementById('my_schedule_id').value = scheduleId;
+            document.getElementById('my_shift_info').textContent = scheduleInfo;
+            
+            // Load available shifts for swapping
+            try {
+                const response = await fetch(`/api/available-swaps/${scheduleId}`);
+                const data = await response.json();
+                
+                const shiftsContainer = document.getElementById('availableShifts');
+                shiftsContainer.innerHTML = '';
+                
+                if (data.shifts && data.shifts.length > 0) {
+                    data.shifts.forEach(shift => {
+                        const shiftOption = document.createElement('label');
+                        shiftOption.className = 'list-group-item';
+                        shiftOption.innerHTML = `
+                            <input class="form-check-input me-2" type="radio" name="target_schedule_id" value="${shift.id}" required>
+                            <strong>${shift.employee_name}</strong> - ${shift.date} ${shift.position}<br>
+                            <small>${shift.time}</small>
+                            ${shift.skills_match ? '<span class="badge bg-success ms-2">Skills Match</span>' : '<span class="badge bg-warning ms-2">Different Skills</span>'}
+                        `;
+                        shiftsContainer.appendChild(shiftOption);
+                    });
+                } else {
+                    shiftsContainer.innerHTML = '<p class="text-muted">No eligible shifts available for swapping</p>';
+                }
+            } catch (error) {
+                console.error('Error loading shifts:', error);
+            }
+        });
+    </script>
+</body>
+</html>
