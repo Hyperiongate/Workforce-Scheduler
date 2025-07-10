@@ -64,10 +64,16 @@ class Schedule(db.Model):
     
     def calculate_hours(self):
         # Calculate hours worked for this shift
-        start = datetime.combine(self.date, self.start_time)
-        end = datetime.combine(self.date, self.end_time)
-        delta = end - start
-        self.hours = delta.total_seconds() / 3600
+        if self.start_time and self.end_time:
+            start = datetime.combine(self.date, self.start_time)
+            end = datetime.combine(self.date, self.end_time)
+            # Handle overnight shifts
+            if end < start:
+                end += timedelta(days=1)
+            delta = end - start
+            self.hours = delta.total_seconds() / 3600
+        else:
+            self.hours = 0
         return self.hours
 
 class EmployeeSkill(db.Model):
