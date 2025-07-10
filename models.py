@@ -7,12 +7,15 @@ db = SQLAlchemy()
 class Employee(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(120), unique=True, nullable=False)
+    password_hash = db.Column(db.String(200))  # For simple login
     name = db.Column(db.String(100), nullable=False)
     phone = db.Column(db.String(20))
     hire_date = db.Column(db.Date, default=datetime.utcnow)
     is_supervisor = db.Column(db.Boolean, default=False)
     is_active = db.Column(db.Boolean, default=True)
     crew = db.Column(db.String(50))  # Day shift, Night shift, Weekend, etc.
+    overtime_eligible = db.Column(db.Boolean, default=True)
+    max_hours_per_week = db.Column(db.Integer, default=40)
     
     # Relationships
     skills = db.relationship('EmployeeSkill', backref='employee', lazy=True)
@@ -21,6 +24,9 @@ class Employee(db.Model, UserMixin):
     
     def __repr__(self):
         return f'<Employee {self.name}>'
+    
+    def has_skill(self, skill_id):
+        return any(es.skill_id == skill_id for es in self.skills)
 
 class Position(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -50,9 +56,19 @@ class Schedule(db.Model):
     employee_id = db.Column(db.Integer, db.ForeignKey('employee.id'))
     position_id = db.Column(db.Integer, db.ForeignKey('position.id'), nullable=False)
     status = db.Column(db.String(20), default='scheduled')  # scheduled, confirmed, absent, covered
+    hours = db.Column(db.Float)  # Calculate from start/end time
+    is_overtime = db.Column(db.Boolean, default=False)
     
     def __repr__(self):
         return f'<Schedule {self.date} - {self.position_id}>'
+    
+    def calculate_hours(self):
+        # Calculate hours worked for this shift
+        start = datetime.combine(self.date, self.start_time)
+        end = datetime.combine(self.date, self.end_time)
+        delta = end - start
+        self.hours = delta.total_seconds() / 3600
+        return self.hours
 
 class EmployeeSkill(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -99,6 +115,7 @@ class CasualWorker(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
+    password_hash = db.Column(db.String(200))  # For simple login
     phone = db.Column(db.String(20), nullable=False)
     skills = db.Column(db.Text)  # Comma-separated skills
     availability = db.Column(db.Text)  # JSON string of available days/times
@@ -127,3 +144,46 @@ class CasualAssignment(db.Model):
     
     def __repr__(self):
         return f'<CasualAssignment {self.date} - {self.position}>'
+
+# NEW MODEL FOR SHIFT SWAPPING
+class ShiftSwapRequest(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    requester_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=False)
+    requester_schedule_id = db.Column(db.Integer, db.ForeignKey('schedule.id'), nullable=False)
+    target_employee_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=False)
+    target_schedule_id = db.Column(db.Integer, db.ForeignKey('schedule.id'), nullable=False)
+    reason = db.Column(db.Text)
+    status = db.Column(db.String(20), default='pending')  # pending, approved, denied, cancelled
+    supervisor_notes = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    reviewed_at = db.Column(db.DateTime)
+    reviewed_by = db.Column(db.Integer, db.ForeignKey('employee.id'))
+    
+    # Relationships
+    requester = db.relationship('Employee', foreign_keys=[requester_id], backref='swap_requests_made')
+    target_employee = db.relationship('Employee', foreign_keys=[target_employee_id], backref='swap_requests_received')
+    requester_schedule = db.relationship('Schedule', foreign_keys=[requester_schedule_id])
+    target_schedule = db.relationship('Schedule', foreign_keys=[target_schedule_id])
+    reviewer = db.relationship('Employee', foreign_keys=[reviewed_by])
+    
+    def __repr__(self):
+        return f'<ShiftSwapRequest {self.requester_id} -> {self.target_employee_id}>'
+
+# NEW MODEL FOR SUGGESTIONS
+class ScheduleSuggestion(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    employee_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=False)
+    suggestion_type = db.Column(db.String(50))  # shift_preference, availability_change, general
+    title = db.Column(db.String(200), nullable=False)
+    description = db.Column(db.Text, nullable=False)
+    status = db.Column(db.String(20), default='new')  # new, under_review, implemented, declined
+    priority = db.Column(db.String(20), default='medium')  # low, medium, high
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    reviewed_at = db.Column(db.DateTime)
+    reviewer_notes = db.Column(db.Text)
+    
+    # Relationship
+    employee = db.relationship('Employee', backref='suggestions')
+    
+    def __repr__(self):
+        return f'<ScheduleSuggestion {self.title}>'
