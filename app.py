@@ -224,6 +224,10 @@ def migrate_database():
 def index():
     return render_template('index.html')
 
+@app.route('/test')
+def test():
+    return "Test route working! Deployment successful. <a href='/'>Go home</a>"
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -567,6 +571,62 @@ def request_casual():
         print(f"Error: {e}")
     
     return redirect(url_for('dashboard'))
+
+# Password reset route for debugging
+@app.route('/reset-passwords')
+def reset_passwords():
+    """Reset all employee passwords to defaults - REMOVE IN PRODUCTION"""
+    if not request.args.get('confirm') == 'yes':
+        return "Add ?confirm=yes to reset all passwords. WARNING: This will reset ALL employee passwords!"
+    
+    try:
+        # Reset employee passwords
+        employees = Employee.query.all()
+        for emp in employees:
+            if emp.email == 'mike@example.com':
+                emp.password_hash = generate_password_hash('admin123')
+            else:
+                emp.password_hash = generate_password_hash('password123')
+        
+        db.session.commit()
+        
+        # List all employees
+        employee_list = "<h3>Passwords Reset! Login credentials:</h3><ul>"
+        for emp in employees:
+            if emp.email == 'mike@example.com':
+                employee_list += f"<li>{emp.name} ({emp.email}) - Password: admin123 (Supervisor)</li>"
+            else:
+                employee_list += f"<li>{emp.name} ({emp.email}) - Password: password123</li>"
+        employee_list += "</ul>"
+        
+        return employee_list + '<br><a href="/login">Go to Login</a>'
+        
+    except Exception as e:
+        return f"Error resetting passwords: {str(e)}"
+
+# Debug route to check employees
+@app.route('/debug-employees')
+def debug_employees():
+    """Show all employees in database - REMOVE IN PRODUCTION"""
+    try:
+        employees = Employee.query.all()
+        if not employees:
+            return "No employees found in database! <br><a href='/'>Go home</a>"
+        
+        output = "<h3>Employees in Database:</h3><ul>"
+        for emp in employees:
+            has_password = "Yes" if emp.password_hash else "No"
+            output += f"<li>{emp.name} - Email: {emp.email} - Has Password: {has_password} - Is Supervisor: {emp.is_supervisor}</li>"
+        output += "</ul>"
+        
+        # If no passwords, offer to set them
+        if not any(emp.password_hash for emp in employees):
+            output += '<br><strong>No passwords set!</strong> <a href="/reset-passwords?confirm=yes">Click here to set passwords</a>'
+        
+        return output + '<br><a href="/login">Go to Login</a>'
+        
+    except Exception as e:
+        return f"Error: {str(e)}"
 
 # Development route to recreate database
 @app.route('/recreate-db')
