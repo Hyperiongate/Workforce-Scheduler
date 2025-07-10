@@ -894,6 +894,64 @@ def update_suggestion(suggestion_id):
     
     return redirect(url_for('view_suggestions'))
 
+# Nuclear fix route
+@app.route('/nuclear-fix')
+def nuclear_fix():
+    """Nuclear option - recreate Mike as supervisor"""
+    if not request.args.get('confirm') == 'yes':
+        return """
+        <h3>WARNING: This will:</h3>
+        <ul>
+            <li>Delete and recreate Mike Johnson</li>
+            <li>Ensure he's properly set as supervisor</li>
+            <li>Reset his password to admin123</li>
+        </ul>
+        <a href="/nuclear-fix?confirm=yes">Yes, do it!</a>
+        """
+    
+    try:
+        # Delete Mike if he exists
+        mike = Employee.query.filter_by(email='mike@example.com').first()
+        if mike:
+            db.session.delete(mike)
+            db.session.commit()
+        
+        # Create Mike fresh as supervisor
+        new_mike = Employee(
+            name='Mike Johnson',
+            email='mike@example.com',
+            phone='555-0103',
+            crew='Day Shift',
+            is_supervisor=True,
+            password_hash=generate_password_hash('admin123'),
+            is_active=True
+        )
+        db.session.add(new_mike)
+        db.session.commit()
+        
+        # Verify
+        mike_check = Employee.query.filter_by(email='mike@example.com').first()
+        
+        return f"""
+        <h3>Mike Recreated!</h3>
+        <ul>
+            <li>Name: {mike_check.name}</li>
+            <li>Email: {mike_check.email}</li>
+            <li>Is Supervisor: <strong>{mike_check.is_supervisor}</strong></li>
+            <li>ID: {mike_check.id}</li>
+        </ul>
+        <br>
+        <strong>Now login with:</strong><br>
+        Email: mike@example.com<br>
+        Password: admin123<br>
+        <br>
+        <a href="/login">Go to Login</a>
+        """
+        
+    except Exception as e:
+        db.session.rollback()
+        return f"Error: {str(e)}"
+
 # Overtime Algorithm
 def calculate_overtime_eligibility(week_start, week_end):
     """
