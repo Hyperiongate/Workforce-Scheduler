@@ -17,3 +17,112 @@
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/employee-dashboard">Dashboard</a>
+                    </li>
+                </ul>
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/logout">Logout</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <div class="row justify-content-center">
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0"><i class="bi bi-person-badge"></i> Sleep Profile Assessment</h5>
+                    </div>
+                    <div class="card-body">
+                        <p class="mb-4">This quick assessment will help us understand your natural sleep preferences and provide personalized advice for managing shift work.</p>
+                        
+                        <form method="POST">
+                            <div class="mb-4">
+                                <label class="form-label">How much of a morning person are you?</label>
+                                <div class="d-flex justify-content-between mb-2">
+                                    <small>Not at all</small>
+                                    <small>Very much</small>
+                                </div>
+                                <input type="range" class="form-range" id="morning_preference" name="morning_preference" 
+                                       min="1" max="5" value="3" oninput="updatePreferenceLabel(this.value)">
+                                <div class="text-center">
+                                    <span id="preference-label" class="badge bg-secondary">Neutral</span>
+                                </div>
+                            </div>
+
+                            <div class="mb-4">
+                                <label for="energy_peak" class="form-label">When do you typically feel most alert and energetic?</label>
+                                <select class="form-select" id="energy_peak" name="energy_peak" required>
+                                    <option value="">Select your peak energy time</option>
+                                    <option value="morning">Morning (6 AM - 12 PM)</option>
+                                    <option value="afternoon">Afternoon (12 PM - 6 PM)</option>
+                                    <option value="evening">Evening (6 PM - 10 PM)</option>
+                                    <option value="night">Night (10 PM - 2 AM)</option>
+                                </select>
+                            </div>
+
+                            <div class="mb-4">
+                                <label for="natural_bedtime" class="form-label">If you had no obligations, what time would you naturally go to bed?</label>
+                                <select class="form-select" id="natural_bedtime" name="natural_bedtime" required>
+                                    <option value="">Select your natural bedtime</option>
+                                    <option value="21">9:00 PM or earlier</option>
+                                    <option value="22">10:00 PM</option>
+                                    <option value="23">11:00 PM</option>
+                                    <option value="24">12:00 AM (Midnight)</option>
+                                    <option value="1">1:00 AM</option>
+                                    <option value="2">2:00 AM or later</option>
+                                </select>
+                            </div>
+
+                            <div class="mb-4">
+                                <h6>Additional Information</h6>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="difficulty_mornings" name="difficulty_mornings">
+                                    <label class="form-check-label" for="difficulty_mornings">
+                                        I have significant difficulty waking up for early morning shifts
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="difficulty_nights" name="difficulty_nights">
+                                    <label class="form-check-label" for="difficulty_nights">
+                                        I struggle to stay alert during night shifts
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="sleep_issues" name="sleep_issues">
+                                    <label class="form-check-label" for="sleep_issues">
+                                        I often have trouble falling asleep or staying asleep
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="alert alert-info">
+                                <i class="bi bi-info-circle"></i> <strong>Why this matters:</strong> Understanding your chronotype helps us provide advice that works with your natural rhythms, making shift work easier to manage.
+                            </div>
+
+                            <div class="d-grid gap-2">
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="bi bi-check-circle"></i> Complete Assessment
+                                </button>
+                                <a href="/employee-dashboard" class="btn btn-secondary">Skip for Now</a>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        function updatePreferenceLabel(value) {
+            const labels = ['Not at all', 'Slightly', 'Neutral', 'Somewhat', 'Very much'];
+            document.getElementById('preference-label').textContent = labels[value - 1];
+        }
+    </script>
+</body>
+</html>
