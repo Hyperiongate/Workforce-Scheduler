@@ -5,7 +5,7 @@ from flask_login import LoginManager, login_user, logout_user, login_required, c
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta, date
 import os
-from sqlalchemy import inspect
+from sqlalchemy import inspect, case
 from models import db, Employee, Position, Skill, Schedule, EmployeeSkill, PositionSkill, Availability, TimeOffRequest, VacationCalendar, CoverageRequest, CasualWorker, CasualAssignment, ShiftSwapRequest, ScheduleSuggestion, CircadianProfile, SleepLog, SleepRecommendation, ShiftTransitionPlan
 from circadian_advisor import CircadianAdvisor
 import json
@@ -834,7 +834,7 @@ def sleep_dashboard():
         ).filter(
             SleepRecommendation.valid_until > datetime.now()
         ).order_by(
-            db.case(
+            case(
                 (SleepRecommendation.priority == 'critical', 1),
                 (SleepRecommendation.priority == 'high', 2),
                 (SleepRecommendation.priority == 'medium', 3),
