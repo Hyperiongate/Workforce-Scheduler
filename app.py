@@ -717,17 +717,67 @@ def create_schedule():
         shift_pattern = request.form.get('shift_pattern')
         auto_assign = request.form.get('auto_assign') == 'on'
         
-        # Generate schedules based on parameters
-        flash('Schedule created successfully!', 'success')
+        # Gather position requirements
+        position_requirements = {}
+        for position in Position.query.all():
+            count = int(request.form.get(f'position_{position.id}_count', 0))
+            if count > 0:
+                position_requirements[position.id] = count
+        
+        # Gather shift times
+        shifts = []
+        shift_num = 1
+        while f'shift{shift_num}_start' in request.form:
+            shift_name = request.form.get(f'shift{shift_num}_name', f'Shift {shift_num}')
+            start_time = datetime.strptime(request.form.get(f'shift{shift_num}_start'), '%H:%M').time()
+            end_time = datetime.strptime(request.form.get(f'shift{shift_num}_end'), '%H:%M').time()
+            shifts.append({
+                'name': shift_name,
+                'start_time': start_time,
+                'end_time': end_time
+            })
+            shift_num += 1
+        
+        # Special handling for 4-crew rotation
+        if shift_pattern == 'four_crew':
+            crew_rotation = request.form.get('crew_rotation', '2-2-3')
+            generated_schedules = generate_four_crew_schedule(
+                start_date, end_date, position_requirements, crew_rotation
+            )
+        else:
+            # Regular schedule generation
+            options = {
+                'shifts': shifts,
+                'auto_assign': auto_assign,
+                'fair_rotation': request.form.get('fair_rotation') == 'on',
+                'skill_match': request.form.get('skill_match') == 'on',
+                'overtime_check': request.form.get('overtime_check') == 'on',
+                'respect_time_off': request.form.get('respect_time_off') == 'on'
+            }
+            generated_schedules = generate_schedule_with_shifts(
+                start_date, end_date, position_requirements, options
+            )
+        
+        # Save schedules to database
+        try:
+            for schedule in generated_schedules:
+                db.session.add(schedule)
+            db.session.commit()
+            flash(f'Schedule created successfully! {len(generated_schedules)} shifts scheduled.', 'success')
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error creating schedule: {str(e)}', 'error')
+        
         return redirect(url_for('dashboard'))
     
     # Get data for the form
     positions = Position.query.all()
     
-    # Calculate employees near overtime
+    # Calculate employees near overtime and organize by crew
     employees = Employee.query.filter_by(is_active=True).all()
     employees_near_overtime = []
     overtime_eligible = []
+    employees_by_crew = {}
     
     week_start = date.today() - timedelta(days=date.today().weekday())
     week_end = week_start + timedelta(days=6)
@@ -746,11 +796,19 @@ def create_schedule():
             employees_near_overtime.append(emp)
         elif getattr(emp, 'overtime_eligible', True):
             overtime_eligible.append(emp)
+        
+        # Organize by crew
+        crew = emp.crew or 'Unassigned'
+        if crew not in employees_by_crew:
+            employees_by_crew[crew] = []
+        employees_by_crew[crew].append(emp)
     
     return render_template('schedule_input.html',
                          positions=positions,
+                         employees=employees,
                          employees_near_overtime=employees_near_overtime,
-                         overtime_eligible=overtime_eligible)
+                         overtime_eligible=overtime_eligible,
+                         employees_by_crew=employees_by_crew)
 
 # API endpoint for available swaps
 @app.route('/api/available-swaps/<int:schedule_id>')
@@ -1206,6 +1264,316 @@ def calculate_employee_weekly_hours(employee_id, week_start, week_end):
         Schedule.date <= week_end
     ).all()
     return sum(s.hours or 0 for s in schedules)
+
+def generate_schedule_with_shifts(start_date, end_date, position_requirements, options):
+    """Generate schedule with multiple shifts per day"""
+    generated_schedules = []
+    current_date = start_date
+    shifts = options.get('shifts', [])
+    
+    while current_date <= end_date:
+        # Skip weekends if not required
+        if current_date.weekday() >= 5 and not options.get('include_weekends'):
+            current_date += timedelta(days=1)
+            continue
+        
+        # Check for approved time off
+        if options.get('respect_time_off'):
+            employees_on_vacation = VacationCalendar.query.filter_by(date=current_date).all()
+            vacation_employee_ids = [v.employee_id for v in employees_on_vacation]
+        else:
+            vacation_employee_ids = []
+        
+        # For each shift
+        for shift in shifts:
+            # For each position requirement
+            for position_id, count in position_requirements.items():
+                position = Position.query.get(position_id)
+                if not position:
+                    continue
+                
+                # Find eligible employees
+                eligible_employees = []
+                
+                if options.get('skill_match'):
+                    # Get required skills for position
+                    required_skills = [ps.skill_id for ps in position.required_skills]
+                    
+                    for emp in Employee.query.filter_by(is_active=True).all():
+                        # Skip employees on vacation
+                        if emp.id in vacation_employee_ids:
+                            continue
+                        
+                        emp_skills = [es.skill_id for es in emp.skills]
+                        if all(skill in emp_skills for skill in required_skills):
+                            eligible_employees.append(emp)
+                else:
+                    eligible_employees = [
+                        emp for emp in Employee.query.filter_by(is_active=True).all()
+                        if emp.id not in vacation_employee_ids
+                    ]
+                
+                # Assign employees to shifts
+                for i in range(count):
+                    if i < len(eligible_employees):
+                        schedule = Schedule(
+                            date=current_date,
+                            start_time=shift['start_time'],
+                            end_time=shift['end_time'],
+                            employee_id=eligible_employees[i].id,
+                            position_id=position_id,
+                            status='scheduled'
+                        )
+                        schedule.calculate_hours()
+                        
+                        # Check for overtime
+                        if options.get('overtime_check'):
+                            week_start = current_date - timedelta(days=current_date.weekday())
+                            week_end = week_start + timedelta(days=6)
+                            
+                            weekly_hours = calculate_employee_weekly_hours(
+                                eligible_employees[i].id, week_start, week_end
+                            )
+                            
+                            if weekly_hours + schedule.hours > 40:
+                                schedule.is_overtime = True
+                        
+                        generated_schedules.append(schedule)
+        
+        current_date += timedelta(days=1)
+    
+    return generated_schedules
+
+def generate_four_crew_schedule(start_date, end_date, position_requirements, rotation_pattern='2-2-3'):
+    """
+    Generate 4-crew 24/7 rotation schedule
+    Rotation patterns:
+    - '2-2-3': 2 on, 2 off, 3 on, 2 off, 2 on, 3 off (Pitman schedule)
+    - '4-4': 4 days on, 4 days off
+    - 'dupont': DuPont schedule (complex 28-day cycle)
+    """
+    generated_schedules = []
+    
+    # Define crew assignments - organize employees into 4 crews
+    crews = organize_employees_into_crews()
+    
+    # Define shift times for 12-hour shifts
+    day_shift = {'start_time': datetime.strptime('07:00', '%H:%M').time(), 
+                 'end_time': datetime.strptime('19:00', '%H:%M').time()}
+    night_shift = {'start_time': datetime.strptime('19:00', '%H:%M').time(), 
+                   'end_time': datetime.strptime('07:00', '%H:%M').time()}
+    
+    # Generate rotation pattern
+    if rotation_pattern == '2-2-3':
+        # Pitman schedule: 2-2-3-2-2-3 pattern
+        pattern = generate_pitman_pattern(start_date, end_date)
+    elif rotation_pattern == '4-4':
+        # Simple 4 on, 4 off
+        pattern = generate_four_four_pattern(start_date, end_date)
+    else:  # dupont
+        pattern = generate_dupont_pattern(start_date, end_date)
+    
+    current_date = start_date
+    day_index = 0
+    
+    while current_date <= end_date:
+        crew_assignments = pattern[day_index % len(pattern)]
+        
+        # Assign day shift crews
+        if crew_assignments['day_crews']:
+            for crew_letter in crew_assignments['day_crews']:
+                crew_employees = crews.get(crew_letter, [])
+                
+                for position_id, count in position_requirements.items():
+                    position = Position.query.get(position_id)
+                    if not position:
+                        continue
+                    
+                    # Get employees from this crew with required skills
+                    eligible_employees = get_eligible_crew_members(crew_employees, position_id)
+                    
+                    for i in range(min(count, len(eligible_employees))):
+                        schedule = Schedule(
+                            date=current_date,
+                            start_time=day_shift['start_time'],
+                            end_time=day_shift['end_time'],
+                            employee_id=eligible_employees[i].id,
+                            position_id=position_id,
+                            status='scheduled'
+                        )
+                        schedule.calculate_hours()
+                        generated_schedules.append(schedule)
+        
+        # Assign night shift crews
+        if crew_assignments['night_crews']:
+            for crew_letter in crew_assignments['night_crews']:
+                crew_employees = crews.get(crew_letter, [])
+                
+                for position_id, count in position_requirements.items():
+                    position = Position.query.get(position_id)
+                    if not position:
+                        continue
+                    
+                    eligible_employees = get_eligible_crew_members(crew_employees, position_id)
+                    
+                    for i in range(min(count, len(eligible_employees))):
+                        schedule = Schedule(
+                            date=current_date,
+                            start_time=night_shift['start_time'],
+                            end_time=night_shift['end_time'],
+                            employee_id=eligible_employees[i].id,
+                            position_id=position_id,
+                            status='scheduled'
+                        )
+                        schedule.calculate_hours()
+                        generated_schedules.append(schedule)
+        
+        current_date += timedelta(days=1)
+        day_index += 1
+    
+    return generated_schedules
+
+def organize_employees_into_crews():
+    """Organize employees into 4 crews based on their current crew assignment"""
+    crews = {'A': [], 'B': [], 'C': [], 'D': []}
+    
+    # First, use existing crew assignments
+    employees = Employee.query.filter_by(is_active=True).all()
+    unassigned = []
+    
+    for emp in employees:
+        if emp.crew and emp.crew.upper() in crews:
+            crews[emp.crew.upper()].append(emp)
+        elif 'Crew A' in (emp.crew or ''):
+            crews['A'].append(emp)
+        elif 'Crew B' in (emp.crew or ''):
+            crews['B'].append(emp)
+        elif 'Crew C' in (emp.crew or ''):
+            crews['C'].append(emp)
+        elif 'Crew D' in (emp.crew or ''):
+            crews['D'].append(emp)
+        else:
+            unassigned.append(emp)
+    
+    # Distribute unassigned employees evenly
+    crew_letters = ['A', 'B', 'C', 'D']
+    for i, emp in enumerate(unassigned):
+        crew_letter = crew_letters[i % 4]
+        crews[crew_letter].append(emp)
+        # Update employee's crew assignment
+        emp.crew = f'Crew {crew_letter}'
+    
+    return crews
+
+def get_eligible_crew_members(crew_employees, position_id):
+    """Get crew members eligible for a specific position"""
+    position = Position.query.get(position_id)
+    if not position:
+        return []
+    
+    required_skills = [ps.skill_id for ps in position.required_skills]
+    
+    if not required_skills:
+        return crew_employees
+    
+    eligible = []
+    for emp in crew_employees:
+        emp_skills = [es.skill_id for es in emp.skills]
+        if all(skill in emp_skills for skill in required_skills):
+            eligible.append(emp)
+    
+    return eligible
+
+def generate_pitman_pattern(start_date, end_date):
+    """Generate 2-2-3 Pitman rotation pattern"""
+    # Pattern repeats every 2 weeks (14 days)
+    # Week 1: Crew A&B work days, C&D work nights
+    # Week 2: Crews rotate
+    pattern = [
+        # Week 1
+        {'day_crews': ['A', 'B'], 'night_crews': ['C', 'D']},  # Day 1
+        {'day_crews': ['A', 'B'], 'night_crews': ['C', 'D']},  # Day 2
+        {'day_crews': [], 'night_crews': []},                   # Day 3 (off)
+        {'day_crews': [], 'night_crews': []},                   # Day 4 (off)
+        {'day_crews': ['A', 'B'], 'night_crews': ['C', 'D']},  # Day 5
+        {'day_crews': ['A', 'B'], 'night_crews': ['C', 'D']},  # Day 6
+        {'day_crews': ['A', 'B'], 'night_crews': ['C', 'D']},  # Day 7
+        # Week 2
+        {'day_crews': ['C', 'D'], 'night_crews': ['A', 'B']},  # Day 8
+        {'day_crews': ['C', 'D'], 'night_crews': ['A', 'B']},  # Day 9
+        {'day_crews': [], 'night_crews': []},                   # Day 10 (off)
+        {'day_crews': [], 'night_crews': []},                   # Day 11 (off)
+        {'day_crews': ['C', 'D'], 'night_crews': ['A', 'B']},  # Day 12
+        {'day_crews': ['C', 'D'], 'night_crews': ['A', 'B']},  # Day 13
+        {'day_crews': ['C', 'D'], 'night_crews': ['A', 'B']},  # Day 14
+    ]
+    
+    return pattern
+
+def generate_four_four_pattern(start_date, end_date):
+    """Generate 4-on-4-off rotation pattern"""
+    # Simple 4 days on, 4 days off for each crew
+    pattern = []
+    
+    # 16-day cycle (each crew works 4, off 4, twice)
+    for i in range(16):
+        day_pattern = {'day_crews': [], 'night_crews': []}
+        
+        # Crew A: Days 1-4, 9-12
+        if 0 <= i % 16 <= 3 or 8 <= i % 16 <= 11:
+            day_pattern['day_crews'].append('A')
+        
+        # Crew B: Days 5-8, 13-16
+        if 4 <= i % 16 <= 7 or 12 <= i % 16 <= 15:
+            day_pattern['day_crews'].append('B')
+        
+        # Crew C: Nights 1-4, 9-12
+        if 0 <= i % 16 <= 3 or 8 <= i % 16 <= 11:
+            day_pattern['night_crews'].append('C')
+        
+        # Crew D: Nights 5-8, 13-16
+        if 4 <= i % 16 <= 7 or 12 <= i % 16 <= 15:
+            day_pattern['night_crews'].append('D')
+        
+        pattern.append(day_pattern)
+    
+    return pattern
+
+def generate_dupont_pattern(start_date, end_date):
+    """Generate DuPont rotation pattern (28-day cycle)"""
+    # This is a simplified version of the DuPont schedule
+    # Real DuPont has a complex 28-day rotation with varying shifts
+    pattern = []
+    
+    # Simplified: 4 nights, 3 off, 3 days, 1 off, 3 nights, 3 off, 4 days, 7 off
+    dupont_cycle = [
+        # 4 nights (Crew A)
+        {'day_crews': ['B'], 'night_crews': ['A']},
+        {'day_crews': ['B'], 'night_crews': ['A']},
+        {'day_crews': ['B'], 'night_crews': ['A']},
+        {'day_crews': ['B'], 'night_crews': ['A']},
+        # 3 off
+        {'day_crews': ['C'], 'night_crews': ['D']},
+        {'day_crews': ['C'], 'night_crews': ['D']},
+        {'day_crews': ['C'], 'night_crews': ['D']},
+        # 3 days (Crew A)
+        {'day_crews': ['A'], 'night_crews': ['B']},
+        {'day_crews': ['A'], 'night_crews': ['B']},
+        {'day_crews': ['A'], 'night_crews': ['B']},
+        # 1 off
+        {'day_crews': ['D'], 'night_crews': ['C']},
+        # 3 nights (Crew A)
+        {'day_crews': ['D'], 'night_crews': ['A']},
+        {'day_crews': ['D'], 'night_crews': ['A']},
+        {'day_crews': ['D'], 'night_crews': ['A']},
+        # Continue pattern...
+    ]
+    
+    # Extend pattern to 28 days
+    while len(pattern) < 28:
+        pattern.extend(dupont_cycle)
+    
+    return pattern[:28]
 
 if __name__ == '__main__':
     app.run(debug=True)
