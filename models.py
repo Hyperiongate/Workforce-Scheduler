@@ -1,6 +1,7 @@
 from flask_sqlalchemy import SQLAlchemy
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask_login import UserMixin
+from werkzeug.security import generate_password_hash, check_password_hash
 
 db = SQLAlchemy()
 
@@ -15,7 +16,16 @@ class Employee(db.Model, UserMixin):
     is_active = db.Column(db.Boolean, default=True)
     crew = db.Column(db.String(50))  # Day shift, Night shift, Weekend, etc.
     overtime_eligible = db.Column(db.Boolean, default=True)
+    overtime_hours = db.Column(db.Float, default=0)  # Track overtime hours
     max_hours_per_week = db.Column(db.Integer, default=40)
+    
+    # Vacation tracking
+    vacation_days_total = db.Column(db.Float, default=14)  # Total vacation days per year
+    vacation_days_used = db.Column(db.Float, default=0)   # Vacation days used this year
+    sick_days_total = db.Column(db.Float, default=7)      # Total sick days per year
+    sick_days_used = db.Column(db.Float, default=0)       # Sick days used this year
+    personal_days_total = db.Column(db.Float, default=3)  # Total personal days per year
+    personal_days_used = db.Column(db.Float, default=0)   # Personal days used this year
     
     # Relationships
     skills = db.relationship('EmployeeSkill', backref='employee', lazy=True)
@@ -27,6 +37,34 @@ class Employee(db.Model, UserMixin):
     
     def has_skill(self, skill_id):
         return any(es.skill_id == skill_id for es in self.skills)
+    
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+    
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
+    
+    @property
+    def vacation_days_remaining(self):
+        return self.vacation_days_total - self.vacation_days_used
+    
+    @property
+    def sick_days_remaining(self):
+        return self.sick_days_total - self.sick_days_used
+    
+    @property
+    def personal_days_remaining(self):
+        return self.personal_days_total - self.personal_days_used
+    
+    def get_time_off_balance(self, leave_type):
+        """Get remaining balance for a specific leave type"""
+        if leave_type == 'vacation':
+            return self.vacation_days_remaining
+        elif leave_type == 'sick':
+            return self.sick_days_remaining
+        elif leave_type == 'personal':
+            return self.personal_days_remaining
+        return 0
 
 class Position(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -101,11 +139,41 @@ class TimeOffRequest(db.Model):
     employee_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=False)
     start_date = db.Column(db.Date, nullable=False)
     end_date = db.Column(db.Date, nullable=False)
+    leave_type = db.Column(db.String(20), nullable=False)  # vacation, sick, personal, unpaid
     reason = db.Column(db.String(200))
-    status = db.Column(db.String(20), default='pending')  # pending, approved, denied
+    status = db.Column(db.String(20), default='pending')  # pending, approved, denied, cancelled
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
-    employee = db.relationship('Employee', backref='time_off_requests')
+    # New fields for vacation system
+    days_requested = db.Column(db.Float, default=0)  # Number of days requested
+    approved_by = db.Column(db.Integer, db.ForeignKey('employee.id'))
+    approved_at = db.Column(db.DateTime)
+    supervisor_notes = db.Column(db.Text)
+    
+    # Coverage tracking
+    requires_coverage = db.Column(db.Boolean, default=True)
+    coverage_arranged = db.Column(db.Boolean, default=False)
+    coverage_notes = db.Column(db.Text)
+    
+    # Relationships
+    employee = db.relationship('Employee', foreign_keys=[employee_id], backref='time_off_requests')
+    approver = db.relationship('Employee', foreign_keys=[approved_by])
+    
+    def calculate_days(self):
+        """Calculate number of days requested (excluding weekends)"""
+        if not self.start_date or not self.end_date:
+            return 0
+        
+        days = 0
+        current_date = self.start_date
+        while current_date <= self.end_date:
+            # Skip weekends (5=Saturday, 6=Sunday)
+            if current_date.weekday() < 5:
+                days += 1
+            current_date += timedelta(days=1)
+        
+        self.days_requested = days
+        return days
 
 class CoverageRequest(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -193,3 +261,18 @@ class ScheduleSuggestion(db.Model):
     
     def __repr__(self):
         return f'<ScheduleSuggestion {self.title}>'
+
+# NEW MODEL FOR VACATION CALENDAR EVENTS
+class VacationCalendar(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    employee_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=False)
+    date = db.Column(db.Date, nullable=False)
+    leave_type = db.Column(db.String(20), nullable=False)  # vacation, sick, personal, unpaid
+    time_off_request_id = db.Column(db.Integer, db.ForeignKey('time_off_request.id'))
+    
+    # Relationships
+    employee = db.relationship('Employee', backref='vacation_calendar')
+    time_off_request = db.relationship('TimeOffRequest', backref='calendar_entries')
+    
+    def __repr__(self):
+        return f'<VacationCalendar {self.employee_id} - {self.date}>'
