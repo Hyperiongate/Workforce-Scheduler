@@ -10,23 +10,28 @@
 <body>
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
         <div class="container-fluid">
-            <a class="navbar-brand" href="/">Workforce Scheduler</a>
+            <a class="navbar-brand" href="/">
+                <i class="bi bi-calendar3"></i> Workforce Scheduler
+            </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav ms-auto">
                     <li class="nav-item">
-                        <a class="nav-link active" href="/employee/dashboard">My Dashboard</a>
+                        <a class="nav-link active" href="/employee-dashboard">
+                            <i class="bi bi-speedometer2"></i> My Dashboard
+                        </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="/employee/schedule">My Schedule</a>
+                        <a class="nav-link" href="/vacation/calendar">
+                            <i class="bi bi-calendar-week"></i> Vacation Calendar
+                        </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="/employee/requests">My Requests</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/logout">Logout</a>
+                        <a class="nav-link" href="/logout">
+                            <i class="bi bi-box-arrow-right"></i> Logout
+                        </a>
                     </li>
                 </ul>
             </div>
@@ -71,11 +76,23 @@
                 </div>
             </div>
             <div class="col-md-3">
-                <div class="card bg-warning text-white">
+                <div class="card bg-warning text-dark">
                     <div class="card-body">
                         <h5 class="card-title">Time Off</h5>
-                        <h2 class="display-4">{{ time_off_days }}</h2>
-                        <p class="mb-0">Days Remaining</p>
+                        <div class="d-flex justify-content-around">
+                            <div class="text-center">
+                                <h4>{{ vacation_days }}</h4>
+                                <small>Vacation</small>
+                            </div>
+                            <div class="text-center">
+                                <h4>{{ sick_days }}</h4>
+                                <small>Sick</small>
+                            </div>
+                            <div class="text-center">
+                                <h4>{{ personal_days }}</h4>
+                                <small>Personal</small>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -141,6 +158,55 @@
                     </div>
                 </div>
 
+                <!-- Time Off Requests -->
+                <div class="card mt-4">
+                    <div class="card-header bg-warning text-dark">
+                        <h5 class="mb-0">
+                            <i class="bi bi-calendar-x"></i> My Time Off Requests
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        {% if time_off_requests %}
+                            <div class="table-responsive">
+                                <table class="table table-sm">
+                                    <thead>
+                                        <tr>
+                                            <th>Dates</th>
+                                            <th>Type</th>
+                                            <th>Days</th>
+                                            <th>Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for req in time_off_requests %}
+                                        <tr>
+                                            <td>{{ req.start_date.strftime('%m/%d') }} - {{ req.end_date.strftime('%m/%d') }}</td>
+                                            <td>
+                                                <span class="badge bg-{{ 'primary' if req.leave_type == 'vacation' else 'warning' if req.leave_type == 'sick' else 'info' }}">
+                                                    {{ req.leave_type|title }}
+                                                </span>
+                                            </td>
+                                            <td>{{ req.days_requested }}</td>
+                                            <td>
+                                                {% if req.status == 'pending' %}
+                                                    <span class="badge bg-warning">Pending</span>
+                                                {% elif req.status == 'approved' %}
+                                                    <span class="badge bg-success">Approved</span>
+                                                {% elif req.status == 'denied' %}
+                                                    <span class="badge bg-danger">Denied</span>
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        {% else %}
+                            <p class="text-muted">No time off requests submitted</p>
+                        {% endif %}
+                    </div>
+                </div>
+
                 <!-- Shift Swap Requests -->
                 <div class="card mt-4">
                     <div class="card-header bg-info text-white">
@@ -184,17 +250,17 @@
                         <h5 class="mb-0">Quick Actions</h5>
                     </div>
                     <div class="card-body">
+                        <a href="/vacation/request" class="btn btn-warning w-100 mb-2">
+                            <i class="bi bi-calendar-x"></i> Request Time Off
+                        </a>
                         <button class="btn btn-primary w-100 mb-2" data-bs-toggle="modal" data-bs-target="#suggestionModal">
                             <i class="bi bi-lightbulb"></i> Make a Suggestion
                         </button>
-                        <button class="btn btn-warning w-100 mb-2">
-                            <i class="bi bi-calendar-x"></i> Request Time Off
-                        </button>
-                        <button class="btn btn-info w-100 mb-2">
-                            <i class="bi bi-clock-history"></i> View Availability
-                        </button>
-                        <button class="btn btn-success w-100">
-                            <i class="bi bi-person-badge"></i> Update Profile
+                        <a href="/vacation/calendar" class="btn btn-info w-100 mb-2">
+                            <i class="bi bi-calendar-week"></i> View Team Calendar
+                        </a>
+                        <button class="btn btn-success w-100" disabled>
+                            <i class="bi bi-person-badge"></i> Update Profile (Coming Soon)
                         </button>
                     </div>
                 </div>
