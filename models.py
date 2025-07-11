@@ -27,11 +27,11 @@ class Employee(UserMixin, db.Model):
     personal_days_total = db.Column(db.Float, default=3.0)
     personal_days_used = db.Column(db.Float, default=0.0)
     
-    # Relationships
-    schedules = db.relationship('Schedule', backref='employee', lazy='dynamic')
+    # Fixed Relationships with explicit foreign_keys
+    schedules = db.relationship('Schedule', foreign_keys='Schedule.employee_id', backref='employee', lazy='dynamic')
     skills = db.relationship('Skill', secondary='employee_skill', backref='employees')
-    availability = db.relationship('Availability', backref='employee', lazy='dynamic')
-    time_off_requests = db.relationship('TimeOffRequest', backref='employee', lazy='dynamic')
+    availability = db.relationship('Availability', foreign_keys='Availability.employee_id', backref='employee', lazy='dynamic')
+    time_off_requests = db.relationship('TimeOffRequest', foreign_keys='TimeOffRequest.employee_id', backref='employee', lazy='dynamic')
     
     def get_id(self):
         return str(self.id)
@@ -102,7 +102,7 @@ class TimeOffRequest(db.Model):
     coverage_arranged = db.Column(db.Boolean, default=False)
     coverage_notes = db.Column(db.Text)
     
-    # Relationships
+    # Fixed Relationships with explicit foreign_keys
     approver = db.relationship('Employee', foreign_keys=[approved_by], backref='approved_requests')
 
 class VacationCalendar(db.Model):
@@ -126,7 +126,7 @@ class CoverageRequest(db.Model):
     status = db.Column(db.String(20), default='pending')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
-    # Relationships
+    # Fixed Relationships with explicit foreign_keys
     schedule = db.relationship('Schedule', backref='coverage_requests')
     requesting_employee = db.relationship('Employee', foreign_keys=[requesting_employee_id], backref='coverage_requested')
     covering_employee = db.relationship('Employee', foreign_keys=[covering_employee_id], backref='coverage_provided')
@@ -174,7 +174,7 @@ class ShiftSwapRequest(db.Model):
     reviewed_at = db.Column(db.DateTime)
     reviewed_by = db.Column(db.Integer, db.ForeignKey('employee.id'))
     
-    # Relationships
+    # Fixed Relationships with explicit foreign_keys
     requesting_employee = db.relationship('Employee', foreign_keys=[requesting_employee_id], backref='swap_requests_made')
     target_employee = db.relationship('Employee', foreign_keys=[target_employee_id], backref='swap_requests_received')
     requested_schedule = db.relationship('Schedule', foreign_keys=[requested_schedule_id], backref='swap_requests_for')
@@ -193,7 +193,7 @@ class ScheduleSuggestion(db.Model):
     reviewed_by = db.Column(db.Integer, db.ForeignKey('employee.id'))
     response = db.Column(db.Text)
     
-    # Relationships
+    # Fixed Relationships with explicit foreign_keys
     employee = db.relationship('Employee', foreign_keys=[employee_id], backref='suggestions_made')
     reviewer = db.relationship('Employee', foreign_keys=[reviewed_by], backref='suggestions_reviewed')
 
