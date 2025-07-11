@@ -1,0 +1,452 @@
+<!-- templates/sleep_dashboard.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sleep & Circadian Health Dashboard - {{ employee.name }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
+    <style>
+        .phase-indicator {
+            width: 100%;
+            height: 30px;
+            background: linear-gradient(to right, #dc3545 0%, #ffc107 50%, #28a745 100%);
+            border-radius: 15px;
+            position: relative;
+            margin: 20px 0;
+        }
+        .phase-marker {
+            position: absolute;
+            top: -10px;
+            width: 50px;
+            height: 50px;
+            background: #fff;
+            border: 3px solid #007bff;
+            border-radius: 50%;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+        }
+        .sleep-clock {
+            width: 300px;
+            height: 300px;
+            margin: 20px auto;
+            position: relative;
+            background: #f8f9fa;
+            border-radius: 50%;
+            border: 2px solid #dee2e6;
+        }
+        .recommendation-card {
+            transition: transform 0.2s;
+            cursor: pointer;
+        }
+        .recommendation-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        .priority-critical { border-left: 5px solid #dc3545; }
+        .priority-high { border-left: 5px solid #fd7e14; }
+        .priority-medium { border-left: 5px solid #ffc107; }
+        .priority-low { border-left: 5px solid #28a745; }
+        .sleep-quality-chart {
+            height: 200px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 15px;
+        }
+        .chronotype-badge {
+            display: inline-block;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-weight: bold;
+        }
+        .chronotype-morning { background: #fff3cd; color: #856404; }
+        .chronotype-intermediate { background: #d1ecf1; color: #0c5460; }
+        .chronotype-evening { background: #d4edda; color: #155724; }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">Workforce Scheduler</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/employee-dashboard">Dashboard</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/sleep-dashboard">Sleep Health</a>
+                    </li>
+                </ul>
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/logout">Logout</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <!-- Header Section -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <h1><i class="bi bi-moon-stars"></i> Sleep & Circadian Health Dashboard</h1>
+                <p class="lead">Personalized sleep advice based on your shift patterns and circadian rhythm</p>
+            </div>
+        </div>
+
+        <!-- Circadian Status Overview -->
+        <div class="row mb-4">
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0"><i class="bi bi-activity"></i> Your Circadian Status</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h6>Current Shift Pattern</h6>
+                                <p class="h4">
+                                    {% if profile.current_shift_type == 'night' %}
+                                        <i class="bi bi-moon-fill"></i> Night Shift
+                                    {% elif profile.current_shift_type == 'evening' %}
+                                        <i class="bi bi-sunset-fill"></i> Evening Shift
+                                    {% else %}
+                                        <i class="bi bi-sun-fill"></i> Day Shift
+                                    {% endif %}
+                                </p>
+                                <p class="text-muted">{{ profile.days_on_current_pattern }} days on this pattern</p>
+                            </div>
+                            <div class="col-md-6">
+                                <h6>Chronotype</h6>
+                                <p>
+                                    <span class="chronotype-badge chronotype-{{ profile.chronotype }}">
+                                        {% if profile.chronotype == 'morning' %}
+                                            🐤 Early Bird
+                                        {% elif profile.chronotype == 'evening' %}
+                                            🦉 Night Owl
+                                        {% else %}
+                                            🐦 Intermediate
+                                        {% endif %}
+                                    </span>
+                                </p>
+                                <p class="text-muted">Your natural sleep preference</p>
+                            </div>
+                        </div>
+                        
+                        <h6 class="mt-4">Circadian Adaptation Progress</h6>
+                        <div class="phase-indicator">
+                            <div class="phase-marker" style="left: {{ phase_info.adaptation }}%;">
+                                {{ phase_info.adaptation|round|int }}%
+                            </div>
+                        </div>
+                        <div class="d-flex justify-content-between text-muted small">
+                            <span>Misaligned</span>
+                            <span>Transitioning</span>
+                            <span>Well Adapted</span>
+                        </div>
+                        
+                        {% if phase_info.phase == 'misaligned_severe' %}
+                            <div class="alert alert-danger mt-3">
+                                <i class="bi bi-exclamation-triangle"></i> <strong>Severe Misalignment:</strong> 
+                                Your body clock is significantly out of sync. Follow critical recommendations below.
+                            </div>
+                        {% elif phase_info.phase == 'misaligned_moderate' %}
+                            <div class="alert alert-warning mt-3">
+                                <i class="bi bi-exclamation-circle"></i> <strong>Moderate Misalignment:</strong> 
+                                You're adapting but need {{ phase_info.days_needed - phase_info.days_adapted }} more days.
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header bg-info text-white">
+                        <h5 class="mb-0"><i class="bi bi-graph-up"></i> Sleep Metrics</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <h6>Sleep Debt</h6>
+                            <p class="h3">
+                                {% if sleep_debt > 10 %}
+                                    <span class="text-danger">{{ sleep_debt }} hours</span>
+                                {% elif sleep_debt > 5 %}
+                                    <span class="text-warning">{{ sleep_debt }} hours</span>
+                                {% else %}
+                                    <span class="text-success">{{ sleep_debt }} hours</span>
+                                {% endif %}
+                            </p>
+                            <div class="progress">
+                                <div class="progress-bar {% if sleep_debt > 10 %}bg-danger{% elif sleep_debt > 5 %}bg-warning{% else %}bg-success{% endif %}" 
+                                     role="progressbar" 
+                                     style="width: {{ (sleep_debt / 20 * 100)|min(100) }}%">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <h6>Average Sleep Quality</h6>
+                            <p class="h3">{{ avg_sleep_quality|default(0) }}/10</p>
+                        </div>
+                        
+                        <a href="/sleep-log" class="btn btn-sm btn-info">
+                            <i class="bi bi-journal-text"></i> Log Sleep
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Personalized Recommendations -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <h2><i class="bi bi-lightbulb"></i> Your Personalized Sleep Recommendations</h2>
+                <p class="text-muted">Based on your current shift pattern and circadian phase</p>
+            </div>
+        </div>
+
+        <div class="row">
+            {% for rec in recommendations %}
+            <div class="col-md-6 mb-3">
+                <div class="card recommendation-card priority-{{ rec.priority }}" 
+                     onclick="markRecommendationViewed({{ rec.id }})">
+                    <div class="card-body">
+                        <h5 class="card-title">
+                            {{ rec.title }}
+                            {% if rec.priority == 'critical' %}
+                                <span class="badge bg-danger float-end">Critical</span>
+                            {% elif rec.priority == 'high' %}
+                                <span class="badge bg-warning float-end">High Priority</span>
+                            {% endif %}
+                        </h5>
+                        <p class="card-text">{{ rec.description }}</p>
+                        
+                        <h6>Action Items:</h6>
+                        <ul class="mb-0">
+                            {% for action in rec.action_items %}
+                                <li>{{ action }}</li>
+                            {% endfor %}
+                        </ul>
+                        
+                        {% if not rec.was_viewed %}
+                            <span class="badge bg-primary position-absolute top-0 end-0 m-2">New</span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- Upcoming Shift Preparation -->
+        {% if next_shift %}
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card border-primary">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0">
+                            <i class="bi bi-calendar-event"></i> 
+                            Preparing for Your Next Shift
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h6>Next Shift</h6>
+                                <p class="h4">
+                                    {{ next_shift.start_time.strftime('%A, %B %d') }}<br>
+                                    {{ next_shift.start_time.strftime('%I:%M %p') }} - 
+                                    {{ next_shift.end_time.strftime('%I:%M %p') }}
+                                </p>
+                                <p>
+                                    <span class="badge bg-secondary">{{ next_shift.shift_type|title }} Shift</span>
+                                    <span class="badge bg-info">{{ hours_until_shift }} hours away</span>
+                                </p>
+                            </div>
+                            <div class="col-md-6">
+                                <h6>Sleep Schedule Recommendation</h6>
+                                <div class="alert alert-info mb-0">
+                                    <i class="bi bi-clock"></i> 
+                                    <strong>Tonight:</strong> Sleep by {{ recommended_bedtime }}<br>
+                                    <i class="bi bi-alarm"></i> 
+                                    <strong>Wake:</strong> {{ recommended_wake_time }}
+                                    {% if nap_recommended %}
+                                    <br><i class="bi bi-moon"></i> 
+                                    <strong>Nap:</strong> {{ nap_time }} ({{ nap_duration }} minutes)
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Educational Resources -->
+        <div class="row mt-4">
+            <div class="col-12">
+                <h3><i class="bi bi-book"></i> Learn More About Shift Work & Sleep</h3>
+            </div>
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Understanding Circadian Rhythms</h5>
+                        <p class="card-text">Learn how your body's internal clock works and why it matters for shift workers.</p>
+                        <a href="#" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#circadianModal">
+                            Learn More
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Light Exposure Tips</h5>
+                        <p class="card-text">Manage light exposure to help your body adapt to shift work.</p>
+                        <a href="#" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#lightModal">
+                            Learn More
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Sleep Hygiene Basics</h5>
+                        <p class="card-text">Essential tips for creating the perfect sleep environment.</p>
+                        <a href="#" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#hygieneModal">
+                            Learn More
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Educational Modals -->
+    <div class="modal fade" id="circadianModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Understanding Your Circadian Rhythm</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <h6>What is a Circadian Rhythm?</h6>
+                    <p>Your circadian rhythm is your body's internal 24-hour clock that regulates sleep-wake cycles, 
+                    hormone production, body temperature, and many other bodily functions.</p>
+                    
+                    <h6>Why Shift Work Disrupts Your Rhythm</h6>
+                    <ul>
+                        <li>Light exposure at night suppresses melatonin production</li>
+                        <li>Working against your natural alertness patterns</li>
+                        <li>Social cues (meal times, activities) misaligned with work schedule</li>
+                        <li>Frequent schedule changes prevent full adaptation</li>
+                    </ul>
+                    
+                    <h6>Adaptation Timeline</h6>
+                    <p>It typically takes:</p>
+                    <ul>
+                        <li>3-4 days to partially adapt to evening shifts</li>
+                        <li>7-10 days to adapt to night shifts</li>
+                        <li>Full adaptation may never occur with rotating schedules</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="lightModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Light Exposure Management</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <h6>For Night Shift Workers</h6>
+                    <ul>
+                        <li><strong>During shift:</strong> Expose yourself to bright light to maintain alertness</li>
+                        <li><strong>After shift:</strong> Wear sunglasses on the way home, even on cloudy days</li>
+                        <li><strong>At home:</strong> Use blackout curtains and minimize light exposure</li>
+                        <li><strong>Before shift:</strong> Get bright light exposure in the evening to delay sleep</li>
+                    </ul>
+                    
+                    <h6>For Day Shift Workers</h6>
+                    <ul>
+                        <li><strong>Morning:</strong> Get bright light immediately upon waking</li>
+                        <li><strong>During work:</strong> Take breaks near windows or outside</li>
+                        <li><strong>Evening:</strong> Dim lights 2 hours before intended bedtime</li>
+                        <li><strong>Night:</strong> Use blue light filters on devices</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="hygieneModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Sleep Hygiene for Shift Workers</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <h6>Creating the Perfect Sleep Environment</h6>
+                    <ul>
+                        <li>Keep bedroom temperature cool (60-67°F / 15-19°C)</li>
+                        <li>Use blackout curtains or eye masks</li>
+                        <li>Use white noise machine or earplugs</li>
+                        <li>Remove electronic devices from bedroom</li>
+                        <li>Invest in comfortable mattress and pillows</li>
+                    </ul>
+                    
+                    <h6>Pre-Sleep Routine</h6>
+                    <ul>
+                        <li>Avoid caffeine 6 hours before sleep</li>
+                        <li>No heavy meals 3 hours before bed</li>
+                        <li>Limit alcohol - it disrupts sleep quality</li>
+                        <li>Take a warm shower or bath</li>
+                        <li>Practice relaxation techniques (deep breathing, meditation)</li>
+                    </ul>
+                    
+                    <h6>Special Tips for Daytime Sleep</h6>
+                    <ul>
+                        <li>Tell family/friends your sleep schedule</li>
+                        <li>Turn off phone or use "Do Not Disturb"</li>
+                        <li>Put a sign on your door</li>
+                        <li>Consider using a fan for white noise</li>
+                        <li>Sleep in the same room at the same time consistently</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        function markRecommendationViewed(recommendationId) {
+            fetch(`/sleep-recommendation/${recommendationId}/viewed`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            });
+        }
+        
+        // Check for new recommendations every 30 minutes
+        setInterval(function() {
+            window.location.reload();
+        }, 30 * 60 * 1000);
+    </script>
+</body>
+</html>
