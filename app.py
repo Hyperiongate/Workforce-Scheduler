@@ -5,6 +5,7 @@ from flask_login import LoginManager, login_user, logout_user, login_required, c
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta, date
 import os
+from sqlalchemy import inspect
 from models import db, Employee, Position, Skill, Schedule, EmployeeSkill, PositionSkill, Availability, TimeOffRequest, VacationCalendar, CoverageRequest, CasualWorker, CasualAssignment, ShiftSwapRequest, ScheduleSuggestion, CircadianProfile, SleepLog, SleepRecommendation, ShiftTransitionPlan
 from circadian_advisor import CircadianAdvisor
 import json
@@ -1256,6 +1257,43 @@ def migrate_database():
         db.session.commit()
         
         return 'Database migrated successfully! Supervisor: mike@example.com / admin123, Employee: john@example.com / password123'
+
+@app.route('/add-sleep-tables')
+def add_sleep_tables():
+    """Add only the new sleep-related tables without dropping existing ones"""
+    if request.args.get('confirm') != 'yes':
+        return 'Add ?confirm=yes to create sleep tables'
+    
+    try:
+        # Create only the new tables if they don't exist
+        with app.app_context():
+            # Check if tables already exist
+            inspector = inspect(db.engine)
+            existing_tables = inspector.get_table_names()
+            
+            # Only create tables that don't exist
+            if 'circadian_profile' not in existing_tables:
+                CircadianProfile.__table__.create(db.engine)
+                print("Created circadian_profile table")
+            
+            if 'sleep_log' not in existing_tables:
+                SleepLog.__table__.create(db.engine)
+                print("Created sleep_log table")
+                
+            if 'sleep_recommendation' not in existing_tables:
+                SleepRecommendation.__table__.create(db.engine)
+                print("Created sleep_recommendation table")
+                
+            if 'shift_transition_plan' not in existing_tables:
+                ShiftTransitionPlan.__table__.create(db.engine)
+                print("Created shift_transition_plan table")
+            
+            db.session.commit()
+            
+        return 'Sleep tables added successfully! You can now use the sleep features.'
+        
+    except Exception as e:
+        return f'Error creating tables: {str(e)}'
 
 # ==================== ERROR HANDLERS ====================
 
