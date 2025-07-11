@@ -1,4 +1,4 @@
-# circadian_advisor.py - New file to handle sleep advice logic
+# circadian_advisor.py - Sleep advice logic (no models, just logic)
 
 from datetime import datetime, timedelta, time
 import math
