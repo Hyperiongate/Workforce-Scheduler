@@ -1,1 +1,257 @@
+<!-- templates/view_transition_plan.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Your Shift Transition Plan - {{ employee.name }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
+    <style>
+        .timeline {
+            position: relative;
+            padding: 20px 0;
+        }
+        .timeline-item {
+            position: relative;
+            padding-left: 40px;
+            margin-bottom: 30px;
+        }
+        .timeline-item::before {
+            content: '';
+            position: absolute;
+            left: 15px;
+            top: 0;
+            bottom: -30px;
+            width: 2px;
+            background: #dee2e6;
+        }
+        .timeline-item:last-child::before {
+            bottom: 0;
+        }
+        .timeline-marker {
+            position: absolute;
+            left: 0;
+            top: 5px;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            background: #fff;
+            border: 3px solid #007bff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 12px;
+        }
+        .timeline-marker.completed {
+            background: #28a745;
+            border-color: #28a745;
+            color: white;
+        }
+        .timeline-marker.current {
+            background: #ffc107;
+            border-color: #ffc107;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(255, 193, 7, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(255, 193, 7, 0); }
+        }
+        .day-card {
+            transition: transform 0.2s;
+        }
+        .day-card:hover {
+            transform: translateY(-5px);
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">Workforce Scheduler</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/employee-dashboard">Dashboard</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/sleep-dashboard">Sleep Health</a>
+                    </li>
+                </ul>
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/logout">Logout</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
 
+    <div class="container mt-4">
+        <!-- Header -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <h1>
+                    <i class="bi bi-calendar3"></i> Your Shift Transition Plan
+                </h1>
+                <p class="lead">
+                    Transitioning from {{ plan.from_shift_type|title }} to {{ plan.to_shift_type|title }} shift
+                </p>
+            </div>
+        </div>
+
+        <!-- Progress Overview -->
+        <div class="row mb-4">
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-body">
+                        <h5>Transition Progress</h5>
+                        <div class="progress" style="height: 30px;">
+                            <div class="progress-bar bg-success" role="progressbar" 
+                                 style="width: {{ plan.completion_percentage }}%;">
+                                {{ plan.completion_percentage|round|int }}% Complete
+                            </div>
+                        </div>
+                        <div class="d-flex justify-content-between mt-2 text-muted">
+                            <small>Start: {{ plan.transition_start_date.strftime('%b %d') }}</small>
+                            <small>Day {{ days_elapsed + 1 }} of {{ plan.transition_duration_days }}</small>
+                            <small>End: {{ (plan.transition_start_date + timedelta(days=plan.transition_duration_days)).strftime('%b %d') }}</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card border-info">
+                    <div class="card-body text-center">
+                        <h6>Status</h6>
+                        {% if plan.completion_percentage >= 100 %}
+                            <p class="h4 text-success">
+                                <i class="bi bi-check-circle-fill"></i> Completed
+                            </p>
+                        {% elif plan.is_active %}
+                            <p class="h4 text-primary">
+                                <i class="bi bi-arrow-right-circle-fill"></i> In Progress
+                            </p>
+                        {% else %}
+                            <p class="h4 text-warning">
+                                <i class="bi bi-pause-circle-fill"></i> Paused
+                            </p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Daily Timeline -->
+        <div class="row">
+            <div class="col-12">
+                <h3><i class="bi bi-calendar-week"></i> Daily Schedule</h3>
+                <div class="timeline">
+                    {% for day in plan.plan_data.daily_schedule %}
+                    <div class="timeline-item">
+                        <div class="timeline-marker {% if loop.index0 < days_elapsed %}completed{% elif loop.index0 == days_elapsed %}current{% endif %}">
+                            {{ loop.index }}
+                        </div>
+                        <div class="card day-card {% if loop.index0 == days_elapsed %}border-warning{% endif %}">
+                            <div class="card-body">
+                                <h5 class="card-title">
+                                    Day {{ day.day_number }}: {{ day.date }}
+                                    {% if loop.index0 == days_elapsed %}
+                                        <span class="badge bg-warning float-end">Today</span>
+                                    {% elif loop.index0 < days_elapsed %}
+                                        <span class="badge bg-success float-end">Completed</span>
+                                    {% endif %}
+                                </h5>
+                                
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <h6>Sleep Schedule Adjustment</h6>
+                                        <p>
+                                            <i class="bi bi-moon"></i> Bedtime: <strong>{{ day.bedtime_adjust }}</strong><br>
+                                            <i class="bi bi-sun"></i> Wake time: <strong>{{ day.wake_adjust }}</strong>
+                                        </p>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <h6>Key Actions</h6>
+                                        <ul class="small mb-0">
+                                            {% for action in day.key_actions %}
+                                                <li>{{ action }}</li>
+                                            {% endfor %}
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <!-- General Tips -->
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card bg-light">
+                    <div class="card-body">
+                        <h5><i class="bi bi-lightbulb"></i> General Tips for Your Transition</h5>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h6>Do's</h6>
+                                <ul>
+                                    <li>Stick to the schedule even on days off</li>
+                                    <li>Use blackout curtains for daytime sleep</li>
+                                    <li>Stay hydrated throughout the transition</li>
+                                    <li>Take short naps if extremely tired</li>
+                                    <li>Get bright light exposure at appropriate times</li>
+                                </ul>
+                            </div>
+                            <div class="col-md-6">
+                                <h6>Don'ts</h6>
+                                <ul>
+                                    <li>Don't use alcohol as a sleep aid</li>
+                                    <li>Avoid large meals before sleep</li>
+                                    <li>Don't drive if feeling drowsy</li>
+                                    <li>Limit caffeine in the 6 hours before sleep</li>
+                                    <li>Don't give up - consistency is key!</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="row mt-4 mb-5">
+            <div class="col-12">
+                <a href="/sleep-dashboard" class="btn btn-primary">
+                    <i class="bi bi-arrow-left"></i> Back to Sleep Dashboard
+                </a>
+                <a href="/sleep-log" class="btn btn-secondary">
+                    <i class="bi bi-journal-text"></i> Log Today's Sleep
+                </a>
+                {% if plan.is_active and plan.completion_percentage < 100 %}
+                <button class="btn btn-outline-danger float-end" onclick="confirmPausePlan()">
+                    <i class="bi bi-pause"></i> Pause Plan
+                </button>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        function confirmPausePlan() {
+            if (confirm('Are you sure you want to pause this transition plan? You can resume it later.')) {
+                // Add endpoint to pause plan
+                window.location.href = '/transition-plan/{{ plan.id }}/pause';
+            }
+        }
+    </script>
+</body>
+</html>
