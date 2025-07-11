@@ -188,7 +188,7 @@
                             <div class="progress">
                                 <div class="progress-bar {% if sleep_debt > 10 %}bg-danger{% elif sleep_debt > 5 %}bg-warning{% else %}bg-success{% endif %}" 
                                      role="progressbar" 
-                                     style="width: {{ (sleep_debt / 20 * 100)|min(100) }}%">
+                                     style="width: {{ [sleep_debt / 20 * 100, 100]|min }}%">
                                 </div>
                             </div>
                         </div>
