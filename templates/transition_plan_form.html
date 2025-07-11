@@ -1,1 +1,165 @@
+<!-- templates/transition_plan_form.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create Shift Transition Plan - {{ employee.name }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">Workforce Scheduler</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/employee-dashboard">Dashboard</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/sleep-dashboard">Sleep Health</a>
+                    </li>
+                </ul>
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/logout">Logout</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
 
+    <div class="container mt-4">
+        <div class="row justify-content-center">
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0"><i class="bi bi-arrow-left-right"></i> Create Shift Transition Plan</h5>
+                    </div>
+                    <div class="card-body">
+                        <p class="mb-4">Changing shift patterns? Let's create a personalized plan to help your body adjust smoothly.</p>
+                        
+                        <form method="POST">
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <label for="from_shift" class="form-label">Current Shift Pattern</label>
+                                    <select class="form-select" id="from_shift" name="from_shift" required>
+                                        <option value="">Select current shift</option>
+                                        <option value="day" {% if profile.current_shift_type == 'day' %}selected{% endif %}>
+                                            ☀️ Day Shift (Morning)
+                                        </option>
+                                        <option value="evening" {% if profile.current_shift_type == 'evening' %}selected{% endif %}>
+                                            🌅 Evening Shift
+                                        </option>
+                                        <option value="night" {% if profile.current_shift_type == 'night' %}selected{% endif %}>
+                                            🌙 Night Shift
+                                        </option>
+                                    </select>
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="to_shift" class="form-label">New Shift Pattern</label>
+                                    <select class="form-select" id="to_shift" name="to_shift" required onchange="updateTransitionInfo()">
+                                        <option value="">Select new shift</option>
+                                        <option value="day">☀️ Day Shift (Morning)</option>
+                                        <option value="evening">🌅 Evening Shift</option>
+                                        <option value="night">🌙 Night Shift</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="start_date" class="form-label">Transition Start Date</label>
+                                <input type="date" class="form-control" id="start_date" name="start_date" required>
+                                <small class="text-muted">When will you start transitioning to the new schedule?</small>
+                            </div>
+
+                            <div id="transition-info" class="alert alert-info" style="display: none;">
+                                <h6>Transition Information</h6>
+                                <p id="transition-duration"></p>
+                                <p id="transition-difficulty"></p>
+                            </div>
+
+                            <div class="mb-4">
+                                <h6>Your Preferences</h6>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="gradual_transition" name="gradual_transition" checked>
+                                    <label class="form-check-label" for="gradual_transition">
+                                        Prefer gradual transition (recommended)
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="use_naps" name="use_naps" checked>
+                                    <label class="form-check-label" for="use_naps">
+                                        Include strategic napping in the plan
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="light_therapy" name="light_therapy">
+                                    <label class="form-check-label" for="light_therapy">
+                                        I have access to bright light therapy
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="alert alert-warning">
+                                <i class="bi bi-exclamation-triangle"></i> <strong>Important:</strong> During the transition period, avoid driving or operating machinery if you feel drowsy. Your alertness may be compromised.
+                            </div>
+
+                            <div class="d-grid gap-2">
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="bi bi-calendar-check"></i> Create Transition Plan
+                                </button>
+                                <a href="/sleep-dashboard" class="btn btn-secondary">Cancel</a>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Set minimum date to today
+        document.getElementById('start_date').min = new Date().toISOString().split('T')[0];
+
+        function updateTransitionInfo() {
+            const from = document.getElementById('from_shift').value;
+            const to = document.getElementById('to_shift').value;
+            const infoDiv = document.getElementById('transition-info');
+            const durationP = document.getElementById('transition-duration');
+            const difficultyP = document.getElementById('transition-difficulty');
+
+            if (from && to && from !== to) {
+                infoDiv.style.display = 'block';
+                
+                // Transition durations
+                const transitions = {
+                    'day_evening': {days: 3, difficulty: 'Easy'},
+                    'day_night': {days: 10, difficulty: 'Challenging'},
+                    'evening_day': {days: 2, difficulty: 'Easy'},
+                    'evening_night': {days: 5, difficulty: 'Moderate'},
+                    'night_day': {days: 10, difficulty: 'Very Challenging'},
+                    'night_evening': {days: 5, difficulty: 'Moderate'}
+                };
+                
+                const key = from + '_' + to;
+                const transition = transitions[key] || {days: 7, difficulty: 'Moderate'};
+                
+                durationP.innerHTML = `<strong>Expected Duration:</strong> ${transition.days} days for full adaptation`;
+                difficultyP.innerHTML = `<strong>Difficulty Level:</strong> ${transition.difficulty}`;
+                
+                if (transition.difficulty === 'Very Challenging') {
+                    difficultyP.innerHTML += ' - Consider taking time off during transition if possible';
+                }
+            } else {
+                infoDiv.style.display = 'none';
+            }
+        }
+    </script>
+</body>
+</html>
