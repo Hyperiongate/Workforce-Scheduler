@@ -251,7 +251,7 @@ def migrate_database():
                 conn.commit()
                 
             if 'approved_at' not in time_off_columns:
-                conn.execute(text('ALTER TABLE time_off_request ADD COLUMN approved_at DATETIME'))
+                conn.execute(text('ALTER TABLE time_off_request ADD COLUMN approved_at TIMESTAMP'))
                 conn.commit()
                 
             if 'supervisor_notes' not in time_off_columns:
@@ -557,7 +557,8 @@ def vacation_calendar():
                          month=month,
                          month_name=month_name,
                          vacation_by_date=vacation_by_date,
-                         today=date.today())
+                         today=date.today(),
+                         datetime=datetime)
 
 # Supervisor: Review Time Off Requests
 @app.route('/supervisor/time-off-requests')
