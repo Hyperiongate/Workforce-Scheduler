@@ -29,13 +29,29 @@
                         </a>
                     </li>
                     <li class="nav-item">
+                        <a class="nav-link" href="/supervisor/time-off-requests">
+                            <i class="bi bi-calendar-x"></i> Time Off Requests
+                            {% if pending_time_off %}
+                                <span class="badge bg-danger">{{ pending_time_off|length }}</span>
+                            {% endif %}
+                        </a>
+                    </li>
+                    <li class="nav-item">
                         <a class="nav-link" href="/supervisor/swap-requests">
                             <i class="bi bi-arrow-left-right"></i> Swap Requests
+                            {% if pending_swaps %}
+                                <span class="badge bg-warning">{{ pending_swaps|length }}</span>
+                            {% endif %}
                         </a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="/supervisor/suggestions">
                             <i class="bi bi-lightbulb"></i> Suggestions
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/vacation/calendar">
+                            <i class="bi bi-calendar-week"></i> Vacation Calendar
                         </a>
                     </li>
                     <li class="nav-item">
@@ -73,7 +89,7 @@
             </div>
         </div>
 
-        <!-- Quick Stats -->
+        <!-- Quick Stats Row 1 -->
         <div class="row mb-4">
             <div class="col-md-3">
                 <div class="card text-white bg-primary">
@@ -87,6 +103,24 @@
                                 <i class="bi bi-calendar-day"></i>
                             </div>
                         </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-white bg-danger">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h6 class="text-uppercase">Time Off Requests</h6>
+                                <h2 class="mb-0">{{ pending_time_off|length if pending_time_off else 0 }}</h2>
+                            </div>
+                            <div class="fs-1">
+                                <i class="bi bi-calendar-x"></i>
+                            </div>
+                        </div>
+                        {% if pending_time_off %}
+                        <a href="/supervisor/time-off-requests" class="stretched-link"></a>
+                        {% endif %}
                     </div>
                 </div>
             </div>
@@ -111,27 +145,15 @@
                         <div class="d-flex justify-content-between align-items-center">
                             <div>
                                 <h6 class="text-uppercase">Swap Requests</h6>
-                                <h2 class="mb-0">Pending</h2>
+                                <h2 class="mb-0">{{ pending_swaps|length if pending_swaps else 0 }}</h2>
                             </div>
                             <div class="fs-1">
                                 <i class="bi bi-arrow-left-right"></i>
                             </div>
                         </div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card text-white bg-success">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <div>
-                                <h6 class="text-uppercase">Casual Available</h6>
-                                <h2 class="mb-0">{{ casual_workers|length }}</h2>
-                            </div>
-                            <div class="fs-1">
-                                <i class="bi bi-people"></i>
-                            </div>
-                        </div>
+                        {% if pending_swaps %}
+                        <a href="/supervisor/swap-requests" class="stretched-link"></a>
+                        {% endif %}
                     </div>
                 </div>
             </div>
@@ -141,6 +163,21 @@
         <div class="row">
             <!-- Left Column -->
             <div class="col-md-8">
+                <!-- Pending Time Off Requests Alert -->
+                {% if pending_time_off %}
+                <div class="alert alert-danger alert-dismissible fade show mb-4" role="alert">
+                    <h5 class="alert-heading">
+                        <i class="bi bi-exclamation-circle"></i> Pending Time Off Requests
+                    </h5>
+                    <p>You have {{ pending_time_off|length }} time off request(s) waiting for approval.</p>
+                    <hr>
+                    <a href="/supervisor/time-off-requests" class="btn btn-danger">
+                        <i class="bi bi-check-circle"></i> Review Requests
+                    </a>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+                {% endif %}
+
                 <!-- Today's Schedule -->
                 <div class="card mb-4">
                     <div class="card-header bg-primary text-white">
@@ -175,6 +212,8 @@
                                                     <span class="badge bg-success">Confirmed</span>
                                                 {% elif schedule.status == 'absent' %}
                                                     <span class="badge bg-danger">Absent</span>
+                                                {% elif schedule.status == 'needs_coverage' %}
+                                                    <span class="badge bg-warning">Needs Coverage</span>
                                                 {% else %}
                                                     <span class="badge bg-warning">{{ schedule.status }}</span>
                                                 {% endif %}
@@ -198,7 +237,7 @@
                 </div>
 
                 <!-- Coverage Requests -->
-                <div class="card">
+                <div class="card mb-4">
                     <div class="card-header bg-warning text-dark">
                         <h5 class="mb-0">
                             <i class="bi bi-exclamation-triangle"></i> Coverage Requests
@@ -224,6 +263,43 @@
                         {% endif %}
                     </div>
                 </div>
+
+                <!-- Employee Overtime Alert -->
+                <div class="card">
+                    <div class="card-header bg-info text-white">
+                        <h5 class="mb-0">
+                            <i class="bi bi-clock-history"></i> Weekly Hours Overview
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>Employee</th>
+                                        <th>Weekly Hours</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for emp in employees if emp.weekly_hours > 35 %}
+                                    <tr>
+                                        <td>{{ emp.name }}</td>
+                                        <td>{{ emp.weekly_hours|round(1) }} hrs</td>
+                                        <td>
+                                            {% if emp.weekly_hours >= 40 %}
+                                                <span class="badge bg-danger">Overtime</span>
+                                            {% elif emp.weekly_hours >= 35 %}
+                                                <span class="badge bg-warning">Near Overtime</span>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <!-- Right Column -->
@@ -239,21 +315,53 @@
                         <a href="/schedule/create" class="btn btn-primary w-100 mb-2">
                             <i class="bi bi-calendar-plus"></i> Create New Schedule
                         </a>
+                        <a href="/supervisor/time-off-requests" class="btn btn-danger w-100 mb-2">
+                            <i class="bi bi-calendar-x"></i> Review Time Off
+                            {% if pending_time_off %}
+                                <span class="badge bg-white text-danger">{{ pending_time_off|length }}</span>
+                            {% endif %}
+                        </a>
                         <a href="/supervisor/swap-requests" class="btn btn-info w-100 mb-2">
                             <i class="bi bi-arrow-left-right"></i> Review Swap Requests
+                            {% if pending_swaps %}
+                                <span class="badge bg-white text-info">{{ pending_swaps|length }}</span>
+                            {% endif %}
                         </a>
                         <a href="/supervisor/suggestions" class="btn btn-success w-100 mb-2">
                             <i class="bi bi-lightbulb"></i> View Suggestions
                         </a>
-                        <button class="btn btn-warning w-100" data-bs-toggle="modal" data-bs-target="#broadcastModal">
+                        <a href="/vacation/calendar" class="btn btn-warning w-100 mb-2">
+                            <i class="bi bi-calendar-week"></i> Vacation Calendar
+                        </a>
+                        <button class="btn btn-secondary w-100" data-bs-toggle="modal" data-bs-target="#broadcastModal">
                             <i class="bi bi-megaphone"></i> Send Announcement
                         </button>
                     </div>
                 </div>
 
+                <!-- Recent Suggestions -->
+                {% if recent_suggestions %}
+                <div class="card mb-4">
+                    <div class="card-header bg-success text-white">
+                        <h5 class="mb-0">
+                            <i class="bi bi-lightbulb"></i> Recent Suggestions
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        {% for suggestion in recent_suggestions[:3] %}
+                        <div class="mb-2">
+                            <strong>{{ suggestion.title }}</strong><br>
+                            <small class="text-muted">by {{ suggestion.employee.name }} - {{ suggestion.created_at.strftime('%m/%d') }}</small>
+                        </div>
+                        {% endfor %}
+                        <a href="/supervisor/suggestions" class="btn btn-sm btn-success w-100">View All</a>
+                    </div>
+                </div>
+                {% endif %}
+
                 <!-- Available Casual Workers -->
                 <div class="card">
-                    <div class="card-header bg-info text-white">
+                    <div class="card-header bg-secondary text-white">
                         <h5 class="mb-0">
                             <i class="bi bi-people"></i> Available Casual Workers
                         </h5>
