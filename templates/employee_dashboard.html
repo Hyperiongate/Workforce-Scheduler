@@ -244,6 +244,63 @@
 
             <!-- Right Column -->
             <div class="col-md-4">
+                <!-- Sleep Health Card -->
+                <div class="card border-info mb-3">
+                    <div class="card-header bg-info text-white">
+                        <h5 class="mb-0"><i class="bi bi-moon-stars"></i> Sleep & Circadian Health</h5>
+                    </div>
+                    <div class="card-body">
+                        {% if has_circadian_profile %}
+                            <div class="mb-3">
+                                <h6>Your Chronotype</h6>
+                                <p>
+                                    {% if circadian_profile.chronotype == 'morning' %}
+                                        <span class="badge bg-warning">🐤 Early Bird</span>
+                                    {% elif circadian_profile.chronotype == 'evening' %}
+                                        <span class="badge bg-success">🦉 Night Owl</span>
+                                    {% else %}
+                                        <span class="badge bg-info">🐦 Intermediate</span>
+                                    {% endif %}
+                                </p>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <h6>Current Adaptation</h6>
+                                <div class="progress">
+                                    <div class="progress-bar {% if circadian_adaptation < 30 %}bg-danger{% elif circadian_adaptation < 70 %}bg-warning{% else %}bg-success{% endif %}" 
+                                         role="progressbar" 
+                                         style="width: {{ circadian_adaptation }}%">
+                                        {{ circadian_adaptation|round|int }}%
+                                    </div>
+                                </div>
+                                <small class="text-muted">To {{ circadian_profile.current_shift_type|title }} shift pattern</small>
+                            </div>
+                            
+                            {% if unread_recommendations > 0 %}
+                            <div class="alert alert-warning py-2">
+                                <i class="bi bi-lightbulb"></i> You have {{ unread_recommendations }} new sleep recommendations
+                            </div>
+                            {% endif %}
+                            
+                            <a href="/sleep-dashboard" class="btn btn-info w-100">
+                                <i class="bi bi-graph-up"></i> View Sleep Dashboard
+                            </a>
+                        {% else %}
+                            <p>Get personalized sleep advice based on your shift patterns and natural sleep preferences.</p>
+                            <p class="text-muted">Complete a quick assessment to:</p>
+                            <ul class="small">
+                                <li>Discover your chronotype</li>
+                                <li>Get shift-specific sleep advice</li>
+                                <li>Track sleep quality</li>
+                                <li>Manage circadian rhythm adaptation</li>
+                            </ul>
+                            <a href="/sleep-profile" class="btn btn-primary w-100">
+                                <i class="bi bi-person-badge"></i> Complete Sleep Assessment
+                            </a>
+                        {% endif %}
+                    </div>
+                </div>
+
                 <!-- Quick Actions -->
                 <div class="card">
                     <div class="card-header">
@@ -429,6 +486,28 @@
             } catch (error) {
                 console.error('Error loading shifts:', error);
             }
+        });
+
+        // Add sleep health notification badge
+        document.addEventListener('DOMContentLoaded', function() {
+            // Check for critical sleep recommendations
+            fetch('/api/critical-sleep-alerts')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.critical_count > 0) {
+                        // Add a notification badge to the sleep card
+                        const sleepCard = document.querySelector('.card.border-info');
+                        if (sleepCard) {
+                            const badge = document.createElement('span');
+                            badge.className = 'position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger';
+                            badge.textContent = data.critical_count;
+                            badge.style.fontSize = '0.8rem';
+                            sleepCard.style.position = 'relative';
+                            sleepCard.appendChild(badge);
+                        }
+                    }
+                })
+                .catch(error => console.error('Error fetching sleep alerts:', error));
         });
     </script>
 </body>
