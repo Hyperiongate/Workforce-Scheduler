@@ -161,12 +161,45 @@
                                         <small>3 Shifts</small>
                                     </label>
                                     
+                                    <input type="radio" class="btn-check" name="shift_pattern" id="four_crew" value="four_crew">
+                                    <label class="btn btn-outline-primary" for="four_crew">
+                                        <i class="bi bi-arrow-repeat"></i><br>
+                                        4-Crew Rotation<br>
+                                        <small>24/7 Teams</small>
+                                    </label>
+                                    
                                     <input type="radio" class="btn-check" name="shift_pattern" id="custom" value="custom">
                                     <label class="btn btn-outline-primary" for="custom">
                                         <i class="bi bi-gear"></i><br>
                                         Custom<br>
                                         <small>Define Your Own</small>
                                     </label>
+                                </div>
+                            </div>
+
+                            <!-- 4-Crew Rotation Options -->
+                            <div class="card mb-4 d-none" id="crewRotationOptions">
+                                <div class="card-header bg-info text-white">
+                                    <h6 class="mb-0">
+                                        <i class="bi bi-arrow-repeat"></i> 4-Crew Rotation Settings
+                                    </h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="mb-3">
+                                        <label class="form-label">Rotation Pattern</label>
+                                        <select class="form-select" name="crew_rotation">
+                                            <option value="2-2-3">2-2-3 (Pitman) - 2 on, 2 off, 3 on...</option>
+                                            <option value="4-4">4-on-4-off - Simple 4 days on, 4 days off</option>
+                                            <option value="dupont">DuPont - Complex 28-day cycle</option>
+                                        </select>
+                                    </div>
+                                    <div class="alert alert-info">
+                                        <i class="bi bi-info-circle"></i> <strong>Current Crew Assignments:</strong><br>
+                                        {% for crew, employees in employees_by_crew.items() %}
+                                            <strong>{{ crew }}:</strong> {{ employees|length }} employees<br>
+                                        {% endfor %}
+                                        <small class="text-muted">Employees will be automatically assigned to crews A, B, C, D if not already assigned.</small>
+                                    </div>
                                 </div>
                             </div>
 
@@ -458,6 +491,11 @@
         document.querySelectorAll('input[name="shift_pattern"]').forEach(radio => {
             radio.addEventListener('change', function() {
                 const shiftTimes = document.getElementById('shiftTimes');
+                const crewRotationOptions = document.getElementById('crewRotationOptions');
+                
+                // Hide crew rotation options by default
+                crewRotationOptions.classList.add('d-none');
+                
                 shiftTimes.innerHTML = '';
                 
                 switch(this.value) {
@@ -477,6 +515,13 @@
                         addShiftRow('Day Shift', '06:00', '14:00');
                         addShiftRow('Evening Shift', '14:00', '22:00');
                         addShiftRow('Night Shift', '22:00', '06:00');
+                        break;
+                    case 'four_crew':
+                        // Show crew rotation options
+                        crewRotationOptions.classList.remove('d-none');
+                        // Fixed 12-hour shifts for 4-crew rotation
+                        addShiftRow('Day Shift (7am-7pm)', '07:00', '19:00');
+                        addShiftRow('Night Shift (7pm-7am)', '19:00', '07:00');
                         break;
                     case 'custom':
                         addShiftRow('Shift 1', '09:00', '17:00');
