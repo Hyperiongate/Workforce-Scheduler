@@ -1143,14 +1143,124 @@ def debug_employees():
 def reset_passwords():
     """Reset all passwords to 'password123' for testing"""
     if request.args.get('confirm') != 'yes':
-        return 'Add ?confirm=yes to reset all passwords'
+        return '''
+        <h1>Password Reset</h1>
+        <p>This will reset ALL user passwords to 'password123'</p>
+        <p><a href="/reset-passwords?confirm=yes">Click here to confirm</a></p>
+        '''
     
-    employees = Employee.query.all()
-    for emp in employees:
-        emp.password = generate_password_hash('password123')
+    try:
+        employees = Employee.query.all()
+        count = 0
+        for emp in employees:
+            emp.password = generate_password_hash('password123')
+            count += 1
+        
+        db.session.commit()
+        
+        # List all employees with their emails
+        employee_list = '<br>'.join([f'{emp.name}: {emp.email}' for emp in employees])
+        
+        return f'''
+        <h1>Password Reset Complete</h1>
+        <p>Reset {count} passwords to "password123"</p>
+        <h3>Employees:</h3>
+        <p>{employee_list}</p>
+        <p><a href="/login">Go to Login</a></p>
+        '''
+    except Exception as e:
+        return f'Error resetting passwords: {str(e)}'
+
+@app.route('/create-test-employee')
+def create_test_employee():
+    """Create a test employee account"""
+    if request.args.get('confirm') != 'yes':
+        return '''
+        <h1>Create Test Employee</h1>
+        <p>This will create a test employee account:</p>
+        <ul>
+            <li>Email: test@example.com</li>
+            <li>Password: password123</li>
+        </ul>
+        <p><a href="/create-test-employee?confirm=yes">Click here to create</a></p>
+        '''
     
-    db.session.commit()
-    return f'Reset {len(employees)} passwords to "password123"'
+    try:
+        # Check if test employee already exists
+        existing = Employee.query.filter_by(email='test@example.com').first()
+        if existing:
+            existing.password = generate_password_hash('password123')
+            db.session.commit()
+            return '''
+            <h1>Test Employee Updated</h1>
+            <p>Password reset for test@example.com</p>
+            <p>Email: test@example.com</p>
+            <p>Password: password123</p>
+            <p><a href="/login">Go to Login</a></p>
+            '''
+        
+        # Create new test employee
+        test_emp = Employee(
+            name='Test Employee',
+            email='test@example.com',
+            password=generate_password_hash('password123'),
+            role='employee',
+            department='Testing',
+            vacation_days_total=15,
+            sick_days_total=10,
+            personal_days_total=3
+        )
+        db.session.add(test_emp)
+        db.session.commit()
+        
+        return '''
+        <h1>Test Employee Created</h1>
+        <p>Email: test@example.com</p>
+        <p>Password: password123</p>
+        <p><a href="/login">Go to Login</a></p>
+        '''
+    except Exception as e:
+        return f'Error creating test employee: {str(e)}'
+
+@app.route('/list-employees')
+def list_employees():
+    """List all employees in the database"""
+    try:
+        employees = Employee.query.all()
+        
+        if not employees:
+            return '''
+            <h1>No Employees Found</h1>
+            <p>The database appears to be empty.</p>
+            <p><a href="/migrate-database?confirm=yes">Initialize Database</a></p>
+            '''
+        
+        employee_html = '<table border="1" style="margin: 20px; padding: 10px;">'
+        employee_html += '<tr><th>ID</th><th>Name</th><th>Email</th><th>Role</th><th>Department</th></tr>'
+        
+        for emp in employees:
+            employee_html += f'''
+            <tr>
+                <td>{emp.id}</td>
+                <td>{emp.name}</td>
+                <td>{emp.email}</td>
+                <td>{emp.role}</td>
+                <td>{emp.department or 'N/A'}</td>
+            </tr>
+            '''
+        
+        employee_html += '</table>'
+        
+        return f'''
+        <h1>Employees in Database</h1>
+        {employee_html}
+        <br>
+        <p><a href="/reset-passwords">Reset All Passwords</a></p>
+        <p><a href="/create-test-employee">Create Test Employee</a></p>
+        <p><a href="/login">Go to Login</a></p>
+        '''
+    except Exception as e:
+        return f'Error listing employees: {str(e)}'
 
 @app.route('/migrate-database')
 def migrate_database():
