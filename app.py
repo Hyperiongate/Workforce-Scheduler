@@ -319,7 +319,10 @@ def dashboard():
     # Pending requests
     pending_requests_query = TimeOffRequest.query.filter_by(status='pending')
     if crew_filter is not None:
-        pending_requests_query = pending_requests_query.join(Employee).filter(crew_filter)
+        # Explicitly specify the join condition
+        pending_requests_query = pending_requests_query.join(
+            Employee, TimeOffRequest.employee_id == Employee.id
+        ).filter(crew_filter)
     crew_stats['pending_requests'] = pending_requests_query.count()
     
     # Coverage gaps in next 7 days
