@@ -981,6 +981,224 @@ def view_schedules():
                          end_date=end_date,
                          selected_crew=crew)
 
+# ==================== DATABASE INITIALIZATION ROUTES ====================
+
+@app.route('/init-db')
+def init_db():
+    """Initialize database with all tables"""
+    with app.app_context():
+        db.create_all()
+        
+        # Check if admin exists
+        admin = Employee.query.filter_by(email='admin@workforce.com').first()
+        if not admin:
+            admin = Employee(
+                name='Admin User',
+                email='admin@workforce.com',
+                is_supervisor=True,
+                crew='A',
+                vacation_days=20,
+                sick_days=10,
+                personal_days=5
+            )
+            admin.set_password('admin123')
+            db.session.add(admin)
+            
+            # Create some default positions
+            positions = [
+                Position(name='Nurse', department='Healthcare', min_coverage=2),
+                Position(name='Security Officer', department='Security', min_coverage=1),
+                Position(name='Technician', department='Operations', min_coverage=3),
+                Position(name='Customer Service', department='Support', min_coverage=2)
+            ]
+            for pos in positions:
+                db.session.add(pos)
+            
+            # Create some default skills
+            skills = [
+                Skill(name='CPR Certified', category='Medical', requires_certification=True),
+                Skill(name='First Aid', category='Medical', requires_certification=True),
+                Skill(name='Security Clearance', category='Security', requires_certification=True),
+                Skill(name='Emergency Response', category='General'),
+                Skill(name='Equipment Operation', category='Technical')
+            ]
+            for skill in skills:
+                db.session.add(skill)
+            
+            db.session.commit()
+        
+        return '''
+        <h2>Database Initialized!</h2>
+        <p>Admin account created:</p>
+        <ul>
+            <li>Email: admin@workforce.com</li>
+            <li>Password: admin123</li>
+        </ul>
+        <p><a href="/login">Go to login</a></p>
+        '''
+
+@app.route('/add-coverage-tables')
+def add_coverage_tables():
+    """Add the new coverage notification and overtime tables"""
+    if request.args.get('confirm') != 'yes':
+        return '''
+        <h2>Add Coverage Tables</h2>
+        <p>This will add the CoverageNotification and OvertimeOpportunity tables to your database.</p>
+        <p>These tables enable:</p>
+        <ul>
+            <li>Push notifications for coverage needs</li>
+            <li>Smart overtime distribution</li>
+            <li>Employee response tracking</li>
+        </ul>
+        <p><a href="/add-coverage-tables?confirm=yes" class="btn btn-primary">Click here to confirm</a></p>
+        '''
+    
+    try:
+        # Create all tables (this will only add new ones)
+        db.create_all()
+        return '''
+        <h2>Success!</h2>
+        <p>Coverage notification and overtime tables have been added to the database.</p>
+        <p>New features available:</p>
+        <ul>
+            <li>Coverage push notifications</li>
+            <li>Overtime opportunity management</li>
+            <li>Smart crew distribution</li>
+        </ul>
+        <p><a href="/">Return to home</a></p>
+        '''
+    except Exception as e:
+        return f'<h2>Error</h2><p>Failed to add tables: {str(e)}</p>'
+
+@app.route('/create-demo-data')
+def create_demo_data():
+    """Create demo data for testing"""
+    if request.args.get('confirm') != 'yes':
+        return '''
+        <h2>Create Demo Data</h2>
+        <p>This will populate your database with sample data for testing:</p>
+        <ul>
+            <li>40 employees across 4 crews (A, B, C, D)</li>
+            <li>Various positions and skills</li>
+            <li>Sample schedules</li>
+            <li>Some time-off requests</li>
+        </ul>
+        <p><strong>Warning:</strong> This should only be run on a test database!</p>
+        <p><a href="/create-demo-data?confirm=yes">Click here to confirm</a></p>
+        '''
+    
+    try:
+        # Create positions if they don't exist
+        positions = {
+            'Nurse': Position(name='Nurse', department='Healthcare', min_coverage=2),
+            'Security Officer': Position(name='Security Officer', department='Security', min_coverage=1),
+            'Technician': Position(name='Technician', department='Operations', min_coverage=3),
+            'Customer Service': Position(name='Customer Service', department='Support', min_coverage=2)
+        }
+        
+        for pos_name, pos in positions.items():
+            existing = Position.query.filter_by(name=pos_name).first()
+            if not existing:
+                db.session.add(pos)
+        
+        db.session.flush()
+        
+        # Refresh positions dict with actual database objects
+        positions = {p.name: p for p in Position.query.all()}
+        
+        # Create skills if they don't exist
+        skills = {
+            'CPR Certified': Skill(name='CPR Certified', category='Medical', requires_certification=True),
+            'First Aid': Skill(name='First Aid', category='Medical', requires_certification=True),
+            'Security Clearance': Skill(name='Security Clearance', category='Security', requires_certification=True),
+            'Emergency Response': Skill(name='Emergency Response', category='General'),
+            'Equipment Operation': Skill(name='Equipment Operation', category='Technical')
+        }
+        
+        for skill_name, skill in skills.items():
+            existing = Skill.query.filter_by(name=skill_name).first()
+            if not existing:
+                db.session.add(skill)
+        
+        db.session.flush()
+        
+        # Refresh skills dict
+        skills = {s.name: s for s in Skill.query.all()}
+        
+        # Create 40 employees (10 per crew)
+        crews = ['A', 'B', 'C', 'D']
+        created_employees = 0
+        
+        for crew in crews:
+            for i in range(10):
+                email = f'{crew.lower()}{i+1}@workforce.com'
+                existing = Employee.query.filter_by(email=email).first()
+                
+                if not existing:
+                    employee = Employee(
+                        name=f'{crew} Employee {i+1}',
+                        email=email,
+                        phone=f'555-{crew}{i:03d}',
+                        crew=crew,
+                        is_supervisor=(i == 0),  # First employee in each crew is supervisor
+                        vacation_days=10,
+                        sick_days=5,
+                        personal_days=3,
+                        hire_date=date.today() - timedelta(days=365 + i*30)
+                    )
+                    employee.set_password('password123')
+                    
+                    # Assign position
+                    if i < 3:
+                        employee.position = positions['Nurse']
+                        employee.skills.append(skills['CPR Certified'])
+                        employee.skills.append(skills['First Aid'])
+                    elif i < 5:
+                        employee.position = positions['Security Officer']
+                        employee.skills.append(skills['Security Clearance'])
+                        employee.skills.append(skills['Emergency Response'])
+                    elif i < 8:
+                        employee.position = positions['Technician']
+                        employee.skills.append(skills['Equipment Operation'])
+                    else:
+                        employee.position = positions['Customer Service']
+                        employee.skills.append(skills['Emergency Response'])
+                    
+                    db.session.add(employee)
+                    created_employees += 1
+                    
+                    # Create circadian profile
+                    profile = CircadianProfile(
+                        employee_id=employee.id,
+                        chronotype='intermediate',
+                        current_shift_type='day' if crew in ['A', 'B'] else 'night',
+                        days_on_current_pattern=30,
+                        circadian_adaptation_score=75.0
+                    )
+                    db.session.add(profile)
+        
+        db.session.commit()
+        
+        return f'''
+        <h2>Success!</h2>
+        <p>Demo data created:</p>
+        <ul>
+            <li>{created_employees} employees created across 4 crews</li>
+            <li>Positions and skills assigned</li>
+            <li>Circadian profiles initialized</li>
+        </ul>
+        <p>Login credentials for all demo employees:</p>
+        <ul>
+            <li>Email format: [crew][number]@workforce.com (e.g., a1@workforce.com)</li>
+            <li>Password: password123</li>
+        </ul>
+        <p><a href="/login">Go to login</a></p>
+        '''
+        
+    except Exception as e:
+        db.session.rollback()
+        return f'<h2>Error</h2><p>Failed to create demo data: {str(e)}</p>'
+
 # ==================== HELPER FUNCTIONS ====================
 
 def get_coverage_gaps(crew='ALL', days_ahead=7):
@@ -1210,4 +1428,7 @@ def report_absence():
         'message': f'Absence reported for {employee_name}. Coverage request created.'
     })
 
-# Continue with remaining routes...
+if __name__ == '__main__':
+    with app.app_context():
+        db.create_all()
+    app.run(debug=True)
