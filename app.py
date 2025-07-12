@@ -1779,5 +1779,199 @@ def internal_error(error):
 
 # ==================== MAIN ====================
 
-if __name__ == '__main__':
-    app.run(debug=True)
+@app.route('/populate-crews')
+def populate_crews():
+    """Populate database with 4 complete crews for development"""
+    if request.args.get('confirm') != 'yes':
+        return '''
+        <h2>🏗️ Populate 4 Crews for Development</h2>
+        <p>This will create <strong>40 employees</strong> (10 per crew) with:</p>
+        <ul>
+            <li><strong>Crew A:</strong> 10 employees (Day shift preference)</li>
+            <li><strong>Crew B:</strong> 10 employees (Day shift preference)</li>
+            <li><strong>Crew C:</strong> 10 employees (Night shift preference)</li>
+            <li><strong>Crew D:</strong> 10 employees (Night shift preference)</li>
+        </ul>
+        <p>Each crew will have:</p>
+        <ul>
+            <li>1 Crew Lead (supervisor)</li>
+            <li>3 Nurses</li>
+            <li>2 Security Officers</li>
+            <li>2 Technicians</li>
+            <li>2 Customer Service Representatives</li>
+        </ul>
+        <p><strong>Login credentials:</strong></p>
+        <ul>
+            <li>Email format: [name].[lastname]@company.com</li>
+            <li>Password: password123 (for all)</li>
+        </ul>
+        <p><a href="/populate-crews?confirm=yes" class="btn btn-primary" onclick="return confirm('Create 40 employees across 4 crews?')">Yes, Populate Crews</a></p>
+        <p><a href="/dashboard" class="btn btn-secondary">Cancel</a></p>
+        '''
+    
+    try:
+        # Get positions (assuming they exist from init-db)
+        nurse = Position.query.filter_by(name='Nurse').first()
+        security = Position.query.filter_by(name='Security Officer').first()
+        tech = Position.query.filter_by(name='Technician').first()
+        customer_service = Position.query.filter_by(name='Customer Service').first()
+        
+        # Get skills
+        skills = {
+            'cpr': Skill.query.filter_by(name='CPR Certified').first(),
+            'first_aid': Skill.query.filter_by(name='First Aid').first(),
+            'security': Skill.query.filter_by(name='Security Clearance').first(),
+            'emergency': Skill.query.filter_by(name='Emergency Response').first(),
+            'equipment': Skill.query.filter_by(name='Equipment Operation').first()
+        }
+        
+        # Employee data for each crew
+        crew_templates = {
+            'A': {
+                'shift_preference': 'day',
+                'employees': [
+                    {'name': 'Alice Anderson', 'email': 'alice.anderson@company.com', 'position': nurse, 'is_supervisor': True, 'skills': ['cpr', 'first_aid', 'emergency']},
+                    {'name': 'Adam Martinez', 'email': 'adam.martinez@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid']},
+                    {'name': 'Angela Brown', 'email': 'angela.brown@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid', 'emergency']},
+                    {'name': 'Andrew Wilson', 'email': 'andrew.wilson@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid']},
+                    {'name': 'Amanda Davis', 'email': 'amanda.davis@company.com', 'position': security, 'skills': ['security', 'emergency']},
+                    {'name': 'Aaron Johnson', 'email': 'aaron.johnson@company.com', 'position': security, 'skills': ['security', 'first_aid']},
+                    {'name': 'Anna Miller', 'email': 'anna.miller@company.com', 'position': tech, 'skills': ['equipment', 'emergency']},
+                    {'name': 'Alex Thompson', 'email': 'alex.thompson@company.com', 'position': tech, 'skills': ['equipment']},
+                    {'name': 'Amy Garcia', 'email': 'amy.garcia@company.com', 'position': customer_service, 'skills': ['emergency']},
+                    {'name': 'Anthony Lee', 'email': 'anthony.lee@company.com', 'position': customer_service, 'skills': ['first_aid']}
+                ]
+            },
+            'B': {
+                'shift_preference': 'day',
+                'employees': [
+                    {'name': 'Barbara Bennett', 'email': 'barbara.bennett@company.com', 'position': nurse, 'is_supervisor': True, 'skills': ['cpr', 'first_aid', 'emergency']},
+                    {'name': 'Brian Clark', 'email': 'brian.clark@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid']},
+                    {'name': 'Betty Rodriguez', 'email': 'betty.rodriguez@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid', 'emergency']},
+                    {'name': 'Benjamin Lewis', 'email': 'benjamin.lewis@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid']},
+                    {'name': 'Brenda Walker', 'email': 'brenda.walker@company.com', 'position': security, 'skills': ['security', 'emergency']},
+                    {'name': 'Blake Hall', 'email': 'blake.hall@company.com', 'position': security, 'skills': ['security', 'first_aid']},
+                    {'name': 'Bonnie Allen', 'email': 'bonnie.allen@company.com', 'position': tech, 'skills': ['equipment', 'emergency']},
+                    {'name': 'Bruce Young', 'email': 'bruce.young@company.com', 'position': tech, 'skills': ['equipment']},
+                    {'name': 'Brittany King', 'email': 'brittany.king@company.com', 'position': customer_service, 'skills': ['emergency']},
+                    {'name': 'Bradley Wright', 'email': 'bradley.wright@company.com', 'position': customer_service, 'skills': ['first_aid']}
+                ]
+            },
+            'C': {
+                'shift_preference': 'night',
+                'employees': [
+                    {'name': 'Carol Campbell', 'email': 'carol.campbell@company.com', 'position': nurse, 'is_supervisor': True, 'skills': ['cpr', 'first_aid', 'emergency']},
+                    {'name': 'Charles Parker', 'email': 'charles.parker@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid']},
+                    {'name': 'Christine Evans', 'email': 'christine.evans@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid', 'emergency']},
+                    {'name': 'Christopher Turner', 'email': 'christopher.turner@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid']},
+                    {'name': 'Cynthia Collins', 'email': 'cynthia.collins@company.com', 'position': security, 'skills': ['security', 'emergency']},
+                    {'name': 'Craig Edwards', 'email': 'craig.edwards@company.com', 'position': security, 'skills': ['security', 'first_aid']},
+                    {'name': 'Catherine Stewart', 'email': 'catherine.stewart@company.com', 'position': tech, 'skills': ['equipment', 'emergency']},
+                    {'name': 'Carl Sanchez', 'email': 'carl.sanchez@company.com', 'position': tech, 'skills': ['equipment']},
+                    {'name': 'Cheryl Morris', 'email': 'cheryl.morris@company.com', 'position': customer_service, 'skills': ['emergency']},
+                    {'name': 'Chad Rogers', 'email': 'chad.rogers@company.com', 'position': customer_service, 'skills': ['first_aid']}
+                ]
+            },
+            'D': {
+                'shift_preference': 'night',
+                'employees': [
+                    {'name': 'Diana Davidson', 'email': 'diana.davidson@company.com', 'position': nurse, 'is_supervisor': True, 'skills': ['cpr', 'first_aid', 'emergency']},
+                    {'name': 'David Foster', 'email': 'david.foster@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid']},
+                    {'name': 'Deborah Murphy', 'email': 'deborah.murphy@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid', 'emergency']},
+                    {'name': 'Daniel Rivera', 'email': 'daniel.rivera@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid']},
+                    {'name': 'Donna Cook', 'email': 'donna.cook@company.com', 'position': security, 'skills': ['security', 'emergency']},
+                    {'name': 'Dennis Morgan', 'email': 'dennis.morgan@company.com', 'position': security, 'skills': ['security', 'first_aid']},
+                    {'name': 'Dorothy Peterson', 'email': 'dorothy.peterson@company.com', 'position': tech, 'skills': ['equipment', 'emergency']},
+                    {'name': 'Douglas Cooper', 'email': 'douglas.cooper@company.com', 'position': tech, 'skills': ['equipment']},
+                    {'name': 'Denise Bailey', 'email': 'denise.bailey@company.com', 'position': customer_service, 'skills': ['emergency']},
+                    {'name': 'Derek Reed', 'email': 'derek.reed@company.com', 'position': customer_service, 'skills': ['first_aid']}
+                ]
+            }
+        }
+        
+        created_count = 0
+        
+        for crew_letter, crew_data in crew_templates.items():
+            for emp_data in crew_data['employees']:
+                # Check if employee already exists
+                existing = Employee.query.filter_by(email=emp_data['email']).first()
+                if existing:
+                    continue
+                
+                # Create employee
+                employee = Employee(
+                    name=emp_data['name'],
+                    email=emp_data['email'],
+                    phone=f'555-{crew_letter}{str(created_count).zfill(3)}',
+                    is_supervisor=emp_data.get('is_supervisor', False),
+                    position_id=emp_data['position'].id if emp_data['position'] else None,
+                    crew=crew_letter,
+                    shift_pattern=crew_data['shift_preference'],
+                    hire_date=date.today() - timedelta(days=365),  # 1 year ago
+                    vacation_days=10,
+                    sick_days=5,
+                    personal_days=3
+                )
+                
+                # Set password
+                employee.set_password('password123')
+                
+                # Add skills
+                for skill_key in emp_data.get('skills', []):
+                    if skill_key in skills and skills[skill_key]:
+                        employee.skills.append(skills[skill_key])
+                
+                db.session.add(employee)
+                created_count += 1
+                
+                # Create circadian profile
+                profile = CircadianProfile(
+                    employee_id=employee.id,
+                    chronotype='morning' if crew_data['shift_preference'] == 'day' else 'evening',
+                    current_shift_type=crew_data['shift_preference'],
+                    preferred_shift=crew_data['shift_preference']
+                )
+                db.session.add(profile)
+        
+        db.session.commit()
+        
+        return f'''
+        <h2>✅ Crews Populated Successfully!</h2>
+        <p><strong>{created_count} employees</strong> have been created across 4 crews.</p>
+        
+        <h3>Crew Supervisors (can approve requests):</h3>
+        <ul>
+            <li><strong>Crew A:</strong> Alice Anderson (alice.anderson@company.com)</li>
+            <li><strong>Crew B:</strong> Barbara Bennett (barbara.bennett@company.com)</li>
+            <li><strong>Crew C:</strong> Carol Campbell (carol.campbell@company.com)</li>
+            <li><strong>Crew D:</strong> Diana Davidson (diana.davidson@company.com)</li>
+        </ul>
+        
+        <h3>Sample Regular Employees:</h3>
+        <ul>
+            <li><strong>Nurse:</strong> Adam Martinez (adam.martinez@company.com)</li>
+            <li><strong>Security:</strong> Amanda Davis (amanda.davis@company.com)</li>
+            <li><strong>Technician:</strong> Anna Miller (anna.miller@company.com)</li>
+            <li><strong>Customer Service:</strong> Amy Garcia (amy.garcia@company.com)</li>
+        </ul>
+        
+        <p><strong>All passwords:</strong> password123</p>
+        
+        <h3>Next Steps:</h3>
+        <ol>
+            <li><a href="/schedule/create" class="btn btn-primary">Create Schedules</a> - Set up shifts for your crews</li>
+            <li><a href="/schedule/view" class="btn btn-info">View Schedules</a> - See crew assignments</li>
+            <li><a href="/logout" class="btn btn-warning">Logout</a> - Try logging in as an employee</li>
+        </ol>
+        
+        <p><a href="/dashboard" class="btn btn-success">Return to Dashboard</a></p>
+        '''
+        
+    except Exception as e:
+        db.session.rollback()
+        return f'''
+        <h2>❌ Error Populating Crews</h2>
+        <p>An error occurred: {str(e)}</p>
+        <p>Make sure you've run <a href="/init-db">/init-db</a> first to create positions and skills.</p>
+        <p><a href="/dashboard" class="btn btn-secondary">Return to Dashboard</a></p>
+        '''
