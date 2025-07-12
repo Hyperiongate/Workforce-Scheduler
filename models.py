@@ -42,13 +42,18 @@ class Employee(UserMixin, db.Model):
     skills = db.relationship('Skill', secondary=employee_skills, backref='employees')
     schedules = db.relationship('Schedule', backref='employee', lazy='dynamic')
     availability = db.relationship('Availability', backref='employee', lazy='dynamic')
-    time_off_requests = db.relationship('TimeOffRequest', backref='employee', lazy='dynamic')
+    time_off_requests = db.relationship('TimeOffRequest', backref='employee', lazy='dynamic',
+                                       foreign_keys='TimeOffRequest.employee_id')
     coverage_requests = db.relationship('CoverageRequest', backref='requester', lazy='dynamic', 
                                       foreign_keys='CoverageRequest.requester_id')
     circadian_profile = db.relationship('CircadianProfile', backref='employee', uselist=False, 
                                       cascade='all, delete-orphan')
     sleep_logs = db.relationship('SleepLog', backref='employee', lazy='dynamic', 
                                cascade='all, delete-orphan')
+    trade_posts = db.relationship('ShiftTradePost', backref='poster', lazy='dynamic',
+                                foreign_keys='ShiftTradePost.poster_id')
+    trade_proposals = db.relationship('ShiftTradeProposal', backref='proposer', lazy='dynamic',
+                                    foreign_keys='ShiftTradeProposal.proposer_id')
     
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -134,7 +139,8 @@ class TimeOffRequest(db.Model):
     days_requested = db.Column(db.Float)
     
     # Relationships
-    reviewed_by = db.relationship('Employee', foreign_keys=[reviewed_by_id])
+    reviewed_by = db.relationship('Employee', foreign_keys=[reviewed_by_id], 
+                                backref='reviewed_time_off_requests')
 
 class VacationCalendar(db.Model):
     id = db.Column(db.Integer, primary_key=True)
