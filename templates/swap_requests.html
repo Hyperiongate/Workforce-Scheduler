@@ -5,25 +5,70 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Review Swap Requests - Workforce Scheduler</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
+    <style>
+        .approval-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+        }
+        .approval-pending {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+        .approval-approved {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .approval-denied {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .crew-badge {
+            font-weight: bold;
+            padding: 0.25rem 0.5rem;
+        }
+        .skill-match-indicator {
+            font-size: 1.2rem;
+        }
+        .swap-arrow {
+            font-size: 2rem;
+            color: #0d6efd;
+        }
+    </style>
 </head>
 <body>
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
         <div class="container-fluid">
-            <a class="navbar-brand" href="/">Workforce Scheduler</a>
+            <a class="navbar-brand" href="/dashboard">
+                <i class="bi bi-speedometer2"></i> Supervisor Dashboard
+            </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto">
+                <ul class="navbar-nav">
                     <li class="nav-item">
                         <a class="nav-link" href="/dashboard">Dashboard</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link active" href="/supervisor/swap-requests">Swap Requests</a>
+                        <a class="nav-link active" href="/supervisor/swap-requests">
+                            <i class="bi bi-arrow-left-right"></i> Swap Requests
+                        </a>
+                    </li>
+                </ul>
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <span class="navbar-text text-white me-3">
+                            <i class="bi bi-person-badge"></i> {{ current_user.name }}
+                            <span class="badge bg-warning text-dark">Crew {{ current_user.crew }}</span>
+                        </span>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="/supervisor/suggestions">Suggestions</a>
+                        <a class="nav-link" href="/logout">Logout</a>
                     </li>
                 </ul>
             </div>
@@ -31,7 +76,8 @@
     </nav>
 
     <div class="container-fluid mt-4">
-        <h2><i class="bi bi-arrow-left-right"></i> Pending Shift Swap Requests</h2>
+        <h2><i class="bi bi-arrow-left-right"></i> Shift Swap Requests</h2>
+        <p class="text-muted">Review and approve shift swaps. Both supervisors must approve for swaps between crews.</p>
         
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
@@ -44,96 +90,253 @@
             {% endif %}
         {% endwith %}
 
+        <!-- Pending Swap Requests -->
         <div class="row mt-4">
             <div class="col-12">
-                {% if swap_requests %}
-                    {% for swap in swap_requests %}
-                    <div class="card mb-3">
-                        <div class="card-header">
-                            <h5 class="mb-0">
-                                Swap Request #{{ swap.id }} 
-                                <span class="badge bg-warning float-end">Pending Review</span>
-                            </h5>
-                        </div>
-                        <div class="card-body">
-                            <div class="row">
-                                <div class="col-md-5">
-                                    <h6>Requester</h6>
-                                    <p><strong>{{ swap.requester.name }}</strong></p>
-                                    <p>Current Shift:<br>
-                                    <i class="bi bi-calendar"></i> {{ swap.requester_schedule.date.strftime('%A, %b %d') }}<br>
-                                    <i class="bi bi-clock"></i> {{ swap.requester_schedule.start_time.strftime('%I:%M %p') }} - 
-                                    {{ swap.requester_schedule.end_time.strftime('%I:%M %p') }}<br>
-                                    <i class="bi bi-briefcase"></i> {{ swap.requester_schedule.position.name }}</p>
-                                </div>
-                                
-                                <div class="col-md-2 text-center align-self-center">
-                                    <i class="bi bi-arrow-left-right display-4 text-primary"></i>
-                                </div>
-                                
-                                <div class="col-md-5">
-                                    <h6>Target Employee</h6>
-                                    <p><strong>{{ swap.target_employee.name }}</strong></p>
-                                    <p>Their Shift:<br>
-                                    <i class="bi bi-calendar"></i> {{ swap.target_schedule.date.strftime('%A, %b %d') }}<br>
-                                    <i class="bi bi-clock"></i> {{ swap.target_schedule.start_time.strftime('%I:%M %p') }} - 
-                                    {{ swap.target_schedule.end_time.strftime('%I:%M %p') }}<br>
-                                    <i class="bi bi-briefcase"></i> {{ swap.target_schedule.position.name }}</p>
-                                </div>
-                            </div>
-                            
-                            {% if swap.reason %}
-                            <div class="mt-3">
-                                <h6>Reason:</h6>
-                                <p class="text-muted">{{ swap.reason }}</p>
-                            </div>
+                <div class="card">
+                    <div class="card-header bg-warning">
+                        <h5 class="mb-0 text-dark">
+                            <i class="bi bi-hourglass-split"></i> Pending Swap Requests
+                            {% if pending_swaps %}
+                            <span class="badge bg-danger float-end">{{ pending_swaps|length }}</span>
                             {% endif %}
-                            
-                            <div class="mt-3">
-                                <h6>Skills Check:</h6>
-                                {% set requester_skills = swap.requester.skills %}
-                                {% set target_skills = swap.target_employee.skills %}
-                                {% if requester_skills and target_skills %}
-                                    <span class="badge bg-success">
-                                        <i class="bi bi-check-circle"></i> Both employees have required skills
-                                    </span>
-                                {% else %}
-                                    <span class="badge bg-warning">
-                                        <i class="bi bi-exclamation-triangle"></i> Skills mismatch - review carefully
-                                    </span>
-                                {% endif %}
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        {% if pending_swaps %}
+                            {% for swap in pending_swaps %}
+                            <div class="card mb-3 border-warning">
+                                <div class="card-header bg-light">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <h6 class="mb-0">
+                                            Swap Request #{{ swap.id }}
+                                            <small class="text-muted ms-2">{{ swap.created_at.strftime('%b %d at %I:%M %p') }}</small>
+                                        </h6>
+                                        <div>
+                                            <!-- Approval Status Indicators -->
+                                            <span class="approval-status {{ 'approval-approved' if swap.requester_supervisor_approved else 'approval-pending' }}">
+                                                <i class="bi bi-person-badge"></i> 
+                                                Crew {{ swap.requester.crew }} Supervisor
+                                                {% if swap.requester_supervisor_approved %}
+                                                    <i class="bi bi-check-circle-fill"></i>
+                                                {% else %}
+                                                    <i class="bi bi-clock"></i>
+                                                {% endif %}
+                                            </span>
+                                            
+                                            {% if swap.target_employee and swap.target_employee.crew != swap.requester.crew %}
+                                            <span class="approval-status {{ 'approval-approved' if swap.target_supervisor_approved else 'approval-pending' }} ms-2">
+                                                <i class="bi bi-person-badge"></i> 
+                                                Crew {{ swap.target_employee.crew }} Supervisor
+                                                {% if swap.target_supervisor_approved %}
+                                                    <i class="bi bi-check-circle-fill"></i>
+                                                {% else %}
+                                                    <i class="bi bi-clock"></i>
+                                                {% endif %}
+                                            </span>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="card-body">
+                                    <div class="row align-items-center">
+                                        <!-- Requester Info -->
+                                        <div class="col-md-5">
+                                            <div class="p-3 bg-light rounded">
+                                                <h6 class="mb-2">
+                                                    <i class="bi bi-person-fill"></i> {{ swap.requester.name }}
+                                                    <span class="badge bg-primary crew-badge">Crew {{ swap.requester.crew }}</span>
+                                                </h6>
+                                                <p class="mb-1"><strong>Wants to give up:</strong></p>
+                                                <ul class="list-unstyled mb-0">
+                                                    <li><i class="bi bi-calendar"></i> {{ swap.original_schedule.date.strftime('%A, %b %d') }}</li>
+                                                    <li><i class="bi bi-clock"></i> {{ swap.original_schedule.shift_type|title }} Shift</li>
+                                                    <li><i class="bi bi-briefcase"></i> {{ swap.original_schedule.position.name if swap.original_schedule.position else 'TBD' }}</li>
+                                                </ul>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- Swap Arrow -->
+                                        <div class="col-md-2 text-center">
+                                            <i class="bi bi-arrow-left-right swap-arrow"></i>
+                                        </div>
+                                        
+                                        <!-- Target Info -->
+                                        <div class="col-md-5">
+                                            {% if swap.target_employee %}
+                                            <div class="p-3 bg-light rounded">
+                                                <h6 class="mb-2">
+                                                    <i class="bi bi-person-fill"></i> {{ swap.target_employee.name }}
+                                                    <span class="badge bg-primary crew-badge">Crew {{ swap.target_employee.crew }}</span>
+                                                </h6>
+                                                {% if swap.target_schedule %}
+                                                <p class="mb-1"><strong>Wants to give up:</strong></p>
+                                                <ul class="list-unstyled mb-0">
+                                                    <li><i class="bi bi-calendar"></i> {{ swap.target_schedule.date.strftime('%A, %b %d') }}</li>
+                                                    <li><i class="bi bi-clock"></i> {{ swap.target_schedule.shift_type|title }} Shift</li>
+                                                    <li><i class="bi bi-briefcase"></i> {{ swap.target_schedule.position.name if swap.target_schedule.position else 'TBD' }}</li>
+                                                </ul>
+                                                {% else %}
+                                                <p class="text-muted mb-0">Will take the shift (no swap back)</p>
+                                                {% endif %}
+                                            </div>
+                                            {% else %}
+                                            <div class="p-3 bg-secondary text-white rounded">
+                                                <h6 class="mb-2"><i class="bi bi-question-circle"></i> Open Swap</h6>
+                                                <p class="mb-0">Looking for anyone to take this shift</p>
+                                            </div>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Skills Check -->
+                                    <div class="mt-3">
+                                        <div class="alert alert-info py-2">
+                                            <i class="bi bi-tools"></i> <strong>Skills Check:</strong>
+                                            {% if swap.requester.can_work_position(swap.target_schedule.position if swap.target_schedule else swap.original_schedule.position) %}
+                                                <span class="text-success ms-2">
+                                                    <i class="bi bi-check-circle-fill skill-match-indicator"></i> Skills match - Swap is safe
+                                                </span>
+                                            {% else %}
+                                                <span class="text-danger ms-2">
+                                                    <i class="bi bi-exclamation-triangle-fill skill-match-indicator"></i> Skills mismatch - Review carefully
+                                                </span>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                    
+                                    {% if swap.reason %}
+                                    <div class="mb-3">
+                                        <strong>Reason:</strong> {{ swap.reason }}
+                                    </div>
+                                    {% endif %}
+                                    
+                                    <!-- Your Action Required -->
+                                    {% set is_requester_supervisor = swap.requester.crew == current_user.crew %}
+                                    {% set is_target_supervisor = swap.target_employee and swap.target_employee.crew == current_user.crew %}
+                                    {% set needs_your_approval = (is_requester_supervisor and not swap.requester_supervisor_approved) or (is_target_supervisor and not swap.target_supervisor_approved) %}
+                                    
+                                    {% if needs_your_approval %}
+                                    <div class="border-top pt-3">
+                                        <form method="POST" class="row g-3">
+                                            <div class="col-12">
+                                                <div class="alert alert-warning mb-3">
+                                                    <i class="bi bi-exclamation-circle"></i> 
+                                                    <strong>Your approval required</strong> for 
+                                                    {% if is_requester_supervisor and not swap.requester_supervisor_approved %}
+                                                        {{ swap.requester.name }} (your crew member)
+                                                    {% endif %}
+                                                    {% if is_target_supervisor and not swap.target_supervisor_approved %}
+                                                        {{ swap.target_employee.name }} (your crew member)
+                                                    {% endif %}
+                                                </div>
+                                            </div>
+                                            
+                                            <div class="col-md-8">
+                                                <label for="notes_{{ swap.id }}" class="form-label">Supervisor Notes (Optional)</label>
+                                                <input type="text" class="form-control" id="notes_{{ swap.id }}" name="notes" 
+                                                       placeholder="Add any notes about this decision">
+                                            </div>
+                                            <div class="col-md-4 text-end">
+                                                <button type="submit" formaction="/swap-request/{{ swap.id }}/approve" 
+                                                        class="btn btn-success">
+                                                    <i class="bi bi-check-circle"></i> Approve
+                                                </button>
+                                                <button type="submit" formaction="/swap-request/{{ swap.id }}/deny" 
+                                                        class="btn btn-danger">
+                                                    <i class="bi bi-x-circle"></i> Deny
+                                                </button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                    {% else %}
+                                    <div class="alert alert-info mb-0">
+                                        <i class="bi bi-info-circle"></i> 
+                                        {% if is_requester_supervisor %}
+                                            You have already approved for {{ swap.requester.name }}.
+                                        {% elif is_target_supervisor %}
+                                            You have already approved for {{ swap.target_employee.name }}.
+                                        {% else %}
+                                            This swap is between other crews. No action required from you.
+                                        {% endif %}
+                                        Waiting for other supervisor's approval.
+                                    </div>
+                                    {% endif %}
+                                </div>
                             </div>
-                            
-                            <hr>
-                            
-                            <form method="POST" class="row g-3">
-                                <div class="col-md-8">
-                                    <label for="notes_{{ swap.id }}" class="form-label">Supervisor Notes (Optional)</label>
-                                    <input type="text" class="form-control" id="notes_{{ swap.id }}" name="notes" 
-                                           placeholder="Add any notes about this decision">
-                                </div>
-                                <div class="col-md-4 text-end">
-                                    <button type="submit" formaction="/supervisor/swap-request/{{ swap.id }}/approve" 
-                                            class="btn btn-success">
-                                        <i class="bi bi-check-circle"></i> Approve Swap
-                                    </button>
-                                    <button type="submit" formaction="/supervisor/swap-request/{{ swap.id }}/deny" 
-                                            class="btn btn-danger">
-                                        <i class="bi bi-x-circle"></i> Deny
-                                    </button>
-                                </div>
-                            </form>
-                        </div>
-                        <div class="card-footer text-muted">
-                            Submitted {{ swap.created_at.strftime('%B %d at %I:%M %p') }}
-                        </div>
+                            {% endfor %}
+                        {% else %}
+                            <div class="text-center text-muted py-5">
+                                <i class="bi bi-check-circle" style="font-size: 3rem;"></i>
+                                <p class="mt-2">No pending swap requests at this time</p>
+                            </div>
+                        {% endif %}
                     </div>
-                    {% endfor %}
-                {% else %}
-                    <div class="alert alert-info">
-                        <i class="bi bi-info-circle"></i> No pending swap requests at this time.
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Swap Decisions -->
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="bi bi-clock-history"></i> Recent Swap Decisions
+                        </h5>
                     </div>
-                {% endif %}
+                    <div class="card-body">
+                        {% if recent_swaps %}
+                            <div class="table-responsive">
+                                <table class="table table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Date</th>
+                                            <th>Requester</th>
+                                            <th>Target</th>
+                                            <th>Status</th>
+                                            <th>Approved By</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for swap in recent_swaps %}
+                                        <tr>
+                                            <td>{{ swap.created_at.strftime('%b %d') }}</td>
+                                            <td>
+                                                {{ swap.requester.name }}
+                                                <span class="badge bg-secondary">{{ swap.requester.crew }}</span>
+                                            </td>
+                                            <td>
+                                                {% if swap.target_employee %}
+                                                    {{ swap.target_employee.name }}
+                                                    <span class="badge bg-secondary">{{ swap.target_employee.crew }}</span>
+                                                {% else %}
+                                                    <span class="text-muted">Open</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                <span class="badge bg-{{ 'success' if swap.status == 'approved' else 'danger' }}">
+                                                    {{ swap.status|title }}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                {% if swap.requester_supervisor %}
+                                                    <small>{{ swap.requester_supervisor.name }}</small><br>
+                                                {% endif %}
+                                                {% if swap.target_supervisor %}
+                                                    <small>{{ swap.target_supervisor.name }}</small>
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        {% else %}
+                            <p class="text-muted text-center">No recent swap decisions</p>
+                        {% endif %}
+                    </div>
+                </div>
             </div>
         </div>
     </div>
