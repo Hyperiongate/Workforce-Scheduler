@@ -1738,9 +1738,21 @@ def reset_db():
     
     try:
         with app.app_context():
-            # Drop all tables
-            db.drop_all()
-            # Recreate all tables with correct schema
+            # For PostgreSQL, we need to drop tables with CASCADE
+            from sqlalchemy import text
+            
+            # Get the database engine
+            engine = db.engine
+            
+            # Drop all tables using raw SQL with CASCADE
+            with engine.connect() as conn:
+                # First, drop all tables in the public schema
+                conn.execute(text("DROP SCHEMA public CASCADE"))
+                conn.execute(text("CREATE SCHEMA public"))
+                conn.execute(text("GRANT ALL ON SCHEMA public TO public"))
+                conn.commit()
+            
+            # Now recreate all tables with correct schema
             db.create_all()
             
         return '''
