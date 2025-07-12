@@ -412,18 +412,18 @@
                         </div>
                         <div class="mb-3">
                             <div class="d-flex justify-content-between">
-                                <span>Total Schedules</span>
-                                <span>{{ Schedule.query.count() }}</span>
+                                <span>Coverage Needs</span>
+                                <span>{{ coverage_needs }}</span>
                             </div>
                         </div>
                         <div class="mb-3">
                             <div class="d-flex justify-content-between">
-                                <span>Active Employees</span>
-                                <span>{{ Employee.query.filter_by(is_supervisor=False).count() }}</span>
+                                <span>Today's Schedules</span>
+                                <span>{{ todays_schedule|length }}</span>
                             </div>
                         </div>
                         <hr>
-                        <small class="text-muted">Last updated: {{ datetime.now().strftime('%I:%M %p') }}</small>
+                        <small class="text-muted">System Online</small>
                     </div>
                 </div>
 
