@@ -13,9 +13,18 @@ from io import BytesIO
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key-here')
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///workforce.db')
-if app.config['SQLALCHEMY_DATABASE_URI'].startswith('postgres://'):
-    app.config['SQLALCHEMY_DATABASE_URI'] = app.config['SQLALCHEMY_DATABASE_URI'].replace('postgres://', 'postgresql://', 1)
+
+# Fixed database URL configuration
+database_url = os.environ.get('DATABASE_URL')
+if database_url:
+    # Handle Render's PostgreSQL URL format
+    if database_url.startswith('postgres://'):
+        database_url = database_url.replace('postgres://', 'postgresql://', 1)
+    app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+else:
+    # Fallback to SQLite for local development
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///workforce.db'
+
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['ALLOWED_EXTENSIONS'] = {'xlsx', 'xls', 'csv'}
@@ -37,6 +46,194 @@ def load_user(user_id):
 def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
+
+# ==================== HELPER FUNCTIONS ====================
+
+def get_coverage_gaps(crew='ALL', days_ahead=7):
+    """Get coverage gaps for the specified crew and time period"""
+    gaps = []
+    start_date = date.today()
+    end_date = start_date + timedelta(days=days_ahead)
+    
+    current = start_date
+    while current <= end_date:
+        # Check each shift type
+        for shift_type in ['day', 'evening', 'night']:
+            scheduled_query = Schedule.query.filter(
+                Schedule.date == current,
+                Schedule.shift_type == shift_type
+            )
+            
+            if crew != 'ALL':
+                scheduled_query = scheduled_query.filter(Schedule.crew == crew)
+            
+            scheduled_count = scheduled_query.count()
+            
+            # Define minimum coverage requirements
+            min_coverage = {
+                'day': 4,
+                'evening': 3,
+                'night': 2
+            }
+            
+            if scheduled_count < min_coverage.get(shift_type, 2):
+                gaps.append({
+                    'date': current,
+                    'shift_type': shift_type,
+                    'scheduled': scheduled_count,
+                    'required': min_coverage.get(shift_type, 2),
+                    'gap': min_coverage.get(shift_type, 2) - scheduled_count
+                })
+    
+        current += timedelta(days=1)
+    
+    return gaps
+
+def get_off_duty_crews(schedule_date, shift_type):
+    """Determine which crews are off duty for a given date and shift"""
+    # This is a simplified version - in reality, you'd check the actual rotation pattern
+    off_crews = []
+    
+    # Example logic: based on date, determine which crews are off
+    day_number = (schedule_date - date(2024, 1, 1)).days % 4
+    
+    if shift_type == 'day':
+        if day_number in [0, 1]:
+            off_crews = ['C', 'D']
+        else:
+            off_crews = ['A', 'B']
+    elif shift_type == 'night':
+        if day_number in [0, 1]:
+            off_crews = ['A', 'B']
+        else:
+            off_crews = ['C', 'D']
+    
+    return off_crews
+
+def update_circadian_profile_on_schedule_change(employee_id, shift_type):
+    """Update circadian profile when schedule changes"""
+    profile = CircadianProfile.query.filter_by(employee_id=employee_id).first()
+    if not profile:
+        profile = CircadianProfile(
+            employee_id=employee_id,
+            chronotype='intermediate',
+            preferred_shift=shift_type
+        )
+        db.session.add(profile)
+    
+    profile.current_shift_type = shift_type
+    profile.last_shift_change = datetime.now()
+
+def calculate_trade_compatibility(user, trade_post):
+    """Calculate compatibility score for a trade"""
+    schedule = trade_post.schedule
+    
+    # Check position match
+    if user.position_id == schedule.position_id:
+        return 'high'
+    
+    # Check skill match
+    if schedule.position:
+        required_skills = [s.id for s in schedule.position.required_skills]
+        user_skills = [s.id for s in user.skills]
+        if all(skill in user_skills for skill in required_skills):
+            return 'medium'
+    
+    return 'low'
+
+def get_trade_history(employee_id, limit=10):
+    """Get trade history for an employee"""
+    trades = ShiftTrade.query.filter(
+        or_(
+            ShiftTrade.employee1_id == employee_id,
+            ShiftTrade.employee2_id == employee_id
+        ),
+        ShiftTrade.status == 'completed'
+    ).order_by(ShiftTrade.completed_at.desc()).limit(limit).all()
+    
+    return trades
+
+def get_overtime_opportunities():
+    """Get upcoming overtime opportunities"""
+    # This would typically query from a dedicated table or calculate based on gaps
+    opportunities = []
+    gaps = get_coverage_gaps('ALL', 14)
+    
+    for gap in gaps:
+        if gap['gap'] > 0:
+            opportunities.append({
+                'id': f"{gap['date']}_{gap['shift_type']}",
+                'date': gap['date'],
+                'shift_type': gap['shift_type'],
+                'positions_needed': gap['gap'],
+                'start_time': datetime.strptime('07:00', '%H:%M').time() if gap['shift_type'] == 'day' else datetime.strptime('19:00', '%H:%M').time(),
+                'end_time': datetime.strptime('19:00', '%H:%M').time() if gap['shift_type'] == 'day' else datetime.strptime('07:00', '%H:%M').time(),
+                'hours': 12
+            })
+    
+    return opportunities[:10]  # Return first 10
+
+def get_overtime_eligible_employees():
+    """Get employees eligible for overtime"""
+    # Get employees with less than 40 hours this week
+    week_start = date.today() - timedelta(days=date.today().weekday())
+    week_end = week_start + timedelta(days=6)
+    
+    employees = Employee.query.filter_by(is_supervisor=False).all()
+    eligible = []
+    
+    for emp in employees:
+        week_hours = db.session.query(func.sum(Schedule.hours)).filter(
+            Schedule.employee_id == emp.id,
+            Schedule.date >= week_start,
+            Schedule.date <= week_end
+        ).scalar() or 0
+        
+        if week_hours < 60:  # Eligible if under 60 hours
+            eligible.append({
+                'employee': emp,
+                'current_hours': week_hours,
+                'available_hours': 60 - week_hours
+            })
+    
+    return eligible
+
+def is_eligible_for_overtime(employee, opportunity):
+    """Check if employee is eligible for specific overtime"""
+    # Check weekly hours limit
+    week_start = opportunity['date'] - timedelta(days=opportunity['date'].weekday())
+    week_end = week_start + timedelta(days=6)
+    
+    current_hours = db.session.query(func.sum(Schedule.hours)).filter(
+        Schedule.employee_id == employee.id,
+        Schedule.date >= week_start,
+        Schedule.date <= week_end
+    ).scalar() or 0
+    
+    if current_hours + opportunity['hours'] > 60:
+        return False
+    
+    # Check if already scheduled that day
+    existing = Schedule.query.filter_by(
+        employee_id=employee.id,
+        date=opportunity['date']
+    ).first()
+    
+    return existing is None
+
+def execute_shift_trade(trade):
+    """Execute an approved shift trade"""
+    schedule1 = Schedule.query.get(trade.schedule1_id)
+    schedule2 = Schedule.query.get(trade.schedule2_id)
+    
+    # Swap employee assignments
+    temp_employee = schedule1.employee_id
+    schedule1.employee_id = schedule2.employee_id
+    schedule2.employee_id = temp_employee
+    
+    # Update trade status
+    trade.status = 'completed'
+    trade.completed_at = datetime.now()
 
 # ==================== AUTHENTICATION ROUTES ====================
 
@@ -376,13 +573,16 @@ def get_trade_post_details(post_id):
     post.view_count += 1
     db.session.commit()
     
+    # Get schedule details
+    schedule = post.schedule
+    
     return jsonify({
         'id': post.id,
-        'position': post.position.name if post.position else 'Unknown',
-        'date': post.shift_date.strftime('%A, %B %d, %Y'),
-        'start_time': post.start_time.strftime('%I:%M %p'),
-        'end_time': post.end_time.strftime('%I:%M %p'),
-        'shift_type': post.shift_type,
+        'position': schedule.position.name if schedule.position else 'Unknown',
+        'date': schedule.date.strftime('%A, %B %d, %Y'),
+        'start_time': schedule.start_time.strftime('%I:%M %p'),
+        'end_time': schedule.end_time.strftime('%I:%M %p'),
+        'shift_type': schedule.shift_type,
         'notes': post.notes,
         'poster': post.poster.name
     })
@@ -392,12 +592,13 @@ def get_trade_post_details(post_id):
 def get_my_compatible_shifts(post_id):
     """Get user's shifts compatible with a trade post"""
     post = ShiftTradePost.query.get_or_404(post_id)
+    schedule = post.schedule
     
     # Get user's upcoming shifts
     my_shifts_query = Schedule.query.filter(
         Schedule.employee_id == current_user.id,
         Schedule.date >= date.today(),
-        Schedule.date != post.shift_date  # Can't trade for same date
+        Schedule.date != schedule.date  # Can't trade for same date
     )
     
     # Apply preferences if any
@@ -421,9 +622,9 @@ def get_my_compatible_shifts(post_id):
     shifts_data = []
     for shift in my_shifts:
         compatibility = 'high'
-        if shift.position_id != post.schedule.position_id:
+        if shift.position_id != schedule.position_id:
             compatibility = 'medium'
-        if shift.shift_type != post.shift_type:
+        if shift.shift_type != schedule.shift_type:
             compatibility = 'low' if compatibility == 'medium' else 'medium'
         
         shifts_data.append({
@@ -973,7 +1174,18 @@ def assign_overtime():
     opportunity_id = request.form.get('opportunity_id')
     employee_ids = request.form.getlist('employee_ids')
     
-    opportunity = OvertimeOpportunity.query.get_or_404(opportunity_id)
+    # Parse opportunity ID to get date and shift type
+    parts = opportunity_id.split('_')
+    opp_date = datetime.strptime(parts[0], '%Y-%m-%d').date()
+    shift_type = parts[1]
+    
+    opportunity = {
+        'date': opp_date,
+        'shift_type': shift_type,
+        'hours': 12,
+        'start_time': datetime.strptime('07:00', '%H:%M').time() if shift_type == 'day' else datetime.strptime('19:00', '%H:%M').time(),
+        'end_time': datetime.strptime('19:00', '%H:%M').time() if shift_type == 'day' else datetime.strptime('07:00', '%H:%M').time()
+    }
     
     assignments_made = 0
     
@@ -987,19 +1199,18 @@ def assign_overtime():
         # Create overtime schedule
         schedule = Schedule(
             employee_id=employee.id,
-            date=opportunity.date,
-            shift_type=opportunity.shift_type,
-            start_time=opportunity.start_time,
-            end_time=opportunity.end_time,
-            position_id=opportunity.position_id,
-            hours=opportunity.hours,
+            date=opportunity['date'],
+            shift_type=opportunity['shift_type'],
+            start_time=opportunity['start_time'],
+            end_time=opportunity['end_time'],
+            position_id=employee.position_id,
+            hours=opportunity['hours'],
             is_overtime=True,
             crew=employee.crew
         )
         db.session.add(schedule)
         assignments_made += 1
     
-    opportunity.status = 'assigned'
     db.session.commit()
     
     flash(f'Overtime assigned to {assignments_made} employees!', 'success')
@@ -1044,28 +1255,25 @@ def swap_requests():
     
     # Get pending swap requests that need this supervisor's approval
     pending_swaps = ShiftSwapRequest.query.filter(
-        ShiftSwapRequest.status == 'pending',
-        or_(
-            # Swaps where this supervisor oversees the requester
-            and_(
-                ShiftSwapRequest.requester_supervisor_approved.is_(None),
-                Employee.query.filter_by(id=ShiftSwapRequest.requester_id).first().crew == current_user.crew
-            ),
-            # Swaps where this supervisor oversees the target
-            and_(
-                ShiftSwapRequest.target_supervisor_approved.is_(None),
-                ShiftSwapRequest.target_employee_id.isnot(None),
-                Employee.query.filter_by(id=ShiftSwapRequest.target_employee_id).first().crew == current_user.crew
-            )
-        )
+        ShiftSwapRequest.status == 'pending'
     ).all()
+    
+    # Filter to show only relevant swaps for this supervisor
+    relevant_swaps = []
+    for swap in pending_swaps:
+        requester = Employee.query.get(swap.requester_id)
+        target = Employee.query.get(swap.target_employee_id) if swap.target_employee_id else None
+        
+        # Check if this supervisor oversees either employee
+        if requester.crew == current_user.crew or (target and target.crew == current_user.crew):
+            relevant_swaps.append(swap)
     
     recent_swaps = ShiftSwapRequest.query.filter(
         ShiftSwapRequest.status.in_(['approved', 'denied'])
-    ).order_by(ShiftSwapRequest.requester_supervisor_date.desc()).limit(10).all()
+    ).order_by(ShiftSwapRequest.created_at.desc()).limit(10).all()
     
     return render_template('swap_requests.html',
-                         pending_swaps=pending_swaps,
+                         pending_swaps=relevant_swaps,
                          recent_swaps=recent_swaps)
 
 @app.route('/swap-request/<int:swap_id>/<action>', methods=['POST'])
@@ -1389,9 +1597,10 @@ def view_schedules():
 def init_db():
     """Initialize database with all tables"""
     with app.app_context():
+        # Create all tables first
         db.create_all()
         
-        # Check if admin exists
+        # Now check if admin exists
         admin = Employee.query.filter_by(email='admin@workforce.com').first()
         if not admin:
             admin = Employee(
@@ -1514,3 +1723,19 @@ def add_marketplace_tables():
         '''
     except Exception as e:
         return f'<h2>Error</h2><p>Failed to add marketplace tables: {str(e)}</p>'
+
+# ==================== ERROR HANDLERS ====================
+
+@app.errorhandler(404)
+def not_found_error(error):
+    return render_template('404.html'), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    db.session.rollback()
+    return render_template('500.html'), 500
+
+# ==================== MAIN ====================
+
+if __name__ == '__main__':
+    app.run(debug=True)
