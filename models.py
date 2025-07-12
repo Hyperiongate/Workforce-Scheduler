@@ -50,10 +50,6 @@ class Employee(UserMixin, db.Model):
                                       cascade='all, delete-orphan')
     sleep_logs = db.relationship('SleepLog', backref='employee', lazy='dynamic', 
                                cascade='all, delete-orphan')
-    trade_posts = db.relationship('ShiftTradePost', backref='poster', lazy='dynamic',
-                                foreign_keys='ShiftTradePost.poster_id')
-    trade_proposals = db.relationship('ShiftTradeProposal', backref='proposer', lazy='dynamic',
-                                    foreign_keys='ShiftTradeProposal.proposer_id')
     
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
