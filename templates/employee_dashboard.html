@@ -24,6 +24,14 @@
                         </a>
                     </li>
                     <li class="nav-item">
+                        <a class="nav-link" href="/shift-marketplace">
+                            <i class="bi bi-shop"></i> Trade Marketplace
+                            {% if unread_notifications > 0 %}
+                                <span class="badge bg-danger">{{ unread_notifications }}</span>
+                            {% endif %}
+                        </a>
+                    </li>
+                    <li class="nav-item">
                         <a class="nav-link" href="/vacation/calendar">
                             <i class="bi bi-calendar-week"></i> Vacation Calendar
                         </a>
@@ -138,13 +146,21 @@
                                         </td>
                                         <td>{{ schedule.hours|round(1) if schedule.hours else 'TBD' }} hrs</td>
                                         <td>
-                                            <button class="btn btn-sm btn-primary" 
-                                                    data-bs-toggle="modal" 
-                                                    data-bs-target="#swapModal"
-                                                    data-schedule-id="{{ schedule.id }}"
-                                                    data-schedule-info="{{ schedule.date }} - {{ schedule.position.name if schedule.position else 'TBD' }}">
-                                                <i class="bi bi-arrow-left-right"></i> Request Swap
-                                            </button>
+                                            <div class="btn-group" role="group">
+                                                <button class="btn btn-sm btn-primary" 
+                                                        data-bs-toggle="modal" 
+                                                        data-bs-target="#swapModal"
+                                                        data-schedule-id="{{ schedule.id }}"
+                                                        data-schedule-info="{{ schedule.date }} - {{ schedule.position.name if schedule.position else 'TBD' }}"
+                                                        title="Request Swap">
+                                                    <i class="bi bi-arrow-left-right"></i> Swap
+                                                </button>
+                                                <a href="/shift-marketplace?post_shift={{ schedule.id }}" 
+                                                   class="btn btn-sm btn-outline-primary"
+                                                   title="Post to Marketplace">
+                                                    <i class="bi bi-shop"></i> Trade
+                                                </a>
+                                            </div>
                                         </td>
                                     </tr>
                                     {% else %}
@@ -301,6 +317,28 @@
                     </div>
                 </div>
 
+                <!-- Shift Trade Marketplace Card -->
+                <div class="card border-success mb-3">
+                    <div class="card-header bg-success text-white">
+                        <h5 class="mb-0"><i class="bi bi-shop"></i> Shift Trade Marketplace</h5>
+                    </div>
+                    <div class="card-body">
+                        <p>Find and trade shifts with your coworkers easily!</p>
+                        <ul class="small">
+                            <li>Browse available shifts</li>
+                            <li>Post your shifts for trade</li>
+                            <li>Smart matching based on skills</li>
+                            <li>Track trade history</li>
+                        </ul>
+                        <a href="/shift-marketplace" class="btn btn-success w-100">
+                            <i class="bi bi-arrow-left-right"></i> Go to Marketplace
+                            {% if unread_notifications > 0 %}
+                                <span class="badge bg-danger">{{ unread_notifications }} New</span>
+                            {% endif %}
+                        </a>
+                    </div>
+                </div>
+
                 <!-- Quick Actions -->
                 <div class="card">
                     <div class="card-header">
@@ -316,7 +354,7 @@
                         <a href="/vacation/calendar" class="btn btn-info w-100 mb-2">
                             <i class="bi bi-calendar-week"></i> View Team Calendar
                         </a>
-                        <button class="btn btn-success w-100" disabled>
+                        <button class="btn btn-secondary w-100" disabled>
                             <i class="bi bi-person-badge"></i> Update Profile (Coming Soon)
                         </button>
                     </div>
@@ -380,6 +418,11 @@
                             <label for="reason" class="form-label">Reason for Swap (Optional)</label>
                             <textarea class="form-control" id="reason" name="reason" rows="2" 
                                       placeholder="e.g., Doctor's appointment, family event"></textarea>
+                        </div>
+
+                        <div class="alert alert-warning">
+                            <i class="bi bi-info-circle"></i> <strong>Tip:</strong> For more flexibility, consider posting your shift to the 
+                            <a href="/shift-marketplace" class="alert-link">Trade Marketplace</a> where you can reach more coworkers and specify your preferences.
                         </div>
                     </div>
                     <div class="modal-footer">
@@ -508,6 +551,14 @@
                     }
                 })
                 .catch(error => console.error('Error fetching sleep alerts:', error));
+            
+            // Check if we need to auto-open post shift modal
+            const urlParams = new URLSearchParams(window.location.search);
+            const postShiftId = urlParams.get('post_shift');
+            if (postShiftId) {
+                // Auto-redirect to marketplace with post modal open
+                window.location.href = `/shift-marketplace?post_shift=${postShiftId}`;
+            }
         });
     </script>
 </body>
