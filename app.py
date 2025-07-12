@@ -4,8 +4,8 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from datetime import datetime, timedelta, date
 import os
-from sqlalchemy import inspect, case, and_, or_
-from models import db, Employee, Position, Skill, Schedule, Availability, TimeOffRequest, VacationCalendar, CoverageRequest, CasualWorker, CasualAssignment, ShiftSwapRequest, ScheduleSuggestion, CircadianProfile, SleepLog, SleepRecommendation, ShiftTransitionPlan, CoverageNotification, OvertimeOpportunity
+from sqlalchemy import inspect, case, and_, or_, func
+from models import db, Employee, Position, Skill, Schedule, Availability, TimeOffRequest, VacationCalendar, CoverageRequest, CasualWorker, CasualAssignment, ShiftSwapRequest, ScheduleSuggestion, CircadianProfile, SleepLog, SleepRecommendation, ShiftTransitionPlan, CoverageNotification, OvertimeOpportunity, ShiftTradePost, ShiftTradeProposal, ShiftTrade, TradeMatchPreference
 from circadian_advisor import CircadianAdvisor
 import json
 import pandas as pd
@@ -223,6 +223,408 @@ def employee_dashboard():
                          time_off_requests=time_off_requests,
                          sleep_profile=sleep_profile,
                          unread_notifications=unread_notifications)
+
+# ==================== SHIFT TRADE MARKETPLACE ROUTES ====================
+
+@app.route('/shift-marketplace')
+@login_required
+def shift_marketplace():
+    """Main shift trade marketplace view"""
+    # Get filters from query params
+    filters = {
+        'start_date': request.args.get('start_date', date.today().strftime('%Y-%m-%d')),
+        'end_date': request.args.get('end_date', (date.today() + timedelta(days=30)).strftime('%Y-%m-%d')),
+        'shift_type': request.args.get('shift_type', ''),
+        'position': request.args.get('position', ''),
+        'compatibility': request.args.get('compatibility', '')
+    }
+    
+    # Get available trades (exclude user's own posts)
+    available_trades_query = ShiftTradePost.query.filter(
+        ShiftTradePost.status == 'active',
+        ShiftTradePost.poster_id != current_user.id
+    ).join(Schedule)
+    
+    # Apply filters
+    if filters['start_date']:
+        available_trades_query = available_trades_query.filter(
+            Schedule.date >= datetime.strptime(filters['start_date'], '%Y-%m-%d').date()
+        )
+    if filters['end_date']:
+        available_trades_query = available_trades_query.filter(
+            Schedule.date <= datetime.strptime(filters['end_date'], '%Y-%m-%d').date()
+        )
+    if filters['shift_type']:
+        available_trades_query = available_trades_query.filter(
+            Schedule.shift_type == filters['shift_type']
+        )
+    if filters['position']:
+        available_trades_query = available_trades_query.filter(
+            Schedule.position_id == int(filters['position'])
+        )
+    
+    available_trades = available_trades_query.order_by(Schedule.date).all()
+    
+    # Calculate compatibility for each trade
+    for trade in available_trades:
+        trade.compatibility = calculate_trade_compatibility(current_user, trade)
+    
+    # Filter by compatibility if specified
+    if filters['compatibility']:
+        available_trades = [t for t in available_trades if t.compatibility == filters['compatibility']]
+    
+    # Get user's posted shifts
+    my_posts = ShiftTradePost.query.filter_by(
+        poster_id=current_user.id,
+        status='active'
+    ).all()
+    
+    # Get user's active trades
+    my_trades = ShiftTrade.query.filter(
+        or_(
+            ShiftTrade.employee1_id == current_user.id,
+            ShiftTrade.employee2_id == current_user.id
+        ),
+        ShiftTrade.status.in_(['pending', 'approved'])
+    ).all()
+    
+    # Get trade history
+    trade_history = get_trade_history(current_user.id)
+    
+    # Get upcoming shifts for posting
+    my_upcoming_shifts = Schedule.query.filter(
+        Schedule.employee_id == current_user.id,
+        Schedule.date >= date.today(),
+        Schedule.date <= date.today() + timedelta(days=60)
+    ).order_by(Schedule.date).all()
+    
+    # Get positions for filter
+    positions = Position.query.all()
+    
+    # Calculate statistics
+    stats = {
+        'available_trades': len(available_trades),
+        'my_posted_shifts': len(my_posts),
+        'my_active_trades': len(my_trades),
+        'pending_trades': len([t for t in my_trades if t.status == 'pending']),
+        'completed_trades': ShiftTrade.query.filter(
+            or_(
+                ShiftTrade.employee1_id == current_user.id,
+                ShiftTrade.employee2_id == current_user.id
+            ),
+            ShiftTrade.status == 'completed'
+        ).count()
+    }
+    
+    return render_template('shift_marketplace.html',
+                         available_trades=available_trades,
+                         my_posts=my_posts,
+                         my_trades=my_trades,
+                         trade_history=trade_history,
+                         my_upcoming_shifts=my_upcoming_shifts,
+                         positions=positions,
+                         filters=filters,
+                         stats=stats)
+
+@app.route('/shift-marketplace/post', methods=['POST'])
+@login_required
+def post_shift_for_trade():
+    """Post a shift for trade"""
+    schedule_id = request.form.get('schedule_id')
+    
+    # Verify ownership
+    schedule = Schedule.query.get_or_404(schedule_id)
+    if schedule.employee_id != current_user.id:
+        flash('You can only post your own shifts for trade.', 'danger')
+        return redirect(url_for('shift_marketplace'))
+    
+    # Check if already posted
+    existing_post = ShiftTradePost.query.filter_by(
+        schedule_id=schedule_id,
+        status='active'
+    ).first()
+    
+    if existing_post:
+        flash('This shift is already posted for trade.', 'warning')
+        return redirect(url_for('shift_marketplace'))
+    
+    # Create trade post
+    trade_post = ShiftTradePost(
+        poster_id=current_user.id,
+        schedule_id=schedule_id,
+        preferred_start_date=request.form.get('preferred_start_date') or None,
+        preferred_end_date=request.form.get('preferred_end_date') or None,
+        preferred_shift_types=','.join(request.form.getlist('preferred_shifts')),
+        notes=request.form.get('notes', ''),
+        auto_approve=request.form.get('auto_approve') == 'on',
+        expires_at=datetime.now() + timedelta(days=30)
+    )
+    
+    db.session.add(trade_post)
+    db.session.commit()
+    
+    flash('Your shift has been posted to the trade marketplace!', 'success')
+    return redirect(url_for('shift_marketplace'))
+
+@app.route('/api/trade-post/<int:post_id>')
+@login_required
+def get_trade_post_details(post_id):
+    """Get details of a trade post"""
+    post = ShiftTradePost.query.get_or_404(post_id)
+    
+    # Increment view count
+    post.view_count += 1
+    db.session.commit()
+    
+    return jsonify({
+        'id': post.id,
+        'position': post.position.name if post.position else 'Unknown',
+        'date': post.shift_date.strftime('%A, %B %d, %Y'),
+        'start_time': post.start_time.strftime('%I:%M %p'),
+        'end_time': post.end_time.strftime('%I:%M %p'),
+        'shift_type': post.shift_type,
+        'notes': post.notes,
+        'poster': post.poster.name
+    })
+
+@app.route('/api/my-compatible-shifts/<int:post_id>')
+@login_required
+def get_my_compatible_shifts(post_id):
+    """Get user's shifts compatible with a trade post"""
+    post = ShiftTradePost.query.get_or_404(post_id)
+    
+    # Get user's upcoming shifts
+    my_shifts_query = Schedule.query.filter(
+        Schedule.employee_id == current_user.id,
+        Schedule.date >= date.today(),
+        Schedule.date != post.shift_date  # Can't trade for same date
+    )
+    
+    # Apply preferences if any
+    if post.preferred_start_date:
+        my_shifts_query = my_shifts_query.filter(
+            Schedule.date >= post.preferred_start_date
+        )
+    if post.preferred_end_date:
+        my_shifts_query = my_shifts_query.filter(
+            Schedule.date <= post.preferred_end_date
+        )
+    if post.preferred_shift_types:
+        preferred_types = post.preferred_shift_types.split(',')
+        my_shifts_query = my_shifts_query.filter(
+            Schedule.shift_type.in_(preferred_types)
+        )
+    
+    my_shifts = my_shifts_query.order_by(Schedule.date).all()
+    
+    # Calculate compatibility for each shift
+    shifts_data = []
+    for shift in my_shifts:
+        compatibility = 'high'
+        if shift.position_id != post.schedule.position_id:
+            compatibility = 'medium'
+        if shift.shift_type != post.shift_type:
+            compatibility = 'low' if compatibility == 'medium' else 'medium'
+        
+        shifts_data.append({
+            'id': shift.id,
+            'date': shift.date.strftime('%m/%d/%Y'),
+            'position': shift.position.name if shift.position else 'TBD',
+            'start_time': shift.start_time.strftime('%I:%M %p'),
+            'end_time': shift.end_time.strftime('%I:%M %p'),
+            'shift_type': shift.shift_type,
+            'compatibility': compatibility
+        })
+    
+    return jsonify(shifts_data)
+
+@app.route('/api/trade-proposal/create', methods=['POST'])
+@login_required
+def create_trade_proposal():
+    """Create a trade proposal"""
+    trade_post_id = request.form.get('trade_post_id')
+    offered_schedule_id = request.form.get('offered_schedule_id')
+    message = request.form.get('message', '')
+    
+    # Verify trade post exists and is active
+    trade_post = ShiftTradePost.query.get_or_404(trade_post_id)
+    if trade_post.status != 'active':
+        return jsonify({'success': False, 'message': 'This trade post is no longer active.'})
+    
+    # Verify ownership of offered schedule
+    offered_schedule = Schedule.query.get_or_404(offered_schedule_id)
+    if offered_schedule.employee_id != current_user.id:
+        return jsonify({'success': False, 'message': 'You can only offer your own shifts.'})
+    
+    # Check if already proposed
+    existing_proposal = ShiftTradeProposal.query.filter_by(
+        trade_post_id=trade_post_id,
+        proposer_id=current_user.id,
+        status='pending'
+    ).first()
+    
+    if existing_proposal:
+        return jsonify({'success': False, 'message': 'You already have a pending proposal for this trade.'})
+    
+    # Create proposal
+    proposal = ShiftTradeProposal(
+        trade_post_id=trade_post_id,
+        proposer_id=current_user.id,
+        offered_schedule_id=offered_schedule_id,
+        message=message
+    )
+    
+    db.session.add(proposal)
+    db.session.commit()
+    
+    return jsonify({'success': True, 'message': 'Trade proposal sent successfully!'})
+
+@app.route('/api/trade-proposals/<int:post_id>')
+@login_required
+def get_trade_proposals(post_id):
+    """Get proposals for a trade post"""
+    post = ShiftTradePost.query.get_or_404(post_id)
+    
+    # Verify ownership
+    if post.poster_id != current_user.id:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    proposals = ShiftTradeProposal.query.filter_by(
+        trade_post_id=post_id,
+        status='pending'
+    ).all()
+    
+    proposals_data = []
+    for proposal in proposals:
+        offered_shift = proposal.offered_schedule
+        proposals_data.append({
+            'id': proposal.id,
+            'proposer_name': proposal.proposer.name,
+            'offered_shift': f"{offered_shift.date.strftime('%m/%d')} - {offered_shift.position.name if offered_shift.position else 'TBD'} ({offered_shift.shift_type})",
+            'message': proposal.message,
+            'created_at': proposal.created_at.strftime('%m/%d %I:%M %p')
+        })
+    
+    return jsonify(proposals_data)
+
+@app.route('/api/trade-proposal/<int:proposal_id>/accept', methods=['POST'])
+@login_required
+def accept_trade_proposal(proposal_id):
+    """Accept a trade proposal"""
+    proposal = ShiftTradeProposal.query.get_or_404(proposal_id)
+    
+    # Verify ownership
+    if proposal.trade_post.poster_id != current_user.id:
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+    
+    if proposal.status != 'pending':
+        return jsonify({'success': False, 'message': 'This proposal is no longer pending.'})
+    
+    # Update proposal status
+    proposal.status = 'accepted'
+    proposal.responded_at = datetime.now()
+    
+    # Update trade post status
+    proposal.trade_post.status = 'matched'
+    
+    # Reject other proposals for this post
+    other_proposals = ShiftTradeProposal.query.filter(
+        ShiftTradeProposal.trade_post_id == proposal.trade_post_id,
+        ShiftTradeProposal.id != proposal_id,
+        ShiftTradeProposal.status == 'pending'
+    ).all()
+    
+    for other in other_proposals:
+        other.status = 'rejected'
+        other.responded_at = datetime.now()
+    
+    # Create shift trade record
+    trade = ShiftTrade(
+        employee1_id=proposal.trade_post.poster_id,
+        employee2_id=proposal.proposer_id,
+        schedule1_id=proposal.trade_post.schedule_id,
+        schedule2_id=proposal.offered_schedule_id,
+        trade_post_id=proposal.trade_post_id,
+        trade_proposal_id=proposal_id,
+        status='pending' if not proposal.trade_post.auto_approve else 'approved',
+        requires_approval=not proposal.trade_post.auto_approve
+    )
+    
+    db.session.add(trade)
+    
+    # If auto-approve, execute the trade immediately
+    if proposal.trade_post.auto_approve:
+        execute_shift_trade(trade)
+    
+    db.session.commit()
+    
+    return jsonify({'success': True, 'message': 'Trade proposal accepted!'})
+
+@app.route('/api/trade-proposal/<int:proposal_id>/reject', methods=['POST'])
+@login_required
+def reject_trade_proposal(proposal_id):
+    """Reject a trade proposal"""
+    proposal = ShiftTradeProposal.query.get_or_404(proposal_id)
+    
+    # Verify ownership
+    if proposal.trade_post.poster_id != current_user.id:
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+    
+    proposal.status = 'rejected'
+    proposal.responded_at = datetime.now()
+    
+    db.session.commit()
+    
+    return jsonify({'success': True})
+
+@app.route('/api/trade-post/<int:post_id>/cancel', methods=['POST'])
+@login_required
+def cancel_trade_post(post_id):
+    """Cancel a trade post"""
+    post = ShiftTradePost.query.get_or_404(post_id)
+    
+    # Verify ownership
+    if post.poster_id != current_user.id:
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+    
+    post.status = 'cancelled'
+    
+    # Reject all pending proposals
+    proposals = ShiftTradeProposal.query.filter_by(
+        trade_post_id=post_id,
+        status='pending'
+    ).all()
+    
+    for proposal in proposals:
+        proposal.status = 'rejected'
+        proposal.responded_at = datetime.now()
+    
+    db.session.commit()
+    
+    return jsonify({'success': True})
+
+@app.route('/api/trade/<int:trade_id>/cancel', methods=['POST'])
+@login_required
+def cancel_trade(trade_id):
+    """Cancel a pending trade"""
+    trade = ShiftTrade.query.get_or_404(trade_id)
+    
+    # Verify participant
+    if current_user.id not in [trade.employee1_id, trade.employee2_id]:
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+    
+    if trade.status != 'pending':
+        return jsonify({'success': False, 'message': 'Only pending trades can be cancelled.'})
+    
+    trade.status = 'cancelled'
+    
+    # Reactivate the trade post if it was from marketplace
+    if trade.trade_post:
+        trade.trade_post.status = 'active'
+    
+    db.session.commit()
+    
+    return jsonify({'success': True})
 
 # ==================== CREW MANAGEMENT ROUTES ====================
 
@@ -1070,365 +1472,45 @@ def add_coverage_tables():
     except Exception as e:
         return f'<h2>Error</h2><p>Failed to add tables: {str(e)}</p>'
 
-@app.route('/create-demo-data')
-def create_demo_data():
-    """Create demo data for testing"""
+@app.route('/add-marketplace-tables')
+def add_marketplace_tables():
+    """Add the shift trade marketplace tables"""
     if request.args.get('confirm') != 'yes':
         return '''
-        <h2>Create Demo Data</h2>
-        <p>This will populate your database with sample data for testing:</p>
+        <h2>Add Shift Trade Marketplace Tables</h2>
+        <p>This will add the new shift trade marketplace tables to your database.</p>
+        <p>New tables to be added:</p>
         <ul>
-            <li>40 employees across 4 crews (A, B, C, D)</li>
-            <li>Various positions and skills</li>
-            <li>Sample schedules</li>
-            <li>Some time-off requests</li>
+            <li>ShiftTradePost - Posts of shifts available for trade</li>
+            <li>ShiftTradeProposal - Trade proposals from employees</li>
+            <li>ShiftTrade - Completed or pending trades</li>
+            <li>TradeMatchPreference - Employee trade preferences</li>
         </ul>
-        <p><strong>Warning:</strong> This should only be run on a test database!</p>
-        <p><a href="/create-demo-data?confirm=yes">Click here to confirm</a></p>
+        <p>Features enabled:</p>
+        <ul>
+            <li>Post shifts for trade in marketplace</li>
+            <li>Browse and filter available trades</li>
+            <li>Smart compatibility matching</li>
+            <li>Trade history tracking</li>
+            <li>Auto-approval options</li>
+        </ul>
+        <p><a href="/add-marketplace-tables?confirm=yes" class="btn btn-primary">Click here to confirm</a></p>
         '''
     
     try:
-        # Create positions if they don't exist
-        positions = {
-            'Nurse': Position(name='Nurse', department='Healthcare', min_coverage=2),
-            'Security Officer': Position(name='Security Officer', department='Security', min_coverage=1),
-            'Technician': Position(name='Technician', department='Operations', min_coverage=3),
-            'Customer Service': Position(name='Customer Service', department='Support', min_coverage=2)
-        }
-        
-        for pos_name, pos in positions.items():
-            existing = Position.query.filter_by(name=pos_name).first()
-            if not existing:
-                db.session.add(pos)
-        
-        db.session.flush()
-        
-        # Refresh positions dict with actual database objects
-        positions = {p.name: p for p in Position.query.all()}
-        
-        # Create skills if they don't exist
-        skills = {
-            'CPR Certified': Skill(name='CPR Certified', category='Medical', requires_certification=True),
-            'First Aid': Skill(name='First Aid', category='Medical', requires_certification=True),
-            'Security Clearance': Skill(name='Security Clearance', category='Security', requires_certification=True),
-            'Emergency Response': Skill(name='Emergency Response', category='General'),
-            'Equipment Operation': Skill(name='Equipment Operation', category='Technical')
-        }
-        
-        for skill_name, skill in skills.items():
-            existing = Skill.query.filter_by(name=skill_name).first()
-            if not existing:
-                db.session.add(skill)
-        
-        db.session.flush()
-        
-        # Refresh skills dict
-        skills = {s.name: s for s in Skill.query.all()}
-        
-        # Create 40 employees (10 per crew)
-        crews = ['A', 'B', 'C', 'D']
-        created_employees = 0
-        
-        for crew in crews:
-            for i in range(10):
-                email = f'{crew.lower()}{i+1}@workforce.com'
-                existing = Employee.query.filter_by(email=email).first()
-                
-                if not existing:
-                    employee = Employee(
-                        name=f'{crew} Employee {i+1}',
-                        email=email,
-                        phone=f'555-{crew}{i:03d}',
-                        crew=crew,
-                        is_supervisor=(i == 0),  # First employee in each crew is supervisor
-                        vacation_days=10,
-                        sick_days=5,
-                        personal_days=3,
-                        hire_date=date.today() - timedelta(days=365 + i*30)
-                    )
-                    employee.set_password('password123')
-                    
-                    # Assign position
-                    if i < 3:
-                        employee.position = positions['Nurse']
-                        employee.skills.append(skills['CPR Certified'])
-                        employee.skills.append(skills['First Aid'])
-                    elif i < 5:
-                        employee.position = positions['Security Officer']
-                        employee.skills.append(skills['Security Clearance'])
-                        employee.skills.append(skills['Emergency Response'])
-                    elif i < 8:
-                        employee.position = positions['Technician']
-                        employee.skills.append(skills['Equipment Operation'])
-                    else:
-                        employee.position = positions['Customer Service']
-                        employee.skills.append(skills['Emergency Response'])
-                    
-                    db.session.add(employee)
-                    created_employees += 1
-                    
-                    # Create circadian profile
-                    profile = CircadianProfile(
-                        employee_id=employee.id,
-                        chronotype='intermediate',
-                        current_shift_type='day' if crew in ['A', 'B'] else 'night',
-                        days_on_current_pattern=30,
-                        circadian_adaptation_score=75.0
-                    )
-                    db.session.add(profile)
-        
-        db.session.commit()
-        
-        return f'''
-        <h2>Success!</h2>
-        <p>Demo data created:</p>
-        <ul>
-            <li>{created_employees} employees created across 4 crews</li>
-            <li>Positions and skills assigned</li>
-            <li>Circadian profiles initialized</li>
-        </ul>
-        <p>Login credentials for all demo employees:</p>
-        <ul>
-            <li>Email format: [crew][number]@workforce.com (e.g., a1@workforce.com)</li>
-            <li>Password: password123</li>
-        </ul>
-        <p><a href="/login">Go to login</a></p>
-        '''
-        
-    except Exception as e:
-        db.session.rollback()
-        return f'<h2>Error</h2><p>Failed to create demo data: {str(e)}</p>'
-
-# ==================== HELPER FUNCTIONS ====================
-
-def get_coverage_gaps(crew='ALL', days_ahead=7):
-    """Identify coverage gaps in the schedule"""
-    gaps = []
-    
-    # Check each day in the range
-    for day_offset in range(days_ahead):
-        check_date = date.today() + timedelta(days=day_offset)
-        
-        # Get minimum coverage requirements by position
-        positions = Position.query.all()
-        
-        for position in positions:
-            for shift_type in ['day', 'evening', 'night']:
-                # Count scheduled employees
-                query = Schedule.query.filter(
-                    Schedule.date == check_date,
-                    Schedule.shift_type == shift_type,
-                    Schedule.position_id == position.id
-                )
-                
-                if crew != 'ALL':
-                    query = query.filter(Schedule.crew == crew)
-                
-                scheduled_count = query.count()
-                
-                # Check if we meet minimum coverage
-                if scheduled_count < position.min_coverage:
-                    gap = {
-                        'id': len(gaps) + 1,
-                        'date': check_date,
-                        'shift': shift_type,
-                        'position': position.name,
-                        'required': position.min_coverage,
-                        'scheduled': scheduled_count,
-                        'gap': position.min_coverage - scheduled_count,
-                        'reason': 'Understaffed'
-                    }
-                    gaps.append(gap)
-    
-    return gaps
-
-def get_off_duty_crews(schedule_date, shift_type):
-    """Determine which crews are off duty for a given date/shift"""
-    # This is simplified - in reality, you'd check the actual rotation pattern
-    # For now, assume A&C work days, B&D work nights
-    if shift_type == 'day':
-        return ['B', 'D']  # Night crews are off during day shifts
-    elif shift_type == 'night':
-        return ['A', 'C']  # Day crews are off during night shifts
-    else:
-        return ['A', 'B', 'C', 'D']  # All crews for coverage
-
-def get_overtime_opportunities():
-    """Get upcoming shifts that need overtime coverage"""
-    opportunities = []
-    
-    # Look for gaps in next 14 days
-    gaps = get_coverage_gaps(crew='ALL', days_ahead=14)
-    
-    for gap in gaps:
-        opportunity = OvertimeOpportunity(
-            id=gap['id'],
-            date=gap['date'],
-            shift_type=gap['shift'],
-            position_id=Position.query.filter_by(name=gap['position']).first().id,
-            hours=8,  # Standard shift
-            positions_needed=gap['gap'],
-            status='open'
-        )
-        opportunities.append(opportunity)
-    
-    return opportunities
-
-def get_overtime_eligible_employees():
-    """Get employees eligible for overtime"""
-    # Get all non-supervisor employees
-    employees = Employee.query.filter_by(is_supervisor=False).all()
-    
-    eligible = []
-    
-    for employee in employees:
-        # Calculate current week hours
-        week_start = date.today() - timedelta(days=date.today().weekday())
-        week_schedules = Schedule.query.filter(
-            Schedule.employee_id == employee.id,
-            Schedule.date >= week_start,
-            Schedule.date < week_start + timedelta(days=7)
-        ).all()
-        
-        weekly_hours = sum(s.hours or 8 for s in week_schedules)
-        
-        # Eligible if under 60 hours
-        if weekly_hours < 60:
-            employee.current_weekly_hours = weekly_hours
-            employee.available_ot_hours = 60 - weekly_hours
-            eligible.append(employee)
-    
-    # Sort by least hours first (fairness)
-    eligible.sort(key=lambda e: e.current_weekly_hours)
-    
-    return eligible
-
-def is_eligible_for_overtime(employee, opportunity):
-    """Check if employee is eligible for specific overtime opportunity"""
-    # Check skills match
-    if opportunity.position_id:
-        position = Position.query.get(opportunity.position_id)
-        if not employee.can_work_position(position):
-            return False
-    
-    # Check not already scheduled
-    existing = Schedule.query.filter_by(
-        employee_id=employee.id,
-        date=opportunity.date
-    ).first()
-    if existing:
-        return False
-    
-    # Check 24-hour rule (no back-to-back shifts)
-    day_before = opportunity.date - timedelta(days=1)
-    prev_shift = Schedule.query.filter(
-        Schedule.employee_id == employee.id,
-        Schedule.date == day_before,
-        Schedule.shift_type == 'night'
-    ).first()
-    
-    if prev_shift and opportunity.shift_type == 'day':
-        return False  # Would violate 24-hour rule
-    
-    return True
-
-def update_circadian_profile_on_schedule_change(employee_id, new_shift_type):
-    """Helper function to update circadian profile when schedule changes"""
-    profile = CircadianProfile.query.filter_by(employee_id=employee_id).first()
-    if profile:
-        if profile.current_shift_type != new_shift_type:
-            profile.last_shift_change = datetime.now()
-            profile.current_shift_type = new_shift_type
-            profile.days_on_current_pattern = 0
-            profile.circadian_adaptation_score = 0.0
-        else:
-            profile.days_on_current_pattern += 1
-            # Update adaptation score
-            advisor = CircadianAdvisor(Employee.query.get(employee_id), profile)
-            phase_info = advisor.calculate_circadian_phase()
-            profile.circadian_adaptation_score = phase_info['adaptation']
-        
-        profile.updated_at = datetime.now()
-        db.session.commit()
-
-# ==================== API ROUTES ====================
-
-@app.route('/api/available-swaps/<int:schedule_id>')
-@login_required
-def get_available_swaps(schedule_id):
-    """Get available shifts for swapping"""
-    my_schedule = Schedule.query.get_or_404(schedule_id)
-    
-    # Find compatible shifts (same position, different employee, within 7 days)
-    available_shifts = Schedule.query.filter(
-        Schedule.employee_id != current_user.id,
-        Schedule.position_id == my_schedule.position_id,
-        Schedule.date >= date.today(),
-        Schedule.date <= date.today() + timedelta(days=14)
-    ).all()
-    
-    shifts_data = []
-    for shift in available_shifts:
-        # Check if employees have matching skills
-        my_skills = set(s.id for s in current_user.skills)
-        their_skills = set(s.id for s in shift.employee.skills)
-        skills_match = my_skills == their_skills
-        
-        shifts_data.append({
-            'id': shift.id,
-            'employee_name': shift.employee.name,
-            'date': shift.date.strftime('%a, %b %d'),
-            'time': f"{shift.start_time.strftime('%I:%M %p')} - {shift.end_time.strftime('%I:%M %p')}",
-            'position': shift.position.name if shift.position else 'TBD',
-            'skills_match': skills_match
-        })
-    
-    return jsonify({'shifts': shifts_data})
-
-@app.route('/api/absence/report', methods=['POST'])
-@login_required
-def report_absence():
-    """Report an employee absence and create coverage request"""
-    if not current_user.is_supervisor:
-        return jsonify({'success': False, 'message': 'Unauthorized'}), 403
-    
-    data = request.get_json()
-    employee_name = data.get('employee')
-    
-    # Find today's schedule for this employee
-    employee = Employee.query.filter_by(name=employee_name).first()
-    if not employee:
-        return jsonify({'success': False, 'message': 'Employee not found'})
-    
-    today_schedule = Schedule.query.filter_by(
-        employee_id=employee.id,
-        date=date.today()
-    ).first()
-    
-    if not today_schedule:
-        return jsonify({'success': False, 'message': 'No schedule found for today'})
-    
-    # Update schedule status
-    today_schedule.status = 'absent'
-    
-    # Create coverage request
-    coverage = CoverageRequest(
-        schedule_id=today_schedule.id,
-        requester_id=current_user.id,
-        reason='Employee absence',
-        status='open',
-        position_required=today_schedule.position_id
-    )
-    
-    db.session.add(coverage)
-    db.session.commit()
-    
-    return jsonify({
-        'success': True,
-        'message': f'Absence reported for {employee_name}. Coverage request created.'
-    })
-
-if __name__ == '__main__':
-    with app.app_context():
+        # Create all tables (this will only add new ones)
         db.create_all()
-    app.run(debug=True)
+        return '''
+        <h2>Success!</h2>
+        <p>Shift trade marketplace tables have been added to the database.</p>
+        <p>New features available:</p>
+        <ul>
+            <li>Shift Trade Marketplace - Employees can now post and trade shifts</li>
+            <li>Smart Matching - System suggests compatible trades</li>
+            <li>Trade History - Track all completed trades</li>
+        </ul>
+        <p>Employees can access the marketplace from their dashboard.</p>
+        <p><a href="/">Return to home</a></p>
+        '''
+    except Exception as e:
+        return f'<h2>Error</h2><p>Failed to add marketplace tables: {str(e)}</p>'
