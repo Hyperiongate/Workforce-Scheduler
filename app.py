@@ -1922,9 +1922,10 @@ def populate_crews():
                         employee.skills.append(skills[skill_key])
                 
                 db.session.add(employee)
+                db.session.flush()  # This assigns the ID to the employee
                 created_count += 1
                 
-                # Create circadian profile
+                # Create circadian profile after employee has ID
                 profile = CircadianProfile(
                     employee_id=employee.id,
                     chronotype='morning' if crew_data['shift_preference'] == 'day' else 'evening',
