@@ -344,7 +344,7 @@ class ShiftTransitionPlan(db.Model):
     # Relationships
     employee = db.relationship('Employee', backref='transition_plans')
 
-# NEW MODELS - Adding the missing ones
+# Coverage & Overtime Models
 class CoverageNotification(db.Model):
     """Notifications sent to employees about coverage opportunities"""
     id = db.Column(db.Integer, primary_key=True)
@@ -382,3 +382,185 @@ class OvertimeOpportunity(db.Model):
     # Relationships
     schedule = db.relationship('Schedule', backref='overtime_opportunity')
     position = db.relationship('Position', backref='overtime_opportunities')
+
+# ==========================================
+# NEW SHIFT TRADE MARKETPLACE MODELS
+# ==========================================
+
+class ShiftTradePost(db.Model):
+    """Posted shifts available for trade in the marketplace"""
+    id = db.Column(db.Integer, primary_key=True)
+    poster_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=False)
+    schedule_id = db.Column(db.Integer, db.ForeignKey('schedule.id'), nullable=False)
+    
+    # Trade preferences
+    preferred_start_date = db.Column(db.Date)
+    preferred_end_date = db.Column(db.Date)
+    preferred_shift_types = db.Column(db.String(50))  # CSV: "Day,Evening"
+    notes = db.Column(db.Text)
+    
+    # Status tracking
+    status = db.Column(db.String(20), default='active')  # active, matched, cancelled, expired
+    auto_approve = db.Column(db.Boolean, default=False)
+    
+    # Metadata
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    expires_at = db.Column(db.DateTime)
+    view_count = db.Column(db.Integer, default=0)
+    
+    # Relationships
+    poster = db.relationship('Employee', foreign_keys=[poster_id], backref='trade_posts')
+    schedule = db.relationship('Schedule', backref='trade_post')
+    proposals = db.relationship('ShiftTradeProposal', backref='trade_post', lazy='dynamic',
+                              cascade='all, delete-orphan')
+    
+    @property
+    def shift_date(self):
+        return self.schedule.date if self.schedule else None
+    
+    @property
+    def shift_type(self):
+        return self.schedule.shift_type if self.schedule else None
+    
+    @property
+    def start_time(self):
+        return self.schedule.start_time if self.schedule else None
+    
+    @property
+    def end_time(self):
+        return self.schedule.end_time if self.schedule else None
+    
+    @property
+    def position(self):
+        return self.schedule.position if self.schedule else None
+    
+    @property
+    def required_skills(self):
+        return self.position.required_skills if self.position else []
+
+class ShiftTradeProposal(db.Model):
+    """Proposals for shift trades"""
+    id = db.Column(db.Integer, primary_key=True)
+    trade_post_id = db.Column(db.Integer, db.ForeignKey('shift_trade_post.id'), nullable=False)
+    proposer_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=False)
+    offered_schedule_id = db.Column(db.Integer, db.ForeignKey('schedule.id'), nullable=False)
+    
+    # Communication
+    message = db.Column(db.Text)
+    
+    # Status
+    status = db.Column(db.String(20), default='pending')  # pending, accepted, rejected, withdrawn
+    
+    # Timestamps
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    responded_at = db.Column(db.DateTime)
+    
+    # Relationships
+    proposer = db.relationship('Employee', foreign_keys=[proposer_id], backref='trade_proposals')
+    offered_schedule = db.relationship('Schedule', backref='trade_proposals')
+
+class ShiftTrade(db.Model):
+    """Completed or in-progress shift trades"""
+    id = db.Column(db.Integer, primary_key=True)
+    
+    # Trade participants
+    employee1_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=False)
+    employee2_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=False)
+    
+    # Schedules being traded
+    schedule1_id = db.Column(db.Integer, db.ForeignKey('schedule.id'), nullable=False)
+    schedule2_id = db.Column(db.Integer, db.ForeignKey('schedule.id'), nullable=False)
+    
+    # Origin tracking
+    trade_post_id = db.Column(db.Integer, db.ForeignKey('shift_trade_post.id'))
+    trade_proposal_id = db.Column(db.Integer, db.ForeignKey('shift_trade_proposal.id'))
+    
+    # Status and approval
+    status = db.Column(db.String(20), default='pending')  # pending, approved, completed, cancelled
+    requires_approval = db.Column(db.Boolean, default=True)
+    
+    # Supervisor approvals (similar to ShiftSwapRequest)
+    employee1_supervisor_approved = db.Column(db.Boolean)
+    employee1_supervisor_id = db.Column(db.Integer, db.ForeignKey('employee.id'))
+    employee1_supervisor_date = db.Column(db.DateTime)
+    employee1_supervisor_notes = db.Column(db.Text)
+    
+    employee2_supervisor_approved = db.Column(db.Boolean)
+    employee2_supervisor_id = db.Column(db.Integer, db.ForeignKey('employee.id'))
+    employee2_supervisor_date = db.Column(db.DateTime)
+    employee2_supervisor_notes = db.Column(db.Text)
+    
+    # Timestamps
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    completed_at = db.Column(db.DateTime)
+    
+    # Relationships
+    employee1 = db.relationship('Employee', foreign_keys=[employee1_id], 
+                               backref='trades_as_employee1')
+    employee2 = db.relationship('Employee', foreign_keys=[employee2_id], 
+                               backref='trades_as_employee2')
+    schedule1 = db.relationship('Schedule', foreign_keys=[schedule1_id])
+    schedule2 = db.relationship('Schedule', foreign_keys=[schedule2_id])
+    trade_post = db.relationship('ShiftTradePost', backref='completed_trades')
+    trade_proposal = db.relationship('ShiftTradeProposal', backref='completed_trade')
+    employee1_supervisor = db.relationship('Employee', foreign_keys=[employee1_supervisor_id])
+    employee2_supervisor = db.relationship('Employee', foreign_keys=[employee2_supervisor_id])
+    
+    @property
+    def other_employee(self):
+        """Get the other employee in the trade from perspective of current user"""
+        from flask_login import current_user
+        if current_user.id == self.employee1_id:
+            return self.employee2
+        return self.employee1
+    
+    @property
+    def offered_shift(self):
+        """Get the shift being offered by current user"""
+        from flask_login import current_user
+        if current_user.id == self.employee1_id:
+            return self.schedule1
+        return self.schedule2
+    
+    @property
+    def requested_shift(self):
+        """Get the shift being requested by current user"""
+        from flask_login import current_user
+        if current_user.id == self.employee1_id:
+            return self.schedule2
+        return self.schedule1
+    
+    @property
+    def supervisor_notes(self):
+        """Get supervisor notes relevant to current user"""
+        from flask_login import current_user
+        if current_user.id == self.employee1_id:
+            return self.employee1_supervisor_notes
+        return self.employee2_supervisor_notes
+
+class TradeMatchPreference(db.Model):
+    """Employee preferences for trade matching"""
+    id = db.Column(db.Integer, primary_key=True)
+    employee_id = db.Column(db.Integer, db.ForeignKey('employee.id'), unique=True, nullable=False)
+    
+    # Matching preferences
+    prefer_same_position = db.Column(db.Boolean, default=True)
+    prefer_same_shift_type = db.Column(db.Boolean, default=False)
+    max_commute_difference = db.Column(db.Integer)  # minutes
+    
+    # Blackout dates (JSON list of date ranges)
+    blackout_dates = db.Column(db.Text)
+    
+    # Auto-approval settings
+    auto_approve_same_position = db.Column(db.Boolean, default=False)
+    auto_approve_same_crew = db.Column(db.Boolean, default=False)
+    
+    # Notification preferences
+    notify_new_matches = db.Column(db.Boolean, default=True)
+    notify_proposal_received = db.Column(db.Boolean, default=True)
+    
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    employee = db.relationship('Employee', backref=db.backref('trade_preferences', uselist=False))
