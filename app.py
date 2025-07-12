@@ -1928,8 +1928,7 @@ def populate_crews():
                 profile = CircadianProfile(
                     employee_id=employee.id,
                     chronotype='morning' if crew_data['shift_preference'] == 'day' else 'evening',
-                    current_shift_type=crew_data['shift_preference'],
-                    preferred_shift=crew_data['shift_preference']
+                    current_shift_type=crew_data['shift_preference']
                 )
                 db.session.add(profile)
         
