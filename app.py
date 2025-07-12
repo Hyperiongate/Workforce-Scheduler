@@ -1724,6 +1724,33 @@ def add_marketplace_tables():
     except Exception as e:
         return f'<h2>Error</h2><p>Failed to add marketplace tables: {str(e)}</p>'
 
+@app.route('/reset-db')
+def reset_db():
+    """Reset database - WARNING: This will delete all data!"""
+    if request.args.get('confirm') != 'yes':
+        return '''
+        <h2>⚠️ WARNING: Reset Database</h2>
+        <p style="color: red;"><strong>This will DELETE ALL DATA in the database!</strong></p>
+        <p>Only use this for initial setup or if you're sure you want to start over.</p>
+        <p><a href="/reset-db?confirm=yes" onclick="return confirm('Are you SURE you want to delete all data?')" style="background: red; color: white; padding: 10px; text-decoration: none;">Yes, reset the database</a></p>
+        <p><a href="/" style="background: green; color: white; padding: 10px; text-decoration: none;">Cancel and go back</a></p>
+        '''
+    
+    try:
+        with app.app_context():
+            # Drop all tables
+            db.drop_all()
+            # Recreate all tables with correct schema
+            db.create_all()
+            
+        return '''
+        <h2>✅ Database Reset Complete!</h2>
+        <p>All tables have been dropped and recreated with the correct schema.</p>
+        <p><a href="/init-db" style="background: blue; color: white; padding: 10px; text-decoration: none;">Now initialize the database with default data</a></p>
+        '''
+    except Exception as e:
+        return f'<h2>Error</h2><p>Failed to reset database: {str(e)}</p>'
+
 # ==================== ERROR HANDLERS ====================
 
 @app.errorhandler(404)
