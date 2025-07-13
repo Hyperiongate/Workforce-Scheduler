@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Report Maintenance Issue - Workforce Scheduler</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">
+                <i class="bi bi-calendar3"></i> Workforce Scheduler
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/employee-dashboard">
+                            <i class="bi bi-speedometer2"></i> Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/maintenance/issues">
+                            <i class="bi bi-wrench"></i> My Issues
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/maintenance/report">
+                            <i class="bi bi-exclamation-circle"></i> Report Issue
+                        </a>
+                    </li>
+                </ul>
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/logout">
+                            <i class="bi bi-box-arrow-right"></i> Logout
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <div class="row justify-content-center">
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header bg-warning text-dark">
+                        <h4 class="mb-0">
+                            <i class="bi bi-exclamation-triangle"></i> Report Maintenance Issue
+                        </h4>
+                    </div>
+                    <div class="card-body">
+                        <form method="POST" action="/maintenance/report">
+                            <!-- Safety Alert -->
+                            <div class="alert alert-danger" id="safetyAlert" style="display: none;">
+                                <h5 class="alert-heading">
+                                    <i class="bi bi-exclamation-octagon"></i> Safety Issue Detected
+                                </h5>
+                                <p>You've indicated this is a safety issue. Please ensure:</p>
+                                <ul class="mb-0">
+                                    <li>The area is secured or marked as hazardous</li>
+                                    <li>Your supervisor has been notified verbally</li>
+                                    <li>Anyone at risk has been warned</li>
+                                </ul>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="category" class="form-label">Issue Category: <span class="text-danger">*</span></label>
+                                    <select class="form-select" id="category" name="category" required>
+                                        <option value="">Select category...</option>
+                                        <option value="equipment">Equipment Malfunction</option>
+                                        <option value="facility">Facility Issue</option>
+                                        <option value="safety">Safety Hazard</option>
+                                        <option value="cleaning">Cleaning/Sanitation</option>
+                                        <option value="hvac">HVAC/Temperature</option>
+                                        <option value="electrical">Electrical</option>
+                                        <option value="plumbing">Plumbing</option>
+                                        <option value="other">Other</option>
+                                    </select>
+                                </div>
+                                
+                                <div class="col-md-6 mb-3">
+                                    <label for="priority" class="form-label">Priority Level: <span class="text-danger">*</span></label>
+                                    <select class="form-select" id="priority" name="priority" required>
+                                        <option value="low">Low - Can wait a few days</option>
+                                        <option value="normal" selected>Normal - Should be addressed soon</option>
+                                        <option value="high">High - Needs attention within 24 hours</option>
+                                        <option value="critical">Critical - Immediate attention required</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="title" class="form-label">Brief Title: <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" id="title" name="title" required 
+                                       placeholder="e.g., Broken printer in nurse station">
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="location" class="form-label">Location: <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" id="location" name="location" required 
+                                       placeholder="e.g., Building A, Room 201, Near north entrance">
+                                <small class="form-text text-muted">Be as specific as possible to help maintenance find the issue</small>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="description" class="form-label">Detailed Description: <span class="text-danger">*</span></label>
+                                <textarea class="form-control" id="description" name="description" rows="4" required
+                                          placeholder="Describe the issue in detail. Include:
+- What is broken/not working?
+- When did you first notice it?
+- Has it gotten worse?
+- Any temporary fixes attempted?"></textarea>
+                            </div>
+
+                            <div class="mb-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="safety_issue" name="safety_issue">
+                                    <label class="form-check-label text-danger" for="safety_issue">
+                                        <strong>This is a safety issue that could cause injury</strong>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <hr>
+
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <button type="button" class="btn btn-secondary w-100" onclick="window.history.back()">
+                                        <i class="bi bi-arrow-left"></i> Cancel
+                                    </button>
+                                </div>
+                                <div class="col-md-6">
+                                    <button type="submit" class="btn btn-warning w-100">
+                                        <i class="bi bi-send"></i> Submit Issue Report
+                                    </button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Common Issues Guide -->
+                <div class="card mt-3">
+                    <div class="card-header">
+                        <h6 class="mb-0">
+                            <i class="bi bi-info-circle"></i> Common Issues Quick Guide
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="accordion accordion-flush" id="commonIssues">
+                            <div class="accordion-item">
+                                <h2 class="accordion-header">
+                                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#equipment">
+                                        Equipment Issues
+                                    </button>
+                                </h2>
+                                <div id="equipment" class="accordion-collapse collapse" data-bs-parent="#commonIssues">
+                                    <div class="accordion-body">
+                                        <ul>
+                                            <li><strong>Before reporting:</strong> Check power connections, try restart</li>
+                                            <li><strong>Include:</strong> Equipment ID/model, error messages, last working date</li>
+                                            <li><strong>Priority:</strong> Critical if affects patient care, High if affects operations</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="accordion-item">
+                                <h2 class="accordion-header">
+                                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#hvac">
+                                        HVAC/Temperature
+                                    </button>
+                                </h2>
+                                <div id="hvac" class="accordion-collapse collapse" data-bs-parent="#commonIssues">
+                                    <div class="accordion-body">
+                                        <ul>
+                                            <li><strong>Include:</strong> Current temperature, affected areas, duration</li>
+                                            <li><strong>Check:</strong> Thermostat settings, vents not blocked</li>
+                                            <li><strong>Priority:</strong> High if extreme temperatures, Critical if affecting sensitive equipment</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="accordion-item">
+                                <h2 class="accordion-header">
+                                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#safety">
+                                        Safety Hazards
+                                    </button>
+                                </h2>
+                                <div id="safety" class="accordion-collapse collapse" data-bs-parent="#commonIssues">
+                                    <div class="accordion-body">
+                                        <ul>
+                                            <li><strong>Immediate Action:</strong> Secure area, warn others, notify supervisor</li>
+                                            <li><strong>Always Critical Priority</strong> for trip hazards, electrical issues, spills</li>
+                                            <li><strong>Include:</strong> Exact location, what makes it dangerous, temporary measures taken</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Show safety alert when safety checkbox is checked
+        document.getElementById('safety_issue').addEventListener('change', function() {
+            const alert = document.getElementById('safetyAlert');
+            if (this.checked) {
+                alert.style.display = 'block';
+                document.getElementById('priority').value = 'critical';
+            } else {
+                alert.style.display = 'none';
+            }
+        });
+        
+        // Auto-set priority based on category
+        document.getElementById('category').addEventListener('change', function() {
+            const priority = document.getElementById('priority');
+            if (this.value === 'safety') {
+                priority.value = 'critical';
+                document.getElementById('safety_issue').checked = true;
+                document.getElementById('safetyAlert').style.display = 'block';
+            } else if (this.value === 'electrical' || this.value === 'plumbing') {
+                if (priority.value === 'low') {
+                    priority.value = 'normal';
+                }
+            }
+        });
+    </script>
+</body>
+</html>
