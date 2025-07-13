@@ -566,3 +566,182 @@ class TradeMatchPreference(db.Model):
     
     # Relationships
     employee = db.relationship('Employee', backref=db.backref('trade_preferences', uselist=False))
+
+# ==========================================
+# NEW COMMUNICATION MODELS
+# ==========================================
+
+class SupervisorMessage(db.Model):
+    """Messages between supervisors across different shifts"""
+    id = db.Column(db.Integer, primary_key=True)
+    sender_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=False)
+    recipient_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=False)
+    subject = db.Column(db.String(200), nullable=False)
+    message = db.Column(db.Text, nullable=False)
+    priority = db.Column(db.String(20), default='normal')  # low, normal, high, urgent
+    category = db.Column(db.String(50))  # coverage, safety, general, handoff, etc.
+    
+    # Metadata
+    sent_at = db.Column(db.DateTime, default=datetime.utcnow)
+    read_at = db.Column(db.DateTime)
+    archived = db.Column(db.Boolean, default=False)
+    
+    # Thread support for conversations
+    parent_message_id = db.Column(db.Integer, db.ForeignKey('supervisor_message.id'))
+    
+    # Relationships
+    sender = db.relationship('Employee', foreign_keys=[sender_id], backref='sent_supervisor_messages')
+    recipient = db.relationship('Employee', foreign_keys=[recipient_id], backref='received_supervisor_messages')
+    replies = db.relationship('SupervisorMessage', backref=db.backref('parent_message', remote_side=[id]))
+    
+    @property
+    def is_read(self):
+        return self.read_at is not None
+
+class PositionMessage(db.Model):
+    """Messages between employees in the same position across different shifts"""
+    id = db.Column(db.Integer, primary_key=True)
+    sender_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=False)
+    position_id = db.Column(db.Integer, db.ForeignKey('position.id'), nullable=False)
+    subject = db.Column(db.String(200), nullable=False)
+    message = db.Column(db.Text, nullable=False)
+    category = db.Column(db.String(50))  # handoff, tips, questions, alerts, etc.
+    
+    # Target specific shifts or all
+    target_shifts = db.Column(db.String(50))  # 'all', 'day', 'evening', 'night', or CSV combination
+    
+    # Metadata
+    sent_at = db.Column(db.DateTime, default=datetime.utcnow)
+    expires_at = db.Column(db.DateTime)  # Optional expiration for time-sensitive messages
+    pinned = db.Column(db.Boolean, default=False)  # Pin important messages
+    
+    # Thread support
+    parent_message_id = db.Column(db.Integer, db.ForeignKey('position_message.id'))
+    
+    # Relationships
+    sender = db.relationship('Employee', backref='sent_position_messages')
+    position = db.relationship('Position', backref='position_messages')
+    replies = db.relationship('PositionMessage', backref=db.backref('parent_message', remote_side=[id]))
+    read_receipts = db.relationship('PositionMessageRead', backref='message', cascade='all, delete-orphan')
+    
+    def is_read_by(self, employee_id):
+        """Check if message has been read by specific employee"""
+        return any(r.reader_id == employee_id for r in self.read_receipts)
+    
+    def mark_read_by(self, employee_id):
+        """Mark message as read by employee"""
+        if not self.is_read_by(employee_id):
+            read_receipt = PositionMessageRead(
+                message_id=self.id,
+                reader_id=employee_id,
+                read_at=datetime.utcnow()
+            )
+            db.session.add(read_receipt)
+
+class PositionMessageRead(db.Model):
+    """Track who has read position messages"""
+    id = db.Column(db.Integer, primary_key=True)
+    message_id = db.Column(db.Integer, db.ForeignKey('position_message.id'), nullable=False)
+    reader_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=False)
+    read_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    reader = db.relationship('Employee', backref='position_message_reads')
+    
+    # Ensure unique read receipts
+    __table_args__ = (
+        db.UniqueConstraint('message_id', 'reader_id', name='_message_reader_uc'),
+    )
+
+class MaintenanceIssue(db.Model):
+    """Maintenance issues reported by employees"""
+    id = db.Column(db.Integer, primary_key=True)
+    reporter_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=False)
+    title = db.Column(db.String(200), nullable=False)
+    description = db.Column(db.Text, nullable=False)
+    location = db.Column(db.String(100))  # Building, room, equipment ID, etc.
+    category = db.Column(db.String(50))  # equipment, facility, safety, cleaning, etc.
+    priority = db.Column(db.String(20), default='normal')  # low, normal, high, critical
+    
+    # Status tracking
+    status = db.Column(db.String(20), default='open')  # open, acknowledged, in_progress, resolved, closed
+    reported_at = db.Column(db.DateTime, default=datetime.utcnow)
+    acknowledged_at = db.Column(db.DateTime)
+    resolved_at = db.Column(db.DateTime)
+    closed_at = db.Column(db.DateTime)
+    
+    # Assignment
+    assigned_to_id = db.Column(db.Integer, db.ForeignKey('employee.id'))
+    
+    # Resolution details
+    resolution = db.Column(db.Text)
+    time_spent = db.Column(db.Float)  # Hours spent on resolution
+    
+    # Safety flag
+    safety_issue = db.Column(db.Boolean, default=False)
+    
+    # Relationships
+    reporter = db.relationship('Employee', foreign_keys=[reporter_id], backref='reported_issues')
+    assigned_to = db.relationship('Employee', foreign_keys=[assigned_to_id], backref='assigned_issues')
+    updates = db.relationship('MaintenanceUpdate', backref='issue', cascade='all, delete-orphan')
+    
+    @property
+    def is_overdue(self):
+        """Check if issue is overdue based on priority"""
+        if self.status in ['resolved', 'closed']:
+            return False
+        
+        hours_since_report = (datetime.utcnow() - self.reported_at).total_seconds() / 3600
+        
+        if self.priority == 'critical' and hours_since_report > 4:
+            return True
+        elif self.priority == 'high' and hours_since_report > 24:
+            return True
+        elif self.priority == 'normal' and hours_since_report > 72:
+            return True
+        
+        return False
+
+class MaintenanceUpdate(db.Model):
+    """Updates and communication on maintenance issues"""
+    id = db.Column(db.Integer, primary_key=True)
+    issue_id = db.Column(db.Integer, db.ForeignKey('maintenance_issue.id'), nullable=False)
+    author_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=False)
+    update_type = db.Column(db.String(20))  # comment, status_change, assignment, resolution
+    message = db.Column(db.Text, nullable=False)
+    
+    # Status change tracking
+    old_status = db.Column(db.String(20))
+    new_status = db.Column(db.String(20))
+    
+    # Metadata
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    is_internal = db.Column(db.Boolean, default=False)  # Internal notes vs visible to reporter
+    
+    # Relationships
+    author = db.relationship('Employee', backref='maintenance_updates')
+
+# ==========================================
+# MAINTENANCE MANAGER ROLE
+# ==========================================
+
+class MaintenanceManager(db.Model):
+    """Designate employees as maintenance managers"""
+    id = db.Column(db.Integer, primary_key=True)
+    employee_id = db.Column(db.Integer, db.ForeignKey('employee.id'), unique=True, nullable=False)
+    is_primary = db.Column(db.Boolean, default=False)  # Primary maintenance manager
+    can_assign = db.Column(db.Boolean, default=True)  # Can assign issues to others
+    notification_email = db.Column(db.String(120))  # Optional separate email for alerts
+    
+    # Specializations
+    specializations = db.Column(db.Text)  # JSON list of categories they handle
+    
+    # Availability
+    available_start_time = db.Column(db.Time)
+    available_end_time = db.Column(db.Time)
+    available_days = db.Column(db.String(20))  # CSV of days: "Mon,Tue,Wed,Thu,Fri"
+    
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    employee = db.relationship('Employee', backref=db.backref('maintenance_manager_role', uselist=False))
