@@ -5,7 +5,7 @@ from werkzeug.utils import secure_filename
 from datetime import datetime, timedelta, date
 import os
 from sqlalchemy import inspect, case, and_, or_, func
-from models import db, Employee, Position, Skill, Schedule, Availability, TimeOffRequest, VacationCalendar, CoverageRequest, CasualWorker, CasualAssignment, ShiftSwapRequest, ScheduleSuggestion, CircadianProfile, SleepLog, SleepRecommendation, ShiftTransitionPlan, CoverageNotification, OvertimeOpportunity, ShiftTradePost, ShiftTradeProposal, ShiftTrade, TradeMatchPreference
+from models import db, Employee, Position, Skill, Schedule, Availability, TimeOffRequest, VacationCalendar, CoverageRequest, CasualWorker, CasualAssignment, ShiftSwapRequest, ScheduleSuggestion, CircadianProfile, SleepLog, SleepRecommendation, ShiftTransitionPlan, CoverageNotification, OvertimeOpportunity, ShiftTradePost, ShiftTradeProposal, ShiftTrade, TradeMatchPreference, SupervisorMessage, PositionMessage, PositionMessageRead, MaintenanceIssue, MaintenanceUpdate, MaintenanceManager
 from circadian_advisor import CircadianAdvisor
 import json
 import pandas as pd
@@ -423,6 +423,722 @@ def employee_dashboard():
                          time_off_requests=time_off_requests,
                          sleep_profile=sleep_profile,
                          unread_notifications=unread_notifications)
+
+# ==================== COMMUNICATION ROUTES ====================
+
+@app.route('/supervisor/messages')
+@login_required
+def supervisor_messages():
+    """View and send messages to other supervisors"""
+    if not current_user.is_supervisor:
+        flash('Access denied. Supervisors only.', 'danger')
+        return redirect(url_for('employee_dashboard'))
+    
+    # Get inbox messages
+    inbox = SupervisorMessage.query.filter_by(
+        recipient_id=current_user.id,
+        archived=False
+    ).order_by(SupervisorMessage.sent_at.desc()).all()
+    
+    # Get sent messages
+    sent = SupervisorMessage.query.filter_by(
+        sender_id=current_user.id,
+        archived=False
+    ).order_by(SupervisorMessage.sent_at.desc()).limit(10).all()
+    
+    # Get other supervisors for new message dropdown
+    other_supervisors = Employee.query.filter(
+        Employee.is_supervisor == True,
+        Employee.id != current_user.id
+    ).order_by(Employee.name).all()
+    
+    # Count unread messages
+    unread_count = SupervisorMessage.query.filter_by(
+        recipient_id=current_user.id,
+        read_at=None
+    ).count()
+    
+    return render_template('supervisor_messages.html',
+                         inbox=inbox,
+                         sent=sent,
+                         other_supervisors=other_supervisors,
+                         unread_count=unread_count)
+
+@app.route('/supervisor/messages/send', methods=['POST'])
+@login_required
+def send_supervisor_message():
+    """Send a message to another supervisor"""
+    if not current_user.is_supervisor:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    recipient_id = request.form.get('recipient_id')
+    subject = request.form.get('subject')
+    message_text = request.form.get('message')
+    priority = request.form.get('priority', 'normal')
+    category = request.form.get('category', 'general')
+    
+    # Validate recipient is a supervisor
+    recipient = Employee.query.get_or_404(recipient_id)
+    if not recipient.is_supervisor:
+        flash('Recipient must be a supervisor.', 'danger')
+        return redirect(url_for('supervisor_messages'))
+    
+    # Create message
+    message = SupervisorMessage(
+        sender_id=current_user.id,
+        recipient_id=recipient_id,
+        subject=subject,
+        message=message_text,
+        priority=priority,
+        category=category
+    )
+    
+    db.session.add(message)
+    db.session.commit()
+    
+    flash(f'Message sent to {recipient.name}!', 'success')
+    return redirect(url_for('supervisor_messages'))
+
+@app.route('/supervisor/messages/<int:message_id>')
+@login_required
+def view_supervisor_message(message_id):
+    """View a specific supervisor message"""
+    message = SupervisorMessage.query.get_or_404(message_id)
+    
+    # Check authorization
+    if not current_user.is_supervisor or (message.recipient_id != current_user.id and message.sender_id != current_user.id):
+        flash('Unauthorized access.', 'danger')
+        return redirect(url_for('dashboard'))
+    
+    # Mark as read if recipient
+    if message.recipient_id == current_user.id and not message.read_at:
+        message.read_at = datetime.now()
+        db.session.commit()
+    
+    # Get thread messages
+    thread_messages = []
+    if message.parent_message_id:
+        # Get parent and all replies
+        parent = SupervisorMessage.query.get(message.parent_message_id)
+        thread_messages = SupervisorMessage.query.filter_by(
+            parent_message_id=parent.id
+        ).order_by(SupervisorMessage.sent_at).all()
+        thread_messages.insert(0, parent)
+    else:
+        # This is parent, get all replies
+        thread_messages = SupervisorMessage.query.filter_by(
+            parent_message_id=message.id
+        ).order_by(SupervisorMessage.sent_at).all()
+        thread_messages.insert(0, message)
+    
+    return render_template('view_supervisor_message.html',
+                         message=message,
+                         thread_messages=thread_messages)
+
+@app.route('/supervisor/messages/<int:message_id>/reply', methods=['POST'])
+@login_required
+def reply_supervisor_message(message_id):
+    """Reply to a supervisor message"""
+    original = SupervisorMessage.query.get_or_404(message_id)
+    
+    # Check authorization
+    if not current_user.is_supervisor or (original.recipient_id != current_user.id and original.sender_id != current_user.id):
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    reply_text = request.form.get('reply')
+    
+    # Determine recipient (other person in conversation)
+    recipient_id = original.sender_id if original.recipient_id == current_user.id else original.recipient_id
+    
+    # Create reply
+    reply = SupervisorMessage(
+        sender_id=current_user.id,
+        recipient_id=recipient_id,
+        subject=f"Re: {original.subject}",
+        message=reply_text,
+        priority=original.priority,
+        category=original.category,
+        parent_message_id=original.parent_message_id or original.id
+    )
+    
+    db.session.add(reply)
+    db.session.commit()
+    
+    flash('Reply sent!', 'success')
+    return redirect(url_for('view_supervisor_message', message_id=message_id))
+
+@app.route('/position/messages')
+@login_required
+def position_messages():
+    """View messages for employee's position"""
+    if not current_user.position_id:
+        flash('You must be assigned to a position to view position messages.', 'warning')
+        return redirect(url_for('employee_dashboard'))
+    
+    # Get messages for user's position
+    messages_query = PositionMessage.query.filter_by(
+        position_id=current_user.position_id
+    ).filter(
+        db.or_(
+            PositionMessage.expires_at.is_(None),
+            PositionMessage.expires_at > datetime.now()
+        )
+    )
+    
+    # Filter by shift if specified
+    shift_filter = request.args.get('shift', 'all')
+    if shift_filter != 'all':
+        messages_query = messages_query.filter(
+            db.or_(
+                PositionMessage.target_shifts == 'all',
+                PositionMessage.target_shifts.contains(shift_filter)
+            )
+        )
+    
+    # Get pinned messages first, then others by date
+    pinned_messages = messages_query.filter_by(pinned=True).all()
+    recent_messages = messages_query.filter_by(pinned=False).order_by(
+        PositionMessage.sent_at.desc()
+    ).limit(50).all()
+    
+    # Mark messages as read
+    for message in pinned_messages + recent_messages:
+        if not message.is_read_by(current_user.id):
+            message.mark_read_by(current_user.id)
+    
+    db.session.commit()
+    
+    # Get colleagues in same position but different shifts
+    colleagues = Employee.query.filter(
+        Employee.position_id == current_user.position_id,
+        Employee.id != current_user.id,
+        Employee.crew != current_user.crew
+    ).all()
+    
+    return render_template('position_messages.html',
+                         pinned_messages=pinned_messages,
+                         recent_messages=recent_messages,
+                         colleagues=colleagues,
+                         current_position=current_user.position,
+                         shift_filter=shift_filter)
+
+@app.route('/position/messages/send', methods=['POST'])
+@login_required
+def send_position_message():
+    """Send a message to colleagues in same position"""
+    if not current_user.position_id:
+        return jsonify({'error': 'No position assigned'}), 403
+    
+    subject = request.form.get('subject')
+    message_text = request.form.get('message')
+    category = request.form.get('category', 'general')
+    target_shifts = request.form.getlist('target_shifts')
+    expires_days = request.form.get('expires_days')
+    
+    # Handle target shifts
+    if 'all' in target_shifts or not target_shifts:
+        target_shifts_str = 'all'
+    else:
+        target_shifts_str = ','.join(target_shifts)
+    
+    # Calculate expiration
+    expires_at = None
+    if expires_days and expires_days.isdigit():
+        expires_at = datetime.now() + timedelta(days=int(expires_days))
+    
+    # Create message
+    message = PositionMessage(
+        sender_id=current_user.id,
+        position_id=current_user.position_id,
+        subject=subject,
+        message=message_text,
+        category=category,
+        target_shifts=target_shifts_str,
+        expires_at=expires_at
+    )
+    
+    db.session.add(message)
+    db.session.commit()
+    
+    flash('Message sent to position colleagues!', 'success')
+    return redirect(url_for('position_messages'))
+
+@app.route('/position/messages/<int:message_id>')
+@login_required
+def view_position_message(message_id):
+    """View a specific position message and its replies"""
+    message = PositionMessage.query.get_or_404(message_id)
+    
+    # Check authorization
+    if current_user.position_id != message.position_id:
+        flash('You cannot view messages for other positions.', 'danger')
+        return redirect(url_for('position_messages'))
+    
+    # Mark as read
+    if not message.is_read_by(current_user.id):
+        message.mark_read_by(current_user.id)
+        db.session.commit()
+    
+    # Get replies
+    replies = PositionMessage.query.filter_by(
+        parent_message_id=message.id
+    ).order_by(PositionMessage.sent_at).all()
+    
+    return render_template('view_position_message.html',
+                         message=message,
+                         replies=replies)
+
+@app.route('/position/messages/<int:message_id>/reply', methods=['POST'])
+@login_required
+def reply_position_message(message_id):
+    """Reply to a position message"""
+    original = PositionMessage.query.get_or_404(message_id)
+    
+    # Check authorization
+    if current_user.position_id != original.position_id:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    reply_text = request.form.get('reply')
+    
+    # Create reply
+    reply = PositionMessage(
+        sender_id=current_user.id,
+        position_id=current_user.position_id,
+        subject=f"Re: {original.subject}",
+        message=reply_text,
+        category=original.category,
+        target_shifts=original.target_shifts,
+        parent_message_id=original.id
+    )
+    
+    db.session.add(reply)
+    db.session.commit()
+    
+    flash('Reply posted!', 'success')
+    return redirect(url_for('view_position_message', message_id=message_id))
+
+@app.route('/maintenance/report', methods=['GET', 'POST'])
+@login_required
+def report_maintenance():
+    """Report a maintenance issue"""
+    if request.method == 'POST':
+        title = request.form.get('title')
+        description = request.form.get('description')
+        location = request.form.get('location')
+        category = request.form.get('category', 'general')
+        priority = request.form.get('priority', 'normal')
+        safety_issue = request.form.get('safety_issue') == 'on'
+        
+        # Create issue
+        issue = MaintenanceIssue(
+            reporter_id=current_user.id,
+            title=title,
+            description=description,
+            location=location,
+            category=category,
+            priority=priority,
+            safety_issue=safety_issue
+        )
+        
+        # Auto-assign to primary maintenance manager if exists
+        primary_manager = MaintenanceManager.query.filter_by(is_primary=True).first()
+        if primary_manager:
+            issue.assigned_to_id = primary_manager.employee_id
+        
+        db.session.add(issue)
+        db.session.commit()
+        
+        # Create initial update
+        update = MaintenanceUpdate(
+            issue_id=issue.id,
+            author_id=current_user.id,
+            update_type='comment',
+            message=f"Issue reported: {description}"
+        )
+        db.session.add(update)
+        db.session.commit()
+        
+        flash('Maintenance issue reported successfully!', 'success')
+        return redirect(url_for('view_maintenance_issue', issue_id=issue.id))
+    
+    # GET request - show form
+    return render_template('report_maintenance.html')
+
+@app.route('/maintenance/issues')
+@login_required
+def maintenance_issues():
+    """View all maintenance issues (for maintenance managers and employees)"""
+    # Check if user is a maintenance manager
+    is_manager = MaintenanceManager.query.filter_by(employee_id=current_user.id).first() is not None
+    
+    # Base query
+    if is_manager:
+        # Managers see all issues
+        issues_query = MaintenanceIssue.query
+    else:
+        # Regular employees see only their reported issues
+        issues_query = MaintenanceIssue.query.filter_by(reporter_id=current_user.id)
+    
+    # Apply filters
+    status_filter = request.args.get('status', 'active')
+    if status_filter == 'active':
+        issues_query = issues_query.filter(
+            MaintenanceIssue.status.in_(['open', 'acknowledged', 'in_progress'])
+        )
+    elif status_filter != 'all':
+        issues_query = issues_query.filter_by(status=status_filter)
+    
+    # Sort by priority and date
+    issues = issues_query.order_by(
+        case(
+            (MaintenanceIssue.priority == 'critical', 1),
+            (MaintenanceIssue.priority == 'high', 2),
+            (MaintenanceIssue.priority == 'normal', 3),
+            (MaintenanceIssue.priority == 'low', 4)
+        ),
+        MaintenanceIssue.reported_at.desc()
+    ).all()
+    
+    # Get statistics for managers
+    stats = {}
+    if is_manager:
+        stats = {
+            'open': MaintenanceIssue.query.filter_by(status='open').count(),
+            'in_progress': MaintenanceIssue.query.filter_by(status='in_progress').count(),
+            'resolved': MaintenanceIssue.query.filter_by(status='resolved').count(),
+            'critical': MaintenanceIssue.query.filter_by(priority='critical', status='open').count()
+        }
+    
+    return render_template('maintenance_issues.html',
+                         issues=issues,
+                         is_manager=is_manager,
+                         stats=stats,
+                         status_filter=status_filter)
+
+@app.route('/maintenance/issues/<int:issue_id>')
+@login_required
+def view_maintenance_issue(issue_id):
+    """View a specific maintenance issue"""
+    issue = MaintenanceIssue.query.get_or_404(issue_id)
+    
+    # Check authorization
+    is_manager = MaintenanceManager.query.filter_by(employee_id=current_user.id).first() is not None
+    if not is_manager and issue.reporter_id != current_user.id:
+        flash('You can only view issues you reported.', 'danger')
+        return redirect(url_for('maintenance_issues'))
+    
+    # Get updates
+    updates = MaintenanceUpdate.query.filter_by(issue_id=issue_id)
+    if not is_manager:
+        updates = updates.filter_by(is_internal=False)
+    updates = updates.order_by(MaintenanceUpdate.created_at).all()
+    
+    # Get available maintenance staff for assignment (managers only)
+    maintenance_staff = []
+    if is_manager:
+        maintenance_staff = Employee.query.join(MaintenanceManager).all()
+    
+    return render_template('view_maintenance_issue.html',
+                         issue=issue,
+                         updates=updates,
+                         is_manager=is_manager,
+                         maintenance_staff=maintenance_staff)
+
+@app.route('/maintenance/issues/<int:issue_id>/update', methods=['POST'])
+@login_required
+def update_maintenance_issue(issue_id):
+    """Update a maintenance issue"""
+    issue = MaintenanceIssue.query.get_or_404(issue_id)
+    
+    # Check authorization
+    is_manager = MaintenanceManager.query.filter_by(employee_id=current_user.id).first() is not None
+    if not is_manager and issue.reporter_id != current_user.id:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    update_text = request.form.get('update')
+    is_internal = request.form.get('is_internal') == 'on'
+    
+    # Create update
+    update = MaintenanceUpdate(
+        issue_id=issue.id,
+        author_id=current_user.id,
+        update_type='comment',
+        message=update_text,
+        is_internal=is_internal and is_manager
+    )
+    
+    db.session.add(update)
+    db.session.commit()
+    
+    flash('Update added to maintenance issue.', 'success')
+    return redirect(url_for('view_maintenance_issue', issue_id=issue_id))
+
+@app.route('/maintenance/issues/<int:issue_id>/status', methods=['POST'])
+@login_required
+def change_maintenance_status(issue_id):
+    """Change the status of a maintenance issue (managers only)"""
+    # Check if user is a maintenance manager
+    if not MaintenanceManager.query.filter_by(employee_id=current_user.id).first():
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    issue = MaintenanceIssue.query.get_or_404(issue_id)
+    new_status = request.form.get('status')
+    resolution = request.form.get('resolution')
+    
+    # Validate status
+    valid_statuses = ['open', 'acknowledged', 'in_progress', 'resolved', 'closed']
+    if new_status not in valid_statuses:
+        flash('Invalid status.', 'danger')
+        return redirect(url_for('view_maintenance_issue', issue_id=issue_id))
+    
+    # Update timestamps
+    old_status = issue.status
+    if new_status == 'acknowledged' and not issue.acknowledged_at:
+        issue.acknowledged_at = datetime.now()
+    elif new_status == 'resolved' and not issue.resolved_at:
+        issue.resolved_at = datetime.now()
+        if resolution:
+            issue.resolution = resolution
+    elif new_status == 'closed' and not issue.closed_at:
+        issue.closed_at = datetime.now()
+    
+    issue.status = new_status
+    
+    # Create status update
+    update = MaintenanceUpdate(
+        issue_id=issue.id,
+        author_id=current_user.id,
+        update_type='status_change',
+        message=f"Status changed from {old_status} to {new_status}",
+        old_status=old_status,
+        new_status=new_status
+    )
+    
+    db.session.add(update)
+    db.session.commit()
+    
+    flash(f'Issue status updated to {new_status}.', 'success')
+    return redirect(url_for('view_maintenance_issue', issue_id=issue_id))
+
+@app.route('/maintenance/issues/<int:issue_id>/assign', methods=['POST'])
+@login_required
+def assign_maintenance_issue(issue_id):
+    """Assign a maintenance issue to staff (managers only)"""
+    # Check if user is a maintenance manager with assignment privileges
+    manager = MaintenanceManager.query.filter_by(employee_id=current_user.id).first()
+    if not manager or not manager.can_assign:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    issue = MaintenanceIssue.query.get_or_404(issue_id)
+    assignee_id = request.form.get('assignee_id')
+    
+    # Validate assignee is maintenance staff
+    assignee = Employee.query.join(MaintenanceManager).filter(
+        Employee.id == assignee_id
+    ).first()
+    
+    if not assignee:
+        flash('Invalid assignee selected.', 'danger')
+        return redirect(url_for('view_maintenance_issue', issue_id=issue_id))
+    
+    # Update assignment
+    old_assignee = issue.assigned_to
+    issue.assigned_to_id = assignee_id
+    
+    # Create assignment update
+    update = MaintenanceUpdate(
+        issue_id=issue.id,
+        author_id=current_user.id,
+        update_type='assignment',
+        message=f"Assigned to {assignee.name}" + (f" (was: {old_assignee.name})" if old_assignee else "")
+    )
+    
+    db.session.add(update)
+    db.session.commit()
+    
+    flash(f'Issue assigned to {assignee.name}.', 'success')
+    return redirect(url_for('view_maintenance_issue', issue_id=issue_id))
+
+@app.route('/admin/maintenance-managers')
+@login_required
+def manage_maintenance_managers():
+    """Admin page to manage maintenance managers"""
+    if not current_user.is_supervisor:
+        flash('Access denied. Supervisors only.', 'danger')
+        return redirect(url_for('dashboard'))
+    
+    # Get all maintenance managers
+    managers = MaintenanceManager.query.all()
+    
+    # Get employees who could be maintenance managers
+    potential_managers = Employee.query.filter(
+        ~Employee.id.in_([m.employee_id for m in managers])
+    ).order_by(Employee.name).all()
+    
+    return render_template('admin_maintenance_managers.html',
+                         managers=managers,
+                         potential_managers=potential_managers)
+
+@app.route('/admin/maintenance-managers/add', methods=['POST'])
+@login_required
+def add_maintenance_manager():
+    """Add a new maintenance manager"""
+    if not current_user.is_supervisor:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    employee_id = request.form.get('employee_id')
+    is_primary = request.form.get('is_primary') == 'on'
+    can_assign = request.form.get('can_assign') == 'on'
+    
+    # Check if already a manager
+    existing = MaintenanceManager.query.filter_by(employee_id=employee_id).first()
+    if existing:
+        flash('Employee is already a maintenance manager.', 'warning')
+        return redirect(url_for('manage_maintenance_managers'))
+    
+    # If setting as primary, unset other primaries
+    if is_primary:
+        MaintenanceManager.query.update({'is_primary': False})
+    
+    # Create maintenance manager
+    manager = MaintenanceManager(
+        employee_id=employee_id,
+        is_primary=is_primary,
+        can_assign=can_assign
+    )
+    
+    db.session.add(manager)
+    db.session.commit()
+    
+    employee = Employee.query.get(employee_id)
+    flash(f'{employee.name} added as maintenance manager!', 'success')
+    return redirect(url_for('manage_maintenance_managers'))
+
+@app.route('/admin/maintenance-managers/<int:manager_id>/remove', methods=['POST'])
+@login_required
+def remove_maintenance_manager(manager_id):
+    """Remove a maintenance manager"""
+    if not current_user.is_supervisor:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    manager = MaintenanceManager.query.get_or_404(manager_id)
+    employee_name = manager.employee.name
+    
+    db.session.delete(manager)
+    db.session.commit()
+    
+    flash(f'{employee_name} removed from maintenance managers.', 'success')
+    return redirect(url_for('manage_maintenance_managers'))
+
+# ==================== API ROUTES FOR COMMUNICATION ====================
+
+@app.route('/api/supervisor-messages/unread-count')
+@login_required
+def supervisor_messages_unread_count():
+    """Get count of unread supervisor messages"""
+    if not current_user.is_supervisor:
+        return jsonify({'count': 0})
+    
+    count = SupervisorMessage.query.filter_by(
+        recipient_id=current_user.id,
+        read_at=None
+    ).count()
+    
+    return jsonify({'count': count})
+
+@app.route('/api/position-messages/unread-count')
+@login_required
+def position_messages_unread_count():
+    """Get count of unread position messages"""
+    if not current_user.position_id:
+        return jsonify({'count': 0})
+    
+    # Get messages for user's position that they haven't read
+    messages = PositionMessage.query.filter_by(
+        position_id=current_user.position_id
+    ).filter(
+        db.or_(
+            PositionMessage.expires_at.is_(None),
+            PositionMessage.expires_at > datetime.now()
+        )
+    ).all()
+    
+    unread_count = sum(1 for msg in messages if not msg.is_read_by(current_user.id))
+    
+    return jsonify({'count': unread_count})
+
+@app.route('/api/maintenance/my-issues-count')
+@login_required
+def my_maintenance_issues_count():
+    """Get count of user's open maintenance issues"""
+    # For managers, count assigned issues
+    is_manager = MaintenanceManager.query.filter_by(employee_id=current_user.id).first()
+    
+    if is_manager:
+        count = MaintenanceIssue.query.filter(
+            MaintenanceIssue.assigned_to_id == current_user.id,
+            MaintenanceIssue.status.in_(['open', 'acknowledged', 'in_progress'])
+        ).count()
+    else:
+        # For regular employees, count their reported issues
+        count = MaintenanceIssue.query.filter(
+            MaintenanceIssue.reporter_id == current_user.id,
+            MaintenanceIssue.status.in_(['open', 'acknowledged', 'in_progress'])
+        ).count()
+    
+    return jsonify({'count': count})
+
+# ==================== QUICK ACCESS ROUTES ====================
+
+@app.route('/quick/supervisor-message', methods=['POST'])
+@login_required
+def quick_supervisor_message():
+    """Quick send supervisor message from dashboard"""
+    if not current_user.is_supervisor:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    recipient_id = request.form.get('recipient_id')
+    message_text = request.form.get('message')
+    
+    # Create quick message
+    message = SupervisorMessage(
+        sender_id=current_user.id,
+        recipient_id=recipient_id,
+        subject='Quick Message',
+        message=message_text,
+        priority='normal',
+        category='general'
+    )
+    
+    db.session.add(message)
+    db.session.commit()
+    
+    return jsonify({'success': True, 'message': 'Message sent!'})
+
+@app.route('/quick/position-broadcast', methods=['POST'])
+@login_required
+def quick_position_broadcast():
+    """Quick broadcast to position colleagues"""
+    if not current_user.position_id:
+        return jsonify({'error': 'No position assigned'}), 403
+    
+    message_text = request.form.get('message')
+    
+    # Create broadcast
+    message = PositionMessage(
+        sender_id=current_user.id,
+        position_id=current_user.position_id,
+        subject='Quick Update',
+        message=message_text,
+        category='alert',
+        target_shifts='all',
+        expires_at=datetime.now() + timedelta(days=1)  # Expires in 24 hours
+    )
+    
+    db.session.add(message)
+    db.session.commit()
+    
+    return jsonify({'success': True, 'message': 'Broadcast sent!'})
 
 # ==================== SHIFT TRADE MARKETPLACE ROUTES ====================
 
@@ -1651,6 +2367,91 @@ def init_db():
         <p><a href="/login">Go to login</a></p>
         '''
 
+@app.route('/add-communication-tables')
+def add_communication_tables():
+    """Add the new communication tables to the database"""
+    if request.args.get('confirm') != 'yes':
+        return '''
+        <h2>Add Communication Tables</h2>
+        <p>This will add the following new communication features to your database:</p>
+        <h3>Feature 1: Supervisor-to-Supervisor Messages</h3>
+        <ul>
+            <li>Direct messaging between shift supervisors</li>
+            <li>Priority levels and categories</li>
+            <li>Thread support for conversations</li>
+            <li>Read receipts</li>
+        </ul>
+        <h3>Feature 2: Position-Based Communication</h3>
+        <ul>
+            <li>Message board for employees in the same position</li>
+            <li>Share tips, handoff notes, and alerts</li>
+            <li>Target specific shifts or all shifts</li>
+            <li>Message expiration and pinning</li>
+        </ul>
+        <h3>Feature 3: Maintenance Issue Tracking</h3>
+        <ul>
+            <li>Report equipment and facility issues</li>
+            <li>Priority-based tracking</li>
+            <li>Assignment to maintenance staff</li>
+            <li>Progress updates and resolution tracking</li>
+            <li>Safety issue flagging</li>
+        </ul>
+        <p>New tables to be added:</p>
+        <ul>
+            <li>SupervisorMessage - Messages between supervisors</li>
+            <li>PositionMessage - Messages between position colleagues</li>
+            <li>PositionMessageRead - Read receipts for position messages</li>
+            <li>MaintenanceIssue - Maintenance issue reports</li>
+            <li>MaintenanceUpdate - Updates on maintenance issues</li>
+            <li>MaintenanceManager - Designate maintenance managers</li>
+        </ul>
+        <p><a href="/add-communication-tables?confirm=yes" class="btn btn-primary">Click here to add communication features</a></p>
+        <p><a href="/" class="btn btn-secondary">Cancel</a></p>
+        '''
+    
+    try:
+        # Create all tables (this will only add new ones)
+        db.create_all()
+        
+        # Check if we have a maintenance manager
+        if not MaintenanceManager.query.first():
+            # Make the admin a maintenance manager by default
+            admin = Employee.query.filter_by(email='admin@workforce.com').first()
+            if admin:
+                mm = MaintenanceManager(
+                    employee_id=admin.id,
+                    is_primary=True,
+                    can_assign=True
+                )
+                db.session.add(mm)
+                db.session.commit()
+        
+        return '''
+        <h2>✅ Success!</h2>
+        <p>Communication tables have been added to the database.</p>
+        <h3>New features now available:</h3>
+        <ol>
+            <li><strong>Supervisor Messages:</strong> Supervisors can now communicate directly with other shift supervisors</li>
+            <li><strong>Position Communication:</strong> Employees can share information with colleagues in the same position across all shifts</li>
+            <li><strong>Maintenance Tracking:</strong> Anyone can report maintenance issues and track their resolution</li>
+        </ol>
+        <h3>Next Steps:</h3>
+        <ul>
+            <li>Supervisors will see a "Supervisor Messages" button in their dashboard</li>
+            <li>Employees will see a "Position Board" in their dashboard</li>
+            <li>Everyone can report maintenance issues from their dashboard</li>
+            <li>The admin account has been designated as the primary maintenance manager</li>
+        </ul>
+        <p><a href="/" class="btn btn-primary">Return to home</a></p>
+        '''
+    except Exception as e:
+        return f'''
+        <h2>❌ Error</h2>
+        <p>Failed to add communication tables: {str(e)}</p>
+        <p>Please ensure your database connection is working and try again.</p>
+        <p><a href="/" class="btn btn-secondary">Return to home</a></p>
+        '''
+
 @app.route('/add-coverage-tables')
 def add_coverage_tables():
     """Add the new coverage notification and overtime tables"""
@@ -1975,3 +2776,6 @@ def populate_crews():
         <p>Make sure you've run <a href="/init-db">/init-db</a> first to create positions and skills.</p>
         <p><a href="/dashboard" class="btn btn-secondary">Return to Dashboard</a></p>
         '''
+
+if __name__ == '__main__':
+    app.run(debug=True)
