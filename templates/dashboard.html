@@ -521,7 +521,7 @@
                             <label for="quickRecipient" class="form-label">Send to:</label>
                             <select class="form-select" id="quickRecipient" required>
                                 <option value="">Select supervisor...</option>
-                                {% for emp in Employee.query.filter_by(is_supervisor=True).filter(Employee.id != current_user.id).all() %}
+                                {% for emp in other_supervisors %}
                                     <option value="{{ emp.id }}">{{ emp.name }} (Crew {{ emp.crew }})</option>
                                 {% endfor %}
                             </select>
@@ -645,25 +645,3 @@
     </script>
 </body>
 </html>
-                            <li><a class="dropdown-item" href="/employees">
-                                <i class="bi bi-person-lines-fill"></i> Manage Employees
-                            </a></li>
-                            <li><a class="dropdown-item" href="/employees/skills">
-                                <i class="bi bi-award"></i> Skills & Certifications
-                            </a></li>
-                        </ul>
-                    </li>
-                    
-                    <!-- Schedule Management Dropdown -->
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" id="scheduleDropdown" role="button" data-bs-toggle="dropdown">
-                            <i class="bi bi-calendar3"></i> Schedules
-                        </a>
-                        <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="/schedule/create">
-                                <i class="bi bi-calendar-plus"></i> Create Schedule
-                            </a></li>
-                            <li><a class="dropdown-item" href="/schedule/view">
-                                <i class="bi bi-calendar-week"></i> View Schedules
-                            </a></li>
-                            <li><hr class="dropdown-divider"></li>
