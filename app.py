@@ -355,6 +355,12 @@ def dashboard():
         status='open'
     ).count()
     
+    # Get other supervisors for the quick message modal
+    other_supervisors = Employee.query.filter(
+        Employee.is_supervisor == True,
+        Employee.id != current_user.id
+    ).order_by(Employee.name).all()
+    
     return render_template('dashboard.html',
                          selected_crew=selected_crew,
                          crew_stats=crew_stats,
@@ -364,7 +370,8 @@ def dashboard():
                          recent_swap_requests=recent_swap_requests,
                          todays_schedule=todays_schedule,
                          coverage_needs=coverage_needs,
-                         coverage_gaps=coverage_gaps[:3])  # Show first 3 gaps
+                         coverage_gaps=coverage_gaps[:3],  # Show first 3 gaps
+                         other_supervisors=other_supervisors)  # Added this line
 
 @app.route('/employee-dashboard')
 @login_required
