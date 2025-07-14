@@ -1,0 +1,251 @@
+{% extends "base.html" %}
+
+{% block title %}Coverage Gaps - Workforce Scheduler{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <h2>Coverage Gaps Analysis</h2>
+            <p class="text-muted">Identify and address staffing shortfalls</p>
+        </div>
+    </div>
+
+    <!-- Filter Controls -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <form method="GET" action="{{ url_for('coverage_gaps') }}" class="row g-3">
+                <div class="col-md-3">
+                    <label for="crew" class="form-label">Crew</label>
+                    <select class="form-select" id="crew" name="crew">
+                        <option value="ALL" {% if selected_crew == 'ALL' %}selected{% endif %}>All Crews</option>
+                        <option value="A" {% if selected_crew == 'A' %}selected{% endif %}>Crew A</option>
+                        <option value="B" {% if selected_crew == 'B' %}selected{% endif %}>Crew B</option>
+                        <option value="C" {% if selected_crew == 'C' %}selected{% endif %}>Crew C</option>
+                        <option value="D" {% if selected_crew == 'D' %}selected{% endif %}>Crew D</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label for="days_ahead" class="form-label">Days Ahead</label>
+                    <select class="form-select" id="days_ahead" name="days_ahead">
+                        <option value="7" {% if days_ahead == 7 %}selected{% endif %}>Next 7 days</option>
+                        <option value="14" {% if days_ahead == 14 %}selected{% endif %}>Next 14 days</option>
+                        <option value="30" {% if days_ahead == 30 %}selected{% endif %}>Next 30 days</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label for="shift_type" class="form-label">Shift Type</label>
+                    <select class="form-select" id="shift_type" name="shift_type">
+                        <option value="">All Shifts</option>
+                        <option value="day" {% if shift_type == 'day' %}selected{% endif %}>Day</option>
+                        <option value="evening" {% if shift_type == 'evening' %}selected{% endif %}>Evening</option>
+                        <option value="night" {% if shift_type == 'night' %}selected{% endif %}>Night</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">&nbsp;</label>
+                    <button type="submit" class="btn btn-primary w-100">Apply Filters</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Summary Statistics -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h5 class="card-title">Total Gaps</h5>
+                    <h2 class="text-danger">{{ coverage_gaps|length }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h5 class="card-title">Critical (Today)</h5>
+                    <h2 class="text-danger">
+                        {{ coverage_gaps|selectattr('date', 'equalto', today)|list|length }}
+                    </h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h5 class="card-title">This Week</h5>
+                    <h2 class="text-warning">
+                        {{ coverage_gaps|selectattr('date', 'le', week_end)|list|length }}
+                    </h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h5 class="card-title">Total Positions Needed</h5>
+                    <h2 class="text-info">
+                        {{ coverage_gaps|sum(attribute='gap') }}
+                    </h2>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Coverage Gaps Table -->
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0">Coverage Gaps Detail</h5>
+        </div>
+        <div class="card-body">
+            {% if coverage_gaps %}
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Day</th>
+                                <th>Shift</th>
+                                <th>Crew</th>
+                                <th>Scheduled</th>
+                                <th>Required</th>
+                                <th>Gap</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for gap in coverage_gaps %}
+                            <tr class="{% if gap.date == today %}table-danger{% elif gap.gap >= 2 %}table-warning{% endif %}">
+                                <td>{{ gap.date.strftime('%m/%d/%Y') }}</td>
+                                <td>{{ gap.date.strftime('%A') }}</td>
+                                <td>
+                                    <span class="badge bg-{% if gap.shift_type == 'day' %}warning{% elif gap.shift_type == 'evening' %}info{% else %}dark{% endif %}">
+                                        {{ gap.shift_type|title }}
+                                    </span>
+                                </td>
+                                <td>{{ gap.crew if gap.crew != 'ALL' else 'All' }}</td>
+                                <td>{{ gap.scheduled }}</td>
+                                <td>{{ gap.required }}</td>
+                                <td>
+                                    <span class="badge bg-danger">-{{ gap.gap }}</span>
+                                </td>
+                                <td>
+                                    <div class="btn-group btn-group-sm" role="group">
+                                        <a href="{{ url_for('fill_gap', date=gap.date, shift_type=gap.shift_type, crew=gap.crew) }}" 
+                                           class="btn btn-primary btn-sm">
+                                            <i class="bi bi-person-plus"></i> Fill Gap
+                                        </a>
+                                        <button type="button" class="btn btn-secondary btn-sm" 
+                                                onclick="showCoverageOptions('{{ gap.date }}', '{{ gap.shift_type }}', '{{ gap.crew }}')">
+                                            <i class="bi bi-broadcast"></i> Push
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Pagination if needed -->
+                {% if coverage_gaps|length > 20 %}
+                <nav aria-label="Page navigation">
+                    <ul class="pagination justify-content-center">
+                        <li class="page-item disabled"><a class="page-link" href="#">Previous</a></li>
+                        <li class="page-item active"><a class="page-link" href="#">1</a></li>
+                        <li class="page-item"><a class="page-link" href="#">2</a></li>
+                        <li class="page-item"><a class="page-link" href="#">3</a></li>
+                        <li class="page-item"><a class="page-link" href="#">Next</a></li>
+                    </ul>
+                </nav>
+                {% endif %}
+            {% else %}
+                <div class="alert alert-success text-center">
+                    <i class="bi bi-check-circle-fill"></i>
+                    <h5>No Coverage Gaps!</h5>
+                    <p>All shifts are adequately staffed for the selected period.</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="mt-4">
+        <a href="{{ url_for('coverage_needs') }}" class="btn btn-secondary">
+            <i class="bi bi-list-check"></i> View All Coverage Needs
+        </a>
+        <a href="{{ url_for('overtime_distribution') }}" class="btn btn-info">
+            <i class="bi bi-clock-history"></i> Overtime Distribution
+        </a>
+        <a href="{{ url_for('casual_workers') }}" class="btn btn-warning">
+            <i class="bi bi-person-badge"></i> Casual Workers
+        </a>
+    </div>
+</div>
+
+<!-- Coverage Push Modal -->
+<div class="modal fade" id="coveragePushModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Push Coverage Request</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="coveragePushForm">
+                    <div class="mb-3">
+                        <label class="form-label">Push To:</label>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="push_to" id="push_my_crew" value="my_crew" checked>
+                            <label class="form-check-label" for="push_my_crew">
+                                My Crew Only
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="push_to" id="push_off_crews" value="off_crews">
+                            <label class="form-check-label" for="push_off_crews">
+                                Off-Duty Crews
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="push_to" id="push_all" value="all">
+                            <label class="form-check-label" for="push_all">
+                                All Available Employees
+                            </label>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="push_message" class="form-label">Message (Optional)</label>
+                        <textarea class="form-control" id="push_message" name="message" rows="3"
+                                  placeholder="Add any special instructions..."></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="sendCoveragePush()">Send Push</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentGap = {};
+
+function showCoverageOptions(date, shiftType, crew) {
+    currentGap = { date, shiftType, crew };
+    new bootstrap.Modal(document.getElementById('coveragePushModal')).show();
+}
+
+function sendCoveragePush() {
+    // This would typically send an AJAX request to push the coverage request
+    alert(`Pushing coverage request for ${currentGap.date} ${currentGap.shiftType} shift to selected employees...`);
+    bootstrap.Modal.getInstance(document.getElementById('coveragePushModal')).hide();
+}
+
+// Auto-refresh every 5 minutes
+setTimeout(() => {
+    location.reload();
+}, 300000);
+</script>
+{% endblock %}
