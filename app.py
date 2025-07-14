@@ -371,7 +371,7 @@ def dashboard():
                          todays_schedule=todays_schedule,
                          coverage_needs=coverage_needs,
                          coverage_gaps=coverage_gaps[:3],  # Show first 3 gaps
-                         other_supervisors=other_supervisors)  # Added this line
+                         other_supervisors=other_supervisors)
 
 @app.route('/employee-dashboard')
 @login_required
@@ -430,6 +430,1007 @@ def employee_dashboard():
                          time_off_requests=time_off_requests,
                          sleep_profile=sleep_profile,
                          unread_notifications=unread_notifications)
+
+# ==================== VACATION/TIME OFF ROUTES ====================
+
+@app.route('/vacation/request', methods=['GET', 'POST'])
+@login_required
+def vacation_request():
+    """Request time off"""
+    if request.method == 'POST':
+        request_type = request.form.get('request_type')
+        start_date = datetime.strptime(request.form.get('start_date'), '%Y-%m-%d').date()
+        end_date = datetime.strptime(request.form.get('end_date'), '%Y-%m-%d').date()
+        reason = request.form.get('reason', '')
+        
+        # Calculate days (excluding weekends)
+        days_requested = 0
+        current = start_date
+        while current <= end_date:
+            if current.weekday() < 5:  # Monday = 0, Friday = 4
+                days_requested += 1
+            current += timedelta(days=1)
+        
+        # Check balance
+        if request_type == 'vacation' and days_requested > current_user.vacation_days:
+            flash('Insufficient vacation days available.', 'danger')
+            return redirect(url_for('vacation_request'))
+        elif request_type == 'sick' and days_requested > current_user.sick_days:
+            flash('Insufficient sick days available.', 'danger')
+            return redirect(url_for('vacation_request'))
+        elif request_type == 'personal' and days_requested > current_user.personal_days:
+            flash('Insufficient personal days available.', 'danger')
+            return redirect(url_for('vacation_request'))
+        
+        # Create request
+        time_off = TimeOffRequest(
+            employee_id=current_user.id,
+            request_type=request_type,
+            start_date=start_date,
+            end_date=end_date,
+            days_requested=days_requested,
+            reason=reason,
+            status='pending'
+        )
+        
+        db.session.add(time_off)
+        db.session.commit()
+        
+        flash('Time off request submitted successfully!', 'success')
+        return redirect(url_for('employee_dashboard'))
+    
+    return render_template('vacation_request.html',
+                         vacation_days=current_user.vacation_days,
+                         sick_days=current_user.sick_days,
+                         personal_days=current_user.personal_days)
+
+@app.route('/supervisor/time-off-requests')
+@login_required
+def time_off_requests():
+    """Review and manage time off requests"""
+    if not current_user.is_supervisor:
+        flash('Access denied. Supervisors only.', 'danger')
+        return redirect(url_for('employee_dashboard'))
+    
+    # Get pending requests
+    pending_requests = TimeOffRequest.query.filter_by(status='pending').order_by(TimeOffRequest.submitted_date.desc()).all()
+    
+    # Get recently processed requests
+    recent_requests = TimeOffRequest.query.filter(
+        TimeOffRequest.status.in_(['approved', 'denied'])
+    ).order_by(TimeOffRequest.submitted_date.desc()).limit(20).all()
+    
+    return render_template('time_off_requests.html',
+                         pending_requests=pending_requests,
+                         recent_requests=recent_requests)
+
+@app.route('/time-off/<int:request_id>/approve', methods=['POST'])
+@login_required
+def approve_time_off(request_id):
+    """Approve a time off request"""
+    if not current_user.is_supervisor:
+        flash('Access denied.', 'danger')
+        return redirect(url_for('employee_dashboard'))
+    
+    time_off = TimeOffRequest.query.get_or_404(request_id)
+    
+    if time_off.status != 'pending':
+        flash('This request has already been processed.', 'warning')
+        return redirect(url_for('time_off_requests'))
+    
+    # Update status
+    time_off.status = 'approved'
+    time_off.processed_date = datetime.now()
+    time_off.processed_by_id = current_user.id
+    
+    # Update employee balances
+    if time_off.request_type == 'vacation':
+        time_off.employee.vacation_days -= time_off.days_requested
+    elif time_off.request_type == 'sick':
+        time_off.employee.sick_days -= time_off.days_requested
+    elif time_off.request_type == 'personal':
+        time_off.employee.personal_days -= time_off.days_requested
+    
+    # Add to vacation calendar
+    current = time_off.start_date
+    while current <= time_off.end_date:
+        if current.weekday() < 5:  # Weekdays only
+            calendar_entry = VacationCalendar(
+                employee_id=time_off.employee_id,
+                date=current,
+                request_type=time_off.request_type,
+                time_off_request_id=time_off.id
+            )
+            db.session.add(calendar_entry)
+        current += timedelta(days=1)
+    
+    db.session.commit()
+    
+    flash(f'Time off request for {time_off.employee.name} has been approved!', 'success')
+    return redirect(url_for('time_off_requests'))
+
+@app.route('/time-off/<int:request_id>/deny', methods=['POST'])
+@login_required
+def deny_time_off(request_id):
+    """Deny a time off request"""
+    if not current_user.is_supervisor:
+        flash('Access denied.', 'danger')
+        return redirect(url_for('employee_dashboard'))
+    
+    time_off = TimeOffRequest.query.get_or_404(request_id)
+    
+    if time_off.status != 'pending':
+        flash('This request has already been processed.', 'warning')
+        return redirect(url_for('time_off_requests'))
+    
+    # Update status
+    time_off.status = 'denied'
+    time_off.processed_date = datetime.now()
+    time_off.processed_by_id = current_user.id
+    
+    db.session.commit()
+    
+    flash(f'Time off request for {time_off.employee.name} has been denied.', 'info')
+    return redirect(url_for('time_off_requests'))
+
+@app.route('/vacation-calendar')
+@login_required
+def vacation_calendar():
+    """View team vacation calendar"""
+    # Get calendar entries for the next 90 days
+    start_date = date.today()
+    end_date = start_date + timedelta(days=90)
+    
+    calendar_entries = VacationCalendar.query.filter(
+        VacationCalendar.date >= start_date,
+        VacationCalendar.date <= end_date
+    ).order_by(VacationCalendar.date).all()
+    
+    # Group by date for easier display
+    calendar_data = {}
+    for entry in calendar_entries:
+        if entry.date not in calendar_data:
+            calendar_data[entry.date] = []
+        calendar_data[entry.date].append(entry)
+    
+    return render_template('vacation_calendar.html',
+                         calendar_data=calendar_data,
+                         start_date=start_date,
+                         end_date=end_date)
+
+# ==================== SUGGESTIONS ROUTES ====================
+
+@app.route('/supervisor/suggestions')
+@login_required
+def suggestions():
+    """View employee suggestions"""
+    if not current_user.is_supervisor:
+        flash('Access denied. Supervisors only.', 'danger')
+        return redirect(url_for('employee_dashboard'))
+    
+    # Get all suggestions
+    all_suggestions = ScheduleSuggestion.query.order_by(ScheduleSuggestion.created_at.desc()).all()
+    
+    return render_template('suggestions.html', suggestions=all_suggestions)
+
+# ==================== CASUAL WORKER ROUTES ====================
+
+@app.route('/register-casual')
+def register_casual():
+    """Casual worker registration form"""
+    skills = Skill.query.all()
+    return render_template('register_casual.html', skills=skills)
+
+@app.route('/register-casual', methods=['POST'])
+def register_casual_post():
+    """Process casual worker registration"""
+    try:
+        # Create casual worker
+        casual = CasualWorker(
+            name=request.form.get('name'),
+            email=request.form.get('email'),
+            phone=request.form.get('phone'),
+            availability_days=request.form.get('availability_days', ''),
+            availability_shifts=request.form.get('availability_shifts', ''),
+            max_hours_per_week=int(request.form.get('max_hours_per_week', 20)),
+            hourly_rate=float(request.form.get('hourly_rate', 25.0))
+        )
+        
+        # Add skills
+        skill_ids = request.form.getlist('skills')
+        for skill_id in skill_ids:
+            skill = Skill.query.get(skill_id)
+            if skill:
+                casual.skills.append(skill)
+        
+        db.session.add(casual)
+        db.session.commit()
+        
+        flash('Registration successful! You will be contacted when shifts are available.', 'success')
+        return redirect(url_for('index'))
+    except Exception as e:
+        flash(f'Error during registration: {str(e)}', 'danger')
+        return redirect(url_for('register_casual'))
+
+@app.route('/casual-workers')
+@login_required
+def casual_workers():
+    """View and manage casual workers"""
+    if not current_user.is_supervisor:
+        flash('Access denied. Supervisors only.', 'danger')
+        return redirect(url_for('employee_dashboard'))
+    
+    # Get all casual workers
+    casuals = CasualWorker.query.filter_by(is_active=True).all()
+    inactive_casuals = CasualWorker.query.filter_by(is_active=False).all()
+    
+    return render_template('casual_workers.html',
+                         casuals=casuals,
+                         inactive_casuals=inactive_casuals)
+
+# ==================== COVERAGE MANAGEMENT ROUTES ====================
+
+@app.route('/supervisor/coverage-needs')
+@login_required
+def coverage_needs():
+    """View all coverage needs and gaps"""
+    if not current_user.is_supervisor:
+        flash('Access denied. Supervisors only.', 'danger')
+        return redirect(url_for('employee_dashboard'))
+    
+    # Get open coverage requests
+    open_requests = CoverageRequest.query.filter_by(status='open').all()
+    
+    # Get coverage gaps for next 14 days
+    coverage_gaps = get_coverage_gaps(crew='ALL', days_ahead=14)
+    
+    # Get available casual workers
+    casual_workers = CasualWorker.query.filter_by(is_active=True).all()
+    
+    return render_template('coverage_needs.html',
+                         open_requests=open_requests,
+                         coverage_gaps=coverage_gaps,
+                         casual_workers=casual_workers)
+
+@app.route('/coverage/push/<int:request_id>', methods=['POST'])
+@login_required
+def push_coverage(request_id):
+    """Push coverage request to employees"""
+    if not current_user.is_supervisor:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    coverage = CoverageRequest.query.get_or_404(request_id)
+    
+    push_to = request.form.get('push_to')
+    message = request.form.get('message', '')
+    
+    notifications_sent = 0
+    
+    if push_to == 'my_crew':
+        # Push to supervisor's crew only
+        employees = Employee.query.filter_by(
+            crew=current_user.crew,
+            is_supervisor=False
+        ).all()
+    elif push_to == 'off_crews':
+        # Find crews that are off during this shift
+        schedule_date = coverage.schedule.date
+        off_crews = get_off_duty_crews(schedule_date, coverage.schedule.shift_type)
+        employees = Employee.query.filter(
+            Employee.crew.in_(off_crews),
+            Employee.is_supervisor == False
+        ).all()
+    elif push_to == 'specific_crew':
+        crew = request.form.get('specific_crew')
+        employees = Employee.query.filter_by(
+            crew=crew,
+            is_supervisor=False
+        ).all()
+    elif push_to == 'supervisors':
+        # Push to other supervisors
+        employees = Employee.query.filter(
+            Employee.is_supervisor == True,
+            Employee.id != current_user.id
+        ).all()
+    else:
+        employees = []
+    
+    # Filter by required skills if specified
+    if coverage.position_required:
+        position = Position.query.get(coverage.position_required)
+        required_skills = [s.id for s in position.required_skills]
+        
+        qualified_employees = []
+        for emp in employees:
+            emp_skills = [s.id for s in emp.skills]
+            if all(skill in emp_skills for skill in required_skills):
+                qualified_employees.append(emp)
+        employees = qualified_employees
+    
+    # Send notifications
+    for employee in employees:
+        # Check if employee is already working that day
+        existing_schedule = Schedule.query.filter_by(
+            employee_id=employee.id,
+            date=coverage.schedule.date
+        ).first()
+        
+        if not existing_schedule:  # Only notify if not already scheduled
+            notification = CoverageNotification(
+                coverage_request_id=coverage.id,
+                sent_to_type='individual',
+                sent_to_employee_id=employee.id,
+                sent_by_id=current_user.id,
+                message=message or f"Coverage needed for {coverage.schedule.date} {coverage.schedule.shift_type} shift"
+            )
+            db.session.add(notification)
+            notifications_sent += 1
+    
+    # Update coverage request
+    coverage.pushed_to_crews = push_to
+    coverage.push_message = message
+    
+    db.session.commit()
+    
+    flash(f'Coverage request sent to {notifications_sent} qualified employees!', 'success')
+    return redirect(url_for('coverage_needs'))
+
+@app.route('/api/coverage-notifications')
+@login_required
+def get_coverage_notifications():
+    """Get coverage notifications for current user"""
+    notifications = CoverageNotification.query.filter_by(
+        sent_to_employee_id=current_user.id,
+        read_at=None
+    ).order_by(CoverageNotification.sent_at.desc()).all()
+    
+    return jsonify({
+        'notifications': [{
+            'id': n.id,
+            'message': n.message,
+            'sent_at': n.sent_at.strftime('%Y-%m-%d %H:%M'),
+            'coverage_id': n.coverage_request_id
+        } for n in notifications]
+    })
+
+@app.route('/coverage/respond/<int:notification_id>', methods=['POST'])
+@login_required
+def respond_to_coverage(notification_id):
+    """Respond to a coverage notification"""
+    notification = CoverageNotification.query.get_or_404(notification_id)
+    
+    if notification.sent_to_employee_id != current_user.id:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    response = request.form.get('response')  # 'accept' or 'decline'
+    
+    notification.read_at = datetime.now()
+    notification.responded_at = datetime.now()
+    notification.response = response
+    
+    if response == 'accept':
+        # Assign the coverage
+        coverage = notification.coverage_request
+        coverage.filled_by_id = current_user.id
+        coverage.filled_at = datetime.now()
+        coverage.status = 'filled'
+        
+        # Create schedule entry
+        original_schedule = coverage.schedule
+        new_schedule = Schedule(
+            employee_id=current_user.id,
+            date=original_schedule.date,
+            shift_type=original_schedule.shift_type,
+            start_time=original_schedule.start_time,
+            end_time=original_schedule.end_time,
+            position_id=original_schedule.position_id,
+            hours=original_schedule.hours,
+            is_overtime=True,  # Coverage is usually overtime
+            crew=current_user.crew
+        )
+        db.session.add(new_schedule)
+        
+        flash('You have accepted the coverage shift!', 'success')
+    else:
+        flash('You have declined the coverage request.', 'info')
+    
+    db.session.commit()
+    return redirect(url_for('employee_dashboard'))
+
+# ==================== EXCEL IMPORT ROUTES ====================
+
+@app.route('/import-employees', methods=['GET', 'POST'])
+@login_required
+def import_employees():
+    """Import employees from Excel file"""
+    if not current_user.is_supervisor:
+        flash('Access denied. Supervisors only.', 'danger')
+        return redirect(url_for('employee_dashboard'))
+    
+    if request.method == 'POST':
+        if 'file' not in request.files:
+            flash('No file selected', 'danger')
+            return redirect(request.url)
+        
+        file = request.files['file']
+        
+        if file.filename == '':
+            flash('No file selected', 'danger')
+            return redirect(request.url)
+        
+        if file and allowed_file(file.filename):
+            filename = secure_filename(file.filename)
+            
+            try:
+                # Read Excel file
+                df = pd.read_excel(file)
+                
+                # Expected columns: Name, Email, Phone, Hire Date, Crew, Position, Skills
+                required_columns = ['Name', 'Email', 'Phone']
+                
+                if not all(col in df.columns for col in required_columns):
+                    flash(f'Excel file must contain columns: {", ".join(required_columns)}', 'danger')
+                    return redirect(request.url)
+                
+                imported_count = 0
+                errors = []
+                
+                for idx, row in df.iterrows():
+                    try:
+                        # Check if employee already exists
+                        existing = Employee.query.filter_by(email=row['Email']).first()
+                        if existing:
+                            errors.append(f"Row {idx+2}: Employee {row['Email']} already exists")
+                            continue
+                        
+                        # Create new employee
+                        employee = Employee(
+                            name=row['Name'],
+                            email=row['Email'],
+                            phone=str(row.get('Phone', '')),
+                            hire_date=pd.to_datetime(row.get('Hire Date', date.today())).date() if pd.notna(row.get('Hire Date')) else date.today(),
+                            crew=str(row.get('Crew', 'A'))[:1],  # Ensure single character
+                            is_supervisor=False,
+                            vacation_days=10,
+                            sick_days=5,
+                            personal_days=3
+                        )
+                        
+                        # Set default password
+                        employee.set_password('password123')
+                        
+                        # Handle position
+                        if 'Position' in row and pd.notna(row['Position']):
+                            position = Position.query.filter_by(name=row['Position']).first()
+                            if position:
+                                employee.position_id = position.id
+                        
+                        # Handle skills (comma-separated)
+                        if 'Skills' in row and pd.notna(row['Skills']):
+                            skill_names = [s.strip() for s in str(row['Skills']).split(',')]
+                            for skill_name in skill_names:
+                                skill = Skill.query.filter_by(name=skill_name).first()
+                                if not skill:
+                                    # Create new skill if it doesn't exist
+                                    skill = Skill(name=skill_name, category='General')
+                                    db.session.add(skill)
+                                employee.skills.append(skill)
+                        
+                        db.session.add(employee)
+                        imported_count += 1
+                        
+                    except Exception as e:
+                        errors.append(f"Row {idx+2}: {str(e)}")
+                
+                db.session.commit()
+                
+                flash(f'Successfully imported {imported_count} employees!', 'success')
+                if errors:
+                    flash(f'Errors encountered: {"; ".join(errors[:5])}{"..." if len(errors) > 5 else ""}', 'warning')
+                
+                return redirect(url_for('dashboard'))
+                
+            except Exception as e:
+                flash(f'Error reading file: {str(e)}', 'danger')
+                return redirect(request.url)
+    
+    # GET request - show upload form
+    return render_template('import_employees.html')
+
+@app.route('/export-template')
+@login_required
+def export_template():
+    """Download Excel template for employee import"""
+    if not current_user.is_supervisor:
+        flash('Access denied. Supervisors only.', 'danger')
+        return redirect(url_for('employee_dashboard'))
+    
+    # Create template DataFrame
+    template_data = {
+        'Name': ['John Doe', 'Jane Smith'],
+        'Email': ['john.doe@example.com', 'jane.smith@example.com'],
+        'Phone': ['555-0123', '555-0124'],
+        'Hire Date': [date.today(), date.today()],
+        'Crew': ['A', 'B'],
+        'Position': ['Nurse', 'Security Officer'],
+        'Skills': ['CPR Certified, Emergency Response', 'Security, First Aid']
+    }
+    
+    df = pd.DataFrame(template_data)
+    
+    # Create Excel file in memory
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, sheet_name='Employees', index=False)
+        
+        # Add instructions sheet
+        instructions = pd.DataFrame({
+            'Instructions': [
+                'Fill in employee data in the Employees sheet',
+                'Required fields: Name, Email, Phone',
+                'Optional fields: Hire Date, Crew (A/B/C/D), Position, Skills',
+                'Skills should be comma-separated',
+                'All employees will be created with password: password123',
+                'Employees will need to change their password on first login'
+            ]
+        })
+        instructions.to_excel(writer, sheet_name='Instructions', index=False)
+    
+    output.seek(0)
+    
+    return send_file(
+        output,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True,
+        download_name='employee_import_template.xlsx'
+    )
+
+# ==================== OVERTIME DISTRIBUTION ROUTES ====================
+
+@app.route('/supervisor/overtime-distribution')
+@login_required
+def overtime_distribution():
+    """Smart overtime distribution interface"""
+    if not current_user.is_supervisor:
+        flash('Access denied. Supervisors only.', 'danger')
+        return redirect(url_for('employee_dashboard'))
+    
+    # Get upcoming overtime opportunities
+    overtime_opportunities = get_overtime_opportunities()
+    
+    # Get eligible employees for overtime
+    eligible_employees = get_overtime_eligible_employees()
+    
+    return render_template('overtime_distribution.html',
+                         opportunities=overtime_opportunities,
+                         eligible_employees=eligible_employees)
+
+@app.route('/overtime/assign', methods=['POST'])
+@login_required
+def assign_overtime():
+    """Assign overtime to qualified employees"""
+    if not current_user.is_supervisor:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    opportunity_id = request.form.get('opportunity_id')
+    employee_ids = request.form.getlist('employee_ids')
+    
+    # Parse opportunity ID to get date and shift type
+    parts = opportunity_id.split('_')
+    opp_date = datetime.strptime(parts[0], '%Y-%m-%d').date()
+    shift_type = parts[1]
+    
+    opportunity = {
+        'date': opp_date,
+        'shift_type': shift_type,
+        'hours': 12,
+        'start_time': datetime.strptime('07:00', '%H:%M').time() if shift_type == 'day' else datetime.strptime('19:00', '%H:%M').time(),
+        'end_time': datetime.strptime('19:00', '%H:%M').time() if shift_type == 'day' else datetime.strptime('07:00', '%H:%M').time()
+    }
+    
+    assignments_made = 0
+    
+    for emp_id in employee_ids:
+        employee = Employee.query.get(emp_id)
+        
+        # Verify employee is eligible
+        if not is_eligible_for_overtime(employee, opportunity):
+            continue
+        
+        # Create overtime schedule
+        schedule = Schedule(
+            employee_id=employee.id,
+            date=opportunity['date'],
+            shift_type=opportunity['shift_type'],
+            start_time=opportunity['start_time'],
+            end_time=opportunity['end_time'],
+            position_id=employee.position_id,
+            hours=opportunity['hours'],
+            is_overtime=True,
+            crew=employee.crew
+        )
+        db.session.add(schedule)
+        assignments_made += 1
+    
+    db.session.commit()
+    
+    flash(f'Overtime assigned to {assignments_made} employees!', 'success')
+    return redirect(url_for('overtime_distribution'))
+
+# ==================== ENHANCED SHIFT SWAP ROUTES ====================
+
+@app.route('/employee/swap-request', methods=['POST'])
+@login_required
+def create_swap_request():
+    """Create a shift swap request"""
+    schedule_id = request.form.get('schedule_id')
+    reason = request.form.get('reason', '')
+    
+    schedule = Schedule.query.get_or_404(schedule_id)
+    
+    if schedule.employee_id != current_user.id:
+        flash('You can only request swaps for your own shifts.', 'danger')
+        return redirect(url_for('employee_dashboard'))
+    
+    # Create swap request
+    swap_request = ShiftSwapRequest(
+        requester_id=current_user.id,
+        original_schedule_id=schedule_id,
+        reason=reason,
+        status='pending'
+    )
+    
+    db.session.add(swap_request)
+    db.session.commit()
+    
+    flash('Shift swap request submitted! Both supervisors will need to approve.', 'success')
+    return redirect(url_for('employee_dashboard'))
+
+@app.route('/supervisor/swap-requests')
+@login_required
+def swap_requests():
+    """View and manage shift swap requests"""
+    if not current_user.is_supervisor:
+        flash('Access denied. Supervisors only.', 'danger')
+        return redirect(url_for('employee_dashboard'))
+    
+    # Get pending swap requests that need this supervisor's approval
+    pending_swaps = ShiftSwapRequest.query.filter(
+        ShiftSwapRequest.status == 'pending'
+    ).all()
+    
+    # Filter to show only relevant swaps for this supervisor
+    relevant_swaps = []
+    for swap in pending_swaps:
+        requester = Employee.query.get(swap.requester_id)
+        target = Employee.query.get(swap.target_employee_id) if swap.target_employee_id else None
+        
+        # Check if this supervisor oversees either employee
+        if requester.crew == current_user.crew or (target and target.crew == current_user.crew):
+            relevant_swaps.append(swap)
+    
+    recent_swaps = ShiftSwapRequest.query.filter(
+        ShiftSwapRequest.status.in_(['approved', 'denied'])
+    ).order_by(ShiftSwapRequest.created_at.desc()).limit(10).all()
+    
+    return render_template('swap_requests.html',
+                         pending_swaps=relevant_swaps,
+                         recent_swaps=recent_swaps)
+
+@app.route('/swap-request/<int:swap_id>/<action>', methods=['POST'])
+@login_required
+def handle_swap_request(swap_id, action):
+    """Handle swap request with dual supervisor approval"""
+    if not current_user.is_supervisor:
+        flash('Access denied.', 'danger')
+        return redirect(url_for('employee_dashboard'))
+    
+    swap = ShiftSwapRequest.query.get_or_404(swap_id)
+    
+    # Determine which approval this supervisor is giving
+    requester = Employee.query.get(swap.requester_id)
+    target = Employee.query.get(swap.target_employee_id) if swap.target_employee_id else None
+    
+    is_requester_supervisor = requester.crew == current_user.crew
+    is_target_supervisor = target and target.crew == current_user.crew
+    
+    if action == 'approve':
+        if is_requester_supervisor and not swap.requester_supervisor_approved:
+            swap.requester_supervisor_approved = True
+            swap.requester_supervisor_id = current_user.id
+            swap.requester_supervisor_date = datetime.now()
+            flash('Approved for requester!', 'success')
+        
+        if is_target_supervisor and not swap.target_supervisor_approved:
+            swap.target_supervisor_approved = True
+            swap.target_supervisor_id = current_user.id
+            swap.target_supervisor_date = datetime.now()
+            flash('Approved for target employee!', 'success')
+        
+        # Check if both supervisors have approved
+        if swap.requester_supervisor_approved and (not target or swap.target_supervisor_approved):
+            # Execute the swap
+            original_schedule = Schedule.query.get(swap.original_schedule_id)
+            
+            if swap.target_schedule_id:
+                target_schedule = Schedule.query.get(swap.target_schedule_id)
+                # Swap employee assignments
+                original_employee_id = original_schedule.employee_id
+                original_schedule.employee_id = target_schedule.employee_id
+                target_schedule.employee_id = original_employee_id
+            
+            swap.status = 'approved'
+            flash('Shift swap fully approved and executed!', 'success')
+    
+    elif action == 'deny':
+        swap.status = 'denied'
+        if is_requester_supervisor:
+            swap.requester_supervisor_approved = False
+            swap.requester_supervisor_id = current_user.id
+            swap.requester_supervisor_date = datetime.now()
+        if is_target_supervisor:
+            swap.target_supervisor_approved = False
+            swap.target_supervisor_id = current_user.id
+            swap.target_supervisor_date = datetime.now()
+        
+        flash('Shift swap denied.', 'info')
+    
+    db.session.commit()
+    return redirect(url_for('swap_requests'))
+
+# ==================== SCHEDULE MANAGEMENT ROUTES ====================
+
+@app.route('/schedule/create', methods=['GET', 'POST'])
+@login_required
+def create_schedule():
+    if not current_user.is_supervisor:
+        flash('Access denied. Supervisors only.', 'danger')
+        return redirect(url_for('employee_dashboard'))
+    
+    if request.method == 'POST':
+        schedule_type = request.form.get('schedule_type')
+        start_date = datetime.strptime(request.form.get('start_date'), '%Y-%m-%d')
+        end_date = datetime.strptime(request.form.get('end_date'), '%Y-%m-%d')
+        
+        if schedule_type == '4_crew_rotation':
+            rotation_pattern = request.form.get('rotation_pattern')
+            return create_4_crew_schedule(start_date, end_date, rotation_pattern)
+        else:
+            # Standard schedule creation
+            shift_pattern = request.form.get('shift_pattern')
+            return create_standard_schedule(start_date, end_date, shift_pattern)
+    
+    employees = Employee.query.filter_by(is_supervisor=False).all()
+    positions = Position.query.all()
+    
+    # Group employees by crew for display
+    employees_by_crew = {}
+    for emp in employees:
+        crew = emp.crew or 'Unassigned'
+        if crew not in employees_by_crew:
+            employees_by_crew[crew] = []
+        employees_by_crew[crew].append(emp)
+    
+    return render_template('schedule_input.html', 
+                         employees=employees,
+                         positions=positions,
+                         employees_by_crew=employees_by_crew)
+
+def create_4_crew_schedule(start_date, end_date, rotation_pattern):
+    """Create schedules for 4-crew rotation patterns"""
+    crews = {'A': [], 'B': [], 'C': [], 'D': []}
+    
+    # Get employees by crew
+    for crew in crews:
+        crews[crew] = Employee.query.filter_by(crew=crew, is_supervisor=False).all()
+    
+    # Check if we have employees in all crews
+    empty_crews = [crew for crew, employees in crews.items() if not employees]
+    if empty_crews:
+        flash(f'No employees assigned to crew(s): {", ".join(empty_crews)}. Please assign employees to crews first.', 'danger')
+        return redirect(url_for('create_schedule'))
+    
+    # Define rotation patterns
+    if rotation_pattern == '2-2-3':
+        # 2-2-3 (Pitman) schedule
+        cycle_days = 14
+        pattern = {
+            'A': [1, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0],  # Day shifts
+            'B': [0, 0, 1, 1, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1],  # Day shifts (opposite A)
+            'C': [0, 0, 1, 1, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1],  # Night shifts
+            'D': [1, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0],  # Night shifts (opposite C)
+        }
+        shift_times = {
+            'A': ('day', 7, 19), 'B': ('day', 7, 19),
+            'C': ('night', 19, 7), 'D': ('night', 19, 7)
+        }
+    elif rotation_pattern == '4-4':
+        # 4 on, 4 off pattern
+        cycle_days = 16
+        pattern = {
+            'A': [1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0],
+            'B': [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1],
+            'C': [1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0],
+            'D': [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1],
+        }
+        shift_times = {
+            'A': ('day', 7, 19), 'B': ('day', 7, 19),
+            'C': ('night', 19, 7), 'D': ('night', 19, 7)
+        }
+    else:  # DuPont
+        # DuPont schedule
+        cycle_days = 28
+        # This is a simplified version - actual DuPont is more complex
+        pattern = {
+            'A': [1,1,1,1,0,0,0,1,1,1,0,0,0,0,0,1,1,1,1,0,0,0,1,1,1,0,0,0],
+            'B': [0,0,0,1,1,1,1,0,0,0,1,1,1,0,0,0,0,1,1,1,1,0,0,0,1,1,1,0],
+            'C': [1,0,0,0,0,1,1,1,1,0,0,0,1,1,1,0,0,0,0,1,1,1,1,0,0,0,1,1],
+            'D': [1,1,0,0,0,0,1,1,1,1,0,0,0,1,1,1,0,0,0,0,1,1,1,1,0,0,0,1],
+        }
+        shift_times = {
+            'A': ('day', 7, 19), 'B': ('day', 7, 19),
+            'C': ('night', 19, 7), 'D': ('night', 19, 7)
+        }
+    
+    # Create schedules
+    current_date = start_date
+    schedules_created = 0
+    
+    while current_date <= end_date:
+        day_in_cycle = (current_date - start_date).days % cycle_days
+        
+        for crew_name, crew_employees in crews.items():
+            if pattern[crew_name][day_in_cycle] == 1:  # Working day
+                shift_type, start_hour, end_hour = shift_times[crew_name]
+                
+                for employee in crew_employees:
+                    # Check for time off
+                    has_time_off = VacationCalendar.query.filter_by(
+                        employee_id=employee.id,
+                        date=current_date.date()
+                    ).first()
+                    
+                    if not has_time_off:
+                        start_time = current_date.replace(hour=start_hour, minute=0, second=0)
+                        end_time = current_date.replace(hour=end_hour, minute=0, second=0)
+                        
+                        # Handle overnight shifts
+                        if end_hour < start_hour:
+                            end_time += timedelta(days=1)
+                        
+                        # Calculate hours
+                        hours = (end_time - start_time).total_seconds() / 3600
+                        
+                        schedule = Schedule(
+                            employee_id=employee.id,
+                            date=current_date.date(),
+                            shift_type=shift_type,
+                            start_time=start_time.time(),
+                            end_time=end_time.time(),
+                            position_id=employee.position_id,
+                            hours=hours,
+                            crew=crew_name
+                        )
+                        db.session.add(schedule)
+                        schedules_created += 1
+                        
+                        # Update circadian profile
+                        update_circadian_profile_on_schedule_change(employee.id, shift_type)
+        
+        current_date += timedelta(days=1)
+    
+    db.session.commit()
+    flash(f'Successfully created {schedules_created} schedules using {rotation_pattern} pattern!', 'success')
+    return redirect(url_for('view_schedules'))
+
+def create_standard_schedule(start_date, end_date, shift_pattern):
+    """Create standard schedules"""
+    employees = Employee.query.filter_by(is_supervisor=False).all()
+    schedules_created = 0
+    
+    # Define shift times based on pattern
+    shift_times = {
+        'standard': [('day', 9, 17)],
+        'retail': [('day', 10, 18), ('evening', 14, 22)],
+        '2_shift': [('day', 7, 15), ('evening', 15, 23)],
+        '3_shift': [('day', 7, 15), ('evening', 15, 23), ('night', 23, 7)]
+    }
+    
+    shifts = shift_times.get(shift_pattern, [('day', 9, 17)])
+    
+    current_date = start_date
+    while current_date <= end_date:
+        # Skip weekends for standard pattern
+        if shift_pattern == 'standard' and current_date.weekday() >= 5:
+            current_date += timedelta(days=1)
+            continue
+        
+        # Assign employees to shifts
+        for i, employee in enumerate(employees):
+            # Check for time off
+            has_time_off = VacationCalendar.query.filter_by(
+                employee_id=employee.id,
+                date=current_date.date()
+            ).first()
+            
+            if not has_time_off:
+                # Rotate through available shifts
+                shift_type, start_hour, end_hour = shifts[i % len(shifts)]
+                
+                start_time = current_date.replace(hour=start_hour, minute=0, second=0)
+                end_time = current_date.replace(hour=end_hour, minute=0, second=0)
+                
+                # Handle overnight shifts
+                if end_hour < start_hour:
+                    end_time += timedelta(days=1)
+                
+                # Calculate hours
+                hours = (end_time - start_time).total_seconds() / 3600
+                
+                schedule = Schedule(
+                    employee_id=employee.id,
+                    date=current_date.date(),
+                    shift_type=shift_type,
+                    start_time=start_time.time(),
+                    end_time=end_time.time(),
+                    position_id=employee.position_id,
+                    hours=hours,
+                    crew=employee.crew
+                )
+                db.session.add(schedule)
+                schedules_created += 1
+                
+                # Update circadian profile
+                update_circadian_profile_on_schedule_change(employee.id, shift_type)
+        
+        current_date += timedelta(days=1)
+    
+    db.session.commit()
+    flash(f'Successfully created {schedules_created} schedules!', 'success')
+    return redirect(url_for('view_schedules'))
+
+@app.route('/schedule/view')
+@login_required
+def view_schedules():
+    """View schedules with crew filtering"""
+    # Get crew filter
+    crew = request.args.get('crew', 'ALL')
+    
+    # Get date range
+    start_date = request.args.get('start_date', date.today())
+    if isinstance(start_date, str):
+        start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
+    
+    end_date = request.args.get('end_date', start_date + timedelta(days=13))
+    if isinstance(end_date, str):
+        end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
+    
+    # Build query
+    query = Schedule.query.filter(
+        Schedule.date >= start_date,
+        Schedule.date <= end_date
+    )
+    
+    if crew != 'ALL':
+        query = query.filter(Schedule.crew == crew)
+    
+    schedules = query.order_by(Schedule.date, Schedule.shift_type, Schedule.start_time).all()
+    
+    # Group schedules by date and shift
+    schedule_grid = {}
+    for schedule in schedules:
+        date_key = schedule.date
+        if date_key not in schedule_grid:
+            schedule_grid[date_key] = {'day': [], 'evening': [], 'night': []}
+        
+        shift_type = schedule.shift_type or 'day'
+        schedule_grid[date_key][shift_type].append(schedule)
+    
+    return render_template('crew_schedule.html',
+                         schedule_grid=schedule_grid,
+                         start_date=start_date,
+                         end_date=end_date,
+                         selected_crew=crew)
 
 # ==================== COMMUNICATION ROUTES ====================
 
@@ -1602,770 +2603,6 @@ def cancel_trade(trade_id):
     
     return jsonify({'success': True})
 
-# ==================== CREW MANAGEMENT ROUTES ====================
-
-@app.route('/supervisor/coverage-needs')
-@login_required
-def coverage_needs():
-    """View all coverage needs and gaps"""
-    if not current_user.is_supervisor:
-        flash('Access denied. Supervisors only.', 'danger')
-        return redirect(url_for('employee_dashboard'))
-    
-    # Get open coverage requests
-    open_requests = CoverageRequest.query.filter_by(status='open').all()
-    
-    # Get coverage gaps for next 14 days
-    coverage_gaps = get_coverage_gaps(crew='ALL', days_ahead=14)
-    
-    # Get available casual workers
-    casual_workers = CasualWorker.query.filter_by(is_active=True).all()
-    
-    return render_template('coverage_needs.html',
-                         open_requests=open_requests,
-                         coverage_gaps=coverage_gaps,
-                         casual_workers=casual_workers)
-
-@app.route('/coverage/push/<int:request_id>', methods=['POST'])
-@login_required
-def push_coverage(request_id):
-    """Push coverage request to employees"""
-    if not current_user.is_supervisor:
-        return jsonify({'error': 'Unauthorized'}), 403
-    
-    coverage = CoverageRequest.query.get_or_404(request_id)
-    
-    push_to = request.form.get('push_to')
-    message = request.form.get('message', '')
-    
-    notifications_sent = 0
-    
-    if push_to == 'my_crew':
-        # Push to supervisor's crew only
-        employees = Employee.query.filter_by(
-            crew=current_user.crew,
-            is_supervisor=False
-        ).all()
-    elif push_to == 'off_crews':
-        # Find crews that are off during this shift
-        schedule_date = coverage.schedule.date
-        off_crews = get_off_duty_crews(schedule_date, coverage.schedule.shift_type)
-        employees = Employee.query.filter(
-            Employee.crew.in_(off_crews),
-            Employee.is_supervisor == False
-        ).all()
-    elif push_to == 'specific_crew':
-        crew = request.form.get('specific_crew')
-        employees = Employee.query.filter_by(
-            crew=crew,
-            is_supervisor=False
-        ).all()
-    elif push_to == 'supervisors':
-        # Push to other supervisors
-        employees = Employee.query.filter(
-            Employee.is_supervisor == True,
-            Employee.id != current_user.id
-        ).all()
-    else:
-        employees = []
-    
-    # Filter by required skills if specified
-    if coverage.position_required:
-        position = Position.query.get(coverage.position_required)
-        required_skills = [s.id for s in position.required_skills]
-        
-        qualified_employees = []
-        for emp in employees:
-            emp_skills = [s.id for s in emp.skills]
-            if all(skill in emp_skills for skill in required_skills):
-                qualified_employees.append(emp)
-        employees = qualified_employees
-    
-    # Send notifications
-    for employee in employees:
-        # Check if employee is already working that day
-        existing_schedule = Schedule.query.filter_by(
-            employee_id=employee.id,
-            date=coverage.schedule.date
-        ).first()
-        
-        if not existing_schedule:  # Only notify if not already scheduled
-            notification = CoverageNotification(
-                coverage_request_id=coverage.id,
-                sent_to_type='individual',
-                sent_to_employee_id=employee.id,
-                sent_by_id=current_user.id,
-                message=message or f"Coverage needed for {coverage.schedule.date} {coverage.schedule.shift_type} shift"
-            )
-            db.session.add(notification)
-            notifications_sent += 1
-    
-    # Update coverage request
-    coverage.pushed_to_crews = push_to
-    coverage.push_message = message
-    
-    db.session.commit()
-    
-    flash(f'Coverage request sent to {notifications_sent} qualified employees!', 'success')
-    return redirect(url_for('coverage_needs'))
-
-@app.route('/api/coverage-notifications')
-@login_required
-def get_coverage_notifications():
-    """Get coverage notifications for current user"""
-    notifications = CoverageNotification.query.filter_by(
-        sent_to_employee_id=current_user.id,
-        read_at=None
-    ).order_by(CoverageNotification.sent_at.desc()).all()
-    
-    return jsonify({
-        'notifications': [{
-            'id': n.id,
-            'message': n.message,
-            'sent_at': n.sent_at.strftime('%Y-%m-%d %H:%M'),
-            'coverage_id': n.coverage_request_id
-        } for n in notifications]
-    })
-
-@app.route('/coverage/respond/<int:notification_id>', methods=['POST'])
-@login_required
-def respond_to_coverage(notification_id):
-    """Respond to a coverage notification"""
-    notification = CoverageNotification.query.get_or_404(notification_id)
-    
-    if notification.sent_to_employee_id != current_user.id:
-        return jsonify({'error': 'Unauthorized'}), 403
-    
-    response = request.form.get('response')  # 'accept' or 'decline'
-    
-    notification.read_at = datetime.now()
-    notification.responded_at = datetime.now()
-    notification.response = response
-    
-    if response == 'accept':
-        # Assign the coverage
-        coverage = notification.coverage_request
-        coverage.filled_by_id = current_user.id
-        coverage.filled_at = datetime.now()
-        coverage.status = 'filled'
-        
-        # Create schedule entry
-        original_schedule = coverage.schedule
-        new_schedule = Schedule(
-            employee_id=current_user.id,
-            date=original_schedule.date,
-            shift_type=original_schedule.shift_type,
-            start_time=original_schedule.start_time,
-            end_time=original_schedule.end_time,
-            position_id=original_schedule.position_id,
-            hours=original_schedule.hours,
-            is_overtime=True,  # Coverage is usually overtime
-            crew=current_user.crew
-        )
-        db.session.add(new_schedule)
-        
-        flash('You have accepted the coverage shift!', 'success')
-    else:
-        flash('You have declined the coverage request.', 'info')
-    
-    db.session.commit()
-    return redirect(url_for('employee_dashboard'))
-
-# ==================== EXCEL IMPORT ROUTES ====================
-
-@app.route('/import-employees', methods=['GET', 'POST'])
-@login_required
-def import_employees():
-    """Import employees from Excel file"""
-    if not current_user.is_supervisor:
-        flash('Access denied. Supervisors only.', 'danger')
-        return redirect(url_for('employee_dashboard'))
-    
-    if request.method == 'POST':
-        if 'file' not in request.files:
-            flash('No file selected', 'danger')
-            return redirect(request.url)
-        
-        file = request.files['file']
-        
-        if file.filename == '':
-            flash('No file selected', 'danger')
-            return redirect(request.url)
-        
-        if file and allowed_file(file.filename):
-            filename = secure_filename(file.filename)
-            
-            try:
-                # Read Excel file
-                df = pd.read_excel(file)
-                
-                # Expected columns: Name, Email, Phone, Hire Date, Crew, Position, Skills
-                required_columns = ['Name', 'Email', 'Phone']
-                
-                if not all(col in df.columns for col in required_columns):
-                    flash(f'Excel file must contain columns: {", ".join(required_columns)}', 'danger')
-                    return redirect(request.url)
-                
-                imported_count = 0
-                errors = []
-                
-                for idx, row in df.iterrows():
-                    try:
-                        # Check if employee already exists
-                        existing = Employee.query.filter_by(email=row['Email']).first()
-                        if existing:
-                            errors.append(f"Row {idx+2}: Employee {row['Email']} already exists")
-                            continue
-                        
-                        # Create new employee
-                        employee = Employee(
-                            name=row['Name'],
-                            email=row['Email'],
-                            phone=str(row.get('Phone', '')),
-                            hire_date=pd.to_datetime(row.get('Hire Date', date.today())).date() if pd.notna(row.get('Hire Date')) else date.today(),
-                            crew=str(row.get('Crew', 'A'))[:1],  # Ensure single character
-                            is_supervisor=False,
-                            vacation_days=10,
-                            sick_days=5,
-                            personal_days=3
-                        )
-                        
-                        # Set default password
-                        employee.set_password('password123')
-                        
-                        # Handle position
-                        if 'Position' in row and pd.notna(row['Position']):
-                            position = Position.query.filter_by(name=row['Position']).first()
-                            if position:
-                                employee.position_id = position.id
-                        
-                        # Handle skills (comma-separated)
-                        if 'Skills' in row and pd.notna(row['Skills']):
-                            skill_names = [s.strip() for s in str(row['Skills']).split(',')]
-                            for skill_name in skill_names:
-                                skill = Skill.query.filter_by(name=skill_name).first()
-                                if not skill:
-                                    # Create new skill if it doesn't exist
-                                    skill = Skill(name=skill_name, category='General')
-                                    db.session.add(skill)
-                                employee.skills.append(skill)
-                        
-                        db.session.add(employee)
-                        imported_count += 1
-                        
-                    except Exception as e:
-                        errors.append(f"Row {idx+2}: {str(e)}")
-                
-                db.session.commit()
-                
-                flash(f'Successfully imported {imported_count} employees!', 'success')
-                if errors:
-                    flash(f'Errors encountered: {"; ".join(errors[:5])}{"..." if len(errors) > 5 else ""}', 'warning')
-                
-                return redirect(url_for('dashboard'))
-                
-            except Exception as e:
-                flash(f'Error reading file: {str(e)}', 'danger')
-                return redirect(request.url)
-    
-    # GET request - show upload form
-    return render_template('import_employees.html')
-
-@app.route('/export-template')
-@login_required
-def export_template():
-    """Download Excel template for employee import"""
-    if not current_user.is_supervisor:
-        flash('Access denied. Supervisors only.', 'danger')
-        return redirect(url_for('employee_dashboard'))
-    
-    # Create template DataFrame
-    template_data = {
-        'Name': ['John Doe', 'Jane Smith'],
-        'Email': ['john.doe@example.com', 'jane.smith@example.com'],
-        'Phone': ['555-0123', '555-0124'],
-        'Hire Date': [date.today(), date.today()],
-        'Crew': ['A', 'B'],
-        'Position': ['Nurse', 'Security Officer'],
-        'Skills': ['CPR Certified, Emergency Response', 'Security, First Aid']
-    }
-    
-    df = pd.DataFrame(template_data)
-    
-    # Create Excel file in memory
-    output = BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df.to_excel(writer, sheet_name='Employees', index=False)
-        
-        # Add instructions sheet
-        instructions = pd.DataFrame({
-            'Instructions': [
-                'Fill in employee data in the Employees sheet',
-                'Required fields: Name, Email, Phone',
-                'Optional fields: Hire Date, Crew (A/B/C/D), Position, Skills',
-                'Skills should be comma-separated',
-                'All employees will be created with password: password123',
-                'Employees will need to change their password on first login'
-            ]
-        })
-        instructions.to_excel(writer, sheet_name='Instructions', index=False)
-    
-    output.seek(0)
-    
-    return send_file(
-        output,
-        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        as_attachment=True,
-        download_name='employee_import_template.xlsx'
-    )
-
-# ==================== OVERTIME DISTRIBUTION ROUTES ====================
-
-@app.route('/supervisor/overtime-distribution')
-@login_required
-def overtime_distribution():
-    """Smart overtime distribution interface"""
-    if not current_user.is_supervisor:
-        flash('Access denied. Supervisors only.', 'danger')
-        return redirect(url_for('employee_dashboard'))
-    
-    # Get upcoming overtime opportunities
-    overtime_opportunities = get_overtime_opportunities()
-    
-    # Get eligible employees for overtime
-    eligible_employees = get_overtime_eligible_employees()
-    
-    return render_template('overtime_distribution.html',
-                         opportunities=overtime_opportunities,
-                         eligible_employees=eligible_employees)
-
-@app.route('/overtime/assign', methods=['POST'])
-@login_required
-def assign_overtime():
-    """Assign overtime to qualified employees"""
-    if not current_user.is_supervisor:
-        return jsonify({'error': 'Unauthorized'}), 403
-    
-    opportunity_id = request.form.get('opportunity_id')
-    employee_ids = request.form.getlist('employee_ids')
-    
-    # Parse opportunity ID to get date and shift type
-    parts = opportunity_id.split('_')
-    opp_date = datetime.strptime(parts[0], '%Y-%m-%d').date()
-    shift_type = parts[1]
-    
-    opportunity = {
-        'date': opp_date,
-        'shift_type': shift_type,
-        'hours': 12,
-        'start_time': datetime.strptime('07:00', '%H:%M').time() if shift_type == 'day' else datetime.strptime('19:00', '%H:%M').time(),
-        'end_time': datetime.strptime('19:00', '%H:%M').time() if shift_type == 'day' else datetime.strptime('07:00', '%H:%M').time()
-    }
-    
-    assignments_made = 0
-    
-    for emp_id in employee_ids:
-        employee = Employee.query.get(emp_id)
-        
-        # Verify employee is eligible
-        if not is_eligible_for_overtime(employee, opportunity):
-            continue
-        
-        # Create overtime schedule
-        schedule = Schedule(
-            employee_id=employee.id,
-            date=opportunity['date'],
-            shift_type=opportunity['shift_type'],
-            start_time=opportunity['start_time'],
-            end_time=opportunity['end_time'],
-            position_id=employee.position_id,
-            hours=opportunity['hours'],
-            is_overtime=True,
-            crew=employee.crew
-        )
-        db.session.add(schedule)
-        assignments_made += 1
-    
-    db.session.commit()
-    
-    flash(f'Overtime assigned to {assignments_made} employees!', 'success')
-    return redirect(url_for('overtime_distribution'))
-
-# ==================== ENHANCED SHIFT SWAP ROUTES ====================
-
-@app.route('/employee/swap-request', methods=['POST'])
-@login_required
-def create_swap_request():
-    """Create a shift swap request"""
-    schedule_id = request.form.get('schedule_id')
-    reason = request.form.get('reason', '')
-    
-    schedule = Schedule.query.get_or_404(schedule_id)
-    
-    if schedule.employee_id != current_user.id:
-        flash('You can only request swaps for your own shifts.', 'danger')
-        return redirect(url_for('employee_dashboard'))
-    
-    # Create swap request
-    swap_request = ShiftSwapRequest(
-        requester_id=current_user.id,
-        original_schedule_id=schedule_id,
-        reason=reason,
-        status='pending'
-    )
-    
-    db.session.add(swap_request)
-    db.session.commit()
-    
-    flash('Shift swap request submitted! Both supervisors will need to approve.', 'success')
-    return redirect(url_for('employee_dashboard'))
-
-@app.route('/supervisor/swap-requests')
-@login_required
-def swap_requests():
-    """View and manage shift swap requests"""
-    if not current_user.is_supervisor:
-        flash('Access denied. Supervisors only.', 'danger')
-        return redirect(url_for('employee_dashboard'))
-    
-    # Get pending swap requests that need this supervisor's approval
-    pending_swaps = ShiftSwapRequest.query.filter(
-        ShiftSwapRequest.status == 'pending'
-    ).all()
-    
-    # Filter to show only relevant swaps for this supervisor
-    relevant_swaps = []
-    for swap in pending_swaps:
-        requester = Employee.query.get(swap.requester_id)
-        target = Employee.query.get(swap.target_employee_id) if swap.target_employee_id else None
-        
-        # Check if this supervisor oversees either employee
-        if requester.crew == current_user.crew or (target and target.crew == current_user.crew):
-            relevant_swaps.append(swap)
-    
-    recent_swaps = ShiftSwapRequest.query.filter(
-        ShiftSwapRequest.status.in_(['approved', 'denied'])
-    ).order_by(ShiftSwapRequest.created_at.desc()).limit(10).all()
-    
-    return render_template('swap_requests.html',
-                         pending_swaps=relevant_swaps,
-                         recent_swaps=recent_swaps)
-
-@app.route('/swap-request/<int:swap_id>/<action>', methods=['POST'])
-@login_required
-def handle_swap_request(swap_id, action):
-    """Handle swap request with dual supervisor approval"""
-    if not current_user.is_supervisor:
-        flash('Access denied.', 'danger')
-        return redirect(url_for('employee_dashboard'))
-    
-    swap = ShiftSwapRequest.query.get_or_404(swap_id)
-    
-    # Determine which approval this supervisor is giving
-    requester = Employee.query.get(swap.requester_id)
-    target = Employee.query.get(swap.target_employee_id) if swap.target_employee_id else None
-    
-    is_requester_supervisor = requester.crew == current_user.crew
-    is_target_supervisor = target and target.crew == current_user.crew
-    
-    if action == 'approve':
-        if is_requester_supervisor and not swap.requester_supervisor_approved:
-            swap.requester_supervisor_approved = True
-            swap.requester_supervisor_id = current_user.id
-            swap.requester_supervisor_date = datetime.now()
-            flash('Approved for requester!', 'success')
-        
-        if is_target_supervisor and not swap.target_supervisor_approved:
-            swap.target_supervisor_approved = True
-            swap.target_supervisor_id = current_user.id
-            swap.target_supervisor_date = datetime.now()
-            flash('Approved for target employee!', 'success')
-        
-        # Check if both supervisors have approved
-        if swap.requester_supervisor_approved and (not target or swap.target_supervisor_approved):
-            # Execute the swap
-            original_schedule = Schedule.query.get(swap.original_schedule_id)
-            
-            if swap.target_schedule_id:
-                target_schedule = Schedule.query.get(swap.target_schedule_id)
-                # Swap employee assignments
-                original_employee_id = original_schedule.employee_id
-                original_schedule.employee_id = target_schedule.employee_id
-                target_schedule.employee_id = original_employee_id
-            
-            swap.status = 'approved'
-            flash('Shift swap fully approved and executed!', 'success')
-    
-    elif action == 'deny':
-        swap.status = 'denied'
-        if is_requester_supervisor:
-            swap.requester_supervisor_approved = False
-            swap.requester_supervisor_id = current_user.id
-            swap.requester_supervisor_date = datetime.now()
-        if is_target_supervisor:
-            swap.target_supervisor_approved = False
-            swap.target_supervisor_id = current_user.id
-            swap.target_supervisor_date = datetime.now()
-        
-        flash('Shift swap denied.', 'info')
-    
-    db.session.commit()
-    return redirect(url_for('swap_requests'))
-
-# ==================== SCHEDULE MANAGEMENT ROUTES ====================
-
-@app.route('/schedule/create', methods=['GET', 'POST'])
-@login_required
-def create_schedule():
-    if not current_user.is_supervisor:
-        flash('Access denied. Supervisors only.', 'danger')
-        return redirect(url_for('employee_dashboard'))
-    
-    if request.method == 'POST':
-        schedule_type = request.form.get('schedule_type')
-        start_date = datetime.strptime(request.form.get('start_date'), '%Y-%m-%d')
-        end_date = datetime.strptime(request.form.get('end_date'), '%Y-%m-%d')
-        
-        if schedule_type == '4_crew_rotation':
-            rotation_pattern = request.form.get('rotation_pattern')
-            return create_4_crew_schedule(start_date, end_date, rotation_pattern)
-        else:
-            # Standard schedule creation
-            shift_pattern = request.form.get('shift_pattern')
-            return create_standard_schedule(start_date, end_date, shift_pattern)
-    
-    employees = Employee.query.filter_by(is_supervisor=False).all()
-    positions = Position.query.all()
-    
-    # Group employees by crew for display
-    employees_by_crew = {}
-    for emp in employees:
-        crew = emp.crew or 'Unassigned'
-        if crew not in employees_by_crew:
-            employees_by_crew[crew] = []
-        employees_by_crew[crew].append(emp)
-    
-    return render_template('schedule_input.html', 
-                         employees=employees,
-                         positions=positions,
-                         employees_by_crew=employees_by_crew)
-
-def create_4_crew_schedule(start_date, end_date, rotation_pattern):
-    """Create schedules for 4-crew rotation patterns"""
-    crews = {'A': [], 'B': [], 'C': [], 'D': []}
-    
-    # Get employees by crew
-    for crew in crews:
-        crews[crew] = Employee.query.filter_by(crew=crew, is_supervisor=False).all()
-    
-    # Check if we have employees in all crews
-    empty_crews = [crew for crew, employees in crews.items() if not employees]
-    if empty_crews:
-        flash(f'No employees assigned to crew(s): {", ".join(empty_crews)}. Please assign employees to crews first.', 'danger')
-        return redirect(url_for('create_schedule'))
-    
-    # Define rotation patterns
-    if rotation_pattern == '2-2-3':
-        # 2-2-3 (Pitman) schedule
-        cycle_days = 14
-        pattern = {
-            'A': [1, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0],  # Day shifts
-            'B': [0, 0, 1, 1, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1],  # Day shifts (opposite A)
-            'C': [0, 0, 1, 1, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1],  # Night shifts
-            'D': [1, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0],  # Night shifts (opposite C)
-        }
-        shift_times = {
-            'A': ('day', 7, 19), 'B': ('day', 7, 19),
-            'C': ('night', 19, 7), 'D': ('night', 19, 7)
-        }
-    elif rotation_pattern == '4-4':
-        # 4 on, 4 off pattern
-        cycle_days = 16
-        pattern = {
-            'A': [1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0],
-            'B': [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1],
-            'C': [1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0],
-            'D': [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1],
-        }
-        shift_times = {
-            'A': ('day', 7, 19), 'B': ('day', 7, 19),
-            'C': ('night', 19, 7), 'D': ('night', 19, 7)
-        }
-    else:  # DuPont
-        # DuPont schedule
-        cycle_days = 28
-        # This is a simplified version - actual DuPont is more complex
-        pattern = {
-            'A': [1,1,1,1,0,0,0,1,1,1,0,0,0,0,0,1,1,1,1,0,0,0,1,1,1,0,0,0],
-            'B': [0,0,0,1,1,1,1,0,0,0,1,1,1,0,0,0,0,1,1,1,1,0,0,0,1,1,1,0],
-            'C': [1,0,0,0,0,1,1,1,1,0,0,0,1,1,1,0,0,0,0,1,1,1,1,0,0,0,1,1],
-            'D': [1,1,0,0,0,0,1,1,1,1,0,0,0,1,1,1,0,0,0,0,1,1,1,1,0,0,0,1],
-        }
-        shift_times = {
-            'A': ('day', 7, 19), 'B': ('day', 7, 19),
-            'C': ('night', 19, 7), 'D': ('night', 19, 7)
-        }
-    
-    # Create schedules
-    current_date = start_date
-    schedules_created = 0
-    
-    while current_date <= end_date:
-        day_in_cycle = (current_date - start_date).days % cycle_days
-        
-        for crew_name, crew_employees in crews.items():
-            if pattern[crew_name][day_in_cycle] == 1:  # Working day
-                shift_type, start_hour, end_hour = shift_times[crew_name]
-                
-                for employee in crew_employees:
-                    # Check for time off
-                    has_time_off = VacationCalendar.query.filter_by(
-                        employee_id=employee.id,
-                        date=current_date.date()
-                    ).first()
-                    
-                    if not has_time_off:
-                        start_time = current_date.replace(hour=start_hour, minute=0, second=0)
-                        end_time = current_date.replace(hour=end_hour, minute=0, second=0)
-                        
-                        # Handle overnight shifts
-                        if end_hour < start_hour:
-                            end_time += timedelta(days=1)
-                        
-                        # Calculate hours
-                        hours = (end_time - start_time).total_seconds() / 3600
-                        
-                        schedule = Schedule(
-                            employee_id=employee.id,
-                            date=current_date.date(),
-                            shift_type=shift_type,
-                            start_time=start_time.time(),
-                            end_time=end_time.time(),
-                            position_id=employee.position_id,
-                            hours=hours,
-                            crew=crew_name
-                        )
-                        db.session.add(schedule)
-                        schedules_created += 1
-                        
-                        # Update circadian profile
-                        update_circadian_profile_on_schedule_change(employee.id, shift_type)
-        
-        current_date += timedelta(days=1)
-    
-    db.session.commit()
-    flash(f'Successfully created {schedules_created} schedules using {rotation_pattern} pattern!', 'success')
-    return redirect(url_for('view_schedules'))
-
-def create_standard_schedule(start_date, end_date, shift_pattern):
-    """Create standard schedules"""
-    employees = Employee.query.filter_by(is_supervisor=False).all()
-    schedules_created = 0
-    
-    # Define shift times based on pattern
-    shift_times = {
-        'standard': [('day', 9, 17)],
-        'retail': [('day', 10, 18), ('evening', 14, 22)],
-        '2_shift': [('day', 7, 15), ('evening', 15, 23)],
-        '3_shift': [('day', 7, 15), ('evening', 15, 23), ('night', 23, 7)]
-    }
-    
-    shifts = shift_times.get(shift_pattern, [('day', 9, 17)])
-    
-    current_date = start_date
-    while current_date <= end_date:
-        # Skip weekends for standard pattern
-        if shift_pattern == 'standard' and current_date.weekday() >= 5:
-            current_date += timedelta(days=1)
-            continue
-        
-        # Assign employees to shifts
-        for i, employee in enumerate(employees):
-            # Check for time off
-            has_time_off = VacationCalendar.query.filter_by(
-                employee_id=employee.id,
-                date=current_date.date()
-            ).first()
-            
-            if not has_time_off:
-                # Rotate through available shifts
-                shift_type, start_hour, end_hour = shifts[i % len(shifts)]
-                
-                start_time = current_date.replace(hour=start_hour, minute=0, second=0)
-                end_time = current_date.replace(hour=end_hour, minute=0, second=0)
-                
-                # Handle overnight shifts
-                if end_hour < start_hour:
-                    end_time += timedelta(days=1)
-                
-                # Calculate hours
-                hours = (end_time - start_time).total_seconds() / 3600
-                
-                schedule = Schedule(
-                    employee_id=employee.id,
-                    date=current_date.date(),
-                    shift_type=shift_type,
-                    start_time=start_time.time(),
-                    end_time=end_time.time(),
-                    position_id=employee.position_id,
-                    hours=hours,
-                    crew=employee.crew
-                )
-                db.session.add(schedule)
-                schedules_created += 1
-                
-                # Update circadian profile
-                update_circadian_profile_on_schedule_change(employee.id, shift_type)
-        
-        current_date += timedelta(days=1)
-    
-    db.session.commit()
-    flash(f'Successfully created {schedules_created} schedules!', 'success')
-    return redirect(url_for('view_schedules'))
-
-@app.route('/schedule/view')
-@login_required
-def view_schedules():
-    """View schedules with crew filtering"""
-    # Get crew filter
-    crew = request.args.get('crew', 'ALL')
-    
-    # Get date range
-    start_date = request.args.get('start_date', date.today())
-    if isinstance(start_date, str):
-        start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
-    
-    end_date = request.args.get('end_date', start_date + timedelta(days=13))
-    if isinstance(end_date, str):
-        end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
-    
-    # Build query
-    query = Schedule.query.filter(
-        Schedule.date >= start_date,
-        Schedule.date <= end_date
-    )
-    
-    if crew != 'ALL':
-        query = query.filter(Schedule.crew == crew)
-    
-    schedules = query.order_by(Schedule.date, Schedule.shift_type, Schedule.start_time).all()
-    
-    # Group schedules by date and shift
-    schedule_grid = {}
-    for schedule in schedules:
-        date_key = schedule.date
-        if date_key not in schedule_grid:
-            schedule_grid[date_key] = {'day': [], 'evening': [], 'night': []}
-        
-        shift_type = schedule.shift_type or 'day'
-        schedule_grid[date_key][shift_type].append(schedule)
-    
-    return render_template('crew_schedule.html',
-                         schedule_grid=schedule_grid,
-                         start_date=start_date,
-                         end_date=end_date,
-                         selected_crew=crew)
-
 # ==================== DATABASE INITIALIZATION ROUTES ====================
 
 @app.route('/init-db')
@@ -2623,18 +2860,90 @@ def reset_db():
     except Exception as e:
         return f'<h2>Error</h2><p>Failed to reset database: {str(e)}</p>'
 
-# ==================== ERROR HANDLERS ====================
+@app.route('/create-demo-data')
+def create_demo_data():
+    """Create demo employees for testing"""
+    if request.args.get('confirm') != 'yes':
+        return '''
+        <h2>Create Demo Data</h2>
+        <p>This will create demo employees in each crew for testing.</p>
+        <p><a href="/create-demo-data?confirm=yes">Click here to confirm</a></p>
+        '''
+    
+    try:
+        from create_custom_demo_database import populate_demo_data
+        populate_demo_data()
+        return '<h2>Success!</h2><p>Demo data created!</p><p><a href="/dashboard">Go to dashboard</a></p>'
+    except ImportError:
+        # If the demo script doesn't exist, create basic demo data
+        crews = ['A', 'B', 'C', 'D']
+        positions = Position.query.all()
+        
+        for i, crew in enumerate(crews):
+            for j in range(3):  # 3 employees per crew
+                emp = Employee(
+                    name=f'{crew} Employee {j+1}',
+                    email=f'{crew.lower()}{j+1}@workforce.com',
+                    crew=crew,
+                    position_id=positions[j % len(positions)].id if positions else None,
+                    is_supervisor=False,
+                    vacation_days=10,
+                    sick_days=5,
+                    personal_days=3
+                )
+                emp.set_password('password123')
+                db.session.add(emp)
+        
+        db.session.commit()
+        return '<h2>Success!</h2><p>Basic demo data created!</p><p><a href="/dashboard">Go to dashboard</a></p>'
 
-@app.errorhandler(404)
-def not_found_error(error):
-    return render_template('404.html'), 404
+@app.route('/debug-employees')
+def debug_employees():
+    """Debug employee data"""
+    employees = Employee.query.all()
+    return f'''
+    <h2>Employee Debug Info</h2>
+    <p>Total employees: {len(employees)}</p>
+    <h3>Employee List:</h3>
+    <ul>
+    {''.join([f'<li>{e.name} ({e.email}) - Crew: {e.crew}, Supervisor: {e.is_supervisor}</li>' for e in employees])}
+    </ul>
+    <p><a href="/dashboard">Back to dashboard</a></p>
+    '''
 
-@app.errorhandler(500)
-def internal_error(error):
-    db.session.rollback()
-    return render_template('500.html'), 500
+@app.route('/reset-passwords')
+def reset_passwords():
+    """Reset all passwords to password123"""
+    if request.args.get('confirm') != 'yes':
+        return '''
+        <h2>Reset All Passwords</h2>
+        <p>This will reset ALL employee passwords to 'password123'.</p>
+        <p><a href="/reset-passwords?confirm=yes">Click here to confirm</a></p>
+        '''
+    
+    employees = Employee.query.all()
+    for emp in employees:
+        emp.set_password('password123')
+    db.session.commit()
+    
+    return f'<h2>Success!</h2><p>Reset passwords for {len(employees)} employees.</p><p><a href="/dashboard">Back to dashboard</a></p>'
 
-# ==================== MAIN ====================
+@app.route('/migrate-database')
+def migrate_database():
+    """Migrate database with new schema"""
+    if request.args.get('confirm') != 'yes':
+        return '''
+        <h2>Migrate Database</h2>
+        <p>This will update the database schema to include all new tables.</p>
+        <p><strong>Warning:</strong> This will preserve existing data but add new tables.</p>
+        <p><a href="/migrate-database?confirm=yes">Click here to confirm</a></p>
+        '''
+    
+    try:
+        db.create_all()
+        return '<h2>Success!</h2><p>Database migrated successfully!</p><p><a href="/dashboard">Back to dashboard</a></p>'
+    except Exception as e:
+        return f'<h2>Error</h2><p>Migration failed: {str(e)}</p>'
 
 @app.route('/populate-crews')
 def populate_crews():
@@ -2832,6 +3141,19 @@ def populate_crews():
         <p>Make sure you've run <a href="/init-db">/init-db</a> first to create positions and skills.</p>
         <p><a href="/dashboard" class="btn btn-secondary">Return to Dashboard</a></p>
         '''
+
+# ==================== ERROR HANDLERS ====================
+
+@app.errorhandler(404)
+def not_found_error(error):
+    return render_template('404.html'), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    db.session.rollback()
+    return render_template('500.html'), 500
+
+# ==================== MAIN ====================
 
 if __name__ == '__main__':
     app.run(debug=True)
