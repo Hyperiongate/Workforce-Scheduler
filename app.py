@@ -508,6 +508,9 @@ def dashboard():
         Employee.id != current_user.id
     ).order_by(Employee.name).all()
     
+    # Calculate today and week_end for template
+    today = date.today()
+    
     return render_template('dashboard.html',
                          selected_crew=selected_crew,
                          crew_stats=crew_stats,
@@ -518,7 +521,8 @@ def dashboard():
                          todays_schedule=todays_schedule,
                          coverage_needs=coverage_needs,
                          coverage_gaps=coverage_gaps[:3],  # Show first 3 gaps
-                         other_supervisors=other_supervisors)
+                         other_supervisors=other_supervisors,
+                         today=today)
 
 @app.route('/employee-dashboard')
 @login_required
@@ -724,9 +728,22 @@ def deny_time_off(request_id):
 @login_required
 def vacation_calendar():
     """View team vacation calendar"""
-    # Get calendar entries for the next 90 days
-    start_date = date.today()
-    end_date = start_date + timedelta(days=90)
+    import calendar as cal
+    
+    # Get year and month from query params
+    year = request.args.get('year', date.today().year, type=int)
+    month = request.args.get('month', date.today().month, type=int)
+    
+    # Create calendar for the month
+    month_calendar = cal.monthcalendar(year, month)
+    month_name = cal.month_name[month]
+    
+    # Get vacation entries for this month
+    start_date = date(year, month, 1)
+    if month == 12:
+        end_date = date(year + 1, 1, 1) - timedelta(days=1)
+    else:
+        end_date = date(year, month + 1, 1) - timedelta(days=1)
     
     calendar_entries = VacationCalendar.query.filter(
         VacationCalendar.date >= start_date,
@@ -734,8 +751,27 @@ def vacation_calendar():
     ).order_by(VacationCalendar.date).all()
     
     # Group by date for easier display
-    calendar_data = {}
+    vacation_by_date = {}
     for entry in calendar_entries:
+        date_str = entry.date.strftime('%Y-%m-%d')
+        if date_str not in vacation_by_date:
+            vacation_by_date[date_str] = []
+        vacation_by_date[date_str].append({
+            'employee_name': entry.employee.name,
+            'leave_type': entry.request_type
+        })
+    
+    # Get today's date for highlighting
+    today = date.today()
+    
+    return render_template('vacation_calendar.html',
+                         calendar=month_calendar,
+                         vacation_by_date=vacation_by_date,
+                         year=year,
+                         month=month,
+                         month_name=month_name,
+                         today=today,
+                         datetime=datetime)_entries:
         if entry.date not in calendar_data:
             calendar_data[entry.date] = []
         calendar_data[entry.date].append(entry)
@@ -834,10 +870,15 @@ def coverage_needs():
     # Get available casual workers
     casual_workers = CasualWorker.query.filter_by(is_active=True).all()
     
+    # Add today and timedelta for template
+    today = date.today()
+    
     return render_template('coverage_needs.html',
                          open_requests=open_requests,
                          coverage_gaps=coverage_gaps,
-                         casual_workers=casual_workers)
+                         casual_workers=casual_workers,
+                         today=today,
+                         timedelta=timedelta)
 
 @app.route('/coverage/push/<int:request_id>', methods=['POST'])
 @login_required
