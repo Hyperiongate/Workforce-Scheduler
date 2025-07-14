@@ -729,44 +729,63 @@ def reply_position_message(message_id):
 def report_maintenance():
     """Report a maintenance issue"""
     if request.method == 'POST':
-        title = request.form.get('title')
-        description = request.form.get('description')
-        location = request.form.get('location')
-        category = request.form.get('category', 'general')
-        priority = request.form.get('priority', 'normal')
-        safety_issue = request.form.get('safety_issue') == 'on'
-        
-        # Create issue
-        issue = MaintenanceIssue(
-            reporter_id=current_user.id,
-            title=title,
-            description=description,
-            location=location,
-            category=category,
-            priority=priority,
-            safety_issue=safety_issue
-        )
-        
-        # Auto-assign to primary maintenance manager if exists
-        primary_manager = MaintenanceManager.query.filter_by(is_primary=True).first()
-        if primary_manager:
-            issue.assigned_to_id = primary_manager.employee_id
-        
-        db.session.add(issue)
-        db.session.commit()
-        
-        # Create initial update
-        update = MaintenanceUpdate(
-            issue_id=issue.id,
-            author_id=current_user.id,
-            update_type='comment',
-            message=f"Issue reported: {description}"
-        )
-        db.session.add(update)
-        db.session.commit()
-        
-        flash('Maintenance issue reported successfully!', 'success')
-        return redirect(url_for('view_maintenance_issue', issue_id=issue.id))
+        try:
+            title = request.form.get('title')
+            description = request.form.get('description')
+            location = request.form.get('location')
+            category = request.form.get('category', 'general')
+            priority = request.form.get('priority', 'normal')
+            safety_issue = request.form.get('safety_issue') == 'on'
+            
+            # Create issue
+            issue = MaintenanceIssue(
+                reporter_id=current_user.id,
+                title=title,
+                description=description,
+                location=location,
+                category=category,
+                priority=priority,
+                safety_issue=safety_issue,
+                status='open',  # Explicitly set status
+                reported_at=datetime.now()  # Explicitly set timestamp
+            )
+            
+            # Try to auto-assign to primary maintenance manager if exists
+            try:
+                primary_manager = MaintenanceManager.query.filter_by(is_primary=True).first()
+                if primary_manager:
+                    issue.assigned_to_id = primary_manager.employee_id
+            except:
+                # If MaintenanceManager table doesn't exist or query fails, continue without assignment
+                pass
+            
+            db.session.add(issue)
+            db.session.flush()  # Flush to get the issue ID
+            
+            # Create initial update
+            try:
+                update = MaintenanceUpdate(
+                    issue_id=issue.id,
+                    author_id=current_user.id,
+                    update_type='comment',
+                    message=f"Issue reported: {description}",
+                    created_at=datetime.now()  # Explicitly set timestamp
+                )
+                db.session.add(update)
+            except:
+                # If update fails, still continue (issue is more important)
+                pass
+            
+            db.session.commit()
+            
+            flash('Maintenance issue reported successfully!', 'success')
+            return redirect(url_for('view_maintenance_issue', issue_id=issue.id))
+            
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error reporting issue: {str(e)}', 'danger')
+            app.logger.error(f'Maintenance report error: {str(e)}')
+            return redirect(url_for('report_maintenance'))
     
     # GET request - show form
     return render_template('report_maintenance.html')
