@@ -1,0 +1,401 @@
+{% extends "base.html" %}
+
+{% block title %}Fill Coverage Gap - Workforce Scheduler{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <h2>Fill Coverage Gap</h2>
+            <div class="alert alert-warning">
+                <strong>Coverage needed for:</strong> 
+                {{ gap_date.strftime('%A, %B %d, %Y') }} - 
+                <span class="badge bg-{% if shift_type == 'day' %}warning{% elif shift_type == 'evening' %}info{% else %}dark{% endif %}">
+                    {{ shift_type|title }} Shift
+                </span>
+                {% if crew != 'ALL' %}- Crew {{ crew }}{% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Available Employees -->
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Available Employees</h5>
+                </div>
+                <div class="card-body">
+                    <!-- Filter Options -->
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <select class="form-select" id="filterCrew" onchange="filterEmployees()">
+                                <option value="">All Crews</option>
+                                <option value="A">Crew A</option>
+                                <option value="B">Crew B</option>
+                                <option value="C">Crew C</option>
+                                <option value="D">Crew D</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <select class="form-select" id="filterPosition" onchange="filterEmployees()">
+                                <option value="">All Positions</option>
+                                {% for position in positions %}
+                                <option value="{{ position.id }}">{{ position.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <input type="text" class="form-control" id="searchEmployee" 
+                                   placeholder="Search by name..." onkeyup="filterEmployees()">
+                        </div>
+                    </div>
+
+                    <!-- Employee List -->
+                    <div class="table-responsive">
+                        <table class="table table-hover" id="availableEmployeesTable">
+                            <thead>
+                                <tr>
+                                    <th>Select</th>
+                                    <th>Name</th>
+                                    <th>Position</th>
+                                    <th>Crew</th>
+                                    <th>Current Hours</th>
+                                    <th>Availability</th>
+                                    <th>Skills Match</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for employee in available_employees %}
+                                <tr class="employee-row" 
+                                    data-crew="{{ employee.crew }}" 
+                                    data-position="{{ employee.position_id }}"
+                                    data-name="{{ employee.name.lower() }}">
+                                    <td>
+                                        <input type="checkbox" class="form-check-input employee-select" 
+                                               value="{{ employee.id }}" 
+                                               data-name="{{ employee.name }}">
+                                    </td>
+                                    <td>
+                                        <strong>{{ employee.name }}</strong>
+                                        {% if employee.phone %}
+                                        <br><small class="text-muted">{{ employee.phone }}</small>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ employee.position.name if employee.position else 'N/A' }}</td>
+                                    <td>
+                                        <span class="badge bg-secondary">Crew {{ employee.crew }}</span>
+                                    </td>
+                                    <td>
+                                        <div class="progress" style="height: 20px;">
+                                            <div class="progress-bar {% if employee.current_hours > 35 %}bg-warning{% else %}bg-success{% endif %}" 
+                                                 role="progressbar" 
+                                                 style="width: {{ (employee.current_hours / 40 * 100)|int }}%">
+                                                {{ employee.current_hours }}h
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        {% if employee.is_available %}
+                                            <span class="badge bg-success">Available</span>
+                                        {% else %}
+                                            <span class="badge bg-danger">{{ employee.conflict_reason }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if employee.skills_match == 'full' %}
+                                            <span class="badge bg-success">100%</span>
+                                        {% elif employee.skills_match == 'partial' %}
+                                            <span class="badge bg-warning">Partial</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">Basic</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Bulk Actions -->
+                    <div class="mt-3">
+                        <button class="btn btn-primary" onclick="assignSelected()">
+                            <i class="bi bi-check-circle"></i> Assign Selected
+                        </button>
+                        <button class="btn btn-secondary" onclick="selectAll()">
+                            <i class="bi bi-check-all"></i> Select All Available
+                        </button>
+                        <button class="btn btn-outline-secondary" onclick="clearSelection()">
+                            <i class="bi bi-x-circle"></i> Clear Selection
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Casual Workers -->
+            <div class="card mt-4">
+                <div class="card-header">
+                    <h5 class="mb-0">Available Casual Workers</h5>
+                </div>
+                <div class="card-body">
+                    {% if casual_workers %}
+                        <div class="table-responsive">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>Select</th>
+                                        <th>Name</th>
+                                        <th>Contact</th>
+                                        <th>Availability</th>
+                                        <th>Rate</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for casual in casual_workers %}
+                                    <tr>
+                                        <td>
+                                            <input type="checkbox" class="form-check-input casual-select" 
+                                                   value="{{ casual.id }}" 
+                                                   data-name="{{ casual.name }}">
+                                        </td>
+                                        <td>{{ casual.name }}</td>
+                                        <td>
+                                            {{ casual.phone }}<br>
+                                            <small>{{ casual.email }}</small>
+                                        </td>
+                                        <td>
+                                            <small>{{ casual.availability_days }}</small>
+                                        </td>
+                                        <td>${{ casual.hourly_rate }}/hr</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        <button class="btn btn-warning mt-2" onclick="assignCasuals()">
+                            <i class="bi bi-person-badge"></i> Assign Casual Workers
+                        </button>
+                    {% else %}
+                        <p class="text-muted">No casual workers available for this shift.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Gap Details & Actions -->
+        <div class="col-md-4">
+            <!-- Gap Summary -->
+            <div class="card mb-4">
+                <div class="card-header bg-danger text-white">
+                    <h5 class="mb-0">Gap Details</h5>
+                </div>
+                <div class="card-body">
+                    <dl class="row">
+                        <dt class="col-sm-5">Date:</dt>
+                        <dd class="col-sm-7">{{ gap_date.strftime('%m/%d/%Y') }}</dd>
+                        
+                        <dt class="col-sm-5">Shift:</dt>
+                        <dd class="col-sm-7">{{ shift_type|title }}</dd>
+                        
+                        <dt class="col-sm-5">Time:</dt>
+                        <dd class="col-sm-7">
+                            {% if shift_type == 'day' %}7:00 AM - 7:00 PM
+                            {% elif shift_type == 'evening' %}3:00 PM - 11:00 PM
+                            {% else %}11:00 PM - 7:00 AM{% endif %}
+                        </dd>
+                        
+                        <dt class="col-sm-5">Scheduled:</dt>
+                        <dd class="col-sm-7">{{ scheduled_count }}</dd>
+                        
+                        <dt class="col-sm-5">Required:</dt>
+                        <dd class="col-sm-7">{{ required_count }}</dd>
+                        
+                        <dt class="col-sm-5">Gap:</dt>
+                        <dd class="col-sm-7"><span class="badge bg-danger">-{{ gap_count }}</span></dd>
+                    </dl>
+                </div>
+            </div>
+
+            <!-- Quick Actions -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">Quick Actions</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-primary" onclick="pushToOffDutyCrews()">
+                            <i class="bi bi-broadcast"></i> Push to Off-Duty Crews
+                        </button>
+                        <button class="btn btn-info" onclick="createOvertimeOpportunity()">
+                            <i class="bi bi-clock-history"></i> Create Overtime Opportunity
+                        </button>
+                        <button class="btn btn-warning" onclick="requestVolunteers()">
+                            <i class="bi bi-megaphone"></i> Request Volunteers
+                        </button>
+                        <a href="{{ url_for('casual_workers') }}" class="btn btn-secondary">
+                            <i class="bi bi-person-badge"></i> Browse Casual Workers
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Selected Summary -->
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Selection Summary</h5>
+                </div>
+                <div class="card-body">
+                    <div id="selectionSummary">
+                        <p class="text-muted">No employees selected</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Track selected employees
+let selectedEmployees = new Set();
+let selectedCasuals = new Set();
+
+// Filter employees
+function filterEmployees() {
+    const crewFilter = document.getElementById('filterCrew').value;
+    const positionFilter = document.getElementById('filterPosition').value;
+    const searchFilter = document.getElementById('searchEmployee').value.toLowerCase();
+    
+    const rows = document.querySelectorAll('.employee-row');
+    rows.forEach(row => {
+        const crew = row.dataset.crew;
+        const position = row.dataset.position;
+        const name = row.dataset.name;
+        
+        let show = true;
+        if (crewFilter && crew !== crewFilter) show = false;
+        if (positionFilter && position !== positionFilter) show = false;
+        if (searchFilter && !name.includes(searchFilter)) show = false;
+        
+        row.style.display = show ? '' : 'none';
+    });
+}
+
+// Selection management
+function updateSelectionSummary() {
+    const summary = document.getElementById('selectionSummary');
+    const totalSelected = selectedEmployees.size + selectedCasuals.size;
+    
+    if (totalSelected === 0) {
+        summary.innerHTML = '<p class="text-muted">No employees selected</p>';
+    } else {
+        let html = `<p><strong>${totalSelected} selected:</strong></p><ul class="list-unstyled">`;
+        
+        selectedEmployees.forEach(emp => {
+            const checkbox = document.querySelector(`input[value="${emp}"]`);
+            if (checkbox) {
+                html += `<li>• ${checkbox.dataset.name}</li>`;
+            }
+        });
+        
+        selectedCasuals.forEach(casual => {
+            const checkbox = document.querySelector(`.casual-select[value="${casual}"]`);
+            if (checkbox) {
+                html += `<li>• ${checkbox.dataset.name} (Casual)</li>`;
+            }
+        });
+        
+        html += '</ul>';
+        summary.innerHTML = html;
+    }
+}
+
+// Handle checkbox changes
+document.querySelectorAll('.employee-select').forEach(checkbox => {
+    checkbox.addEventListener('change', function() {
+        if (this.checked) {
+            selectedEmployees.add(this.value);
+        } else {
+            selectedEmployees.delete(this.value);
+        }
+        updateSelectionSummary();
+    });
+});
+
+document.querySelectorAll('.casual-select').forEach(checkbox => {
+    checkbox.addEventListener('change', function() {
+        if (this.checked) {
+            selectedCasuals.add(this.value);
+        } else {
+            selectedCasuals.delete(this.value);
+        }
+        updateSelectionSummary();
+    });
+});
+
+// Bulk selection functions
+function selectAll() {
+    document.querySelectorAll('.employee-row:not([style*="display: none"]) .employee-select').forEach(checkbox => {
+        if (!checkbox.disabled) {
+            checkbox.checked = true;
+            selectedEmployees.add(checkbox.value);
+        }
+    });
+    updateSelectionSummary();
+}
+
+function clearSelection() {
+    document.querySelectorAll('.employee-select, .casual-select').forEach(checkbox => {
+        checkbox.checked = false;
+    });
+    selectedEmployees.clear();
+    selectedCasuals.clear();
+    updateSelectionSummary();
+}
+
+// Assignment functions
+function assignSelected() {
+    if (selectedEmployees.size === 0) {
+        alert('Please select at least one employee to assign.');
+        return;
+    }
+    
+    if (confirm(`Assign ${selectedEmployees.size} employee(s) to this shift?`)) {
+        // In a real app, this would submit to the server
+        alert('Employees assigned successfully!');
+        window.location.href = "{{ url_for('coverage_gaps') }}";
+    }
+}
+
+function assignCasuals() {
+    if (selectedCasuals.size === 0) {
+        alert('Please select at least one casual worker to assign.');
+        return;
+    }
+    
+    if (confirm(`Assign ${selectedCasuals.size} casual worker(s) to this shift?`)) {
+        alert('Casual workers notified and assigned!');
+    }
+}
+
+// Quick action functions
+function pushToOffDutyCrews() {
+    if (confirm('Send coverage request to all off-duty crews?')) {
+        alert('Coverage request sent to off-duty crews!');
+    }
+}
+
+function createOvertimeOpportunity() {
+    if (confirm('Create overtime opportunity for this shift?')) {
+        alert('Overtime opportunity created and posted!');
+    }
+}
+
+function requestVolunteers() {
+    const message = prompt('Enter message for volunteer request:', 
+        'We need volunteers for {{ gap_date.strftime("%m/%d") }} {{ shift_type }} shift. Overtime rates apply.');
+    if (message) {
+        alert('Volunteer request sent to all eligible employees!');
+    }
+}
+</script>
+{% endblock %}
