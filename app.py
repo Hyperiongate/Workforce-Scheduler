@@ -1,4 +1,1150 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_file
+return redirect(url_for('view_maintenance_issue', issue_id=issue_id))
+
+# ==================== API ROUTES FOR COMMUNICATION ====================
+
+@app.route('/api/supervisor-messages/unread-count')
+@login_required
+def supervisor_messages_unread_count():
+    """Get count of unread supervisor messages"""
+    if not current_user.is_supervisor:
+        return jsonify({'count': 0})
+    
+    count = SupervisorMessage.query.filter_by(
+        recipient_id=current_user.id,
+        read_at=None
+    ).count()
+    
+    return jsonify({'count': count})
+
+@app.route('/api/position-messages/unread-count')
+@login_required
+def position_messages_unread_count():
+    """Get count of unread position messages"""
+    if not current_user.position_id:
+        return jsonify({'count': 0})
+    
+    # Get messages for user's position that they haven't read
+    messages = PositionMessage.query.filter_by(
+        position_id=current_user.position_id
+    ).filter(
+        db.or_(
+            PositionMessage.expires_at.is_(None),
+            PositionMessage.expires_at > datetime.now()
+        )
+    ).all()
+    
+    unread_count = sum(1 for msg in messages if not msg.is_read_by(current_user.id))
+    
+    return jsonify({'count': unread_count})
+
+@app.route('/api/maintenance/my-issues-count')
+@login_required
+def my_maintenance_issues_count():
+    """Get count of user's open maintenance issues"""
+    # For managers, count assigned issues
+    is_manager = MaintenanceManager.query.filter_by(employee_id=current_user.id).first()
+    
+    if is_manager:
+        count = MaintenanceIssue.query.filter(
+            MaintenanceIssue.assigned_to_id == current_user.id,
+            MaintenanceIssue.status.in_(['open', 'acknowledged', 'in_progress'])
+        ).count()
+    else:
+        # For regular employees, count their reported issues
+        count = MaintenanceIssue.query.filter(
+            MaintenanceIssue.reporter_id == current_user.id,
+            MaintenanceIssue.status.in_(['open', 'acknowledged', 'in_progress'])
+        ).count()
+    
+    return jsonify({'count': count})
+
+# ==================== QUICK ACCESS ROUTES ====================
+
+@app.route('/quick/supervisor-message', methods=['POST'])
+@login_required
+def quick_supervisor_message():
+    """Quick send supervisor message from dashboard"""
+    if not current_user.is_supervisor:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    recipient_id = request.form.get('recipient_id')
+    message_text = request.form.get('message')
+    
+    # Create quick message
+    message = SupervisorMessage(
+        sender_id=current_user.id,
+        recipient_id=recipient_id,
+        subject='Quick Message',
+        message=message_text,
+        priority='normal',
+        category='general'
+    )
+    
+    db.session.add(message)
+    db.session.commit()
+    
+    return jsonify({'success': True, 'message': 'Message sent!'})
+
+@app.route('/quick/position-broadcast', methods=['POST'])
+@login_required
+def quick_position_broadcast():
+    """Quick broadcast to position colleagues"""
+    if not current_user.position_id:
+        return jsonify({'error': 'No position assigned'}), 403
+    
+    message_text = request.form.get('message')
+    
+    # Create broadcast
+    message = PositionMessage(
+        sender_id=current_user.id,
+        position_id=current_user.position_id,
+        subject='Quick Update',
+        message=message_text,
+        category='alert',
+        target_shifts='all',
+        expires_at=datetime.now() + timedelta(days=1)  # Expires in 24 hours
+    )
+    
+    db.session.add(message)
+    db.session.commit()
+    
+    return jsonify({'success': True, 'message': 'Broadcast sent!'})
+
+# ==================== SHIFT TRADE MARKETPLACE ROUTES ====================
+
+@app.route('/shift-marketplace')
+@login_required
+def shift_marketplace():
+    """Main shift trade marketplace view"""
+    # Get filters from query params
+    filters = {
+        'start_date': request.args.get('start_date', date.today().strftime('%Y-%m-%d')),
+        'end_date': request.args.get('end_date', (date.today() + timedelta(days=30)).strftime('%Y-%m-%d')),
+        'shift_type': request.args.get('shift_type', ''),
+        'position': request.args.get('position', ''),
+        'compatibility': request.args.get('compatibility', '')
+    }
+    
+    # Get available trades (exclude user's own posts)
+    available_trades_query = ShiftTradePost.query.filter(
+        ShiftTradePost.status == 'active',
+        ShiftTradePost.poster_id != current_user.id
+    ).join(Schedule)
+    
+    # Apply filters
+    if filters['start_date']:
+        available_trades_query = available_trades_query.filter(
+            Schedule.date >= datetime.strptime(filters['start_date'], '%Y-%m-%d').date()
+        )
+    if filters['end_date']:
+        available_trades_query = available_trades_query.filter(
+            Schedule.date <= datetime.strptime(filters['end_date'], '%Y-%m-%d').date()
+        )
+    if filters['shift_type']:
+        available_trades_query = available_trades_query.filter(
+            Schedule.shift_type == filters['shift_type']
+        )
+    if filters['position']:
+        available_trades_query = available_trades_query.filter(
+            Schedule.position_id == int(filters['position'])
+        )
+    
+    available_trades = available_trades_query.order_by(Schedule.date).all()
+    
+    # Calculate compatibility for each trade
+    for trade in available_trades:
+        trade.compatibility = calculate_trade_compatibility(current_user, trade)
+    
+    # Filter by compatibility if specified
+    if filters['compatibility']:
+        available_trades = [t for t in available_trades if t.compatibility == filters['compatibility']]
+    
+    # Get user's posted shifts
+    my_posts = ShiftTradePost.query.filter_by(
+        poster_id=current_user.id,
+        status='active'
+    ).all()
+    
+    # Get user's active trades
+    my_trades = ShiftTrade.query.filter(
+        or_(
+            ShiftTrade.employee1_id == current_user.id,
+            ShiftTrade.employee2_id == current_user.id
+        ),
+        ShiftTrade.status.in_(['pending', 'approved'])
+    ).all()
+    
+    # Get trade history
+    trade_history = get_trade_history(current_user.id)
+    
+    # Get upcoming shifts for posting
+    my_upcoming_shifts = Schedule.query.filter(
+        Schedule.employee_id == current_user.id,
+        Schedule.date >= date.today(),
+        Schedule.date <= date.today() + timedelta(days=60)
+    ).order_by(Schedule.date).all()
+    
+    # Get positions for filter
+    positions = Position.query.all()
+    
+    # Calculate statistics
+    stats = {
+        'available_trades': len(available_trades),
+        'my_posted_shifts': len(my_posts),
+        'my_active_trades': len(my_trades),
+        'pending_trades': len([t for t in my_trades if t.status == 'pending']),
+        'completed_trades': ShiftTrade.query.filter(
+            or_(
+                ShiftTrade.employee1_id == current_user.id,
+                ShiftTrade.employee2_id == current_user.id
+            ),
+            ShiftTrade.status == 'completed'
+        ).count()
+    }
+    
+    return render_template('shift_marketplace.html',
+                         available_trades=available_trades,
+                         my_posts=my_posts,
+                         my_trades=my_trades,
+                         trade_history=trade_history,
+                         my_upcoming_shifts=my_upcoming_shifts,
+                         positions=positions,
+                         filters=filters,
+                         stats=stats)
+
+@app.route('/shift-marketplace/post', methods=['POST'])
+@login_required
+def post_shift_for_trade():
+    """Post a shift for trade"""
+    schedule_id = request.form.get('schedule_id')
+    
+    # Verify ownership
+    schedule = Schedule.query.get_or_404(schedule_id)
+    if schedule.employee_id != current_user.id:
+        flash('You can only post your own shifts for trade.', 'danger')
+        return redirect(url_for('shift_marketplace'))
+    
+    # Check if already posted
+    existing_post = ShiftTradePost.query.filter_by(
+        schedule_id=schedule_id,
+        status='active'
+    ).first()
+    
+    if existing_post:
+        flash('This shift is already posted for trade.', 'warning')
+        return redirect(url_for('shift_marketplace'))
+    
+    # Create trade post
+    trade_post = ShiftTradePost(
+        poster_id=current_user.id,
+        schedule_id=schedule_id,
+        preferred_start_date=request.form.get('preferred_start_date') or None,
+        preferred_end_date=request.form.get('preferred_end_date') or None,
+        preferred_shift_types=','.join(request.form.getlist('preferred_shifts')),
+        notes=request.form.get('notes', ''),
+        auto_approve=request.form.get('auto_approve') == 'on',
+        expires_at=datetime.now() + timedelta(days=30)
+    )
+    
+    db.session.add(trade_post)
+    db.session.commit()
+    
+    flash('Your shift has been posted to the trade marketplace!', 'success')
+    return redirect(url_for('shift_marketplace'))
+
+@app.route('/api/trade-post/<int:post_id>')
+@login_required
+def get_trade_post_details(post_id):
+    """Get details of a trade post"""
+    post = ShiftTradePost.query.get_or_404(post_id)
+    
+    # Increment view count
+    post.view_count += 1
+    db.session.commit()
+    
+    # Get schedule details
+    schedule = post.schedule
+    
+    return jsonify({
+        'id': post.id,
+        'position': schedule.position.name if schedule.position else 'Unknown',
+        'date': schedule.date.strftime('%A, %B %d, %Y'),
+        'start_time': schedule.start_time.strftime('%I:%M %p'),
+        'end_time': schedule.end_time.strftime('%I:%M %p'),
+        'shift_type': schedule.shift_type,
+        'notes': post.notes,
+        'poster': post.poster.name
+    })
+
+@app.route('/api/my-compatible-shifts/<int:post_id>')
+@login_required
+def get_my_compatible_shifts(post_id):
+    """Get user's shifts compatible with a trade post"""
+    post = ShiftTradePost.query.get_or_404(post_id)
+    schedule = post.schedule
+    
+    # Get user's upcoming shifts
+    my_shifts_query = Schedule.query.filter(
+        Schedule.employee_id == current_user.id,
+        Schedule.date >= date.today(),
+        Schedule.date != schedule.date  # Can't trade for same date
+    )
+    
+    # Apply preferences if any
+    if post.preferred_start_date:
+        my_shifts_query = my_shifts_query.filter(
+            Schedule.date >= post.preferred_start_date
+        )
+    if post.preferred_end_date:
+        my_shifts_query = my_shifts_query.filter(
+            Schedule.date <= post.preferred_end_date
+        )
+    if post.preferred_shift_types:
+        preferred_types = post.preferred_shift_types.split(',')
+        my_shifts_query = my_shifts_query.filter(
+            Schedule.shift_type.in_(preferred_types)
+        )
+    
+    my_shifts = my_shifts_query.order_by(Schedule.date).all()
+    
+    # Calculate compatibility for each shift
+    shifts_data = []
+    for shift in my_shifts:
+        compatibility = 'high'
+        if shift.position_id != schedule.position_id:
+            compatibility = 'medium'
+        if shift.shift_type != schedule.shift_type:
+            compatibility = 'low' if compatibility == 'medium' else 'medium'
+        
+        shifts_data.append({
+            'id': shift.id,
+            'date': shift.date.strftime('%m/%d/%Y'),
+            'position': shift.position.name if shift.position else 'TBD',
+            'start_time': shift.start_time.strftime('%I:%M %p'),
+            'end_time': shift.end_time.strftime('%I:%M %p'),
+            'shift_type': shift.shift_type,
+            'compatibility': compatibility
+        })
+    
+    return jsonify(shifts_data)
+
+@app.route('/api/trade-proposal/create', methods=['POST'])
+@login_required
+def create_trade_proposal():
+    """Create a trade proposal"""
+    trade_post_id = request.form.get('trade_post_id')
+    offered_schedule_id = request.form.get('offered_schedule_id')
+    message = request.form.get('message', '')
+    
+    # Verify trade post exists and is active
+    trade_post = ShiftTradePost.query.get_or_404(trade_post_id)
+    if trade_post.status != 'active':
+        return jsonify({'success': False, 'message': 'This trade post is no longer active.'})
+    
+    # Verify ownership of offered schedule
+    offered_schedule = Schedule.query.get_or_404(offered_schedule_id)
+    if offered_schedule.employee_id != current_user.id:
+        return jsonify({'success': False, 'message': 'You can only offer your own shifts.'})
+    
+    # Check if already proposed
+    existing_proposal = ShiftTradeProposal.query.filter_by(
+        trade_post_id=trade_post_id,
+        proposer_id=current_user.id,
+        status='pending'
+    ).first()
+    
+    if existing_proposal:
+        return jsonify({'success': False, 'message': 'You already have a pending proposal for this trade.'})
+    
+    # Create proposal
+    proposal = ShiftTradeProposal(
+        trade_post_id=trade_post_id,
+        proposer_id=current_user.id,
+        offered_schedule_id=offered_schedule_id,
+        message=message
+    )
+    
+    db.session.add(proposal)
+    db.session.commit()
+    
+    return jsonify({'success': True, 'message': 'Trade proposal sent successfully!'})
+
+@app.route('/api/trade-proposals/<int:post_id>')
+@login_required
+def get_trade_proposals(post_id):
+    """Get proposals for a trade post"""
+    post = ShiftTradePost.query.get_or_404(post_id)
+    
+    # Verify ownership
+    if post.poster_id != current_user.id:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    proposals = ShiftTradeProposal.query.filter_by(
+        trade_post_id=post_id,
+        status='pending'
+    ).all()
+    
+    proposals_data = []
+    for proposal in proposals:
+        offered_shift = proposal.offered_schedule
+        proposals_data.append({
+            'id': proposal.id,
+            'proposer_name': proposal.proposer.name,
+            'offered_shift': f"{offered_shift.date.strftime('%m/%d')} - {offered_shift.position.name if offered_shift.position else 'TBD'} ({offered_shift.shift_type})",
+            'message': proposal.message,
+            'created_at': proposal.created_at.strftime('%m/%d %I:%M %p')
+        })
+    
+    return jsonify(proposals_data)
+
+@app.route('/api/trade-proposal/<int:proposal_id>/accept', methods=['POST'])
+@login_required
+def accept_trade_proposal(proposal_id):
+    """Accept a trade proposal"""
+    proposal = ShiftTradeProposal.query.get_or_404(proposal_id)
+    
+    # Verify ownership
+    if proposal.trade_post.poster_id != current_user.id:
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+    
+    if proposal.status != 'pending':
+        return jsonify({'success': False, 'message': 'This proposal is no longer pending.'})
+    
+    # Update proposal status
+    proposal.status = 'accepted'
+    proposal.responded_at = datetime.now()
+    
+    # Update trade post status
+    proposal.trade_post.status = 'matched'
+    
+    # Reject other proposals for this post
+    other_proposals = ShiftTradeProposal.query.filter(
+        ShiftTradeProposal.trade_post_id == proposal.trade_post_id,
+        ShiftTradeProposal.id != proposal_id,
+        ShiftTradeProposal.status == 'pending'
+    ).all()
+    
+    for other in other_proposals:
+        other.status = 'rejected'
+        other.responded_at = datetime.now()
+    
+    # Create shift trade record
+    trade = ShiftTrade(
+        employee1_id=proposal.trade_post.poster_id,
+        employee2_id=proposal.proposer_id,
+        schedule1_id=proposal.trade_post.schedule_id,
+        schedule2_id=proposal.offered_schedule_id,
+        trade_post_id=proposal.trade_post_id,
+        trade_proposal_id=proposal_id,
+        status='pending' if not proposal.trade_post.auto_approve else 'approved',
+        requires_approval=not proposal.trade_post.auto_approve
+    )
+    
+    db.session.add(trade)
+    
+    # If auto-approve, execute the trade immediately
+    if proposal.trade_post.auto_approve:
+        execute_shift_trade(trade)
+    
+    db.session.commit()
+    
+    return jsonify({'success': True, 'message': 'Trade proposal accepted!'})
+
+@app.route('/api/trade-proposal/<int:proposal_id>/reject', methods=['POST'])
+@login_required
+def reject_trade_proposal(proposal_id):
+    """Reject a trade proposal"""
+    proposal = ShiftTradeProposal.query.get_or_404(proposal_id)
+    
+    # Verify ownership
+    if proposal.trade_post.poster_id != current_user.id:
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+    
+    proposal.status = 'rejected'
+    proposal.responded_at = datetime.now()
+    
+    db.session.commit()
+    
+    return jsonify({'success': True})
+
+@app.route('/api/trade-post/<int:post_id>/cancel', methods=['POST'])
+@login_required
+def cancel_trade_post(post_id):
+    """Cancel a trade post"""
+    post = ShiftTradePost.query.get_or_404(post_id)
+    
+    # Verify ownership
+    if post.poster_id != current_user.id:
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+    
+    post.status = 'cancelled'
+    
+    # Reject all pending proposals
+    proposals = ShiftTradeProposal.query.filter_by(
+        trade_post_id=post_id,
+        status='pending'
+    ).all()
+    
+    for proposal in proposals:
+        proposal.status = 'rejected'
+        proposal.responded_at = datetime.now()
+    
+    db.session.commit()
+    
+    return jsonify({'success': True})
+
+@app.route('/api/trade/<int:trade_id>/cancel', methods=['POST'])
+@login_required
+def cancel_trade(trade_id):
+    """Cancel a pending trade"""
+    trade = ShiftTrade.query.get_or_404(trade_id)
+    
+    # Verify participant
+    if current_user.id not in [trade.employee1_id, trade.employee2_id]:
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+    
+    if trade.status != 'pending':
+        return jsonify({'success': False, 'message': 'Only pending trades can be cancelled.'})
+    
+    trade.status = 'cancelled'
+    
+    # Reactivate the trade post if it was from marketplace
+    if trade.trade_post:
+        trade.trade_post.status = 'active'
+    
+    db.session.commit()
+    
+    return jsonify({'success': True})
+
+# ==================== DATABASE INITIALIZATION ROUTES ====================
+
+@app.route('/init-db')
+def init_db():
+    """Initialize database with all tables"""
+    with app.app_context():
+        # Create all tables first
+        db.create_all()
+        
+        # Now check if admin exists
+        admin = Employee.query.filter_by(email='admin@workforce.com').first()
+        if not admin:
+            admin = Employee(
+                name='Admin User',
+                email='admin@workforce.com',
+                is_supervisor=True,
+                crew='A',
+                vacation_days=20,
+                sick_days=10,
+                personal_days=5
+            )
+            admin.set_password('admin123')
+            db.session.add(admin)
+            
+            # Create some default positions
+            positions = [
+                Position(name='Nurse', department='Healthcare', min_coverage=2),
+                Position(name='Security Officer', department='Security', min_coverage=1),
+                Position(name='Technician', department='Operations', min_coverage=3),
+                Position(name='Customer Service', department='Support', min_coverage=2)
+            ]
+            for pos in positions:
+                db.session.add(pos)
+            
+            # Create some default skills
+            skills = [
+                Skill(name='CPR Certified', category='Medical', requires_certification=True),
+                Skill(name='First Aid', category='Medical', requires_certification=True),
+                Skill(name='Security Clearance', category='Security', requires_certification=True),
+                Skill(name='Emergency Response', category='General'),
+                Skill(name='Equipment Operation', category='Technical')
+            ]
+            for skill in skills:
+                db.session.add(skill)
+            
+            db.session.commit()
+        
+        return '''
+        <h2>Database Initialized!</h2>
+        <p>Admin account created:</p>
+        <ul>
+            <li>Email: admin@workforce.com</li>
+            <li>Password: admin123</li>
+        </ul>
+        <p><a href="/login">Go to login</a></p>
+        '''
+
+@app.route('/populate-crews')
+def populate_crews():
+    """Populate database with 4 complete crews for development"""
+    if request.args.get('confirm') != 'yes':
+        return '''
+        <h2>🏗️ Populate 4 Crews for Development</h2>
+        <p>This will create <strong>40 employees</strong> (10 per crew) with:</p>
+        <ul>
+            <li><strong>Crew A:</strong> 10 employees (Day shift preference)</li>
+            <li><strong>Crew B:</strong> 10 employees (Day shift preference)</li>
+            <li><strong>Crew C:</strong> 10 employees (Night shift preference)</li>
+            <li><strong>Crew D:</strong> 10 employees (Night shift preference)</li>
+        </ul>
+        <p>Each crew will have:</p>
+        <ul>
+            <li>1 Crew Lead (supervisor)</li>
+            <li>3 Nurses</li>
+            <li>2 Security Officers</li>
+            <li>2 Technicians</li>
+            <li>2 Customer Service Representatives</li>
+        </ul>
+        <p><strong>Login credentials:</strong></p>
+        <ul>
+            <li>Email format: [name].[lastname]@company.com</li>
+            <li>Password: password123 (for all)</li>
+        </ul>
+        <p><a href="/populate-crews?confirm=yes" class="btn btn-primary" onclick="return confirm('Create 40 employees across 4 crews?')">Yes, Populate Crews</a></p>
+        <p><a href="/dashboard" class="btn btn-secondary">Cancel</a></p>
+        '''
+    
+    try:
+        # Get positions (assuming they exist from init-db)
+        nurse = Position.query.filter_by(name='Nurse').first()
+        security = Position.query.filter_by(name='Security Officer').first()
+        tech = Position.query.filter_by(name='Technician').first()
+        customer_service = Position.query.filter_by(name='Customer Service').first()
+        
+        # Get skills
+        skills = {
+            'cpr': Skill.query.filter_by(name='CPR Certified').first(),
+            'first_aid': Skill.query.filter_by(name='First Aid').first(),
+            'security': Skill.query.filter_by(name='Security Clearance').first(),
+            'emergency': Skill.query.filter_by(name='Emergency Response').first(),
+            'equipment': Skill.query.filter_by(name='Equipment Operation').first()
+        }
+        
+        # Employee data for each crew
+        crew_templates = {
+            'A': {
+                'shift_preference': 'day',
+                'employees': [
+                    {'name': 'Alice Anderson', 'email': 'alice.anderson@company.com', 'position': nurse, 'is_supervisor': True, 'skills': ['cpr', 'first_aid', 'emergency']},
+                    {'name': 'Adam Martinez', 'email': 'adam.martinez@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid']},
+                    {'name': 'Angela Brown', 'email': 'angela.brown@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid', 'emergency']},
+                    {'name': 'Andrew Wilson', 'email': 'andrew.wilson@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid']},
+                    {'name': 'Amanda Davis', 'email': 'amanda.davis@company.com', 'position': security, 'skills': ['security', 'emergency']},
+                    {'name': 'Aaron Johnson', 'email': 'aaron.johnson@company.com', 'position': security, 'skills': ['security', 'first_aid']},
+                    {'name': 'Anna Miller', 'email': 'anna.miller@company.com', 'position': tech, 'skills': ['equipment', 'emergency']},
+                    {'name': 'Alex Thompson', 'email': 'alex.thompson@company.com', 'position': tech, 'skills': ['equipment']},
+                    {'name': 'Amy Garcia', 'email': 'amy.garcia@company.com', 'position': customer_service, 'skills': ['emergency']},
+                    {'name': 'Anthony Lee', 'email': 'anthony.lee@company.com', 'position': customer_service, 'skills': ['first_aid']}
+                ]
+            },
+            'B': {
+                'shift_preference': 'day',
+                'employees': [
+                    {'name': 'Barbara Bennett', 'email': 'barbara.bennett@company.com', 'position': nurse, 'is_supervisor': True, 'skills': ['cpr', 'first_aid', 'emergency']},
+                    {'name': 'Brian Clark', 'email': 'brian.clark@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid']},
+                    {'name': 'Betty Rodriguez', 'email': 'betty.rodriguez@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid', 'emergency']},
+                    {'name': 'Benjamin Lewis', 'email': 'benjamin.lewis@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid']},
+                    {'name': 'Brenda Walker', 'email': 'brenda.walker@company.com', 'position': security, 'skills': ['security', 'emergency']},
+                    {'name': 'Blake Hall', 'email': 'blake.hall@company.com', 'position': security, 'skills': ['security', 'first_aid']},
+                    {'name': 'Bonnie Allen', 'email': 'bonnie.allen@company.com', 'position': tech, 'skills': ['equipment', 'emergency']},
+                    {'name': 'Bruce Young', 'email': 'bruce.young@company.com', 'position': tech, 'skills': ['equipment']},
+                    {'name': 'Brittany King', 'email': 'brittany.king@company.com', 'position': customer_service, 'skills': ['emergency']},
+                    {'name': 'Bradley Wright', 'email': 'bradley.wright@company.com', 'position': customer_service, 'skills': ['first_aid']}
+                ]
+            },
+            'C': {
+                'shift_preference': 'night',
+                'employees': [
+                    {'name': 'Carol Campbell', 'email': 'carol.campbell@company.com', 'position': nurse, 'is_supervisor': True, 'skills': ['cpr', 'first_aid', 'emergency']},
+                    {'name': 'Charles Parker', 'email': 'charles.parker@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid']},
+                    {'name': 'Christine Evans', 'email': 'christine.evans@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid', 'emergency']},
+                    {'name': 'Christopher Turner', 'email': 'christopher.turner@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid']},
+                    {'name': 'Cynthia Collins', 'email': 'cynthia.collins@company.com', 'position': security, 'skills': ['security', 'emergency']},
+                    {'name': 'Craig Edwards', 'email': 'craig.edwards@company.com', 'position': security, 'skills': ['security', 'first_aid']},
+                    {'name': 'Catherine Stewart', 'email': 'catherine.stewart@company.com', 'position': tech, 'skills': ['equipment', 'emergency']},
+                    {'name': 'Carl Sanchez', 'email': 'carl.sanchez@company.com', 'position': tech, 'skills': ['equipment']},
+                    {'name': 'Cheryl Morris', 'email': 'cheryl.morris@company.com', 'position': customer_service, 'skills': ['emergency']},
+                    {'name': 'Chad Rogers', 'email': 'chad.rogers@company.com', 'position': customer_service, 'skills': ['first_aid']}
+                ]
+            },
+            'D': {
+                'shift_preference': 'night',
+                'employees': [
+                    {'name': 'Diana Davidson', 'email': 'diana.davidson@company.com', 'position': nurse, 'is_supervisor': True, 'skills': ['cpr', 'first_aid', 'emergency']},
+                    {'name': 'David Foster', 'email': 'david.foster@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid']},
+                    {'name': 'Deborah Murphy', 'email': 'deborah.murphy@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid', 'emergency']},
+                    {'name': 'Daniel Rivera', 'email': 'daniel.rivera@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid']},
+                    {'name': 'Donna Cook', 'email': 'donna.cook@company.com', 'position': security, 'skills': ['security', 'emergency']},
+                    {'name': 'Dennis Morgan', 'email': 'dennis.morgan@company.com', 'position': security, 'skills': ['security', 'first_aid']},
+                    {'name': 'Dorothy Peterson', 'email': 'dorothy.peterson@company.com', 'position': tech, 'skills': ['equipment', 'emergency']},
+                    {'name': 'Douglas Cooper', 'email': 'douglas.cooper@company.com', 'position': tech, 'skills': ['equipment']},
+                    {'name': 'Denise Bailey', 'email': 'denise.bailey@company.com', 'position': customer_service, 'skills': ['emergency']},
+                    {'name': 'Derek Reed', 'email': 'derek.reed@company.com', 'position': customer_service, 'skills': ['first_aid']}
+                ]
+            }
+        }
+        
+        created_count = 0
+        
+        for crew_letter, crew_data in crew_templates.items():
+            for emp_data in crew_data['employees']:
+                # Check if employee already exists
+                existing = Employee.query.filter_by(email=emp_data['email']).first()
+                if existing:
+                    continue
+                
+                # Create employee
+                employee = Employee(
+                    name=emp_data['name'],
+                    email=emp_data['email'],
+                    phone=f'555-{crew_letter}{str(created_count).zfill(3)}',
+                    is_supervisor=emp_data.get('is_supervisor', False),
+                    position_id=emp_data['position'].id if emp_data['position'] else None,
+                    crew=crew_letter,
+                    shift_pattern=crew_data['shift_preference'],
+                    hire_date=date.today() - timedelta(days=365),  # 1 year ago
+                    vacation_days=10,
+                    sick_days=5,
+                    personal_days=3
+                )
+                
+                # Set password
+                employee.set_password('password123')
+                
+                # Add skills
+                for skill_key in emp_data.get('skills', []):
+                    if skill_key in skills and skills[skill_key]:
+                        employee.skills.append(skills[skill_key])
+                
+                db.session.add(employee)
+                db.session.flush()  # This assigns the ID to the employee
+                created_count += 1
+                
+                # Create circadian profile after employee has ID
+                profile = CircadianProfile(
+                    employee_id=employee.id,
+                    chronotype='morning' if crew_data['shift_preference'] == 'day' else 'evening',
+                    current_shift_type=crew_data['shift_preference']
+                )
+                db.session.add(profile)
+        
+        db.session.commit()
+        
+        return f'''
+        <h2>✅ Crews Populated Successfully!</h2>
+        <p><strong>{created_count} employees</strong> have been created across 4 crews.</p>
+        
+        <h3>Crew Supervisors (can approve requests):</h3>
+        <ul>
+            <li><strong>Crew A:</strong> Alice Anderson (alice.anderson@company.com)</li>
+            <li><strong>Crew B:</strong> Barbara Bennett (barbara.bennett@company.com)</li>
+            <li><strong>Crew C:</strong> Carol Campbell (carol.campbell@company.com)</li>
+            <li><strong>Crew D:</strong> Diana Davidson (diana.davidson@company.com)</li>
+        </ul>
+        
+        <h3>Sample Regular Employees:</h3>
+        <ul>
+            <li><strong>Nurse:</strong> Adam Martinez (adam.martinez@company.com)</li>
+            <li><strong>Security:</strong> Amanda Davis (amanda.davis@company.com)</li>
+            <li><strong>Technician:</strong> Anna Miller (anna.miller@company.com)</li>
+            <li><strong>Customer Service:</strong> Amy Garcia (amy.garcia@company.com)</li>
+        </ul>
+        
+        <p><strong>All passwords:</strong> password123</p>
+        
+        <h3>Next Steps:</h3>
+        <ol>
+            <li><a href="/schedule/create" class="btn btn-primary">Create Schedules</a> - Set up shifts for your crews</li>
+            <li><a href="/schedule/view" class="btn btn-info">View Schedules</a> - See crew assignments</li>
+            <li><a href="/logout" class="btn btn-warning">Logout</a> - Try logging in as an employee</li>
+        </ol>
+        
+        <p><a href="/dashboard" class="btn btn-success">Return to Dashboard</a></p>
+        '''
+        
+    except Exception as e:
+        db.session.rollback()
+        return f'''
+        <h2>❌ Error Populating Crews</h2>
+        <p>An error occurred: {str(e)}</p>
+        <p>Make sure you've run <a href="/init-db">/init-db</a> first to create positions and skills.</p>
+        <p><a href="/dashboard" class="btn btn-secondary">Return to Dashboard</a></p>
+        '''
+
+# ==================== ADDITIONAL DATABASE ROUTES ====================
+
+@app.route('/add-communication-tables')
+def add_communication_tables():
+    """Add the new communication tables to the database"""
+    if request.args.get('confirm') != 'yes':
+        return '''
+        <h2>Add Communication Tables</h2>
+        <p>This will add the following new communication features to your database:</p>
+        <h3>Feature 1: Supervisor-to-Supervisor Messages</h3>
+        <ul>
+            <li>Direct messaging between shift supervisors</li>
+            <li>Priority levels and categories</li>
+            <li>Thread support for conversations</li>
+            <li>Read receipts</li>
+        </ul>
+        <h3>Feature 2: Position-Based Communication</h3>
+        <ul>
+            <li>Message board for employees in the same position</li>
+            <li>Share tips, handoff notes, and alerts</li>
+            <li>Target specific shifts or all shifts</li>
+            <li>Message expiration and pinning</li>
+        </ul>
+        <h3>Feature 3: Maintenance Issue Tracking</h3>
+        <ul>
+            <li>Report equipment and facility issues</li>
+            <li>Priority-based tracking</li>
+            <li>Assignment to maintenance staff</li>
+            <li>Progress updates and resolution tracking</li>
+            <li>Safety issue flagging</li>
+        </ul>
+        <p>New tables to be added:</p>
+        <ul>
+            <li>SupervisorMessage - Messages between supervisors</li>
+            <li>PositionMessage - Messages between position colleagues</li>
+            <li>PositionMessageRead - Read receipts for position messages</li>
+            <li>MaintenanceIssue - Maintenance issue reports</li>
+            <li>MaintenanceUpdate - Updates on maintenance issues</li>
+            <li>MaintenanceManager - Designate maintenance managers</li>
+        </ul>
+        <p><a href="/add-communication-tables?confirm=yes" class="btn btn-primary">Click here to add communication features</a></p>
+        <p><a href="/" class="btn btn-secondary">Cancel</a></p>
+        '''
+    
+    try:
+        # Create all tables (this will only add new ones)
+        db.create_all()
+        
+        # Check if we have a maintenance manager
+        if not MaintenanceManager.query.first():
+            # Make the admin a maintenance manager by default
+            admin = Employee.query.filter_by(email='admin@workforce.com').first()
+            if admin:
+                mm = MaintenanceManager(
+                    employee_id=admin.id,
+                    is_primary=True,
+                    can_assign=True
+                )
+                db.session.add(mm)
+                db.session.commit()
+        
+        return '''
+        <h2>✅ Success!</h2>
+        <p>Communication tables have been added to the database.</p>
+        <h3>New features now available:</h3>
+        <ol>
+            <li><strong>Supervisor Messages:</strong> Supervisors can now communicate directly with other shift supervisors</li>
+            <li><strong>Position Communication:</strong> Employees can share information with colleagues in the same position across all shifts</li>
+            <li><strong>Maintenance Tracking:</strong> Anyone can report maintenance issues and track their resolution</li>
+        </ol>
+        <h3>Next Steps:</h3>
+        <ul>
+            <li>Supervisors will see a "Supervisor Messages" button in their dashboard</li>
+            <li>Employees will see a "Position Board" in their dashboard</li>
+            <li>Everyone can report maintenance issues from their dashboard</li>
+            <li>The admin account has been designated as the primary maintenance manager</li>
+        </ul>
+        <p><a href="/" class="btn btn-primary">Return to home</a></p>
+        '''
+    except Exception as e:
+        return f'''
+        <h2>❌ Error</h2>
+        <p>Failed to add communication tables: {str(e)}</p>
+        <p>Please ensure your database connection is working and try again.</p>
+        <p><a href="/" class="btn btn-secondary">Return to home</a></p>
+        '''
+
+@app.route('/add-coverage-tables')
+def add_coverage_tables():
+    """Add the new coverage notification and overtime tables"""
+    if request.args.get('confirm') != 'yes':
+        return '''
+        <h2>Add Coverage Tables</h2>
+        <p>This will add the CoverageNotification and OvertimeOpportunity tables to your database.</p>
+        <p>These tables enable:</p>
+        <ul>
+            <li>Push notifications for coverage needs</li>
+            <li>Smart overtime distribution</li>
+            <li>Employee response tracking</li>
+        </ul>
+        <p><a href="/add-coverage-tables?confirm=yes" class="btn btn-primary">Click here to confirm</a></p>
+        '''
+    
+    try:
+        # Create all tables (this will only add new ones)
+        db.create_all()
+        return '''
+        <h2>Success!</h2>
+        <p>Coverage notification and overtime tables have been added to the database.</p>
+        <p>New features available:</p>
+        <ul>
+            <li>Coverage push notifications</li>
+            <li>Overtime opportunity management</li>
+            <li>Smart crew distribution</li>
+        </ul>
+        <p><a href="/">Return to home</a></p>
+        '''
+    except Exception as e:
+        return f'<h2>Error</h2><p>Failed to add tables: {str(e)}</p>'
+
+@app.route('/add-marketplace-tables')
+def add_marketplace_tables():
+    """Add the shift trade marketplace tables"""
+    if request.args.get('confirm') != 'yes':
+        return '''
+        <h2>Add Shift Trade Marketplace Tables</h2>
+        <p>This will add the new shift trade marketplace tables to your database.</p>
+        <p>New tables to be added:</p>
+        <ul>
+            <li>ShiftTradePost - Posts of shifts available for trade</li>
+            <li>ShiftTradeProposal - Trade proposals from employees</li>
+            <li>ShiftTrade - Completed or pending trades</li>
+            <li>TradeMatchPreference - Employee trade preferences</li>
+        </ul>
+        <p>Features enabled:</p>
+        <ul>
+            <li>Post shifts for trade in marketplace</li>
+            <li>Browse and filter available trades</li>
+            <li>Smart compatibility matching</li>
+            <li>Trade history tracking</li>
+            <li>Auto-approval options</li>
+        </ul>
+        <p><a href="/add-marketplace-tables?confirm=yes" class="btn btn-primary">Click here to confirm</a></p>
+        '''
+    
+    try:
+        # Create all tables (this will only add new ones)
+        db.create_all()
+        return '''
+        <h2>Success!</h2>
+        <p>Shift trade marketplace tables have been added to the database.</p>
+        <p>New features available:</p>
+        <ul>
+            <li>Shift Trade Marketplace - Employees can now post and trade shifts</li>
+            <li>Smart Matching - System suggests compatible trades</li>
+            <li>Trade History - Track all completed trades</li>
+        </ul>
+        <p>Employees can access the marketplace from their dashboard.</p>
+        <p><a href="/">Return to home</a></p>
+        '''
+    except Exception as e:
+        return f'<h2>Error</h2><p>Failed to add marketplace tables: {str(e)}</p>'
+
+@app.route('/reset-db')
+def reset_db():
+    """Reset database - WARNING: This will delete all data!"""
+    if request.args.get('confirm') != 'yes':
+        return '''
+        <h2>⚠️ WARNING: Reset Database</h2>
+        <p style="color: red;"><strong>This will DELETE ALL DATA in the database!</strong></p>
+        <p>Only use this for initial setup or if you're sure you want to start over.</p>
+        <p><a href="/reset-db?confirm=yes" onclick="return confirm('Are you SURE you want to delete all data?')" style="background: red; color: white; padding: 10px; text-decoration: none;">Yes, reset the database</a></p>
+        <p><a href="/" style="background: green; color: white; padding: 10px; text-decoration: none;">Cancel and go back</a></p>
+        '''
+    
+    try:
+        with app.app_context():
+            # For PostgreSQL, we need to drop tables with CASCADE
+            from sqlalchemy import text
+            
+            # Get the database engine
+            engine = db.engine
+            
+            # Drop all tables using raw SQL with CASCADE
+            with engine.connect() as conn:
+                # First, drop all tables in the public schema
+                conn.execute(text("DROP SCHEMA public CASCADE"))
+                conn.execute(text("CREATE SCHEMA public"))
+                conn.execute(text("GRANT ALL ON SCHEMA public TO public"))
+                conn.commit()
+            
+            # Now recreate all tables with correct schema
+            db.create_all()
+            
+        return '''
+        <h2>✅ Database Reset Complete!</h2>
+        <p>All tables have been dropped and recreated with the correct schema.</p>
+        <p><a href="/init-db" style="background: blue; color: white; padding: 10px; text-decoration: none;">Now initialize the database with default data</a></p>
+        '''
+    except Exception as e:
+        return f'<h2>Error</h2><p>Failed to reset database: {str(e)}</p>'
+
+@app.route('/create-demo-data')
+def create_demo_data():
+    """Create demo employees for testing"""
+    if request.args.get('confirm') != 'yes':
+        return '''
+        <h2>Create Demo Data</h2>
+        <p>This will create demo employees in each crew for testing.</p>
+        <p><a href="/create-demo-data?confirm=yes">Click here to confirm</a></p>
+        '''
+    
+    try:
+        from create_custom_demo_database import populate_demo_data
+        populate_demo_data()
+        return '<h2>Success!</h2><p>Demo data created!</p><p><a href="/dashboard">Go to dashboard</a></p>'
+    except ImportError:
+        # If the demo script doesn't exist, create basic demo data
+        crews = ['A', 'B', 'C', 'D']
+        positions = Position.query.all()
+        
+        for i, crew in enumerate(crews):
+            for j in range(3):  # 3 employees per crew
+                emp = Employee(
+                    name=f'{crew} Employee {j+1}',
+                    email=f'{crew.lower()}{j+1}@workforce.com',
+                    crew=crew,
+                    position_id=positions[j % len(positions)].id if positions else None,
+                    is_supervisor=False,
+                    vacation_days=10,
+                    sick_days=5,
+                    personal_days=3
+                )
+                emp.set_password('password123')
+                db.session.add(emp)
+        
+        db.session.commit()
+        return '<h2>Success!</h2><p>Basic demo data created!</p><p><a href="/dashboard">Go to dashboard</a></p>'
+
+@app.route('/debug-employees')
+def debug_employees():
+    """Debug employee data"""
+    employees = Employee.query.all()
+    return f'''
+    <h2>Employee Debug Info</h2>
+    <p>Total employees: {len(employees)}</p>
+    <h3>Employee List:</h3>
+    <ul>
+    {''.join([f'<li>{e.name} ({e.email}) - Crew: {e.crew}, Supervisor: {e.is_supervisor}</li>' for e in employees])}
+    </ul>
+    <p><a href="/dashboard">Back to dashboard</a></p>
+    '''
+
+@app.route('/reset-passwords')
+def reset_passwords():
+    """Reset all passwords to password123"""
+    if request.args.get('confirm') != 'yes':
+        return '''
+        <h2>Reset All Passwords</h2>
+        <p>This will reset ALL employee passwords to 'password123'.</p>
+        <p><a href="/reset-passwords?confirm=yes">Click here to confirm</a></p>
+        '''
+    
+    employees = Employee.query.all()
+    for emp in employees:
+        emp.set_password('password123')
+    db.session.commit()
+    
+    return f'<h2>Success!</h2><p>Reset passwords for {len(employees)} employees.</p><p><a href="/dashboard">Back to dashboard</a></p>'
+
+@app.route('/migrate-database')
+def migrate_database():
+    """Migrate database with new schema"""
+    if request.args.get('confirm') != 'yes':
+        return '''
+        <h2>Migrate Database</h2>
+        <p>This will update the database schema to include all new tables.</p>
+        <p><strong>Warning:</strong> This will preserve existing data but add new tables.</p>
+        <p><a href="/migrate-database?confirm=yes">Click here to confirm</a></p>
+        '''
+    
+    try:
+        db.create_all()
+        return '<h2>Success!</h2><p>Database migrated successfully!</p><p><a href="/dashboard">Back to dashboard</a></p>'
+    except Exception as e:
+        return f'<h2>Error</h2><p>Migration failed: {str(e)}</p>'
+
+# ==================== ADMIN ROUTES ====================
+
+@app.route('/admin/maintenance-managers')
+@login_required
+def manage_maintenance_managers():
+    """Admin page to manage maintenance managers"""
+    if not current_user.is_supervisor:
+        flash('Access denied. Supervisors only.', 'danger')
+        return redirect(url_for('dashboard'))
+    
+    # Get all maintenance managers
+    managers = MaintenanceManager.query.all()
+    
+    # Get employees who could be maintenance managers
+    potential_managers = Employee.query.filter(
+        ~Employee.id.in_([m.employee_id for m in managers])
+    ).order_by(Employee.name).all()
+    
+    return render_template('admin_maintenance_managers.html',
+                         managers=managers,
+                         potential_managers=potential_managers)
+
+@app.route('/admin/maintenance-managers/add', methods=['POST'])
+@login_required
+def add_maintenance_manager():
+    """Add a new maintenance manager"""
+    if not current_user.is_supervisor:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    employee_id = request.form.get('employee_id')
+    is_primary = request.form.get('is_primary') == 'on'
+    can_assign = request.form.get('can_assign') == 'on'
+    
+    # Check if already a manager
+    existing = MaintenanceManager.query.filter_by(employee_id=employee_id).first()
+    if existing:
+        flash('Employee is already a maintenance manager.', 'warning')
+        return redirect(url_for('manage_maintenance_managers'))
+    
+    # If setting as primary, unset other primaries
+    if is_primary:
+        MaintenanceManager.query.update({'is_primary': False})
+    
+    # Create maintenance manager
+    manager = MaintenanceManager(
+        employee_id=employee_id,
+        is_primary=is_primary,
+        can_assign=can_assign
+    )
+    
+    db.session.add(manager)
+    db.session.commit()
+    
+    employee = Employee.query.get(employee_id)
+    flash(f'{employee.name} added as maintenance manager!', 'success')
+    return redirect(url_for('manage_maintenance_managers'))
+
+@app.route('/admin/maintenance-managers/<int:manager_id>/remove', methods=['POST'])
+@login_required
+def remove_maintenance_manager(manager_id):
+    """Remove a maintenance manager"""
+    if not current_user.is_supervisor:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    manager = MaintenanceManager.query.get_or_404(manager_id)
+    employee_name = manager.employee.name
+    
+    db.session.delete(manager)
+    db.session.commit()
+    
+    flash(f'{employee_name} removed from maintenance managers.', 'success')
+    return redirect(url_for('manage_maintenance_managers'))
+
+# ==================== ERROR HANDLERS ====================
+
+@app.errorhandler(404)
+def not_found_error(error):
+    return render_template('404.html'), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    db.session.rollback()
+    return render_template('500.html'), 500
+
+# ==================== MAIN ====================
+
+if __name__ == '__main__':
+    app.run(debug=True)from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_file
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
@@ -118,7 +1264,7 @@ def update_circadian_profile_on_schedule_change(employee_id, shift_type):
         profile = CircadianProfile(
             employee_id=employee_id,
             chronotype='intermediate',
-            preferred_shift=shift_type
+            current_shift_type=shift_type
         )
         db.session.add(profile)
     
@@ -270,152 +1416,6 @@ def logout():
     logout_user()
     flash('You have been logged out successfully.', 'info')
     return redirect(url_for('index'))
-
-# ==================== COVERAGE GAP ROUTES ====================
-
-@app.route('/supervisor/coverage-gaps')
-@login_required
-def coverage_gaps():
-    """View detailed coverage gaps analysis"""
-    if not current_user.is_supervisor:
-        flash('Access denied. Supervisors only.', 'danger')
-        return redirect(url_for('employee_dashboard'))
-    
-    # Get filter parameters
-    selected_crew = request.args.get('crew', 'ALL')
-    days_ahead = int(request.args.get('days_ahead', 7))
-    shift_type = request.args.get('shift_type', '')
-    
-    # Get coverage gaps
-    gaps = get_coverage_gaps(selected_crew, days_ahead)
-    
-    # Filter by shift type if specified
-    if shift_type:
-        gaps = [g for g in gaps if g['shift_type'] == shift_type]
-    
-    # Get positions for filter
-    positions = Position.query.all()
-    
-    # Calculate dates for statistics
-    today = date.today()
-    week_end = today + timedelta(days=7)
-    
-    return render_template('coverage_gaps.html',
-                         coverage_gaps=gaps,
-                         selected_crew=selected_crew,
-                         days_ahead=days_ahead,
-                         shift_type=shift_type,
-                         positions=positions,
-                         today=today,
-                         week_end=week_end)
-
-@app.route('/supervisor/fill-gap')
-@login_required
-def fill_gap():
-    """Fill a specific coverage gap"""
-    if not current_user.is_supervisor:
-        flash('Access denied. Supervisors only.', 'danger')
-        return redirect(url_for('employee_dashboard'))
-    
-    # Get gap details from query params
-    gap_date = request.args.get('date')
-    if gap_date:
-        gap_date = datetime.strptime(gap_date, '%Y-%m-%d').date()
-    else:
-        gap_date = date.today()
-    
-    shift_type = request.args.get('shift_type', 'day')
-    crew = request.args.get('crew', 'ALL')
-    
-    # Get available employees (not already scheduled for this date/shift)
-    available_employees = []
-    all_employees = Employee.query.filter_by(is_supervisor=False).all()
-    
-    for emp in all_employees:
-        # Check if already scheduled
-        existing_schedule = Schedule.query.filter_by(
-            employee_id=emp.id,
-            date=gap_date,
-            shift_type=shift_type
-        ).first()
-        
-        if not existing_schedule:
-            # Check current week hours
-            week_start = gap_date - timedelta(days=gap_date.weekday())
-            week_end = week_start + timedelta(days=6)
-            
-            current_hours = db.session.query(func.sum(Schedule.hours)).filter(
-                Schedule.employee_id == emp.id,
-                Schedule.date >= week_start,
-                Schedule.date <= week_end
-            ).scalar() or 0
-            
-            # Check if on time off
-            time_off = VacationCalendar.query.filter_by(
-                employee_id=emp.id,
-                date=gap_date
-            ).first()
-            
-            emp.current_hours = current_hours
-            emp.is_available = time_off is None
-            emp.conflict_reason = 'Time Off' if time_off else None
-            
-            # Determine skills match (simplified)
-            emp.skills_match = 'full' if emp.skills else 'basic'
-            
-            available_employees.append(emp)
-    
-    # Get casual workers
-    casual_workers = CasualWorker.query.filter_by(is_active=True).all()
-    
-    # Get scheduled count for this gap
-    scheduled_count = Schedule.query.filter(
-        Schedule.date == gap_date,
-        Schedule.shift_type == shift_type
-    ).count()
-    
-    # Define minimum requirements
-    min_coverage = {'day': 4, 'evening': 3, 'night': 2}
-    required_count = min_coverage.get(shift_type, 2)
-    gap_count = required_count - scheduled_count
-    
-    # Get positions
-    positions = Position.query.all()
-    
-    return render_template('fill_gap.html',
-                         gap_date=gap_date,
-                         shift_type=shift_type,
-                         crew=crew,
-                         available_employees=available_employees,
-                         casual_workers=casual_workers,
-                         scheduled_count=scheduled_count,
-                         required_count=required_count,
-                         gap_count=gap_count,
-                         positions=positions)
-
-@app.route('/supervisor/todays-schedule')
-@login_required
-def todays_schedule():
-    """Redirect to schedule view for today"""
-    if not current_user.is_supervisor:
-        flash('Access denied. Supervisors only.', 'danger')
-        return redirect(url_for('employee_dashboard'))
-    
-    # Redirect to schedule view with today's date
-    return redirect(url_for('view_schedules', 
-                          start_date=date.today().strftime('%Y-%m-%d'),
-                          end_date=date.today().strftime('%Y-%m-%d'),
-                          crew=current_user.crew or 'ALL'))
-
-@app.route('/supervisor/create-schedule')
-@login_required
-def supervisor_create_schedule():
-    """Redirect to schedule creation"""
-    if not current_user.is_supervisor:
-        flash('Access denied. Supervisors only.', 'danger')
-        return redirect(url_for('employee_dashboard'))
-    
-    return redirect(url_for('create_schedule'))
 
 # ==================== DASHBOARD ROUTES ====================
 
@@ -578,6 +1578,152 @@ def employee_dashboard():
                          sleep_profile=sleep_profile,
                          unread_notifications=unread_notifications)
 
+# ==================== COVERAGE GAP ROUTES ====================
+
+@app.route('/supervisor/coverage-gaps')
+@login_required
+def coverage_gaps():
+    """View detailed coverage gaps analysis"""
+    if not current_user.is_supervisor:
+        flash('Access denied. Supervisors only.', 'danger')
+        return redirect(url_for('employee_dashboard'))
+    
+    # Get filter parameters
+    selected_crew = request.args.get('crew', 'ALL')
+    days_ahead = int(request.args.get('days_ahead', 7))
+    shift_type = request.args.get('shift_type', '')
+    
+    # Get coverage gaps
+    gaps = get_coverage_gaps(selected_crew, days_ahead)
+    
+    # Filter by shift type if specified
+    if shift_type:
+        gaps = [g for g in gaps if g['shift_type'] == shift_type]
+    
+    # Get positions for filter
+    positions = Position.query.all()
+    
+    # Calculate dates for statistics
+    today = date.today()
+    week_end = today + timedelta(days=7)
+    
+    return render_template('coverage_gaps.html',
+                         coverage_gaps=gaps,
+                         selected_crew=selected_crew,
+                         days_ahead=days_ahead,
+                         shift_type=shift_type,
+                         positions=positions,
+                         today=today,
+                         week_end=week_end)
+
+@app.route('/supervisor/fill-gap')
+@login_required
+def fill_gap():
+    """Fill a specific coverage gap"""
+    if not current_user.is_supervisor:
+        flash('Access denied. Supervisors only.', 'danger')
+        return redirect(url_for('employee_dashboard'))
+    
+    # Get gap details from query params
+    gap_date = request.args.get('date')
+    if gap_date:
+        gap_date = datetime.strptime(gap_date, '%Y-%m-%d').date()
+    else:
+        gap_date = date.today()
+    
+    shift_type = request.args.get('shift_type', 'day')
+    crew = request.args.get('crew', 'ALL')
+    
+    # Get available employees (not already scheduled for this date/shift)
+    available_employees = []
+    all_employees = Employee.query.filter_by(is_supervisor=False).all()
+    
+    for emp in all_employees:
+        # Check if already scheduled
+        existing_schedule = Schedule.query.filter_by(
+            employee_id=emp.id,
+            date=gap_date,
+            shift_type=shift_type
+        ).first()
+        
+        if not existing_schedule:
+            # Check current week hours
+            week_start = gap_date - timedelta(days=gap_date.weekday())
+            week_end = week_start + timedelta(days=6)
+            
+            current_hours = db.session.query(func.sum(Schedule.hours)).filter(
+                Schedule.employee_id == emp.id,
+                Schedule.date >= week_start,
+                Schedule.date <= week_end
+            ).scalar() or 0
+            
+            # Check if on time off
+            time_off = VacationCalendar.query.filter_by(
+                employee_id=emp.id,
+                date=gap_date
+            ).first()
+            
+            emp.current_hours = current_hours
+            emp.is_available = time_off is None
+            emp.conflict_reason = 'Time Off' if time_off else None
+            
+            # Determine skills match (simplified)
+            emp.skills_match = 'full' if emp.skills else 'basic'
+            
+            available_employees.append(emp)
+    
+    # Get casual workers
+    casual_workers = CasualWorker.query.filter_by(is_active=True).all()
+    
+    # Get scheduled count for this gap
+    scheduled_count = Schedule.query.filter(
+        Schedule.date == gap_date,
+        Schedule.shift_type == shift_type
+    ).count()
+    
+    # Define minimum requirements
+    min_coverage = {'day': 4, 'evening': 3, 'night': 2}
+    required_count = min_coverage.get(shift_type, 2)
+    gap_count = required_count - scheduled_count
+    
+    # Get positions
+    positions = Position.query.all()
+    
+    return render_template('fill_gap.html',
+                         gap_date=gap_date,
+                         shift_type=shift_type,
+                         crew=crew,
+                         available_employees=available_employees,
+                         casual_workers=casual_workers,
+                         scheduled_count=scheduled_count,
+                         required_count=required_count,
+                         gap_count=gap_count,
+                         positions=positions)
+
+@app.route('/supervisor/todays-schedule')
+@login_required
+def todays_schedule():
+    """Redirect to schedule view for today"""
+    if not current_user.is_supervisor:
+        flash('Access denied. Supervisors only.', 'danger')
+        return redirect(url_for('employee_dashboard'))
+    
+    # Redirect to schedule view with today's date
+    return redirect(url_for('view_schedules', 
+                          start_date=date.today().strftime('%Y-%m-%d'),
+                          end_date=date.today().strftime('%Y-%m-%d'),
+                          crew=current_user.crew or 'ALL'))
+
+@app.route('/supervisor/create-schedule')
+@login_required
+def supervisor_create_schedule():
+    """Redirect to schedule creation"""
+    if not current_user.is_supervisor:
+        flash('Access denied. Supervisors only.', 'danger')
+        return redirect(url_for('employee_dashboard'))
+    
+    return redirect(url_for('create_schedule'))
+
 # ==================== VACATION/TIME OFF ROUTES ====================
 
 @app.route('/vacation/request', methods=['GET', 'POST'])
@@ -667,8 +1813,8 @@ def approve_time_off(request_id):
     
     # Update status
     time_off.status = 'approved'
-    time_off.processed_date = datetime.now()
-    time_off.processed_by_id = current_user.id
+    time_off.reviewed_date = datetime.now()
+    time_off.reviewed_by_id = current_user.id
     
     # Update employee balances
     if time_off.request_type == 'vacation':
@@ -685,8 +1831,8 @@ def approve_time_off(request_id):
             calendar_entry = VacationCalendar(
                 employee_id=time_off.employee_id,
                 date=current,
-                request_type=time_off.request_type,
-                time_off_request_id=time_off.id
+                type=time_off.request_type,
+                request_id=time_off.id
             )
             db.session.add(calendar_entry)
         current += timedelta(days=1)
@@ -712,8 +1858,8 @@ def deny_time_off(request_id):
     
     # Update status
     time_off.status = 'denied'
-    time_off.processed_date = datetime.now()
-    time_off.processed_by_id = current_user.id
+    time_off.reviewed_date = datetime.now()
+    time_off.reviewed_by_id = current_user.id
     
     db.session.commit()
     
@@ -756,7 +1902,7 @@ def suggestions():
         return redirect(url_for('employee_dashboard'))
     
     # Get all suggestions
-    all_suggestions = ScheduleSuggestion.query.order_by(ScheduleSuggestion.created_at.desc()).all()
+    all_suggestions = ScheduleSuggestion.query.order_by(ScheduleSuggestion.submitted_date.desc()).all()
     
     return render_template('suggestions.html', suggestions=all_suggestions)
 
@@ -777,18 +1923,13 @@ def register_casual_post():
             name=request.form.get('name'),
             email=request.form.get('email'),
             phone=request.form.get('phone'),
-            availability_days=request.form.get('availability_days', ''),
-            availability_shifts=request.form.get('availability_shifts', ''),
-            max_hours_per_week=int(request.form.get('max_hours_per_week', 20)),
-            hourly_rate=float(request.form.get('hourly_rate', 25.0))
+            skills=json.dumps(request.form.getlist('skills')),
+            availability=json.dumps({
+                'days': request.form.getlist('availability_days'),
+                'shifts': request.form.getlist('availability_shifts')
+            }),
+            preferred_crews=request.form.get('preferred_crews', '')
         )
-        
-        # Add skills
-        skill_ids = request.form.getlist('skills')
-        for skill_id in skill_ids:
-            skill = Skill.query.get(skill_id)
-            if skill:
-                casual.skills.append(skill)
         
         db.session.add(casual)
         db.session.commit()
@@ -2162,1145 +3303,3 @@ def assign_maintenance_issue(issue_id):
     
     flash(f'Issue assigned to {assignee.name}.', 'success')
     return redirect(url_for('view_maintenance_issue', issue_id=issue_id))
-
-@app.route('/admin/maintenance-managers')
-@login_required
-def manage_maintenance_managers():
-    """Admin page to manage maintenance managers"""
-    if not current_user.is_supervisor:
-        flash('Access denied. Supervisors only.', 'danger')
-        return redirect(url_for('dashboard'))
-    
-    # Get all maintenance managers
-    managers = MaintenanceManager.query.all()
-    
-    # Get employees who could be maintenance managers
-    potential_managers = Employee.query.filter(
-        ~Employee.id.in_([m.employee_id for m in managers])
-    ).order_by(Employee.name).all()
-    
-    return render_template('admin_maintenance_managers.html',
-                         managers=managers,
-                         potential_managers=potential_managers)
-
-@app.route('/admin/maintenance-managers/add', methods=['POST'])
-@login_required
-def add_maintenance_manager():
-    """Add a new maintenance manager"""
-    if not current_user.is_supervisor:
-        return jsonify({'error': 'Unauthorized'}), 403
-    
-    employee_id = request.form.get('employee_id')
-    is_primary = request.form.get('is_primary') == 'on'
-    can_assign = request.form.get('can_assign') == 'on'
-    
-    # Check if already a manager
-    existing = MaintenanceManager.query.filter_by(employee_id=employee_id).first()
-    if existing:
-        flash('Employee is already a maintenance manager.', 'warning')
-        return redirect(url_for('manage_maintenance_managers'))
-    
-    # If setting as primary, unset other primaries
-    if is_primary:
-        MaintenanceManager.query.update({'is_primary': False})
-    
-    # Create maintenance manager
-    manager = MaintenanceManager(
-        employee_id=employee_id,
-        is_primary=is_primary,
-        can_assign=can_assign
-    )
-    
-    db.session.add(manager)
-    db.session.commit()
-    
-    employee = Employee.query.get(employee_id)
-    flash(f'{employee.name} added as maintenance manager!', 'success')
-    return redirect(url_for('manage_maintenance_managers'))
-
-@app.route('/admin/maintenance-managers/<int:manager_id>/remove', methods=['POST'])
-@login_required
-def remove_maintenance_manager(manager_id):
-    """Remove a maintenance manager"""
-    if not current_user.is_supervisor:
-        return jsonify({'error': 'Unauthorized'}), 403
-    
-    manager = MaintenanceManager.query.get_or_404(manager_id)
-    employee_name = manager.employee.name
-    
-    db.session.delete(manager)
-    db.session.commit()
-    
-    flash(f'{employee_name} removed from maintenance managers.', 'success')
-    return redirect(url_for('manage_maintenance_managers'))
-
-# ==================== API ROUTES FOR COMMUNICATION ====================
-
-@app.route('/api/supervisor-messages/unread-count')
-@login_required
-def supervisor_messages_unread_count():
-    """Get count of unread supervisor messages"""
-    if not current_user.is_supervisor:
-        return jsonify({'count': 0})
-    
-    count = SupervisorMessage.query.filter_by(
-        recipient_id=current_user.id,
-        read_at=None
-    ).count()
-    
-    return jsonify({'count': count})
-
-@app.route('/api/position-messages/unread-count')
-@login_required
-def position_messages_unread_count():
-    """Get count of unread position messages"""
-    if not current_user.position_id:
-        return jsonify({'count': 0})
-    
-    # Get messages for user's position that they haven't read
-    messages = PositionMessage.query.filter_by(
-        position_id=current_user.position_id
-    ).filter(
-        db.or_(
-            PositionMessage.expires_at.is_(None),
-            PositionMessage.expires_at > datetime.now()
-        )
-    ).all()
-    
-    unread_count = sum(1 for msg in messages if not msg.is_read_by(current_user.id))
-    
-    return jsonify({'count': unread_count})
-
-@app.route('/api/maintenance/my-issues-count')
-@login_required
-def my_maintenance_issues_count():
-    """Get count of user's open maintenance issues"""
-    # For managers, count assigned issues
-    is_manager = MaintenanceManager.query.filter_by(employee_id=current_user.id).first()
-    
-    if is_manager:
-        count = MaintenanceIssue.query.filter(
-            MaintenanceIssue.assigned_to_id == current_user.id,
-            MaintenanceIssue.status.in_(['open', 'acknowledged', 'in_progress'])
-        ).count()
-    else:
-        # For regular employees, count their reported issues
-        count = MaintenanceIssue.query.filter(
-            MaintenanceIssue.reporter_id == current_user.id,
-            MaintenanceIssue.status.in_(['open', 'acknowledged', 'in_progress'])
-        ).count()
-    
-    return jsonify({'count': count})
-
-# ==================== QUICK ACCESS ROUTES ====================
-
-@app.route('/quick/supervisor-message', methods=['POST'])
-@login_required
-def quick_supervisor_message():
-    """Quick send supervisor message from dashboard"""
-    if not current_user.is_supervisor:
-        return jsonify({'error': 'Unauthorized'}), 403
-    
-    recipient_id = request.form.get('recipient_id')
-    message_text = request.form.get('message')
-    
-    # Create quick message
-    message = SupervisorMessage(
-        sender_id=current_user.id,
-        recipient_id=recipient_id,
-        subject='Quick Message',
-        message=message_text,
-        priority='normal',
-        category='general'
-    )
-    
-    db.session.add(message)
-    db.session.commit()
-    
-    return jsonify({'success': True, 'message': 'Message sent!'})
-
-@app.route('/quick/position-broadcast', methods=['POST'])
-@login_required
-def quick_position_broadcast():
-    """Quick broadcast to position colleagues"""
-    if not current_user.position_id:
-        return jsonify({'error': 'No position assigned'}), 403
-    
-    message_text = request.form.get('message')
-    
-    # Create broadcast
-    message = PositionMessage(
-        sender_id=current_user.id,
-        position_id=current_user.position_id,
-        subject='Quick Update',
-        message=message_text,
-        category='alert',
-        target_shifts='all',
-        expires_at=datetime.now() + timedelta(days=1)  # Expires in 24 hours
-    )
-    
-    db.session.add(message)
-    db.session.commit()
-    
-    return jsonify({'success': True, 'message': 'Broadcast sent!'})
-
-# ==================== SHIFT TRADE MARKETPLACE ROUTES ====================
-
-@app.route('/shift-marketplace')
-@login_required
-def shift_marketplace():
-    """Main shift trade marketplace view"""
-    # Get filters from query params
-    filters = {
-        'start_date': request.args.get('start_date', date.today().strftime('%Y-%m-%d')),
-        'end_date': request.args.get('end_date', (date.today() + timedelta(days=30)).strftime('%Y-%m-%d')),
-        'shift_type': request.args.get('shift_type', ''),
-        'position': request.args.get('position', ''),
-        'compatibility': request.args.get('compatibility', '')
-    }
-    
-    # Get available trades (exclude user's own posts)
-    available_trades_query = ShiftTradePost.query.filter(
-        ShiftTradePost.status == 'active',
-        ShiftTradePost.poster_id != current_user.id
-    ).join(Schedule)
-    
-    # Apply filters
-    if filters['start_date']:
-        available_trades_query = available_trades_query.filter(
-            Schedule.date >= datetime.strptime(filters['start_date'], '%Y-%m-%d').date()
-        )
-    if filters['end_date']:
-        available_trades_query = available_trades_query.filter(
-            Schedule.date <= datetime.strptime(filters['end_date'], '%Y-%m-%d').date()
-        )
-    if filters['shift_type']:
-        available_trades_query = available_trades_query.filter(
-            Schedule.shift_type == filters['shift_type']
-        )
-    if filters['position']:
-        available_trades_query = available_trades_query.filter(
-            Schedule.position_id == int(filters['position'])
-        )
-    
-    available_trades = available_trades_query.order_by(Schedule.date).all()
-    
-    # Calculate compatibility for each trade
-    for trade in available_trades:
-        trade.compatibility = calculate_trade_compatibility(current_user, trade)
-    
-    # Filter by compatibility if specified
-    if filters['compatibility']:
-        available_trades = [t for t in available_trades if t.compatibility == filters['compatibility']]
-    
-    # Get user's posted shifts
-    my_posts = ShiftTradePost.query.filter_by(
-        poster_id=current_user.id,
-        status='active'
-    ).all()
-    
-    # Get user's active trades
-    my_trades = ShiftTrade.query.filter(
-        or_(
-            ShiftTrade.employee1_id == current_user.id,
-            ShiftTrade.employee2_id == current_user.id
-        ),
-        ShiftTrade.status.in_(['pending', 'approved'])
-    ).all()
-    
-    # Get trade history
-    trade_history = get_trade_history(current_user.id)
-    
-    # Get upcoming shifts for posting
-    my_upcoming_shifts = Schedule.query.filter(
-        Schedule.employee_id == current_user.id,
-        Schedule.date >= date.today(),
-        Schedule.date <= date.today() + timedelta(days=60)
-    ).order_by(Schedule.date).all()
-    
-    # Get positions for filter
-    positions = Position.query.all()
-    
-    # Calculate statistics
-    stats = {
-        'available_trades': len(available_trades),
-        'my_posted_shifts': len(my_posts),
-        'my_active_trades': len(my_trades),
-        'pending_trades': len([t for t in my_trades if t.status == 'pending']),
-        'completed_trades': ShiftTrade.query.filter(
-            or_(
-                ShiftTrade.employee1_id == current_user.id,
-                ShiftTrade.employee2_id == current_user.id
-            ),
-            ShiftTrade.status == 'completed'
-        ).count()
-    }
-    
-    return render_template('shift_marketplace.html',
-                         available_trades=available_trades,
-                         my_posts=my_posts,
-                         my_trades=my_trades,
-                         trade_history=trade_history,
-                         my_upcoming_shifts=my_upcoming_shifts,
-                         positions=positions,
-                         filters=filters,
-                         stats=stats)
-
-@app.route('/shift-marketplace/post', methods=['POST'])
-@login_required
-def post_shift_for_trade():
-    """Post a shift for trade"""
-    schedule_id = request.form.get('schedule_id')
-    
-    # Verify ownership
-    schedule = Schedule.query.get_or_404(schedule_id)
-    if schedule.employee_id != current_user.id:
-        flash('You can only post your own shifts for trade.', 'danger')
-        return redirect(url_for('shift_marketplace'))
-    
-    # Check if already posted
-    existing_post = ShiftTradePost.query.filter_by(
-        schedule_id=schedule_id,
-        status='active'
-    ).first()
-    
-    if existing_post:
-        flash('This shift is already posted for trade.', 'warning')
-        return redirect(url_for('shift_marketplace'))
-    
-    # Create trade post
-    trade_post = ShiftTradePost(
-        poster_id=current_user.id,
-        schedule_id=schedule_id,
-        preferred_start_date=request.form.get('preferred_start_date') or None,
-        preferred_end_date=request.form.get('preferred_end_date') or None,
-        preferred_shift_types=','.join(request.form.getlist('preferred_shifts')),
-        notes=request.form.get('notes', ''),
-        auto_approve=request.form.get('auto_approve') == 'on',
-        expires_at=datetime.now() + timedelta(days=30)
-    )
-    
-    db.session.add(trade_post)
-    db.session.commit()
-    
-    flash('Your shift has been posted to the trade marketplace!', 'success')
-    return redirect(url_for('shift_marketplace'))
-
-@app.route('/api/trade-post/<int:post_id>')
-@login_required
-def get_trade_post_details(post_id):
-    """Get details of a trade post"""
-    post = ShiftTradePost.query.get_or_404(post_id)
-    
-    # Increment view count
-    post.view_count += 1
-    db.session.commit()
-    
-    # Get schedule details
-    schedule = post.schedule
-    
-    return jsonify({
-        'id': post.id,
-        'position': schedule.position.name if schedule.position else 'Unknown',
-        'date': schedule.date.strftime('%A, %B %d, %Y'),
-        'start_time': schedule.start_time.strftime('%I:%M %p'),
-        'end_time': schedule.end_time.strftime('%I:%M %p'),
-        'shift_type': schedule.shift_type,
-        'notes': post.notes,
-        'poster': post.poster.name
-    })
-
-@app.route('/api/my-compatible-shifts/<int:post_id>')
-@login_required
-def get_my_compatible_shifts(post_id):
-    """Get user's shifts compatible with a trade post"""
-    post = ShiftTradePost.query.get_or_404(post_id)
-    schedule = post.schedule
-    
-    # Get user's upcoming shifts
-    my_shifts_query = Schedule.query.filter(
-        Schedule.employee_id == current_user.id,
-        Schedule.date >= date.today(),
-        Schedule.date != schedule.date  # Can't trade for same date
-    )
-    
-    # Apply preferences if any
-    if post.preferred_start_date:
-        my_shifts_query = my_shifts_query.filter(
-            Schedule.date >= post.preferred_start_date
-        )
-    if post.preferred_end_date:
-        my_shifts_query = my_shifts_query.filter(
-            Schedule.date <= post.preferred_end_date
-        )
-    if post.preferred_shift_types:
-        preferred_types = post.preferred_shift_types.split(',')
-        my_shifts_query = my_shifts_query.filter(
-            Schedule.shift_type.in_(preferred_types)
-        )
-    
-    my_shifts = my_shifts_query.order_by(Schedule.date).all()
-    
-    # Calculate compatibility for each shift
-    shifts_data = []
-    for shift in my_shifts:
-        compatibility = 'high'
-        if shift.position_id != schedule.position_id:
-            compatibility = 'medium'
-        if shift.shift_type != schedule.shift_type:
-            compatibility = 'low' if compatibility == 'medium' else 'medium'
-        
-        shifts_data.append({
-            'id': shift.id,
-            'date': shift.date.strftime('%m/%d/%Y'),
-            'position': shift.position.name if shift.position else 'TBD',
-            'start_time': shift.start_time.strftime('%I:%M %p'),
-            'end_time': shift.end_time.strftime('%I:%M %p'),
-            'shift_type': shift.shift_type,
-            'compatibility': compatibility
-        })
-    
-    return jsonify(shifts_data)
-
-@app.route('/api/trade-proposal/create', methods=['POST'])
-@login_required
-def create_trade_proposal():
-    """Create a trade proposal"""
-    trade_post_id = request.form.get('trade_post_id')
-    offered_schedule_id = request.form.get('offered_schedule_id')
-    message = request.form.get('message', '')
-    
-    # Verify trade post exists and is active
-    trade_post = ShiftTradePost.query.get_or_404(trade_post_id)
-    if trade_post.status != 'active':
-        return jsonify({'success': False, 'message': 'This trade post is no longer active.'})
-    
-    # Verify ownership of offered schedule
-    offered_schedule = Schedule.query.get_or_404(offered_schedule_id)
-    if offered_schedule.employee_id != current_user.id:
-        return jsonify({'success': False, 'message': 'You can only offer your own shifts.'})
-    
-    # Check if already proposed
-    existing_proposal = ShiftTradeProposal.query.filter_by(
-        trade_post_id=trade_post_id,
-        proposer_id=current_user.id,
-        status='pending'
-    ).first()
-    
-    if existing_proposal:
-        return jsonify({'success': False, 'message': 'You already have a pending proposal for this trade.'})
-    
-    # Create proposal
-    proposal = ShiftTradeProposal(
-        trade_post_id=trade_post_id,
-        proposer_id=current_user.id,
-        offered_schedule_id=offered_schedule_id,
-        message=message
-    )
-    
-    db.session.add(proposal)
-    db.session.commit()
-    
-    return jsonify({'success': True, 'message': 'Trade proposal sent successfully!'})
-
-@app.route('/api/trade-proposals/<int:post_id>')
-@login_required
-def get_trade_proposals(post_id):
-    """Get proposals for a trade post"""
-    post = ShiftTradePost.query.get_or_404(post_id)
-    
-    # Verify ownership
-    if post.poster_id != current_user.id:
-        return jsonify({'error': 'Unauthorized'}), 403
-    
-    proposals = ShiftTradeProposal.query.filter_by(
-        trade_post_id=post_id,
-        status='pending'
-    ).all()
-    
-    proposals_data = []
-    for proposal in proposals:
-        offered_shift = proposal.offered_schedule
-        proposals_data.append({
-            'id': proposal.id,
-            'proposer_name': proposal.proposer.name,
-            'offered_shift': f"{offered_shift.date.strftime('%m/%d')} - {offered_shift.position.name if offered_shift.position else 'TBD'} ({offered_shift.shift_type})",
-            'message': proposal.message,
-            'created_at': proposal.created_at.strftime('%m/%d %I:%M %p')
-        })
-    
-    return jsonify(proposals_data)
-
-@app.route('/api/trade-proposal/<int:proposal_id>/accept', methods=['POST'])
-@login_required
-def accept_trade_proposal(proposal_id):
-    """Accept a trade proposal"""
-    proposal = ShiftTradeProposal.query.get_or_404(proposal_id)
-    
-    # Verify ownership
-    if proposal.trade_post.poster_id != current_user.id:
-        return jsonify({'success': False, 'message': 'Unauthorized'}), 403
-    
-    if proposal.status != 'pending':
-        return jsonify({'success': False, 'message': 'This proposal is no longer pending.'})
-    
-    # Update proposal status
-    proposal.status = 'accepted'
-    proposal.responded_at = datetime.now()
-    
-    # Update trade post status
-    proposal.trade_post.status = 'matched'
-    
-    # Reject other proposals for this post
-    other_proposals = ShiftTradeProposal.query.filter(
-        ShiftTradeProposal.trade_post_id == proposal.trade_post_id,
-        ShiftTradeProposal.id != proposal_id,
-        ShiftTradeProposal.status == 'pending'
-    ).all()
-    
-    for other in other_proposals:
-        other.status = 'rejected'
-        other.responded_at = datetime.now()
-    
-    # Create shift trade record
-    trade = ShiftTrade(
-        employee1_id=proposal.trade_post.poster_id,
-        employee2_id=proposal.proposer_id,
-        schedule1_id=proposal.trade_post.schedule_id,
-        schedule2_id=proposal.offered_schedule_id,
-        trade_post_id=proposal.trade_post_id,
-        trade_proposal_id=proposal_id,
-        status='pending' if not proposal.trade_post.auto_approve else 'approved',
-        requires_approval=not proposal.trade_post.auto_approve
-    )
-    
-    db.session.add(trade)
-    
-    # If auto-approve, execute the trade immediately
-    if proposal.trade_post.auto_approve:
-        execute_shift_trade(trade)
-    
-    db.session.commit()
-    
-    return jsonify({'success': True, 'message': 'Trade proposal accepted!'})
-
-@app.route('/api/trade-proposal/<int:proposal_id>/reject', methods=['POST'])
-@login_required
-def reject_trade_proposal(proposal_id):
-    """Reject a trade proposal"""
-    proposal = ShiftTradeProposal.query.get_or_404(proposal_id)
-    
-    # Verify ownership
-    if proposal.trade_post.poster_id != current_user.id:
-        return jsonify({'success': False, 'message': 'Unauthorized'}), 403
-    
-    proposal.status = 'rejected'
-    proposal.responded_at = datetime.now()
-    
-    db.session.commit()
-    
-    return jsonify({'success': True})
-
-@app.route('/api/trade-post/<int:post_id>/cancel', methods=['POST'])
-@login_required
-def cancel_trade_post(post_id):
-    """Cancel a trade post"""
-    post = ShiftTradePost.query.get_or_404(post_id)
-    
-    # Verify ownership
-    if post.poster_id != current_user.id:
-        return jsonify({'success': False, 'message': 'Unauthorized'}), 403
-    
-    post.status = 'cancelled'
-    
-    # Reject all pending proposals
-    proposals = ShiftTradeProposal.query.filter_by(
-        trade_post_id=post_id,
-        status='pending'
-    ).all()
-    
-    for proposal in proposals:
-        proposal.status = 'rejected'
-        proposal.responded_at = datetime.now()
-    
-    db.session.commit()
-    
-    return jsonify({'success': True})
-
-@app.route('/api/trade/<int:trade_id>/cancel', methods=['POST'])
-@login_required
-def cancel_trade(trade_id):
-    """Cancel a pending trade"""
-    trade = ShiftTrade.query.get_or_404(trade_id)
-    
-    # Verify participant
-    if current_user.id not in [trade.employee1_id, trade.employee2_id]:
-        return jsonify({'success': False, 'message': 'Unauthorized'}), 403
-    
-    if trade.status != 'pending':
-        return jsonify({'success': False, 'message': 'Only pending trades can be cancelled.'})
-    
-    trade.status = 'cancelled'
-    
-    # Reactivate the trade post if it was from marketplace
-    if trade.trade_post:
-        trade.trade_post.status = 'active'
-    
-    db.session.commit()
-    
-    return jsonify({'success': True})
-
-# ==================== DATABASE INITIALIZATION ROUTES ====================
-
-@app.route('/init-db')
-def init_db():
-    """Initialize database with all tables"""
-    with app.app_context():
-        # Create all tables first
-        db.create_all()
-        
-        # Now check if admin exists
-        admin = Employee.query.filter_by(email='admin@workforce.com').first()
-        if not admin:
-            admin = Employee(
-                name='Admin User',
-                email='admin@workforce.com',
-                is_supervisor=True,
-                crew='A',
-                vacation_days=20,
-                sick_days=10,
-                personal_days=5
-            )
-            admin.set_password('admin123')
-            db.session.add(admin)
-            
-            # Create some default positions
-            positions = [
-                Position(name='Nurse', department='Healthcare', min_coverage=2),
-                Position(name='Security Officer', department='Security', min_coverage=1),
-                Position(name='Technician', department='Operations', min_coverage=3),
-                Position(name='Customer Service', department='Support', min_coverage=2)
-            ]
-            for pos in positions:
-                db.session.add(pos)
-            
-            # Create some default skills
-            skills = [
-                Skill(name='CPR Certified', category='Medical', requires_certification=True),
-                Skill(name='First Aid', category='Medical', requires_certification=True),
-                Skill(name='Security Clearance', category='Security', requires_certification=True),
-                Skill(name='Emergency Response', category='General'),
-                Skill(name='Equipment Operation', category='Technical')
-            ]
-            for skill in skills:
-                db.session.add(skill)
-            
-            db.session.commit()
-        
-        return '''
-        <h2>Database Initialized!</h2>
-        <p>Admin account created:</p>
-        <ul>
-            <li>Email: admin@workforce.com</li>
-            <li>Password: admin123</li>
-        </ul>
-        <p><a href="/login">Go to login</a></p>
-        '''
-
-@app.route('/add-communication-tables')
-def add_communication_tables():
-    """Add the new communication tables to the database"""
-    if request.args.get('confirm') != 'yes':
-        return '''
-        <h2>Add Communication Tables</h2>
-        <p>This will add the following new communication features to your database:</p>
-        <h3>Feature 1: Supervisor-to-Supervisor Messages</h3>
-        <ul>
-            <li>Direct messaging between shift supervisors</li>
-            <li>Priority levels and categories</li>
-            <li>Thread support for conversations</li>
-            <li>Read receipts</li>
-        </ul>
-        <h3>Feature 2: Position-Based Communication</h3>
-        <ul>
-            <li>Message board for employees in the same position</li>
-            <li>Share tips, handoff notes, and alerts</li>
-            <li>Target specific shifts or all shifts</li>
-            <li>Message expiration and pinning</li>
-        </ul>
-        <h3>Feature 3: Maintenance Issue Tracking</h3>
-        <ul>
-            <li>Report equipment and facility issues</li>
-            <li>Priority-based tracking</li>
-            <li>Assignment to maintenance staff</li>
-            <li>Progress updates and resolution tracking</li>
-            <li>Safety issue flagging</li>
-        </ul>
-        <p>New tables to be added:</p>
-        <ul>
-            <li>SupervisorMessage - Messages between supervisors</li>
-            <li>PositionMessage - Messages between position colleagues</li>
-            <li>PositionMessageRead - Read receipts for position messages</li>
-            <li>MaintenanceIssue - Maintenance issue reports</li>
-            <li>MaintenanceUpdate - Updates on maintenance issues</li>
-            <li>MaintenanceManager - Designate maintenance managers</li>
-        </ul>
-        <p><a href="/add-communication-tables?confirm=yes" class="btn btn-primary">Click here to add communication features</a></p>
-        <p><a href="/" class="btn btn-secondary">Cancel</a></p>
-        '''
-    
-    try:
-        # Create all tables (this will only add new ones)
-        db.create_all()
-        
-        # Check if we have a maintenance manager
-        if not MaintenanceManager.query.first():
-            # Make the admin a maintenance manager by default
-            admin = Employee.query.filter_by(email='admin@workforce.com').first()
-            if admin:
-                mm = MaintenanceManager(
-                    employee_id=admin.id,
-                    is_primary=True,
-                    can_assign=True
-                )
-                db.session.add(mm)
-                db.session.commit()
-        
-        return '''
-        <h2>✅ Success!</h2>
-        <p>Communication tables have been added to the database.</p>
-        <h3>New features now available:</h3>
-        <ol>
-            <li><strong>Supervisor Messages:</strong> Supervisors can now communicate directly with other shift supervisors</li>
-            <li><strong>Position Communication:</strong> Employees can share information with colleagues in the same position across all shifts</li>
-            <li><strong>Maintenance Tracking:</strong> Anyone can report maintenance issues and track their resolution</li>
-        </ol>
-        <h3>Next Steps:</h3>
-        <ul>
-            <li>Supervisors will see a "Supervisor Messages" button in their dashboard</li>
-            <li>Employees will see a "Position Board" in their dashboard</li>
-            <li>Everyone can report maintenance issues from their dashboard</li>
-            <li>The admin account has been designated as the primary maintenance manager</li>
-        </ul>
-        <p><a href="/" class="btn btn-primary">Return to home</a></p>
-        '''
-    except Exception as e:
-        return f'''
-        <h2>❌ Error</h2>
-        <p>Failed to add communication tables: {str(e)}</p>
-        <p>Please ensure your database connection is working and try again.</p>
-        <p><a href="/" class="btn btn-secondary">Return to home</a></p>
-        '''
-
-@app.route('/add-coverage-tables')
-def add_coverage_tables():
-    """Add the new coverage notification and overtime tables"""
-    if request.args.get('confirm') != 'yes':
-        return '''
-        <h2>Add Coverage Tables</h2>
-        <p>This will add the CoverageNotification and OvertimeOpportunity tables to your database.</p>
-        <p>These tables enable:</p>
-        <ul>
-            <li>Push notifications for coverage needs</li>
-            <li>Smart overtime distribution</li>
-            <li>Employee response tracking</li>
-        </ul>
-        <p><a href="/add-coverage-tables?confirm=yes" class="btn btn-primary">Click here to confirm</a></p>
-        '''
-    
-    try:
-        # Create all tables (this will only add new ones)
-        db.create_all()
-        return '''
-        <h2>Success!</h2>
-        <p>Coverage notification and overtime tables have been added to the database.</p>
-        <p>New features available:</p>
-        <ul>
-            <li>Coverage push notifications</li>
-            <li>Overtime opportunity management</li>
-            <li>Smart crew distribution</li>
-        </ul>
-        <p><a href="/">Return to home</a></p>
-        '''
-    except Exception as e:
-        return f'<h2>Error</h2><p>Failed to add tables: {str(e)}</p>'
-
-@app.route('/add-marketplace-tables')
-def add_marketplace_tables():
-    """Add the shift trade marketplace tables"""
-    if request.args.get('confirm') != 'yes':
-        return '''
-        <h2>Add Shift Trade Marketplace Tables</h2>
-        <p>This will add the new shift trade marketplace tables to your database.</p>
-        <p>New tables to be added:</p>
-        <ul>
-            <li>ShiftTradePost - Posts of shifts available for trade</li>
-            <li>ShiftTradeProposal - Trade proposals from employees</li>
-            <li>ShiftTrade - Completed or pending trades</li>
-            <li>TradeMatchPreference - Employee trade preferences</li>
-        </ul>
-        <p>Features enabled:</p>
-        <ul>
-            <li>Post shifts for trade in marketplace</li>
-            <li>Browse and filter available trades</li>
-            <li>Smart compatibility matching</li>
-            <li>Trade history tracking</li>
-            <li>Auto-approval options</li>
-        </ul>
-        <p><a href="/add-marketplace-tables?confirm=yes" class="btn btn-primary">Click here to confirm</a></p>
-        '''
-    
-    try:
-        # Create all tables (this will only add new ones)
-        db.create_all()
-        return '''
-        <h2>Success!</h2>
-        <p>Shift trade marketplace tables have been added to the database.</p>
-        <p>New features available:</p>
-        <ul>
-            <li>Shift Trade Marketplace - Employees can now post and trade shifts</li>
-            <li>Smart Matching - System suggests compatible trades</li>
-            <li>Trade History - Track all completed trades</li>
-        </ul>
-        <p>Employees can access the marketplace from their dashboard.</p>
-        <p><a href="/">Return to home</a></p>
-        '''
-    except Exception as e:
-        return f'<h2>Error</h2><p>Failed to add marketplace tables: {str(e)}</p>'
-
-@app.route('/reset-db')
-def reset_db():
-    """Reset database - WARNING: This will delete all data!"""
-    if request.args.get('confirm') != 'yes':
-        return '''
-        <h2>⚠️ WARNING: Reset Database</h2>
-        <p style="color: red;"><strong>This will DELETE ALL DATA in the database!</strong></p>
-        <p>Only use this for initial setup or if you're sure you want to start over.</p>
-        <p><a href="/reset-db?confirm=yes" onclick="return confirm('Are you SURE you want to delete all data?')" style="background: red; color: white; padding: 10px; text-decoration: none;">Yes, reset the database</a></p>
-        <p><a href="/" style="background: green; color: white; padding: 10px; text-decoration: none;">Cancel and go back</a></p>
-        '''
-    
-    try:
-        with app.app_context():
-            # For PostgreSQL, we need to drop tables with CASCADE
-            from sqlalchemy import text
-            
-            # Get the database engine
-            engine = db.engine
-            
-            # Drop all tables using raw SQL with CASCADE
-            with engine.connect() as conn:
-                # First, drop all tables in the public schema
-                conn.execute(text("DROP SCHEMA public CASCADE"))
-                conn.execute(text("CREATE SCHEMA public"))
-                conn.execute(text("GRANT ALL ON SCHEMA public TO public"))
-                conn.commit()
-            
-            # Now recreate all tables with correct schema
-            db.create_all()
-            
-        return '''
-        <h2>✅ Database Reset Complete!</h2>
-        <p>All tables have been dropped and recreated with the correct schema.</p>
-        <p><a href="/init-db" style="background: blue; color: white; padding: 10px; text-decoration: none;">Now initialize the database with default data</a></p>
-        '''
-    except Exception as e:
-        return f'<h2>Error</h2><p>Failed to reset database: {str(e)}</p>'
-
-@app.route('/create-demo-data')
-def create_demo_data():
-    """Create demo employees for testing"""
-    if request.args.get('confirm') != 'yes':
-        return '''
-        <h2>Create Demo Data</h2>
-        <p>This will create demo employees in each crew for testing.</p>
-        <p><a href="/create-demo-data?confirm=yes">Click here to confirm</a></p>
-        '''
-    
-    try:
-        from create_custom_demo_database import populate_demo_data
-        populate_demo_data()
-        return '<h2>Success!</h2><p>Demo data created!</p><p><a href="/dashboard">Go to dashboard</a></p>'
-    except ImportError:
-        # If the demo script doesn't exist, create basic demo data
-        crews = ['A', 'B', 'C', 'D']
-        positions = Position.query.all()
-        
-        for i, crew in enumerate(crews):
-            for j in range(3):  # 3 employees per crew
-                emp = Employee(
-                    name=f'{crew} Employee {j+1}',
-                    email=f'{crew.lower()}{j+1}@workforce.com',
-                    crew=crew,
-                    position_id=positions[j % len(positions)].id if positions else None,
-                    is_supervisor=False,
-                    vacation_days=10,
-                    sick_days=5,
-                    personal_days=3
-                )
-                emp.set_password('password123')
-                db.session.add(emp)
-        
-        db.session.commit()
-        return '<h2>Success!</h2><p>Basic demo data created!</p><p><a href="/dashboard">Go to dashboard</a></p>'
-
-@app.route('/debug-employees')
-def debug_employees():
-    """Debug employee data"""
-    employees = Employee.query.all()
-    return f'''
-    <h2>Employee Debug Info</h2>
-    <p>Total employees: {len(employees)}</p>
-    <h3>Employee List:</h3>
-    <ul>
-    {''.join([f'<li>{e.name} ({e.email}) - Crew: {e.crew}, Supervisor: {e.is_supervisor}</li>' for e in employees])}
-    </ul>
-    <p><a href="/dashboard">Back to dashboard</a></p>
-    '''
-
-@app.route('/reset-passwords')
-def reset_passwords():
-    """Reset all passwords to password123"""
-    if request.args.get('confirm') != 'yes':
-        return '''
-        <h2>Reset All Passwords</h2>
-        <p>This will reset ALL employee passwords to 'password123'.</p>
-        <p><a href="/reset-passwords?confirm=yes">Click here to confirm</a></p>
-        '''
-    
-    employees = Employee.query.all()
-    for emp in employees:
-        emp.set_password('password123')
-    db.session.commit()
-    
-    return f'<h2>Success!</h2><p>Reset passwords for {len(employees)} employees.</p><p><a href="/dashboard">Back to dashboard</a></p>'
-
-@app.route('/migrate-database')
-def migrate_database():
-    """Migrate database with new schema"""
-    if request.args.get('confirm') != 'yes':
-        return '''
-        <h2>Migrate Database</h2>
-        <p>This will update the database schema to include all new tables.</p>
-        <p><strong>Warning:</strong> This will preserve existing data but add new tables.</p>
-        <p><a href="/migrate-database?confirm=yes">Click here to confirm</a></p>
-        '''
-    
-    try:
-        db.create_all()
-        return '<h2>Success!</h2><p>Database migrated successfully!</p><p><a href="/dashboard">Back to dashboard</a></p>'
-    except Exception as e:
-        return f'<h2>Error</h2><p>Migration failed: {str(e)}</p>'
-
-@app.route('/populate-crews')
-def populate_crews():
-    """Populate database with 4 complete crews for development"""
-    if request.args.get('confirm') != 'yes':
-        return '''
-        <h2>🏗️ Populate 4 Crews for Development</h2>
-        <p>This will create <strong>40 employees</strong> (10 per crew) with:</p>
-        <ul>
-            <li><strong>Crew A:</strong> 10 employees (Day shift preference)</li>
-            <li><strong>Crew B:</strong> 10 employees (Day shift preference)</li>
-            <li><strong>Crew C:</strong> 10 employees (Night shift preference)</li>
-            <li><strong>Crew D:</strong> 10 employees (Night shift preference)</li>
-        </ul>
-        <p>Each crew will have:</p>
-        <ul>
-            <li>1 Crew Lead (supervisor)</li>
-            <li>3 Nurses</li>
-            <li>2 Security Officers</li>
-            <li>2 Technicians</li>
-            <li>2 Customer Service Representatives</li>
-        </ul>
-        <p><strong>Login credentials:</strong></p>
-        <ul>
-            <li>Email format: [name].[lastname]@company.com</li>
-            <li>Password: password123 (for all)</li>
-        </ul>
-        <p><a href="/populate-crews?confirm=yes" class="btn btn-primary" onclick="return confirm('Create 40 employees across 4 crews?')">Yes, Populate Crews</a></p>
-        <p><a href="/dashboard" class="btn btn-secondary">Cancel</a></p>
-        '''
-    
-    try:
-        # Get positions (assuming they exist from init-db)
-        nurse = Position.query.filter_by(name='Nurse').first()
-        security = Position.query.filter_by(name='Security Officer').first()
-        tech = Position.query.filter_by(name='Technician').first()
-        customer_service = Position.query.filter_by(name='Customer Service').first()
-        
-        # Get skills
-        skills = {
-            'cpr': Skill.query.filter_by(name='CPR Certified').first(),
-            'first_aid': Skill.query.filter_by(name='First Aid').first(),
-            'security': Skill.query.filter_by(name='Security Clearance').first(),
-            'emergency': Skill.query.filter_by(name='Emergency Response').first(),
-            'equipment': Skill.query.filter_by(name='Equipment Operation').first()
-        }
-        
-        # Employee data for each crew
-        crew_templates = {
-            'A': {
-                'shift_preference': 'day',
-                'employees': [
-                    {'name': 'Alice Anderson', 'email': 'alice.anderson@company.com', 'position': nurse, 'is_supervisor': True, 'skills': ['cpr', 'first_aid', 'emergency']},
-                    {'name': 'Adam Martinez', 'email': 'adam.martinez@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid']},
-                    {'name': 'Angela Brown', 'email': 'angela.brown@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid', 'emergency']},
-                    {'name': 'Andrew Wilson', 'email': 'andrew.wilson@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid']},
-                    {'name': 'Amanda Davis', 'email': 'amanda.davis@company.com', 'position': security, 'skills': ['security', 'emergency']},
-                    {'name': 'Aaron Johnson', 'email': 'aaron.johnson@company.com', 'position': security, 'skills': ['security', 'first_aid']},
-                    {'name': 'Anna Miller', 'email': 'anna.miller@company.com', 'position': tech, 'skills': ['equipment', 'emergency']},
-                    {'name': 'Alex Thompson', 'email': 'alex.thompson@company.com', 'position': tech, 'skills': ['equipment']},
-                    {'name': 'Amy Garcia', 'email': 'amy.garcia@company.com', 'position': customer_service, 'skills': ['emergency']},
-                    {'name': 'Anthony Lee', 'email': 'anthony.lee@company.com', 'position': customer_service, 'skills': ['first_aid']}
-                ]
-            },
-            'B': {
-                'shift_preference': 'day',
-                'employees': [
-                    {'name': 'Barbara Bennett', 'email': 'barbara.bennett@company.com', 'position': nurse, 'is_supervisor': True, 'skills': ['cpr', 'first_aid', 'emergency']},
-                    {'name': 'Brian Clark', 'email': 'brian.clark@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid']},
-                    {'name': 'Betty Rodriguez', 'email': 'betty.rodriguez@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid', 'emergency']},
-                    {'name': 'Benjamin Lewis', 'email': 'benjamin.lewis@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid']},
-                    {'name': 'Brenda Walker', 'email': 'brenda.walker@company.com', 'position': security, 'skills': ['security', 'emergency']},
-                    {'name': 'Blake Hall', 'email': 'blake.hall@company.com', 'position': security, 'skills': ['security', 'first_aid']},
-                    {'name': 'Bonnie Allen', 'email': 'bonnie.allen@company.com', 'position': tech, 'skills': ['equipment', 'emergency']},
-                    {'name': 'Bruce Young', 'email': 'bruce.young@company.com', 'position': tech, 'skills': ['equipment']},
-                    {'name': 'Brittany King', 'email': 'brittany.king@company.com', 'position': customer_service, 'skills': ['emergency']},
-                    {'name': 'Bradley Wright', 'email': 'bradley.wright@company.com', 'position': customer_service, 'skills': ['first_aid']}
-                ]
-            },
-            'C': {
-                'shift_preference': 'night',
-                'employees': [
-                    {'name': 'Carol Campbell', 'email': 'carol.campbell@company.com', 'position': nurse, 'is_supervisor': True, 'skills': ['cpr', 'first_aid', 'emergency']},
-                    {'name': 'Charles Parker', 'email': 'charles.parker@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid']},
-                    {'name': 'Christine Evans', 'email': 'christine.evans@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid', 'emergency']},
-                    {'name': 'Christopher Turner', 'email': 'christopher.turner@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid']},
-                    {'name': 'Cynthia Collins', 'email': 'cynthia.collins@company.com', 'position': security, 'skills': ['security', 'emergency']},
-                    {'name': 'Craig Edwards', 'email': 'craig.edwards@company.com', 'position': security, 'skills': ['security', 'first_aid']},
-                    {'name': 'Catherine Stewart', 'email': 'catherine.stewart@company.com', 'position': tech, 'skills': ['equipment', 'emergency']},
-                    {'name': 'Carl Sanchez', 'email': 'carl.sanchez@company.com', 'position': tech, 'skills': ['equipment']},
-                    {'name': 'Cheryl Morris', 'email': 'cheryl.morris@company.com', 'position': customer_service, 'skills': ['emergency']},
-                    {'name': 'Chad Rogers', 'email': 'chad.rogers@company.com', 'position': customer_service, 'skills': ['first_aid']}
-                ]
-            },
-            'D': {
-                'shift_preference': 'night',
-                'employees': [
-                    {'name': 'Diana Davidson', 'email': 'diana.davidson@company.com', 'position': nurse, 'is_supervisor': True, 'skills': ['cpr', 'first_aid', 'emergency']},
-                    {'name': 'David Foster', 'email': 'david.foster@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid']},
-                    {'name': 'Deborah Murphy', 'email': 'deborah.murphy@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid', 'emergency']},
-                    {'name': 'Daniel Rivera', 'email': 'daniel.rivera@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid']},
-                    {'name': 'Donna Cook', 'email': 'donna.cook@company.com', 'position': security, 'skills': ['security', 'emergency']},
-                    {'name': 'Dennis Morgan', 'email': 'dennis.morgan@company.com', 'position': security, 'skills': ['security', 'first_aid']},
-                    {'name': 'Dorothy Peterson', 'email': 'dorothy.peterson@company.com', 'position': tech, 'skills': ['equipment', 'emergency']},
-                    {'name': 'Douglas Cooper', 'email': 'douglas.cooper@company.com', 'position': tech, 'skills': ['equipment']},
-                    {'name': 'Denise Bailey', 'email': 'denise.bailey@company.com', 'position': customer_service, 'skills': ['emergency']},
-                    {'name': 'Derek Reed', 'email': 'derek.reed@company.com', 'position': customer_service, 'skills': ['first_aid']}
-                ]
-            }
-        }
-        
-        created_count = 0
-        
-        for crew_letter, crew_data in crew_templates.items():
-            for emp_data in crew_data['employees']:
-                # Check if employee already exists
-                existing = Employee.query.filter_by(email=emp_data['email']).first()
-                if existing:
-                    continue
-                
-                # Create employee
-                employee = Employee(
-                    name=emp_data['name'],
-                    email=emp_data['email'],
-                    phone=f'555-{crew_letter}{str(created_count).zfill(3)}',
-                    is_supervisor=emp_data.get('is_supervisor', False),
-                    position_id=emp_data['position'].id if emp_data['position'] else None,
-                    crew=crew_letter,
-                    shift_pattern=crew_data['shift_preference'],
-                    hire_date=date.today() - timedelta(days=365),  # 1 year ago
-                    vacation_days=10,
-                    sick_days=5,
-                    personal_days=3
-                )
-                
-                # Set password
-                employee.set_password('password123')
-                
-                # Add skills
-                for skill_key in emp_data.get('skills', []):
-                    if skill_key in skills and skills[skill_key]:
-                        employee.skills.append(skills[skill_key])
-                
-                db.session.add(employee)
-                db.session.flush()  # This assigns the ID to the employee
-                created_count += 1
-                
-                # Create circadian profile after employee has ID
-                profile = CircadianProfile(
-                    employee_id=employee.id,
-                    chronotype='morning' if crew_data['shift_preference'] == 'day' else 'evening',
-                    current_shift_type=crew_data['shift_preference']
-                )
-                db.session.add(profile)
-        
-        db.session.commit()
-        
-        return f'''
-        <h2>✅ Crews Populated Successfully!</h2>
-        <p><strong>{created_count} employees</strong> have been created across 4 crews.</p>
-        
-        <h3>Crew Supervisors (can approve requests):</h3>
-        <ul>
-            <li><strong>Crew A:</strong> Alice Anderson (alice.anderson@company.com)</li>
-            <li><strong>Crew B:</strong> Barbara Bennett (barbara.bennett@company.com)</li>
-            <li><strong>Crew C:</strong> Carol Campbell (carol.campbell@company.com)</li>
-            <li><strong>Crew D:</strong> Diana Davidson (diana.davidson@company.com)</li>
-        </ul>
-        
-        <h3>Sample Regular Employees:</h3>
-        <ul>
-            <li><strong>Nurse:</strong> Adam Martinez (adam.martinez@company.com)</li>
-            <li><strong>Security:</strong> Amanda Davis (amanda.davis@company.com)</li>
-            <li><strong>Technician:</strong> Anna Miller (anna.miller@company.com)</li>
-            <li><strong>Customer Service:</strong> Amy Garcia (amy.garcia@company.com)</li>
-        </ul>
-        
-        <p><strong>All passwords:</strong> password123</p>
-        
-        <h3>Next Steps:</h3>
-        <ol>
-            <li><a href="/schedule/create" class="btn btn-primary">Create Schedules</a> - Set up shifts for your crews</li>
-            <li><a href="/schedule/view" class="btn btn-info">View Schedules</a> - See crew assignments</li>
-            <li><a href="/logout" class="btn btn-warning">Logout</a> - Try logging in as an employee</li>
-        </ol>
-        
-        <p><a href="/dashboard" class="btn btn-success">Return to Dashboard</a></p>
-        '''
-        
-    except Exception as e:
-        db.session.rollback()
-        return f'''
-        <h2>❌ Error Populating Crews</h2>
-        <p>An error occurred: {str(e)}</p>
-        <p>Make sure you've run <a href="/init-db">/init-db</a> first to create positions and skills.</p>
-        <p><a href="/dashboard" class="btn btn-secondary">Return to Dashboard</a></p>
-        '''
-
-# ==================== ERROR HANDLERS ====================
-
-@app.errorhandler(404)
-def not_found_error(error):
-    return render_template('404.html'), 404
-
-@app.errorhandler(500)
-def internal_error(error):
-    db.session.rollback()
-    return render_template('500.html'), 500
-
-# ==================== MAIN ====================
-
-if __name__ == '__main__':
-    app.run(debug=True)
