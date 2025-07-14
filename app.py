@@ -795,7 +795,12 @@ def report_maintenance():
 def maintenance_issues():
     """View all maintenance issues (for maintenance managers and employees)"""
     # Check if user is a maintenance manager
-    is_manager = MaintenanceManager.query.filter_by(employee_id=current_user.id).first() is not None
+    is_manager = False
+    try:
+        manager_check = MaintenanceManager.query.filter_by(employee_id=current_user.id).first()
+        is_manager = manager_check is not None
+    except:
+        is_manager = False
     
     # Base query
     if is_manager:
@@ -825,15 +830,23 @@ def maintenance_issues():
         MaintenanceIssue.reported_at.desc()
     ).all()
     
-    # Get statistics for managers
-    stats = {}
+    # Get statistics for managers - ensure stats is always defined
+    stats = {
+        'open': 0,
+        'in_progress': 0,
+        'resolved': 0,
+        'critical': 0
+    }
+    
     if is_manager:
-        stats = {
-            'open': MaintenanceIssue.query.filter_by(status='open').count(),
-            'in_progress': MaintenanceIssue.query.filter_by(status='in_progress').count(),
-            'resolved': MaintenanceIssue.query.filter_by(status='resolved').count(),
-            'critical': MaintenanceIssue.query.filter_by(priority='critical', status='open').count()
-        }
+        try:
+            stats['open'] = MaintenanceIssue.query.filter_by(status='open').count()
+            stats['in_progress'] = MaintenanceIssue.query.filter_by(status='in_progress').count()
+            stats['resolved'] = MaintenanceIssue.query.filter_by(status='resolved').count()
+            stats['critical'] = MaintenanceIssue.query.filter_by(priority='critical', status='open').count()
+        except:
+            # If queries fail, keep default values
+            pass
     
     return render_template('maintenance_issues.html',
                          issues=issues,
@@ -848,21 +861,38 @@ def view_maintenance_issue(issue_id):
     issue = MaintenanceIssue.query.get_or_404(issue_id)
     
     # Check authorization
-    is_manager = MaintenanceManager.query.filter_by(employee_id=current_user.id).first() is not None
+    is_manager = False
+    try:
+        manager_check = MaintenanceManager.query.filter_by(employee_id=current_user.id).first()
+        is_manager = manager_check is not None
+    except:
+        # If MaintenanceManager table doesn't exist, assume not a manager
+        is_manager = False
+    
     if not is_manager and issue.reporter_id != current_user.id:
         flash('You can only view issues you reported.', 'danger')
         return redirect(url_for('maintenance_issues'))
     
     # Get updates
-    updates = MaintenanceUpdate.query.filter_by(issue_id=issue_id)
-    if not is_manager:
-        updates = updates.filter_by(is_internal=False)
-    updates = updates.order_by(MaintenanceUpdate.created_at).all()
+    try:
+        updates_query = MaintenanceUpdate.query.filter_by(issue_id=issue_id)
+        if not is_manager:
+            updates_query = updates_query.filter_by(is_internal=False)
+        updates = updates_query.order_by(MaintenanceUpdate.created_at).all()
+    except:
+        updates = []
     
     # Get available maintenance staff for assignment (managers only)
     maintenance_staff = []
     if is_manager:
-        maintenance_staff = Employee.query.join(MaintenanceManager).all()
+        try:
+            # Get all employees who are maintenance managers
+            maintenance_staff = Employee.query.join(
+                MaintenanceManager, 
+                Employee.id == MaintenanceManager.employee_id
+            ).all()
+        except:
+            maintenance_staff = []
     
     return render_template('view_maintenance_issue.html',
                          issue=issue,
