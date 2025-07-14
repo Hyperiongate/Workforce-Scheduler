@@ -508,9 +508,6 @@ def dashboard():
         Employee.id != current_user.id
     ).order_by(Employee.name).all()
     
-    # Calculate today and week_end for template
-    today = date.today()
-    
     return render_template('dashboard.html',
                          selected_crew=selected_crew,
                          crew_stats=crew_stats,
@@ -521,8 +518,7 @@ def dashboard():
                          todays_schedule=todays_schedule,
                          coverage_needs=coverage_needs,
                          coverage_gaps=coverage_gaps[:3],  # Show first 3 gaps
-                         other_supervisors=other_supervisors,
-                         today=today)
+                         other_supervisors=other_supervisors)
 
 @app.route('/employee-dashboard')
 @login_required
@@ -728,22 +724,9 @@ def deny_time_off(request_id):
 @login_required
 def vacation_calendar():
     """View team vacation calendar"""
-    import calendar as cal
-    
-    # Get year and month from query params
-    year = request.args.get('year', date.today().year, type=int)
-    month = request.args.get('month', date.today().month, type=int)
-    
-    # Create calendar for the month
-    month_calendar = cal.monthcalendar(year, month)
-    month_name = cal.month_name[month]
-    
-    # Get vacation entries for this month
-    start_date = date(year, month, 1)
-    if month == 12:
-        end_date = date(year + 1, 1, 1) - timedelta(days=1)
-    else:
-        end_date = date(year, month + 1, 1) - timedelta(days=1)
+    # Get calendar entries for the next 90 days
+    start_date = date.today()
+    end_date = start_date + timedelta(days=90)
     
     calendar_entries = VacationCalendar.query.filter(
         VacationCalendar.date >= start_date,
@@ -751,27 +734,8 @@ def vacation_calendar():
     ).order_by(VacationCalendar.date).all()
     
     # Group by date for easier display
-    vacation_by_date = {}
+    calendar_data = {}
     for entry in calendar_entries:
-        date_str = entry.date.strftime('%Y-%m-%d')
-        if date_str not in vacation_by_date:
-            vacation_by_date[date_str] = []
-        vacation_by_date[date_str].append({
-            'employee_name': entry.employee.name,
-            'leave_type': entry.request_type
-        })
-    
-    # Get today's date for highlighting
-    today = date.today()
-    
-    return render_template('vacation_calendar.html',
-                         calendar=month_calendar,
-                         vacation_by_date=vacation_by_date,
-                         year=year,
-                         month=month,
-                         month_name=month_name,
-                         today=today,
-                         datetime=datetime)_entries:
         if entry.date not in calendar_data:
             calendar_data[entry.date] = []
         calendar_data[entry.date].append(entry)
@@ -870,15 +834,10 @@ def coverage_needs():
     # Get available casual workers
     casual_workers = CasualWorker.query.filter_by(is_active=True).all()
     
-    # Add today and timedelta for template
-    today = date.today()
-    
     return render_template('coverage_needs.html',
                          open_requests=open_requests,
                          coverage_gaps=coverage_gaps,
-                         casual_workers=casual_workers,
-                         today=today,
-                         timedelta=timedelta)
+                         casual_workers=casual_workers)
 
 @app.route('/coverage/push/<int:request_id>', methods=['POST'])
 @login_required
@@ -3345,3 +3304,54 @@ def internal_error(error):
 
 if __name__ == '__main__':
     app.run(debug=True)
+    
+    current_date = start_date
+    while current_date <= end_date:
+        # Skip weekends for standard pattern
+        if shift_pattern == 'standard' and current_date.weekday() >= 5:
+            current_date += timedelta(days=1)
+            continue
+        
+        # Assign employees to shifts
+        for i, employee in enumerate(employees):
+            # Check for time off
+            has_time_off = VacationCalendar.query.filter_by(
+                employee_id=employee.id,
+                date=current_date.date()
+            ).first()
+            
+            if not has_time_off:
+                # Rotate through available shifts
+                shift_type, start_hour, end_hour = shifts[i % len(shifts)]
+                
+                start_time = current_date.replace(hour=start_hour, minute=0, second=0)
+                end_time = current_date.replace(hour=end_hour, minute=0, second=0)
+                
+                # Handle overnight shifts
+                if end_hour < start_hour:
+                    end_time += timedelta(days=1)
+                
+                # Calculate hours
+                hours = (end_time - start_time).total_seconds() / 3600
+                
+                schedule = Schedule(
+                    employee_id=employee.id,
+                    date=current_date.date(),
+                    shift_type=shift_type,
+                    start_time=start_time.time(),
+                    end_time=end_time.time(),
+                    position_id=employee.position_id,
+                    hours=hours,
+                    crew=employee.crew
+                )
+                db.session.add(schedule)
+                schedules_created += 1
+                
+                # Update circadian profile
+                update_circadian_profile_on_schedule_change(employee.id, shift_type)
+        
+        current_date += timedelta(days=1)
+    
+    db.session.commit()
+    flash(f'Successfully created {schedules_created} schedules!', 'success')
+    return redirect(url_for('view_schedules'))
