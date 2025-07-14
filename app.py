@@ -1,559 +1,4 @@
-<li>Report equipment and facility issues</li>
-            <li>Priority-based tracking</li>
-            <li>Assignment to maintenance staff</li>
-            <li>Progress updates and resolution tracking</li>
-            <li>Safety issue flagging</li>
-        </ul>
-        <p>New tables to be added:</p>
-        <ul>
-            <li>SupervisorMessage - Messages between supervisors</li>
-            <li>PositionMessage - Messages between position colleagues</li>
-            <li>PositionMessageRead - Read receipts for position messages</li>
-            <li>MaintenanceIssue - Maintenance issue reports</li>
-            <li>MaintenanceUpdate - Updates on maintenance issues</li>
-            <li>MaintenanceManager - Designate maintenance managers</li>
-        </ul>
-        <p><a href="/add-communication-tables?confirm=yes" class="btn btn-primary">Click here to add communication features</a></p>
-        <p><a href="/" class="btn btn-secondary">Cancel</a></p>
-        '''
-    
-    try:
-        # Create all tables (this will only add new ones)
-        db.create_all()
-        
-        # Check if we have a maintenance manager
-        if not MaintenanceManager.query.first():
-            # Make the admin a maintenance manager by default
-            admin = Employee.query.filter_by(email='admin@workforce.com').first()
-            if admin:
-                mm = MaintenanceManager(
-                    employee_id=admin.id,
-                    is_primary=True,
-                    can_assign=True
-                )
-                db.session.add(mm)
-                db.session.commit()
-        
-        return '''
-        <h2>✅ Success!</h2>
-        <p>Communication tables have been added to the database.</p>
-        <h3>New features now available:</h3>
-        <ol>
-            <li><strong>Supervisor Messages:</strong> Supervisors can now communicate directly with other shift supervisors</li>
-            <li><strong>Position Communication:</strong> Employees can share information with colleagues in the same position across all shifts</li>
-            <li><strong>Maintenance Tracking:</strong> Anyone can report maintenance issues and track their resolution</li>
-        </ol>
-        <h3>Next Steps:</h3>
-        <ul>
-            <li>Supervisors will see a "Supervisor Messages" button in their dashboard</li>
-            <li>Employees will see a "Position Board" in their dashboard</li>
-            <li>Everyone can report maintenance issues from their dashboard</li>
-            <li>The admin account has been designated as the primary maintenance manager</li>
-        </ul>
-        <p><a href="/" class="btn btn-primary">Return to home</a></p>
-        '''
-    except Exception as e:
-        return f'''
-        <h2>❌ Error</h2>
-        <p>Failed to add communication tables: {str(e)}</p>
-        <p>Please ensure your database connection is working and try again.</p>
-        <p><a href="/" class="btn btn-secondary">Return to home</a></p>
-        '''
-
-@app.route('/add-coverage-tables')
-def add_coverage_tables():
-    """Add the new coverage notification and overtime tables"""
-    if request.args.get('confirm') != 'yes':
-        return '''
-        <h2>Add Coverage Tables</h2>
-        <p>This will add the CoverageNotification and OvertimeOpportunity tables to your database.</p>
-        <p>These tables enable:</p>
-        <ul>
-            <li>Push notifications for coverage needs</li>
-            <li>Smart overtime distribution</li>
-            <li>Employee response tracking</li>
-        </ul>
-        <p><a href="/add-coverage-tables?confirm=yes" class="btn btn-primary">Click here to confirm</a></p>
-        '''
-    
-    try:
-        # Create all tables (this will only add new ones)
-        db.create_all()
-        return '''
-        <h2>Success!</h2>
-        <p>Coverage notification and overtime tables have been added to the database.</p>
-        <p>New features available:</p>
-        <ul>
-            <li>Coverage push notifications</li>
-            <li>Overtime opportunity management</li>
-            <li>Smart crew distribution</li>
-        </ul>
-        <p><a href="/">Return to home</a></p>
-        '''
-    except Exception as e:
-        return f'<h2>Error</h2><p>Failed to add tables: {str(e)}</p>'
-
-@app.route('/add-marketplace-tables')
-def add_marketplace_tables():
-    """Add the shift trade marketplace tables"""
-    if request.args.get('confirm') != 'yes':
-        return '''
-        <h2>Add Shift Trade Marketplace Tables</h2>
-        <p>This will add the new shift trade marketplace tables to your database.</p>
-        <p>New tables to be added:</p>
-        <ul>
-            <li>ShiftTradePost - Posts of shifts available for trade</li>
-            <li>ShiftTradeProposal - Trade proposals from employees</li>
-            <li>ShiftTrade - Completed or pending trades</li>
-            <li>TradeMatchPreference - Employee trade preferences</li>
-        </ul>
-        <p>Features enabled:</p>
-        <ul>
-            <li>Post shifts for trade in marketplace</li>
-            <li>Browse and filter available trades</li>
-            <li>Smart compatibility matching</li>
-            <li>Trade history tracking</li>
-            <li>Auto-approval options</li>
-        </ul>
-        <p><a href="/add-marketplace-tables?confirm=yes" class="btn btn-primary">Click here to confirm</a></p>
-        '''
-    
-    try:
-        # Create all tables (this will only add new ones)
-        db.create_all()
-        return '''
-        <h2>Success!</h2>
-        <p>Shift trade marketplace tables have been added to the database.</p>
-        <p>New features available:</p>
-        <ul>
-            <li>Shift Trade Marketplace - Employees can now post and trade shifts</li>
-            <li>Smart Matching - System suggests compatible trades</li>
-            <li>Trade History - Track all completed trades</li>
-        </ul>
-        <p>Employees can access the marketplace from their dashboard.</p>
-        <p><a href="/">Return to home</a></p>
-        '''
-    except Exception as e:
-        return f'<h2>Error</h2><p>Failed to add marketplace tables: {str(e)}</p>'
-
-@app.route('/reset-db')
-def reset_db():
-    """Reset database - WARNING: This will delete all data!"""
-    if request.args.get('confirm') != 'yes':
-        return '''
-        <h2>⚠️ WARNING: Reset Database</h2>
-        <p style="color: red;"><strong>This will DELETE ALL DATA in the database!</strong></p>
-        <p>Only use this for initial setup or if you're sure you want to start over.</p>
-        <p><a href="/reset-db?confirm=yes" onclick="return confirm('Are you SURE you want to delete all data?')" style="background: red; color: white; padding: 10px; text-decoration: none;">Yes, reset the database</a></p>
-        <p><a href="/" style="background: green; color: white; padding: 10px; text-decoration: none;">Cancel and go back</a></p>
-        '''
-    
-    try:
-        with app.app_context():
-            # For PostgreSQL, we need to drop tables with CASCADE
-            from sqlalchemy import text
-            
-            # Get the database engine
-            engine = db.engine
-            
-            # Drop all tables using raw SQL with CASCADE
-            with engine.connect() as conn:
-                # First, drop all tables in the public schema
-                conn.execute(text("DROP SCHEMA public CASCADE"))
-                conn.execute(text("CREATE SCHEMA public"))
-                conn.execute(text("GRANT ALL ON SCHEMA public TO public"))
-                conn.commit()
-            
-            # Now recreate all tables with correct schema
-            db.create_all()
-            
-        return '''
-        <h2>✅ Database Reset Complete!</h2>
-        <p>All tables have been dropped and recreated with the correct schema.</p>
-        <p><a href="/init-db" style="background: blue; color: white; padding: 10px; text-decoration: none;">Now initialize the database with default data</a></p>
-        '''
-    except Exception as e:
-        return f'<h2>Error</h2><p>Failed to reset database: {str(e)}</p>'
-
-@app.route('/create-demo-data')
-def create_demo_data():
-    """Create demo employees for testing"""
-    if request.args.get('confirm') != 'yes':
-        return '''
-        <h2>Create Demo Data</h2>
-        <p>This will create demo employees in each crew for testing.</p>
-        <p><a href="/create-demo-data?confirm=yes">Click here to confirm</a></p>
-        '''
-    
-    try:
-        from create_custom_demo_database import populate_demo_data
-        populate_demo_data()
-        return '<h2>Success!</h2><p>Demo data created!</p><p><a href="/dashboard">Go to dashboard</a></p>'
-    except ImportError:
-        # If the demo script doesn't exist, create basic demo data
-        crews = ['A', 'B', 'C', 'D']
-        positions = Position.query.all()
-        
-        for i, crew in enumerate(crews):
-            for j in range(3):  # 3 employees per crew
-                emp = Employee(
-                    name=f'{crew} Employee {j+1}',
-                    email=f'{crew.lower()}{j+1}@workforce.com',
-                    crew=crew,
-                    position_id=positions[j % len(positions)].id if positions else None,
-                    is_supervisor=False,
-                    vacation_days=10,
-                    sick_days=5,
-                    personal_days=3
-                )
-                emp.set_password('password123')
-                db.session.add(emp)
-        
-        db.session.commit()
-        return '<h2>Success!</h2><p>Basic demo data created!</p><p><a href="/dashboard">Go to dashboard</a></p>'
-
-@app.route('/debug-employees')
-def debug_employees():
-    """Debug employee data"""
-    employees = Employee.query.all()
-    return f'''
-    <h2>Employee Debug Info</h2>
-    <p>Total employees: {len(employees)}</p>
-    <h3>Employee List:</h3>
-    <ul>
-    {''.join([f'<li>{e.name} ({e.email}) - Crew: {e.crew}, Supervisor: {e.is_supervisor}</li>' for e in employees])}
-    </ul>
-    <p><a href="/dashboard">Back to dashboard</a></p>
-    '''
-
-@app.route('/reset-passwords')
-def reset_passwords():
-    """Reset all passwords to password123"""
-    if request.args.get('confirm') != 'yes':
-        return '''
-        <h2>Reset All Passwords</h2>
-        <p>This will reset ALL employee passwords to 'password123'.</p>
-        <p><a href="/reset-passwords?confirm=yes">Click here to confirm</a></p>
-        '''
-    
-    employees = Employee.query.all()
-    for emp in employees:
-        emp.set_password('password123')
-    db.session.commit()
-    
-    return f'<h2>Success!</h2><p>Reset passwords for {len(employees)} employees.</p><p><a href="/dashboard">Back to dashboard</a></p>'
-
-@app.route('/migrate-database')
-def migrate_database():
-    """Migrate database with new schema"""
-    if request.args.get('confirm') != 'yes':
-        return '''
-        <h2>Migrate Database</h2>
-        <p>This will update the database schema to include all new tables.</p>
-        <p><strong>Warning:</strong> This will preserve existing data but add new tables.</p>
-        <p><a href="/migrate-database?confirm=yes">Click here to confirm</a></p>
-        '''
-    
-    try:
-        db.create_all()
-        return '<h2>Success!</h2><p>Database migrated successfully!</p><p><a href="/dashboard">Back to dashboard</a></p>'
-    except Exception as e:
-        return f'<h2>Error</h2><p>Migration failed: {str(e)}</p>'
-
-@app.route('/populate-crews')
-def populate_crews():
-    """Populate database with 4 complete crews for development"""
-    if request.args.get('confirm') != 'yes':
-        return '''
-        <h2>🏗️ Populate 4 Crews for Development</h2>
-        <p>This will create <strong>40 employees</strong> (10 per crew) with:</p>
-        <ul>
-            <li><strong>Crew A:</strong> 10 employees (Day shift preference)</li>
-            <li><strong>Crew B:</strong> 10 employees (Day shift preference)</li>
-            <li><strong>Crew C:</strong> 10 employees (Night shift preference)</li>
-            <li><strong>Crew D:</strong> 10 employees (Night shift preference)</li>
-        </ul>
-        <p>Each crew will have:</p>
-        <ul>
-            <li>1 Crew Lead (supervisor)</li>
-            <li>3 Nurses</li>
-            <li>2 Security Officers</li>
-            <li>2 Technicians</li>
-            <li>2 Customer Service Representatives</li>
-        </ul>
-        <p><strong>Login credentials:</strong></p>
-        <ul>
-            <li>Email format: [name].[lastname]@company.com</li>
-            <li>Password: password123 (for all)</li>
-        </ul>
-        <p><a href="/populate-crews?confirm=yes" class="btn btn-primary" onclick="return confirm('Create 40 employees across 4 crews?')">Yes, Populate Crews</a></p>
-        <p><a href="/dashboard" class="btn btn-secondary">Cancel</a></p>
-        '''
-    
-    try:
-        # Get positions (assuming they exist from init-db)
-        nurse = Position.query.filter_by(name='Nurse').first()
-        security = Position.query.filter_by(name='Security Officer').first()
-        tech = Position.query.filter_by(name='Technician').first()
-        customer_service = Position.query.filter_by(name='Customer Service').first()
-        
-        # Get skills
-        skills = {
-            'cpr': Skill.query.filter_by(name='CPR Certified').first(),
-            'first_aid': Skill.query.filter_by(name='First Aid').first(),
-            'security': Skill.query.filter_by(name='Security Clearance').first(),
-            'emergency': Skill.query.filter_by(name='Emergency Response').first(),
-            'equipment': Skill.query.filter_by(name='Equipment Operation').first()
-        }
-        
-        # Employee data for each crew
-        crew_templates = {
-            'A': {
-                'shift_preference': 'day',
-                'employees': [
-                    {'name': 'Alice Anderson', 'email': 'alice.anderson@company.com', 'position': nurse, 'is_supervisor': True, 'skills': ['cpr', 'first_aid', 'emergency']},
-                    {'name': 'Adam Martinez', 'email': 'adam.martinez@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid']},
-                    {'name': 'Angela Brown', 'email': 'angela.brown@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid', 'emergency']},
-                    {'name': 'Andrew Wilson', 'email': 'andrew.wilson@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid']},
-                    {'name': 'Amanda Davis', 'email': 'amanda.davis@company.com', 'position': security, 'skills': ['security', 'emergency']},
-                    {'name': 'Aaron Johnson', 'email': 'aaron.johnson@company.com', 'position': security, 'skills': ['security', 'first_aid']},
-                    {'name': 'Anna Miller', 'email': 'anna.miller@company.com', 'position': tech, 'skills': ['equipment', 'emergency']},
-                    {'name': 'Alex Thompson', 'email': 'alex.thompson@company.com', 'position': tech, 'skills': ['equipment']},
-                    {'name': 'Amy Garcia', 'email': 'amy.garcia@company.com', 'position': customer_service, 'skills': ['emergency']},
-                    {'name': 'Anthony Lee', 'email': 'anthony.lee@company.com', 'position': customer_service, 'skills': ['first_aid']}
-                ]
-            },
-            'B': {
-                'shift_preference': 'day',
-                'employees': [
-                    {'name': 'Barbara Bennett', 'email': 'barbara.bennett@company.com', 'position': nurse, 'is_supervisor': True, 'skills': ['cpr', 'first_aid', 'emergency']},
-                    {'name': 'Brian Clark', 'email': 'brian.clark@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid']},
-                    {'name': 'Betty Rodriguez', 'email': 'betty.rodriguez@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid', 'emergency']},
-                    {'name': 'Benjamin Lewis', 'email': 'benjamin.lewis@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid']},
-                    {'name': 'Brenda Walker', 'email': 'brenda.walker@company.com', 'position': security, 'skills': ['security', 'emergency']},
-                    {'name': 'Blake Hall', 'email': 'blake.hall@company.com', 'position': security, 'skills': ['security', 'first_aid']},
-                    {'name': 'Bonnie Allen', 'email': 'bonnie.allen@company.com', 'position': tech, 'skills': ['equipment', 'emergency']},
-                    {'name': 'Bruce Young', 'email': 'bruce.young@company.com', 'position': tech, 'skills': ['equipment']},
-                    {'name': 'Brittany King', 'email': 'brittany.king@company.com', 'position': customer_service, 'skills': ['emergency']},
-                    {'name': 'Bradley Wright', 'email': 'bradley.wright@company.com', 'position': customer_service, 'skills': ['first_aid']}
-                ]
-            },
-            'C': {
-                'shift_preference': 'night',
-                'employees': [
-                    {'name': 'Carol Campbell', 'email': 'carol.campbell@company.com', 'position': nurse, 'is_supervisor': True, 'skills': ['cpr', 'first_aid', 'emergency']},
-                    {'name': 'Charles Parker', 'email': 'charles.parker@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid']},
-                    {'name': 'Christine Evans', 'email': 'christine.evans@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid', 'emergency']},
-                    {'name': 'Christopher Turner', 'email': 'christopher.turner@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid']},
-                    {'name': 'Cynthia Collins', 'email': 'cynthia.collins@company.com', 'position': security, 'skills': ['security', 'emergency']},
-                    {'name': 'Craig Edwards', 'email': 'craig.edwards@company.com', 'position': security, 'skills': ['security', 'first_aid']},
-                    {'name': 'Catherine Stewart', 'email': 'catherine.stewart@company.com', 'position': tech, 'skills': ['equipment', 'emergency']},
-                    {'name': 'Carl Sanchez', 'email': 'carl.sanchez@company.com', 'position': tech, 'skills': ['equipment']},
-                    {'name': 'Cheryl Morris', 'email': 'cheryl.morris@company.com', 'position': customer_service, 'skills': ['emergency']},
-                    {'name': 'Chad Rogers', 'email': 'chad.rogers@company.com', 'position': customer_service, 'skills': ['first_aid']}
-                ]
-            },
-            'D': {
-                'shift_preference': 'night',
-                'employees': [
-                    {'name': 'Diana Davidson', 'email': 'diana.davidson@company.com', 'position': nurse, 'is_supervisor': True, 'skills': ['cpr', 'first_aid', 'emergency']},
-                    {'name': 'David Foster', 'email': 'david.foster@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid']},
-                    {'name': 'Deborah Murphy', 'email': 'deborah.murphy@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid', 'emergency']},
-                    {'name': 'Daniel Rivera', 'email': 'daniel.rivera@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid']},
-                    {'name': 'Donna Cook', 'email': 'donna.cook@company.com', 'position': security, 'skills': ['security', 'emergency']},
-                    {'name': 'Dennis Morgan', 'email': 'dennis.morgan@company.com', 'position': security, 'skills': ['security', 'first_aid']},
-                    {'name': 'Dorothy Peterson', 'email': 'dorothy.peterson@company.com', 'position': tech, 'skills': ['equipment', 'emergency']},
-                    {'name': 'Douglas Cooper', 'email': 'douglas.cooper@company.com', 'position': tech, 'skills': ['equipment']},
-                    {'name': 'Denise Bailey', 'email': 'denise.bailey@company.com', 'position': customer_service, 'skills': ['emergency']},
-                    {'name': 'Derek Reed', 'email': 'derek.reed@company.com', 'position': customer_service, 'skills': ['first_aid']}
-                ]
-            }
-        }
-        
-        created_count = 0
-        
-        for crew_letter, crew_data in crew_templates.items():
-            for emp_data in crew_data['employees']:
-                # Check if employee already exists
-                existing = Employee.query.filter_by(email=emp_data['email']).first()
-                if existing:
-                    continue
-                
-                # Create employee
-                employee = Employee(
-                    name=emp_data['name'],
-                    email=emp_data['email'],
-                    phone=f'555-{crew_letter}{str(created_count).zfill(3)}',
-                    is_supervisor=emp_data.get('is_supervisor', False),
-                    position_id=emp_data['position'].id if emp_data['position'] else None,
-                    crew=crew_letter,
-                    shift_pattern=crew_data['shift_preference'],
-                    hire_date=date.today() - timedelta(days=365),  # 1 year ago
-                    vacation_days=10,
-                    sick_days=5,
-                    personal_days=3
-                )
-                
-                # Set password
-                employee.set_password('password123')
-                
-                # Add skills
-                for skill_key in emp_data.get('skills', []):
-                    if skill_key in skills and skills[skill_key]:
-                        employee.skills.append(skills[skill_key])
-                
-                db.session.add(employee)
-                db.session.flush()  # This assigns the ID to the employee
-                created_count += 1
-                
-                # Create circadian profile after employee has ID
-                profile = CircadianProfile(
-                    employee_id=employee.id,
-                    chronotype='morning' if crew_data['shift_preference'] == 'day' else 'evening',
-                    current_shift_type=crew_data['shift_preference']
-                )
-                db.session.add(profile)
-        
-        db.session.commit()
-        
-        return f'''
-        <h2>✅ Crews Populated Successfully!</h2>
-        <p><strong>{created_count} employees</strong> have been created across 4 crews.</p>
-        
-        <h3>Crew Supervisors (can approve requests):</h3>
-        <ul>
-            <li><strong>Crew A:</strong> Alice Anderson (alice.anderson@company.com)</li>
-            <li><strong>Crew B:</strong> Barbara Bennett (barbara.bennett@company.com)</li>
-            <li><strong>Crew C:</strong> Carol Campbell (carol.campbell@company.com)</li>
-            <li><strong>Crew D:</strong> Diana Davidson (diana.davidson@company.com)</li>
-        </ul>
-        
-        <h3>Sample Regular Employees:</h3>
-        <ul>
-            <li><strong>Nurse:</strong> Adam Martinez (adam.martinez@company.com)</li>
-            <li><strong>Security:</strong> Amanda Davis (amanda.davis@company.com)</li>
-            <li><strong>Technician:</strong> Anna Miller (anna.miller@company.com)</li>
-            <li><strong>Customer Service:</strong> Amy Garcia (amy.garcia@company.com)</li>
-        </ul>
-        
-        <p><strong>All passwords:</strong> password123</p>
-        
-        <h3>Next Steps:</h3>
-        <ol>
-            <li><a href="/schedule/create" class="btn btn-primary">Create Schedules</a> - Set up shifts for your crews</li>
-            <li><a href="/schedule/view" class="btn btn-info">View Schedules</a> - See crew assignments</li>
-            <li><a href="/logout" class="btn btn-warning">Logout</a> - Try logging in as an employee</li>
-        </ol>
-        
-        <p><a href="/dashboard" class="btn btn-success">Return to Dashboard</a></p>
-        '''
-        
-    except Exception as e:
-        db.session.rollback()
-        return f'''
-        <h2>❌ Error Populating Crews</h2>
-        <p>An error occurred: {str(e)}</p>
-        <p>Make sure you've run <a href="/init-db">/init-db</a> first to create positions and skills.</p>
-        <p><a href="/dashboard" class="btn btn-secondary">Return to Dashboard</a></p>
-        '''
-
-# ==================== ERROR HANDLERS ====================
-
-@app.errorhandler(404)
-def not_found_error(error):
-    return render_template('404.html'), 404
-
-@app.errorhandler(500)
-def internal_error(error):
-    db.session.rollback()
-    return render_template('500.html'), 500
-
-# ==================== MAIN ====================
-
-if __name__ == '__main__':
-    app.run(debug=True)
-
-# ==================== DATABASE INITIALIZATION ROUTES ====================
-
-@app.route('/init-db')
-def init_db():
-    """Initialize database with all tables"""
-    with app.app_context():
-        # Create all tables first
-        db.create_all()
-        
-        # Now check if admin exists
-        admin = Employee.query.filter_by(email='admin@workforce.com').first()
-        if not admin:
-            admin = Employee(
-                name='Admin User',
-                email='admin@workforce.com',
-                is_supervisor=True,
-                crew='A',
-                vacation_days=20,
-                sick_days=10,
-                personal_days=5
-            )
-            admin.set_password('admin123')
-            db.session.add(admin)
-            
-            # Create some default positions
-            positions = [
-                Position(name='Nurse', department='Healthcare', min_coverage=2),
-                Position(name='Security Officer', department='Security', min_coverage=1),
-                Position(name='Technician', department='Operations', min_coverage=3),
-                Position(name='Customer Service', department='Support', min_coverage=2)
-            ]
-            for pos in positions:
-                db.session.add(pos)
-            
-            # Create some default skills
-            skills = [
-                Skill(name='CPR Certified', category='Medical', requires_certification=True),
-                Skill(name='First Aid', category='Medical', requires_certification=True),
-                Skill(name='Security Clearance', category='Security', requires_certification=True),
-                Skill(name='Emergency Response', category='General'),
-                Skill(name='Equipment Operation', category='Technical')
-            ]
-            for skill in skills:
-                db.session.add(skill)
-            
-            db.session.commit()
-        
-        return '''
-        <h2>Database Initialized!</h2>
-        <p>Admin account created:</p>
-        <ul>
-            <li>Email: admin@workforce.com</li>
-            <li>Password: admin123</li>
-        </ul>
-        <p><a href="/login">Go to login</a></p>
-        '''
-
-@app.route('/add-communication-tables')
-def add_communication_tables():
-    """Add the new communication tables to the database"""
-    if request.args.get('confirm') != 'yes':
-        return '''
-        <h2>Add Communication Tables</h2>
-        <p>This will add the following new communication features to your database:</p>
-        <h3>Feature 1: Supervisor-to-Supervisor Messages</h3>
-        <ul>
-            <li>Direct messaging between shift supervisors</li>
-            <li>Priority levels and categories</li>
-            <li>Thread support for conversations</li>
-            <li>Read receipts</li>
-        </ul>
-        <h3>Feature 2: Position-Based Communication</h3>
-        <ul>
-            <li>Message board for employees in the same position</li>
-            <li>Share tips, handoff notes, and alerts</li>
-            <li>Target specific shifts or all shifts</li>
-            <li>Message expiration and pinning</li>
-        </ul>
-        <h3>Feature 3: Maintenance Issue Tracking</h3>
-        <ul>
-            <li>Report equipment and facility issues</li>from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_file
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_file
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
@@ -1063,6 +508,9 @@ def dashboard():
         Employee.id != current_user.id
     ).order_by(Employee.name).all()
     
+    # Calculate today and week_end for template
+    today = date.today()
+    
     return render_template('dashboard.html',
                          selected_crew=selected_crew,
                          crew_stats=crew_stats,
@@ -1073,7 +521,8 @@ def dashboard():
                          todays_schedule=todays_schedule,
                          coverage_needs=coverage_needs,
                          coverage_gaps=coverage_gaps[:3],  # Show first 3 gaps
-                         other_supervisors=other_supervisors)
+                         other_supervisors=other_supervisors,
+                         today=today)
 
 @app.route('/employee-dashboard')
 @login_required
@@ -1279,9 +728,22 @@ def deny_time_off(request_id):
 @login_required
 def vacation_calendar():
     """View team vacation calendar"""
-    # Get calendar entries for the next 90 days
-    start_date = date.today()
-    end_date = start_date + timedelta(days=90)
+    import calendar as cal
+    
+    # Get year and month from query params
+    year = request.args.get('year', date.today().year, type=int)
+    month = request.args.get('month', date.today().month, type=int)
+    
+    # Create calendar for the month
+    month_calendar = cal.monthcalendar(year, month)
+    month_name = cal.month_name[month]
+    
+    # Get vacation entries for this month
+    start_date = date(year, month, 1)
+    if month == 12:
+        end_date = date(year + 1, 1, 1) - timedelta(days=1)
+    else:
+        end_date = date(year, month + 1, 1) - timedelta(days=1)
     
     calendar_entries = VacationCalendar.query.filter(
         VacationCalendar.date >= start_date,
@@ -1289,8 +751,27 @@ def vacation_calendar():
     ).order_by(VacationCalendar.date).all()
     
     # Group by date for easier display
-    calendar_data = {}
+    vacation_by_date = {}
     for entry in calendar_entries:
+        date_str = entry.date.strftime('%Y-%m-%d')
+        if date_str not in vacation_by_date:
+            vacation_by_date[date_str] = []
+        vacation_by_date[date_str].append({
+            'employee_name': entry.employee.name,
+            'leave_type': entry.request_type
+        })
+    
+    # Get today's date for highlighting
+    today = date.today()
+    
+    return render_template('vacation_calendar.html',
+                         calendar=month_calendar,
+                         vacation_by_date=vacation_by_date,
+                         year=year,
+                         month=month,
+                         month_name=month_name,
+                         today=today,
+                         datetime=datetime)_entries:
         if entry.date not in calendar_data:
             calendar_data[entry.date] = []
         calendar_data[entry.date].append(entry)
@@ -1389,10 +870,15 @@ def coverage_needs():
     # Get available casual workers
     casual_workers = CasualWorker.query.filter_by(is_active=True).all()
     
+    # Add today and timedelta for template
+    today = date.today()
+    
     return render_template('coverage_needs.html',
                          open_requests=open_requests,
                          coverage_gaps=coverage_gaps,
-                         casual_workers=casual_workers)
+                         casual_workers=casual_workers,
+                         today=today,
+                         timedelta=timedelta)
 
 @app.route('/coverage/push/<int:request_id>', methods=['POST'])
 @login_required
@@ -3304,3 +2790,558 @@ def cancel_trade(trade_id):
     db.session.commit()
     
     return jsonify({'success': True})
+
+# ==================== DATABASE INITIALIZATION ROUTES ====================
+
+@app.route('/init-db')
+def init_db():
+    """Initialize database with all tables"""
+    with app.app_context():
+        # Create all tables first
+        db.create_all()
+        
+        # Now check if admin exists
+        admin = Employee.query.filter_by(email='admin@workforce.com').first()
+        if not admin:
+            admin = Employee(
+                name='Admin User',
+                email='admin@workforce.com',
+                is_supervisor=True,
+                crew='A',
+                vacation_days=20,
+                sick_days=10,
+                personal_days=5
+            )
+            admin.set_password('admin123')
+            db.session.add(admin)
+            
+            # Create some default positions
+            positions = [
+                Position(name='Nurse', department='Healthcare', min_coverage=2),
+                Position(name='Security Officer', department='Security', min_coverage=1),
+                Position(name='Technician', department='Operations', min_coverage=3),
+                Position(name='Customer Service', department='Support', min_coverage=2)
+            ]
+            for pos in positions:
+                db.session.add(pos)
+            
+            # Create some default skills
+            skills = [
+                Skill(name='CPR Certified', category='Medical', requires_certification=True),
+                Skill(name='First Aid', category='Medical', requires_certification=True),
+                Skill(name='Security Clearance', category='Security', requires_certification=True),
+                Skill(name='Emergency Response', category='General'),
+                Skill(name='Equipment Operation', category='Technical')
+            ]
+            for skill in skills:
+                db.session.add(skill)
+            
+            db.session.commit()
+        
+        return '''
+        <h2>Database Initialized!</h2>
+        <p>Admin account created:</p>
+        <ul>
+            <li>Email: admin@workforce.com</li>
+            <li>Password: admin123</li>
+        </ul>
+        <p><a href="/login">Go to login</a></p>
+        '''
+
+@app.route('/add-communication-tables')
+def add_communication_tables():
+    """Add the new communication tables to the database"""
+    if request.args.get('confirm') != 'yes':
+        return '''
+        <h2>Add Communication Tables</h2>
+        <p>This will add the following new communication features to your database:</p>
+        <h3>Feature 1: Supervisor-to-Supervisor Messages</h3>
+        <ul>
+            <li>Direct messaging between shift supervisors</li>
+            <li>Priority levels and categories</li>
+            <li>Thread support for conversations</li>
+            <li>Read receipts</li>
+        </ul>
+        <h3>Feature 2: Position-Based Communication</h3>
+        <ul>
+            <li>Message board for employees in the same position</li>
+            <li>Share tips, handoff notes, and alerts</li>
+            <li>Target specific shifts or all shifts</li>
+            <li>Message expiration and pinning</li>
+        </ul>
+        <h3>Feature 3: Maintenance Issue Tracking</h3>
+        <ul>
+            <li>Report equipment and facility issues</li>
+            <li>Priority-based tracking</li>
+            <li>Assignment to maintenance staff</li>
+            <li>Progress updates and resolution tracking</li>
+            <li>Safety issue flagging</li>
+        </ul>
+        <p>New tables to be added:</p>
+        <ul>
+            <li>SupervisorMessage - Messages between supervisors</li>
+            <li>PositionMessage - Messages between position colleagues</li>
+            <li>PositionMessageRead - Read receipts for position messages</li>
+            <li>MaintenanceIssue - Maintenance issue reports</li>
+            <li>MaintenanceUpdate - Updates on maintenance issues</li>
+            <li>MaintenanceManager - Designate maintenance managers</li>
+        </ul>
+        <p><a href="/add-communication-tables?confirm=yes" class="btn btn-primary">Click here to add communication features</a></p>
+        <p><a href="/" class="btn btn-secondary">Cancel</a></p>
+        '''
+    
+    try:
+        # Create all tables (this will only add new ones)
+        db.create_all()
+        
+        # Check if we have a maintenance manager
+        if not MaintenanceManager.query.first():
+            # Make the admin a maintenance manager by default
+            admin = Employee.query.filter_by(email='admin@workforce.com').first()
+            if admin:
+                mm = MaintenanceManager(
+                    employee_id=admin.id,
+                    is_primary=True,
+                    can_assign=True
+                )
+                db.session.add(mm)
+                db.session.commit()
+        
+        return '''
+        <h2>✅ Success!</h2>
+        <p>Communication tables have been added to the database.</p>
+        <h3>New features now available:</h3>
+        <ol>
+            <li><strong>Supervisor Messages:</strong> Supervisors can now communicate directly with other shift supervisors</li>
+            <li><strong>Position Communication:</strong> Employees can share information with colleagues in the same position across all shifts</li>
+            <li><strong>Maintenance Tracking:</strong> Anyone can report maintenance issues and track their resolution</li>
+        </ol>
+        <h3>Next Steps:</h3>
+        <ul>
+            <li>Supervisors will see a "Supervisor Messages" button in their dashboard</li>
+            <li>Employees will see a "Position Board" in their dashboard</li>
+            <li>Everyone can report maintenance issues from their dashboard</li>
+            <li>The admin account has been designated as the primary maintenance manager</li>
+        </ul>
+        <p><a href="/" class="btn btn-primary">Return to home</a></p>
+        '''
+    except Exception as e:
+        return f'''
+        <h2>❌ Error</h2>
+        <p>Failed to add communication tables: {str(e)}</p>
+        <p>Please ensure your database connection is working and try again.</p>
+        <p><a href="/" class="btn btn-secondary">Return to home</a></p>
+        '''
+
+@app.route('/add-coverage-tables')
+def add_coverage_tables():
+    """Add the new coverage notification and overtime tables"""
+    if request.args.get('confirm') != 'yes':
+        return '''
+        <h2>Add Coverage Tables</h2>
+        <p>This will add the CoverageNotification and OvertimeOpportunity tables to your database.</p>
+        <p>These tables enable:</p>
+        <ul>
+            <li>Push notifications for coverage needs</li>
+            <li>Smart overtime distribution</li>
+            <li>Employee response tracking</li>
+        </ul>
+        <p><a href="/add-coverage-tables?confirm=yes" class="btn btn-primary">Click here to confirm</a></p>
+        '''
+    
+    try:
+        # Create all tables (this will only add new ones)
+        db.create_all()
+        return '''
+        <h2>Success!</h2>
+        <p>Coverage notification and overtime tables have been added to the database.</p>
+        <p>New features available:</p>
+        <ul>
+            <li>Coverage push notifications</li>
+            <li>Overtime opportunity management</li>
+            <li>Smart crew distribution</li>
+        </ul>
+        <p><a href="/">Return to home</a></p>
+        '''
+    except Exception as e:
+        return f'<h2>Error</h2><p>Failed to add tables: {str(e)}</p>'
+
+@app.route('/add-marketplace-tables')
+def add_marketplace_tables():
+    """Add the shift trade marketplace tables"""
+    if request.args.get('confirm') != 'yes':
+        return '''
+        <h2>Add Shift Trade Marketplace Tables</h2>
+        <p>This will add the new shift trade marketplace tables to your database.</p>
+        <p>New tables to be added:</p>
+        <ul>
+            <li>ShiftTradePost - Posts of shifts available for trade</li>
+            <li>ShiftTradeProposal - Trade proposals from employees</li>
+            <li>ShiftTrade - Completed or pending trades</li>
+            <li>TradeMatchPreference - Employee trade preferences</li>
+        </ul>
+        <p>Features enabled:</p>
+        <ul>
+            <li>Post shifts for trade in marketplace</li>
+            <li>Browse and filter available trades</li>
+            <li>Smart compatibility matching</li>
+            <li>Trade history tracking</li>
+            <li>Auto-approval options</li>
+        </ul>
+        <p><a href="/add-marketplace-tables?confirm=yes" class="btn btn-primary">Click here to confirm</a></p>
+        '''
+    
+    try:
+        # Create all tables (this will only add new ones)
+        db.create_all()
+        return '''
+        <h2>Success!</h2>
+        <p>Shift trade marketplace tables have been added to the database.</p>
+        <p>New features available:</p>
+        <ul>
+            <li>Shift Trade Marketplace - Employees can now post and trade shifts</li>
+            <li>Smart Matching - System suggests compatible trades</li>
+            <li>Trade History - Track all completed trades</li>
+        </ul>
+        <p>Employees can access the marketplace from their dashboard.</p>
+        <p><a href="/">Return to home</a></p>
+        '''
+    except Exception as e:
+        return f'<h2>Error</h2><p>Failed to add marketplace tables: {str(e)}</p>'
+
+@app.route('/reset-db')
+def reset_db():
+    """Reset database - WARNING: This will delete all data!"""
+    if request.args.get('confirm') != 'yes':
+        return '''
+        <h2>⚠️ WARNING: Reset Database</h2>
+        <p style="color: red;"><strong>This will DELETE ALL DATA in the database!</strong></p>
+        <p>Only use this for initial setup or if you're sure you want to start over.</p>
+        <p><a href="/reset-db?confirm=yes" onclick="return confirm('Are you SURE you want to delete all data?')" style="background: red; color: white; padding: 10px; text-decoration: none;">Yes, reset the database</a></p>
+        <p><a href="/" style="background: green; color: white; padding: 10px; text-decoration: none;">Cancel and go back</a></p>
+        '''
+    
+    try:
+        with app.app_context():
+            # For PostgreSQL, we need to drop tables with CASCADE
+            from sqlalchemy import text
+            
+            # Get the database engine
+            engine = db.engine
+            
+            # Drop all tables using raw SQL with CASCADE
+            with engine.connect() as conn:
+                # First, drop all tables in the public schema
+                conn.execute(text("DROP SCHEMA public CASCADE"))
+                conn.execute(text("CREATE SCHEMA public"))
+                conn.execute(text("GRANT ALL ON SCHEMA public TO public"))
+                conn.commit()
+            
+            # Now recreate all tables with correct schema
+            db.create_all()
+            
+        return '''
+        <h2>✅ Database Reset Complete!</h2>
+        <p>All tables have been dropped and recreated with the correct schema.</p>
+        <p><a href="/init-db" style="background: blue; color: white; padding: 10px; text-decoration: none;">Now initialize the database with default data</a></p>
+        '''
+    except Exception as e:
+        return f'<h2>Error</h2><p>Failed to reset database: {str(e)}</p>'
+
+@app.route('/create-demo-data')
+def create_demo_data():
+    """Create demo employees for testing"""
+    if request.args.get('confirm') != 'yes':
+        return '''
+        <h2>Create Demo Data</h2>
+        <p>This will create demo employees in each crew for testing.</p>
+        <p><a href="/create-demo-data?confirm=yes">Click here to confirm</a></p>
+        '''
+    
+    try:
+        from create_custom_demo_database import populate_demo_data
+        populate_demo_data()
+        return '<h2>Success!</h2><p>Demo data created!</p><p><a href="/dashboard">Go to dashboard</a></p>'
+    except ImportError:
+        # If the demo script doesn't exist, create basic demo data
+        crews = ['A', 'B', 'C', 'D']
+        positions = Position.query.all()
+        
+        for i, crew in enumerate(crews):
+            for j in range(3):  # 3 employees per crew
+                emp = Employee(
+                    name=f'{crew} Employee {j+1}',
+                    email=f'{crew.lower()}{j+1}@workforce.com',
+                    crew=crew,
+                    position_id=positions[j % len(positions)].id if positions else None,
+                    is_supervisor=False,
+                    vacation_days=10,
+                    sick_days=5,
+                    personal_days=3
+                )
+                emp.set_password('password123')
+                db.session.add(emp)
+        
+        db.session.commit()
+        return '<h2>Success!</h2><p>Basic demo data created!</p><p><a href="/dashboard">Go to dashboard</a></p>'
+
+@app.route('/debug-employees')
+def debug_employees():
+    """Debug employee data"""
+    employees = Employee.query.all()
+    return f'''
+    <h2>Employee Debug Info</h2>
+    <p>Total employees: {len(employees)}</p>
+    <h3>Employee List:</h3>
+    <ul>
+    {''.join([f'<li>{e.name} ({e.email}) - Crew: {e.crew}, Supervisor: {e.is_supervisor}</li>' for e in employees])}
+    </ul>
+    <p><a href="/dashboard">Back to dashboard</a></p>
+    '''
+
+@app.route('/reset-passwords')
+def reset_passwords():
+    """Reset all passwords to password123"""
+    if request.args.get('confirm') != 'yes':
+        return '''
+        <h2>Reset All Passwords</h2>
+        <p>This will reset ALL employee passwords to 'password123'.</p>
+        <p><a href="/reset-passwords?confirm=yes">Click here to confirm</a></p>
+        '''
+    
+    employees = Employee.query.all()
+    for emp in employees:
+        emp.set_password('password123')
+    db.session.commit()
+    
+    return f'<h2>Success!</h2><p>Reset passwords for {len(employees)} employees.</p><p><a href="/dashboard">Back to dashboard</a></p>'
+
+@app.route('/migrate-database')
+def migrate_database():
+    """Migrate database with new schema"""
+    if request.args.get('confirm') != 'yes':
+        return '''
+        <h2>Migrate Database</h2>
+        <p>This will update the database schema to include all new tables.</p>
+        <p><strong>Warning:</strong> This will preserve existing data but add new tables.</p>
+        <p><a href="/migrate-database?confirm=yes">Click here to confirm</a></p>
+        '''
+    
+    try:
+        db.create_all()
+        return '<h2>Success!</h2><p>Database migrated successfully!</p><p><a href="/dashboard">Back to dashboard</a></p>'
+    except Exception as e:
+        return f'<h2>Error</h2><p>Migration failed: {str(e)}</p>'
+
+@app.route('/populate-crews')
+def populate_crews():
+    """Populate database with 4 complete crews for development"""
+    if request.args.get('confirm') != 'yes':
+        return '''
+        <h2>🏗️ Populate 4 Crews for Development</h2>
+        <p>This will create <strong>40 employees</strong> (10 per crew) with:</p>
+        <ul>
+            <li><strong>Crew A:</strong> 10 employees (Day shift preference)</li>
+            <li><strong>Crew B:</strong> 10 employees (Day shift preference)</li>
+            <li><strong>Crew C:</strong> 10 employees (Night shift preference)</li>
+            <li><strong>Crew D:</strong> 10 employees (Night shift preference)</li>
+        </ul>
+        <p>Each crew will have:</p>
+        <ul>
+            <li>1 Crew Lead (supervisor)</li>
+            <li>3 Nurses</li>
+            <li>2 Security Officers</li>
+            <li>2 Technicians</li>
+            <li>2 Customer Service Representatives</li>
+        </ul>
+        <p><strong>Login credentials:</strong></p>
+        <ul>
+            <li>Email format: [name].[lastname]@company.com</li>
+            <li>Password: password123 (for all)</li>
+        </ul>
+        <p><a href="/populate-crews?confirm=yes" class="btn btn-primary" onclick="return confirm('Create 40 employees across 4 crews?')">Yes, Populate Crews</a></p>
+        <p><a href="/dashboard" class="btn btn-secondary">Cancel</a></p>
+        '''
+    
+    try:
+        # Get positions (assuming they exist from init-db)
+        nurse = Position.query.filter_by(name='Nurse').first()
+        security = Position.query.filter_by(name='Security Officer').first()
+        tech = Position.query.filter_by(name='Technician').first()
+        customer_service = Position.query.filter_by(name='Customer Service').first()
+        
+        # Get skills
+        skills = {
+            'cpr': Skill.query.filter_by(name='CPR Certified').first(),
+            'first_aid': Skill.query.filter_by(name='First Aid').first(),
+            'security': Skill.query.filter_by(name='Security Clearance').first(),
+            'emergency': Skill.query.filter_by(name='Emergency Response').first(),
+            'equipment': Skill.query.filter_by(name='Equipment Operation').first()
+        }
+        
+        # Employee data for each crew
+        crew_templates = {
+            'A': {
+                'shift_preference': 'day',
+                'employees': [
+                    {'name': 'Alice Anderson', 'email': 'alice.anderson@company.com', 'position': nurse, 'is_supervisor': True, 'skills': ['cpr', 'first_aid', 'emergency']},
+                    {'name': 'Adam Martinez', 'email': 'adam.martinez@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid']},
+                    {'name': 'Angela Brown', 'email': 'angela.brown@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid', 'emergency']},
+                    {'name': 'Andrew Wilson', 'email': 'andrew.wilson@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid']},
+                    {'name': 'Amanda Davis', 'email': 'amanda.davis@company.com', 'position': security, 'skills': ['security', 'emergency']},
+                    {'name': 'Aaron Johnson', 'email': 'aaron.johnson@company.com', 'position': security, 'skills': ['security', 'first_aid']},
+                    {'name': 'Anna Miller', 'email': 'anna.miller@company.com', 'position': tech, 'skills': ['equipment', 'emergency']},
+                    {'name': 'Alex Thompson', 'email': 'alex.thompson@company.com', 'position': tech, 'skills': ['equipment']},
+                    {'name': 'Amy Garcia', 'email': 'amy.garcia@company.com', 'position': customer_service, 'skills': ['emergency']},
+                    {'name': 'Anthony Lee', 'email': 'anthony.lee@company.com', 'position': customer_service, 'skills': ['first_aid']}
+                ]
+            },
+            'B': {
+                'shift_preference': 'day',
+                'employees': [
+                    {'name': 'Barbara Bennett', 'email': 'barbara.bennett@company.com', 'position': nurse, 'is_supervisor': True, 'skills': ['cpr', 'first_aid', 'emergency']},
+                    {'name': 'Brian Clark', 'email': 'brian.clark@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid']},
+                    {'name': 'Betty Rodriguez', 'email': 'betty.rodriguez@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid', 'emergency']},
+                    {'name': 'Benjamin Lewis', 'email': 'benjamin.lewis@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid']},
+                    {'name': 'Brenda Walker', 'email': 'brenda.walker@company.com', 'position': security, 'skills': ['security', 'emergency']},
+                    {'name': 'Blake Hall', 'email': 'blake.hall@company.com', 'position': security, 'skills': ['security', 'first_aid']},
+                    {'name': 'Bonnie Allen', 'email': 'bonnie.allen@company.com', 'position': tech, 'skills': ['equipment', 'emergency']},
+                    {'name': 'Bruce Young', 'email': 'bruce.young@company.com', 'position': tech, 'skills': ['equipment']},
+                    {'name': 'Brittany King', 'email': 'brittany.king@company.com', 'position': customer_service, 'skills': ['emergency']},
+                    {'name': 'Bradley Wright', 'email': 'bradley.wright@company.com', 'position': customer_service, 'skills': ['first_aid']}
+                ]
+            },
+            'C': {
+                'shift_preference': 'night',
+                'employees': [
+                    {'name': 'Carol Campbell', 'email': 'carol.campbell@company.com', 'position': nurse, 'is_supervisor': True, 'skills': ['cpr', 'first_aid', 'emergency']},
+                    {'name': 'Charles Parker', 'email': 'charles.parker@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid']},
+                    {'name': 'Christine Evans', 'email': 'christine.evans@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid', 'emergency']},
+                    {'name': 'Christopher Turner', 'email': 'christopher.turner@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid']},
+                    {'name': 'Cynthia Collins', 'email': 'cynthia.collins@company.com', 'position': security, 'skills': ['security', 'emergency']},
+                    {'name': 'Craig Edwards', 'email': 'craig.edwards@company.com', 'position': security, 'skills': ['security', 'first_aid']},
+                    {'name': 'Catherine Stewart', 'email': 'catherine.stewart@company.com', 'position': tech, 'skills': ['equipment', 'emergency']},
+                    {'name': 'Carl Sanchez', 'email': 'carl.sanchez@company.com', 'position': tech, 'skills': ['equipment']},
+                    {'name': 'Cheryl Morris', 'email': 'cheryl.morris@company.com', 'position': customer_service, 'skills': ['emergency']},
+                    {'name': 'Chad Rogers', 'email': 'chad.rogers@company.com', 'position': customer_service, 'skills': ['first_aid']}
+                ]
+            },
+            'D': {
+                'shift_preference': 'night',
+                'employees': [
+                    {'name': 'Diana Davidson', 'email': 'diana.davidson@company.com', 'position': nurse, 'is_supervisor': True, 'skills': ['cpr', 'first_aid', 'emergency']},
+                    {'name': 'David Foster', 'email': 'david.foster@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid']},
+                    {'name': 'Deborah Murphy', 'email': 'deborah.murphy@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid', 'emergency']},
+                    {'name': 'Daniel Rivera', 'email': 'daniel.rivera@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid']},
+                    {'name': 'Donna Cook', 'email': 'donna.cook@company.com', 'position': security, 'skills': ['security', 'emergency']},
+                    {'name': 'Dennis Morgan', 'email': 'dennis.morgan@company.com', 'position': security, 'skills': ['security', 'first_aid']},
+                    {'name': 'Dorothy Peterson', 'email': 'dorothy.peterson@company.com', 'position': tech, 'skills': ['equipment', 'emergency']},
+                    {'name': 'Douglas Cooper', 'email': 'douglas.cooper@company.com', 'position': tech, 'skills': ['equipment']},
+                    {'name': 'Denise Bailey', 'email': 'denise.bailey@company.com', 'position': customer_service, 'skills': ['emergency']},
+                    {'name': 'Derek Reed', 'email': 'derek.reed@company.com', 'position': customer_service, 'skills': ['first_aid']}
+                ]
+            }
+        }
+        
+        created_count = 0
+        
+        for crew_letter, crew_data in crew_templates.items():
+            for emp_data in crew_data['employees']:
+                # Check if employee already exists
+                existing = Employee.query.filter_by(email=emp_data['email']).first()
+                if existing:
+                    continue
+                
+                # Create employee
+                employee = Employee(
+                    name=emp_data['name'],
+                    email=emp_data['email'],
+                    phone=f'555-{crew_letter}{str(created_count).zfill(3)}',
+                    is_supervisor=emp_data.get('is_supervisor', False),
+                    position_id=emp_data['position'].id if emp_data['position'] else None,
+                    crew=crew_letter,
+                    shift_pattern=crew_data['shift_preference'],
+                    hire_date=date.today() - timedelta(days=365),  # 1 year ago
+                    vacation_days=10,
+                    sick_days=5,
+                    personal_days=3
+                )
+                
+                # Set password
+                employee.set_password('password123')
+                
+                # Add skills
+                for skill_key in emp_data.get('skills', []):
+                    if skill_key in skills and skills[skill_key]:
+                        employee.skills.append(skills[skill_key])
+                
+                db.session.add(employee)
+                db.session.flush()  # This assigns the ID to the employee
+                created_count += 1
+                
+                # Create circadian profile after employee has ID
+                profile = CircadianProfile(
+                    employee_id=employee.id,
+                    chronotype='morning' if crew_data['shift_preference'] == 'day' else 'evening',
+                    current_shift_type=crew_data['shift_preference']
+                )
+                db.session.add(profile)
+        
+        db.session.commit()
+        
+        return f'''
+        <h2>✅ Crews Populated Successfully!</h2>
+        <p><strong>{created_count} employees</strong> have been created across 4 crews.</p>
+        
+        <h3>Crew Supervisors (can approve requests):</h3>
+        <ul>
+            <li><strong>Crew A:</strong> Alice Anderson (alice.anderson@company.com)</li>
+            <li><strong>Crew B:</strong> Barbara Bennett (barbara.bennett@company.com)</li>
+            <li><strong>Crew C:</strong> Carol Campbell (carol.campbell@company.com)</li>
+            <li><strong>Crew D:</strong> Diana Davidson (diana.davidson@company.com)</li>
+        </ul>
+        
+        <h3>Sample Regular Employees:</h3>
+        <ul>
+            <li><strong>Nurse:</strong> Adam Martinez (adam.martinez@company.com)</li>
+            <li><strong>Security:</strong> Amanda Davis (amanda.davis@company.com)</li>
+            <li><strong>Technician:</strong> Anna Miller (anna.miller@company.com)</li>
+            <li><strong>Customer Service:</strong> Amy Garcia (amy.garcia@company.com)</li>
+        </ul>
+        
+        <p><strong>All passwords:</strong> password123</p>
+        
+        <h3>Next Steps:</h3>
+        <ol>
+            <li><a href="/schedule/create" class="btn btn-primary">Create Schedules</a> - Set up shifts for your crews</li>
+            <li><a href="/schedule/view" class="btn btn-info">View Schedules</a> - See crew assignments</li>
+            <li><a href="/logout" class="btn btn-warning">Logout</a> - Try logging in as an employee</li>
+        </ol>
+        
+        <p><a href="/dashboard" class="btn btn-success">Return to Dashboard</a></p>
+        '''
+        
+    except Exception as e:
+        db.session.rollback()
+        return f'''
+        <h2>❌ Error Populating Crews</h2>
+        <p>An error occurred: {str(e)}</p>
+        <p>Make sure you've run <a href="/init-db">/init-db</a> first to create positions and skills.</p>
+        <p><a href="/dashboard" class="btn btn-secondary">Return to Dashboard</a></p>
+        '''
+
+# ==================== ERROR HANDLERS ====================
+
+@app.errorhandler(404)
+def not_found_error(error):
+    return render_template('404.html'), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    db.session.rollback()
+    return render_template('500.html'), 500
+
+# ==================== MAIN ====================
+
+if __name__ == '__main__':
+    app.run(debug=True)
