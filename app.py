@@ -1,3469 +1,3306 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Advanced News Analyzer - Facts & Fakes AI</title>
-    <meta name="description" content="AI-powered news verification with bias detection, fact-checking, and credibility analysis. Detect fake news instantly with our advanced algorithms.">
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_file
+from flask_login import LoginManager, login_user, logout_user, login_required, current_user
+from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
+from datetime import datetime, timedelta, date
+import os
+from sqlalchemy import inspect, case, and_, or_, func
+from models import db, Employee, Position, Skill, Schedule, Availability, TimeOffRequest, VacationCalendar, CoverageRequest, CasualWorker, CasualAssignment, ShiftSwapRequest, ScheduleSuggestion, CircadianProfile, SleepLog, SleepRecommendation, ShiftTransitionPlan, CoverageNotification, OvertimeOpportunity, ShiftTradePost, ShiftTradeProposal, ShiftTrade, TradeMatchPreference, SupervisorMessage, PositionMessage, PositionMessageRead, MaintenanceIssue, MaintenanceUpdate, MaintenanceManager
+from circadian_advisor import CircadianAdvisor
+import json
+import pandas as pd
+from io import BytesIO
+
+app = Flask(__name__)
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key-here')
+
+# Fixed database URL configuration
+database_url = os.environ.get('DATABASE_URL')
+if database_url:
+    # Handle Render's PostgreSQL URL format
+    if database_url.startswith('postgres://'):
+        database_url = database_url.replace('postgres://', 'postgresql://', 1)
+    app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+else:
+    # Fallback to SQLite for local development
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///workforce.db'
+
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['UPLOAD_FOLDER'] = 'uploads'
+app.config['ALLOWED_EXTENSIONS'] = {'xlsx', 'xls', 'csv'}
+
+# Create upload folder if it doesn't exist
+if not os.path.exists(app.config['UPLOAD_FOLDER']):
+    os.makedirs(app.config['UPLOAD_FOLDER'])
+
+db.init_app(app)
+
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'login'
+
+@login_manager.user_loader
+def load_user(user_id):
+    return Employee.query.get(int(user_id))
+
+def allowed_file(filename):
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
+
+# ==================== HELPER FUNCTIONS ====================
+
+def get_coverage_gaps(crew='ALL', days_ahead=7):
+    """Get coverage gaps for the specified crew and time period"""
+    gaps = []
+    start_date = date.today()
+    end_date = start_date + timedelta(days=days_ahead)
     
-    <!-- Bootstrap CSS from cdnjs (CSP approved) -->
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
-    <!-- Font Awesome -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    
-    <style>
-        /* Professional Color Scheme */
-        :root {
-            --primary-blue: #4a90e2;
-            --primary-blue-dark: #357abd;
-            --primary-gradient: linear-gradient(135deg, #4a90e2 0%, #357abd 100%);
-            --success-color: #27ae60;
-            --warning-color: #f39c12;
-            --danger-color: #e74c3c;
-            --text-primary: #2c3e50;
-            --text-secondary: #7f8c8d;
-            --border-color: #ecf0f1;
-            --bg-light: #f8f9fa;
-            --shadow-light: 0 4px 20px rgba(0, 0, 0, 0.1);
-            --shadow-medium: 0 8px 30px rgba(74, 144, 226, 0.2);
-        }
-
-        /* Enhanced Trust Meter - Larger and More Prominent */
-        .trust-meter-container {
-            position: relative;
-            width: 250px;
-            height: 250px;
-            margin: 30px auto;
-            background: linear-gradient(135deg, #f0f4ff 0%, #e0e7ff 100%);
-            border-radius: 50%;
-            box-shadow: 0 10px 40px rgba(74, 144, 226, 0.3);
-            padding: 20px;
-            animation: float 6s ease-in-out infinite;
-        }
-        
-        @keyframes float {
-            0%, 100% { transform: translateY(0px); }
-            50% { transform: translateY(-20px); }
-        }
-        
-        .trust-meter {
-            position: relative;
-            width: 100%;
-            height: 100%;
-        }
-        
-        .trust-meter-circle {
-            width: 100%;
-            height: 100%;
-            transform: rotate(-90deg);
-        }
-        
-        .trust-meter-bg {
-            fill: none;
-            stroke: #e5e7eb;
-            stroke-width: 20;
-        }
-        
-        .trust-meter-fill {
-            fill: none;
-            stroke-width: 20;
-            stroke-linecap: round;
-            transition: all 1.5s cubic-bezier(0.4, 0, 0.2, 1);
-            filter: drop-shadow(0 0 10px currentColor);
-        }
-        
-        .trust-meter-text {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            text-align: center;
-        }
-        
-        .trust-score {
-            font-size: 48px;
-            font-weight: 700;
-            background: var(--primary-gradient);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            display: block;
-        }
-        
-        .trust-label {
-            font-size: 14px;
-            color: #6b7280;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-
-        /* Sticky Upgrade Button */
-        .sticky-upgrade {
-            position: fixed;
-            bottom: 30px;
-            right: 30px;
-            z-index: 1000;
-            animation: pulse 2s infinite;
-        }
-        
-        .sticky-upgrade button {
-            background: var(--primary-gradient);
-            color: white;
-            border: none;
-            padding: 15px 30px;
-            border-radius: 50px;
-            font-weight: 600;
-            font-size: 16px;
-            cursor: pointer;
-            box-shadow: 0 10px 30px rgba(74, 144, 226, 0.4);
-            transition: all 0.3s ease;
-        }
-        
-        .sticky-upgrade button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 15px 40px rgba(74, 144, 226, 0.5);
-        }
-        
-        @keyframes pulse {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.05); }
-            100% { transform: scale(1); }
-        }
-
-        /* Tooltips */
-        .tooltip-container {
-            position: relative;
-            display: inline-block;
-            cursor: help;
-        }
-        
-        .tooltip-icon {
-            width: 16px;
-            height: 16px;
-            background: #e5e7eb;
-            border-radius: 50%;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 11px;
-            color: #6b7280;
-            margin-left: 5px;
-            transition: all 0.2s ease;
-        }
-        
-        .tooltip-icon:hover {
-            background: var(--primary-blue);
-            color: white;
-        }
-        
-        .tooltip-content {
-            position: absolute;
-            bottom: 100%;
-            left: 50%;
-            transform: translateX(-50%);
-            background: #1f2937;
-            color: white;
-            padding: 10px 15px;
-            border-radius: 8px;
-            font-size: 14px;
-            white-space: nowrap;
-            opacity: 0;
-            pointer-events: none;
-            transition: opacity 0.3s ease;
-            margin-bottom: 10px;
-            box-shadow: 0 10px 20px rgba(0,0,0,0.2);
-            max-width: 300px;
-            white-space: normal;
-            z-index: 1000;
-        }
-        
-        .tooltip-container:hover .tooltip-content {
-            opacity: 1;
-        }
-        
-        .tooltip-content::after {
-            content: '';
-            position: absolute;
-            top: 100%;
-            left: 50%;
-            transform: translateX(-50%);
-            border: 6px solid transparent;
-            border-top-color: #1f2937;
-        }
-
-        /* Analysis Timestamp and Version */
-        .analysis-meta {
-            background: var(--bg-light);
-            border: 1px solid var(--border-color);
-            border-radius: 8px;
-            padding: 15px;
-            margin: 20px 0;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 15px;
-        }
-        
-        .meta-item {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            color: var(--text-secondary);
-            font-size: 14px;
-        }
-        
-        .meta-item i {
-            color: var(--primary-blue);
-        }
-
-        /* Confidence Intervals */
-        .confidence-bar {
-            position: relative;
-            height: 30px;
-            background: var(--bg-light);
-            border-radius: 15px;
-            overflow: hidden;
-            margin: 10px 0;
-        }
-        
-        .confidence-fill {
-            height: 100%;
-            background: linear-gradient(90deg, #ef4444 0%, #f59e0b 50%, #10b981 100%);
-            transition: width 1s ease;
-            position: relative;
-        }
-        
-        .confidence-marker {
-            position: absolute;
-            top: 50%;
-            transform: translate(-50%, -50%);
-            width: 4px;
-            height: 20px;
-            background: #1f2937;
-            border-radius: 2px;
-        }
-        
-        .confidence-label {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            color: white;
-            font-weight: 600;
-            font-size: 14px;
-            text-shadow: 0 1px 2px rgba(0,0,0,0.3);
-        }
-
-        /* Pro Features Preview (Grayed Out) */
-        .pro-feature-locked {
-            position: relative;
-            opacity: 0.6;
-            filter: grayscale(100%);
-            pointer-events: none;
-        }
-        
-        .pro-feature-locked::after {
-            content: 'PRO FEATURE';
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%) rotate(-15deg);
-            background: var(--primary-blue);
-            color: white;
-            padding: 5px 20px;
-            border-radius: 20px;
-            font-weight: 600;
-            font-size: 12px;
-            box-shadow: 0 4px 10px rgba(74, 144, 226, 0.3);
-        }
-
-        /* Why This Matters Sections */
-        .why-matters-box {
-            background: #fef3c7;
-            border: 1px solid #fcd34d;
-            border-radius: 8px;
-            padding: 15px;
-            margin: 15px 0;
-        }
-        
-        .why-matters-box h4 {
-            color: #92400e;
-            margin: 0 0 8px 0;
-            font-size: 16px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        
-        .why-matters-box p {
-            color: #78350f;
-            margin: 0;
-            font-size: 14px;
-            line-height: 1.6;
-        }
-
-        /* Methodology Snippets */
-        .methodology-snippet {
-            background: #ede9fe;
-            border: 1px solid #c7d2fe;
-            border-radius: 8px;
-            padding: 12px;
-            margin: 10px 0;
-            font-size: 13px;
-            color: #5b21b6;
-        }
-        
-        .methodology-snippet code {
-            background: #ddd6fe;
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-family: 'Courier New', monospace;
-        }
-
-        /* Learn More Links */
-        .learn-more-link {
-            color: var(--primary-blue);
-            text-decoration: none;
-            font-size: 14px;
-            font-weight: 500;
-            display: inline-flex;
-            align-items: center;
-            gap: 5px;
-            transition: all 0.2s ease;
-        }
-        
-        .learn-more-link:hover {
-            color: var(--primary-blue-dark);
-            gap: 8px;
-        }
-
-        /* Floating particles background */
-        @keyframes float-particle {
-            0%, 100% { transform: translate(0, 0) rotate(0deg); opacity: 0; }
-            10% { opacity: 1; }
-            90% { opacity: 1; }
-            100% { transform: translate(100px, -100vh) rotate(720deg); opacity: 0; }
-        }
-        
-        .particle {
-            position: fixed;
-            pointer-events: none;
-            opacity: 0;
-            animation: float-particle 10s infinite;
-        }
-        
-        .particle:nth-child(odd) { animation-duration: 15s; }
-        .particle:nth-child(even) { animation-duration: 20s; animation-delay: 5s; }
-
-        /* Animated dropdowns with colorful borders */
-        .analysis-dropdown {
-            margin-bottom: 15px;
-            border-radius: 12px;
-            overflow: hidden;
-            transition: all 0.3s ease;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
-        }
-        
-        .analysis-dropdown:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(0,0,0,0.12);
-        }
-        
-        .dropdown-header {
-            padding: 20px;
-            cursor: pointer;
-            background: white;
-            border: 2px solid transparent;
-            transition: all 0.3s ease;
-            position: relative;
-            overflow: hidden;
-        }
-        
-        .dropdown-header::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(74, 144, 226, 0.1), transparent);
-            transition: left 0.5s ease;
-        }
-        
-        .dropdown-header:hover::before {
-            left: 100%;
-        }
-        
-        .dropdown-header h3 {
-            margin: 0;
-            font-size: 20px;
-            display: flex;
-            align-items: center;
-            color: var(--text-primary);
-        }
-        
-        .dropdown-header i {
-            font-size: 24px;
-            margin-right: 15px;
-        }
-        
-        .dropdown-content {
-            padding: 0;
-            max-height: 0;
-            overflow: hidden;
-            transition: all 0.3s ease;
-            background: var(--bg-light);
-        }
-        
-        .dropdown-content.show {
-            max-height: 2000px;
-            padding: 20px;
-        }
-        
-        /* Colorful borders for different sections */
-        .border-trust { border-left: 4px solid #10b981 !important; }
-        .border-bias { border-left: 4px solid #f59e0b !important; }
-        .border-fact { border-left: 4px solid #3b82f6 !important; }
-        .border-author { border-left: 4px solid #8b5cf6 !important; }
-        .border-quality { border-left: 4px solid #ec4899 !important; }
-        .border-agenda { border-left: 4px solid #ef4444 !important; }
-        .border-clickbait { border-left: 4px solid #f97316 !important; }
-        .border-emotion { border-left: 4px solid #06b6d4 !important; }
-        .border-diversity { border-left: 4px solid #84cc16 !important; }
-        .border-time { border-left: 4px solid var(--primary-blue) !important; }
-        .border-ai { border-left: 4px solid #14b8a6 !important; }
-
-        /* Gauge styles */
-        .gauge-container {
-            width: 200px;
-            height: 100px;
-            position: relative;
-            margin: 20px auto;
-        }
-        
-        .gauge {
-            width: 100%;
-            height: 200px;
-            border-radius: 100px 100px 0 0;
-            background: linear-gradient(to right, #10b981 0%, #f59e0b 50%, #ef4444 100%);
-            position: relative;
-            overflow: hidden;
-        }
-        
-        .gauge-mask {
-            width: 160px;
-            height: 160px;
-            background: white;
-            border-radius: 80px 80px 0 0;
-            position: absolute;
-            bottom: 0;
-            left: 50%;
-            transform: translateX(-50%);
-        }
-        
-        .gauge-needle {
-            width: 4px;
-            height: 90px;
-            background: #1f2937;
-            position: absolute;
-            bottom: 0;
-            left: 50%;
-            transform-origin: bottom center;
-            transform: translateX(-50%) rotate(-90deg);
-            transition: transform 1s ease-out;
-            box-shadow: 0 0 10px rgba(0,0,0,0.3);
-        }
-        
-        /* Gauge labels */
-        .gauge-labels {
-            display: flex;
-            justify-content: space-between;
-            margin-top: 10px;
-            padding: 0 10px;
-        }
-
-        /* Progress bar for loading */
-        .progress-container {
-            background: #e5e7eb;
-            border-radius: 10px;
-            padding: 4px;
-            margin: 20px 0;
-        }
-        
-        .progress-bar {
-            height: 30px;
-            background: var(--primary-gradient);
-            border-radius: 8px;
-            width: 0%;
-            transition: width 0.5s ease;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-weight: 600;
-            font-size: 14px;
-        }
-
-        /* Claim cards */
-        .claim-card {
-            background: white;
-            border-radius: 10px;
-            padding: 15px;
-            margin: 10px 0;
-            border: 2px solid #e5e7eb;
-            transition: all 0.3s ease;
-        }
-        
-        .claim-card:hover {
-            transform: translateX(5px);
-            border-color: var(--primary-blue);
-            box-shadow: 0 5px 15px rgba(74, 144, 226, 0.2);
-        }
-        
-        .claim-status {
-            display: inline-block;
-            padding: 5px 15px;
-            border-radius: 20px;
-            font-size: 14px;
-            font-weight: 600;
-            margin-top: 10px;
-        }
-        
-        .status-verified {
-            background: #d1fae5;
-            color: #065f46;
-        }
-        
-        .status-false {
-            background: #fee2e2;
-            color: #991b1b;
-        }
-        
-        .status-unverified {
-            background: #fed7aa;
-            color: #92400e;
-        }
-
-        /* Glowing effect for important elements */
-        @keyframes glow {
-            0% { box-shadow: 0 0 5px rgba(74, 144, 226, 0.5); }
-            50% { box-shadow: 0 0 20px rgba(74, 144, 226, 0.8), 0 0 30px rgba(74, 144, 226, 0.6); }
-            100% { box-shadow: 0 0 5px rgba(74, 144, 226, 0.5); }
-        }
-        
-        .glow-effect {
-            animation: glow 2s ease-in-out infinite;
-        }
-
-        /* PDF button */
-        .pdf-button {
-            background: var(--primary-gradient);
-            color: white;
-            border: none;
-            padding: 12px 24px;
-            border-radius: 8px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-        }
-        
-        .pdf-button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(74, 144, 226, 0.4);
-        }
-
-        /* Source comparison grid */
-        .source-comparison {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 15px;
-            margin: 20px 0;
-        }
-        
-        .source-card {
-            background: white;
-            border: 1px solid #e5e7eb;
-            border-radius: 8px;
-            padding: 15px;
-            text-align: center;
-            transition: all 0.3s ease;
-        }
-        
-        .source-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-        }
-        
-        .source-logo {
-            width: 50px;
-            height: 50px;
-            margin: 0 auto 10px;
-            background: var(--bg-light);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 600;
-            color: var(--text-secondary);
-        }
-        
-        .source-score {
-            font-size: 24px;
-            font-weight: 700;
-            margin: 5px 0;
-        }
-
-        /* Historical accuracy chart */
-        .accuracy-chart {
-            height: 200px;
-            background: var(--bg-light);
-            border-radius: 8px;
-            padding: 20px;
-            position: relative;
-            margin: 20px 0;
-        }
-        
-        .chart-grid {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            right: 20px;
-            bottom: 40px;
-            border-left: 2px solid #e5e7eb;
-            border-bottom: 2px solid #e5e7eb;
-        }
-        
-        .chart-line {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            height: 2px;
-            background: var(--primary-blue);
-        }
-
-        /* Enhanced loading animation stages */
-        .analysis-stage {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            padding: 15px;
-            background: white;
-            border-radius: 8px;
-            margin: 10px 0;
-            opacity: 0.5;
-            transition: all 0.3s ease;
-        }
-        
-        .analysis-stage.active {
-            opacity: 1;
-            background: #eef2ff;
-            transform: scale(1.02);
-            box-shadow: 0 5px 15px rgba(74, 144, 226, 0.2);
-        }
-        
-        .analysis-stage.complete {
-            opacity: 1;
-        }
-        
-        .stage-icon {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            background: #e5e7eb;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.3s ease;
-        }
-        
-        .analysis-stage.active .stage-icon {
-            background: var(--primary-blue);
-            color: white;
-            animation: rotate 1s linear infinite;
-        }
-        
-        .analysis-stage.complete .stage-icon {
-            background: #10b981;
-            color: white;
-        }
-        
-        @keyframes rotate {
-            to { transform: rotate(360deg); }
-        }
-
-        /* Pricing dropdown */
-        .pricing-info {
-            background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
-            border: 2px solid #fbbf24;
-            border-radius: 10px;
-            padding: 20px;
-            margin: 20px 0;
-        }
-        
-        .pricing-tier {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin: 10px 0;
-            padding: 10px;
-            background: white;
-            border-radius: 8px;
-        }
-        
-        .pricing-tier h4 {
-            margin: 0;
-            color: #92400e;
-        }
-        
-        .pricing-tier .price {
-            font-size: 24px;
-            font-weight: 700;
-            color: #dc2626;
-        }
-
-        /* Mobile responsive */
-        @media (max-width: 768px) {
-            .trust-meter-container {
-                width: 200px;
-                height: 200px;
+    current = start_date
+    while current <= end_date:
+        # Check each shift type
+        for shift_type in ['day', 'evening', 'night']:
+            scheduled_query = Schedule.query.filter(
+                Schedule.date == current,
+                Schedule.shift_type == shift_type
+            )
+            
+            if crew != 'ALL':
+                scheduled_query = scheduled_query.filter(Schedule.crew == crew)
+            
+            scheduled_count = scheduled_query.count()
+            
+            # Define minimum coverage requirements
+            min_coverage = {
+                'day': 4,
+                'evening': 3,
+                'night': 2
             }
             
-            .trust-score {
-                font-size: 36px;
-            }
-            
-            .analysis-dropdown {
-                margin-bottom: 10px;
-            }
-            
-            .dropdown-header {
-                padding: 15px;
-            }
-            
-            .dropdown-header h3 {
-                font-size: 18px;
-            }
-            
-            .source-comparison {
-                grid-template-columns: repeat(2, 1fr);
-            }
-            
-            .sticky-upgrade {
-                bottom: 20px;
-                right: 20px;
-            }
-            
-            .sticky-upgrade button {
-                padding: 12px 20px;
-                font-size: 14px;
-            }
-        }
-
-        /* Input section styling */
-        .input-section {
-            background: linear-gradient(135deg, var(--bg-light) 0%, #e5e7eb 100%);
-            border-radius: 15px;
-            padding: 30px;
-            margin-bottom: 30px;
-            box-shadow: var(--shadow-light);
-        }
-        
-        .input-tabs {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
-        }
-        
-        .input-tab {
-            flex: 1;
-            padding: 12px;
-            background: white;
-            border: 2px solid #e5e7eb;
-            border-radius: 8px;
-            cursor: pointer;
-            text-align: center;
-            transition: all 0.3s ease;
-            font-weight: 600;
-        }
-        
-        .input-tab.active {
-            background: var(--primary-gradient);
-            color: white;
-            border-color: transparent;
-        }
-        
-        .input-tab:hover:not(.active) {
-            background: var(--bg-light);
-            border-color: var(--primary-blue);
-        }
-        
-        #news-url, #news-text {
-            width: 100%;
-            padding: 15px;
-            border: 2px solid #e5e7eb;
-            border-radius: 8px;
-            font-size: 16px;
-            transition: all 0.3s ease;
-        }
-        
-        #news-url:focus, #news-text:focus {
-            outline: none;
-            border-color: var(--primary-blue);
-            box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.1);
-        }
-        
-        #news-text {
-            min-height: 150px;
-            resize: vertical;
-        }
-        
-        .analyze-button {
-            width: 100%;
-            padding: 15px;
-            background: var(--primary-gradient);
-            color: white;
-            border: none;
-            border-radius: 8px;
-            font-size: 18px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            margin-top: 20px;
-        }
-        
-        .analyze-button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 25px rgba(74, 144, 226, 0.3);
-        }
-        
-        .analyze-button:active {
-            transform: translateY(0);
-        }
-
-        /* News container styling */
-        .news-container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-
-        /* Header styling */
-        .news-header {
-            text-align: center;
-            margin-bottom: 40px;
-            padding: 40px 20px;
-            background: white;
-            border-radius: 15px;
-            box-shadow: var(--shadow-light);
-            position: relative;
-            overflow: hidden;
-        }
-
-        .news-header::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 5px;
-            background: var(--primary-gradient);
-        }
-
-        .news-header h1 {
-            font-size: 2.5em;
-            margin-bottom: 15px;
-            font-weight: 700;
-            background: var(--primary-gradient);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
-
-        .news-header p {
-            font-size: 1.2em;
-            color: var(--text-secondary);
-            max-width: 600px;
-            margin: 0 auto;
-            line-height: 1.6;
-        }
-
-        /* Loading overlay styles */
-        .loading-overlay {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(255, 255, 255, 0.95);
-            z-index: 9999;
-            backdrop-filter: blur(10px);
-            justify-content: center;
-            align-items: center;
-        }
-
-        .loading-content {
-            text-align: center;
-            max-width: 500px;
-            width: 90%;
-            background: white;
-            padding: 40px;
-            border-radius: 15px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
-        }
-
-        .loading-spinner {
-            width: 80px;
-            height: 80px;
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid var(--primary-blue);
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 30px;
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
-        .loading-text {
-            font-size: 1.3em;
-            font-weight: 600;
-            margin-bottom: 15px;
-            color: var(--text-primary);
-        }
-
-        .loading-subtext {
-            color: var(--text-secondary);
-            margin-bottom: 20px;
-        }
-
-        /* Results section styling */
-        .results-section {
-            display: none;
-            margin-top: 40px;
-        }
-
-        .results-header {
-            background: var(--primary-gradient);
-            color: white;
-            padding: 30px;
-            border-radius: 15px 15px 0 0;
-            text-align: center;
-        }
-
-        .results-header h2 {
-            font-size: 2em;
-            margin-bottom: 10px;
-        }
-
-        .results-content {
-            background: white;
-            border-radius: 0 0 15px 15px;
-            box-shadow: var(--shadow-light);
-            overflow: hidden;
-        }
-
-        /* Enhanced error container styling */
-        .error-container {
-            display: none;
-            background: #fef2f2;
-            border: 2px solid #fed7d7;
-            border-radius: 12px;
-            padding: 30px;
-            margin: 20px 0;
-            text-align: center;
-            box-shadow: 0 5px 15px rgba(231, 76, 60, 0.1);
-        }
-
-        .error-container i {
-            font-size: 3em;
-            color: var(--danger-color);
-            margin-bottom: 20px;
-        }
-
-        .error-container h3 {
-            color: var(--danger-color);
-            margin-bottom: 15px;
-            font-size: 1.5em;
-        }
-
-        .error-container p {
-            color: #742a2a;
-            margin-bottom: 20px;
-            line-height: 1.6;
-        }
-
-        .error-suggestions {
-            background: white;
-            border-radius: 8px;
-            padding: 20px;
-            margin: 20px 0;
-            text-align: left;
-        }
-
-        .error-suggestions h4 {
-            color: #742a2a;
-            margin-bottom: 15px;
-            font-size: 1.2em;
-        }
-
-        .error-suggestions ul {
-            list-style: none;
-            padding: 0;
-        }
-
-        .error-suggestions li {
-            padding: 10px 0 10px 35px;
-            position: relative;
-            color: #5a2121;
-            line-height: 1.5;
-        }
-
-        .error-suggestions li:before {
-            content: "→";
-            position: absolute;
-            left: 10px;
-            color: var(--danger-color);
-            font-weight: bold;
-        }
-
-        .retry-btn {
-            background: var(--danger-color);
-            color: white;
-            border: none;
-            padding: 12px 30px;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            font-weight: 600;
-            font-size: 16px;
-            margin-top: 10px;
-        }
-
-        .retry-btn:hover {
-            background: #c53030;
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(231, 76, 60, 0.3);
-        }
-
-        .alternate-action {
-            margin-top: 20px;
-            padding-top: 20px;
-            border-top: 1px solid #fed7d7;
-        }
-
-        .alternate-btn {
-            background: var(--primary-blue);
-            color: white;
-            border: none;
-            padding: 12px 30px;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            font-weight: 600;
-            margin: 5px;
-        }
-
-        .alternate-btn:hover {
-            background: var(--primary-blue-dark);
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(74, 144, 226, 0.3);
-        }
-    </style>
-</head>
-<body>
-    <!-- Floating particles for visual appeal -->
-    <div class="particle" style="left: 10%; top: 20%; width: 6px; height: 6px; background: var(--primary-blue); border-radius: 50%;"></div>
-    <div class="particle" style="left: 80%; top: 40%; width: 8px; height: 8px; background: var(--primary-blue-dark); border-radius: 50%;"></div>
-    <div class="particle" style="left: 60%; top: 60%; width: 5px; height: 5px; background: #10b981; border-radius: 50%;"></div>
-    <div class="particle" style="left: 30%; top: 80%; width: 7px; height: 7px; background: #f59e0b; border-radius: 50%;"></div>
-
-    <!-- Facts & Fakes AI Navigation Header --> 
-    <style>
-    /* Reset any conflicting styles */
-    .ff-nav * {
-        box-sizing: border-box;
-        margin: 0;
-        padding: 0;
-    }
-
-    /* Main navigation bar */
-    .ff-nav {
-        background: rgba(255, 255, 255, 0.95);
-        backdrop-filter: blur(10px);
-        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        z-index: 9999;
-        height: 60px;
-        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    }
-
-    .ff-nav-container {
-        max-width: 1200px;
-        margin: 0 auto;
-        padding: 0 20px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        height: 60px;
-    }
-
-    /* Logo */
-    .ff-nav-logo {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        text-decoration: none;
-        color: #667eea;
-        font-weight: 700;
-        font-size: 1.1rem;
-        transition: transform 0.3s ease;
-    }
-
-    .ff-nav-logo:hover {
-        transform: scale(1.05);
-    }
-
-    .ff-nav-logo i {
-        font-size: 1.4rem;
-    }
-
-    /* Navigation links */
-    .ff-nav-links {
-        display: flex;
-        gap: 5px;
-        align-items: center;
-    }
-
-    .ff-nav-link {
-        color: #4a5568;
-        text-decoration: none;
-        padding: 8px 16px;
-        border-radius: 8px;
-        transition: all 0.3s ease;
-        font-weight: 500;
-        font-size: 0.9rem;
-        display: flex;
-        align-items: center;
-        gap: 6px;
-    }
-
-    .ff-nav-link:hover {
-        background: rgba(102, 126, 234, 0.1);
-        color: #667eea;
-        transform: translateY(-2px);
-    }
-
-    .ff-nav-link.active {
-        background: rgba(102, 126, 234, 0.15);
-        color: #667eea;
-        font-weight: 600;
-    }
-
-    .ff-nav-link i {
-        font-size: 0.9rem;
-    }
-
-    /* Auth buttons */
-    .ff-nav-auth {
-        display: flex;
-        gap: 10px;
-        align-items: center;
-        position: relative;
-    }
-
-    .ff-nav-login, .ff-nav-signup {
-        padding: 8px 20px;
-        text-decoration: none;
-        border-radius: 8px;
-        font-weight: 600;
-        font-size: 0.9rem;
-        transition: all 0.3s ease;
-    }
-
-    .ff-nav-login {
-        color: #667eea;
-        border: 2px solid #667eea;
-    }
-
-    .ff-nav-login:hover {
-        background: #667eea;
-        color: white;
-        transform: translateY(-2px);
-    }
-
-    .ff-nav-signup {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        border: 2px solid transparent;
-    }
-
-    .ff-nav-signup:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
-    }
-
-    /* Beta balloon */
-    .ff-beta-balloon {
-        position: absolute;
-        top: -35px;
-        right: 50px;
-        background: linear-gradient(135deg, #ff6b35, #f7931e);
-        color: white;
-        padding: 6px 12px;
-        border-radius: 20px;
-        font-size: 0.75rem;
-        font-weight: 600;
-        white-space: nowrap;
-        animation: ff-bounce 2s infinite;
-        box-shadow: 0 4px 15px rgba(255, 107, 53, 0.3);
-    }
-
-    .ff-beta-balloon::after {
-        content: '';
-        position: absolute;
-        bottom: -6px;
-        right: 20px;
-        width: 0;
-        height: 0;
-        border-left: 6px solid transparent;
-        border-right: 6px solid transparent;
-        border-top: 6px solid #f7931e;
-    }
-
-    @keyframes ff-bounce {
-        0%, 100% { transform: translateY(0); }
-        50% { transform: translateY(-5px); }
-    }
-
-    /* User menu */
-    .ff-user-menu {
-        position: relative;
-        display: none;
-    }
-
-    .ff-user-menu-toggle {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 8px 16px;
-        background: rgba(102, 126, 234, 0.1);
-        border-radius: 8px;
-        cursor: pointer;
-        transition: all 0.3s ease;
-        color: #4a5568;
-        font-weight: 500;
-        font-size: 0.9rem;
-    }
-
-    .ff-user-menu-toggle:hover {
-        background: rgba(102, 126, 234, 0.2);
-    }
-
-    .ff-user-dropdown {
-        position: absolute;
-        top: 100%;
-        right: 0;
-        margin-top: 10px;
-        background: white;
-        border-radius: 12px;
-        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
-        border: 1px solid rgba(0, 0, 0, 0.1);
-        min-width: 280px;
-        opacity: 0;
-        visibility: hidden;
-        transform: translateY(-10px);
-        transition: all 0.3s ease;
-    }
-
-    .ff-user-dropdown.active {
-        opacity: 1;
-        visibility: visible;
-        transform: translateY(0);
-    }
-
-    /* Mobile menu button */
-    .ff-mobile-menu-btn {
-        display: none;
-        background: none;
-        border: none;
-        color: #4a5568;
-        font-size: 1.5rem;
-        cursor: pointer;
-        padding: 8px;
-        transition: all 0.3s ease;
-    }
-
-    .ff-mobile-menu-btn:hover {
-        color: #667eea;
-    }
-
-    /* Mobile responsive */
-    @media (max-width: 768px) {
-        .ff-nav-links {
-            display: none;
-            position: absolute;
-            top: 100%;
-            left: 0;
-            right: 0;
-            background: white;
-            flex-direction: column;
-            padding: 20px;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
-            border-top: 1px solid #e2e8f0;
-        }
-        
-        .ff-nav-links.active {
-            display: flex;
-        }
-        
-        .ff-nav-link {
-            width: 100%;
-            padding: 12px 20px;
-        }
-        
-        .ff-mobile-menu-btn {
-            display: block;
-        }
-        
-        .ff-nav-auth {
-            display: none;
-        }
-        
-        .ff-user-menu {
-            display: none !important;
-        }
-        
-        .ff-beta-balloon {
-            display: none;
-        }
-    }
-    </style>
-
-    <nav class="ff-nav">
-        <div class="ff-nav-container">
-            <a href="/" class="ff-nav-logo">
-                <i class="fas fa-shield-alt"></i>
-                <span>Facts & Fakes AI</span>
-            </a>
-            
-            <div class="ff-nav-links" id="ffNavLinks">
-                <a href="/" class="ff-nav-link"><i class="fas fa-home"></i> Home</a>
-                <a href="/news" class="ff-nav-link"><i class="fas fa-newspaper"></i> News Verify</a>
-                <a href="/speech" class="ff-nav-link"><i class="fas fa-microphone"></i> Speech Check</a>
-                <a href="/unified" class="ff-nav-link"><i class="fas fa-search"></i> Content Check</a>
-                <a href="/imageanalysis" class="ff-nav-link"><i class="fas fa-image"></i> Image Analysis</a>
-                <a href="/missionstatement" class="ff-nav-link"><i class="fas fa-bullseye"></i> Mission</a>
-                <a href="/pricingplan" class="ff-nav-link"><i class="fas fa-tags"></i> Pricing</a>
-                <a href="/contact" class="ff-nav-link"><i class="fas fa-envelope"></i> Contact</a>
-            </div>
-            
-            <div class="ff-nav-auth" id="ffNavAuth">
-                <a href="/login" class="ff-nav-login">Login</a>
-                <a href="/pricingplan" class="ff-nav-signup">Sign Up</a>
-                <div class="ff-beta-balloon">
-                    sign up now to start your free trial
-                </div>
-            </div>
-            
-            <div class="ff-user-menu" id="ffUserMenu">
-                <div class="ff-user-menu-toggle" onclick="ffToggleUserDropdown()">
-                    <span id="ffUserEmail">user@example.com</span>
-                    <i class="fas fa-chevron-down"></i>
-                </div>
-                <div class="ff-user-dropdown" id="ffUserDropdown">
-                    <div style="padding: 20px; border-bottom: 1px solid #e2e8f0;">
-                        <div style="font-weight: 600; color: #2d3748; margin-bottom: 4px;" id="ffUserEmailDropdown">user@example.com</div>
-                        <div style="font-size: 0.85rem; color: #667eea; font-weight: 500;" id="ffUserPlan">Free Plan</div>
-                    </div>
-                    <div style="padding: 20px; border-bottom: 1px solid #e2e8f0;">
-                        <div style="font-size: 0.85rem; color: #718096; margin-bottom: 8px; font-weight: 500;">Daily Usage</div>
-                        <div style="background: #e2e8f0; height: 8px; border-radius: 4px; overflow: hidden; margin-bottom: 8px;">
-                            <div id="ffUsageProgress" style="height: 100%; background: linear-gradient(135deg, #667eea, #764ba2); width: 0%; transition: width 0.5s ease;"></div>
-                        </div>
-                        <div style="font-size: 0.8rem; color: #4a5568;" id="ffUsageText">0 / 5 analyses used</div>
-                    </div>
-                    <div style="padding: 10px 0;">
-                        <a href="/account" style="display: flex; align-items: center; gap: 10px; padding: 12px 20px; color: #4a5568; text-decoration: none; transition: all 0.3s ease; font-size: 0.9rem;"><i class="fas fa-user"></i> Account Settings</a>
-                        <a href="/billing" style="display: flex; align-items: center; gap: 10px; padding: 12px 20px; color: #4a5568; text-decoration: none; transition: all 0.3s ease; font-size: 0.9rem;"><i class="fas fa-credit-card"></i> Billing</a>
-                        <a href="/api-keys" style="display: flex; align-items: center; gap: 10px; padding: 12px 20px; color: #4a5568; text-decoration: none; transition: all 0.3s ease; font-size: 0.9rem;"><i class="fas fa-key"></i> API Keys</a>
-                        <a href="#" onclick="ffLogout()" style="display: flex; align-items: center; gap: 10px; padding: 12px 20px; color: #4a5568; text-decoration: none; transition: all 0.3s ease; font-size: 0.9rem;"><i class="fas fa-sign-out-alt"></i> Logout</a>
-                    </div>
-                </div>
-            </div>
-            
-            <button class="ff-mobile-menu-btn" onclick="ffToggleMobileMenu()">
-                <i class="fas fa-bars"></i>
-            </button>
-        </div>
-    </nav>
-
-    <script>
-    // Namespace all functions to avoid conflicts
-    window.ffNav = {
-        checkAuthStatus: async function() {
-            try {
-                const response = await fetch('/api/user/status');
-                
-                // Check if response is OK and content type is JSON
-                if (!response.ok || !response.headers.get('content-type')?.includes('application/json')) {
-                    console.log('Auth endpoint not available or not returning JSON');
-                    return;
-                }
-                
-                const data = await response.json();
-                
-                if (data.authenticated) {
-                    document.getElementById('ffNavAuth').style.display = 'none';
-                    document.getElementById('ffUserMenu').style.display = 'block';
-                    
-                    document.getElementById('ffUserEmail').textContent = data.email || 'User';
-                    document.getElementById('ffUserEmailDropdown').textContent = data.email || 'User';
-                    document.getElementById('ffUserPlan').textContent = data.plan === 'pro' ? 'Pro Plan' : 'Free Plan';
-                    
-                    const usagePercent = (data.usage_today / data.daily_limit) * 100;
-                    document.getElementById('ffUsageProgress').style.width = usagePercent + '%';
-                    document.getElementById('ffUsageText').textContent = `${data.usage_today} / ${data.daily_limit} analyses used`;
-                }
-            } catch (error) {
-                // Silently fail - user is not authenticated or endpoint doesn't exist
-                console.log('Auth check skipped:', error.message);
-            }
-        },
-        
-        init: function() {
-            this.checkAuthStatus();
-            
-            // Close dropdown when clicking outside
-            document.addEventListener('click', function(event) {
-                const userMenu = document.querySelector('.ff-user-menu');
-                if (userMenu && !userMenu.contains(event.target)) {
-                    document.getElementById('ffUserDropdown').classList.remove('active');
-                }
-            });
-            
-            // Add active class to current page
-            const currentPath = window.location.pathname;
-            document.querySelectorAll('.ff-nav-link').forEach(link => {
-                if (link.getAttribute('href') === currentPath) {
-                    link.classList.add('active');
-                }
-            });
-        }
-    };
-
-    // Global functions for onclick handlers
-    function ffToggleMobileMenu() {
-        const navLinks = document.getElementById('ffNavLinks');
-        navLinks.classList.toggle('active');
-    }
-
-    function ffToggleUserDropdown() {
-        const dropdown = document.getElementById('ffUserDropdown');
-        dropdown.classList.toggle('active');
-    }
-
-    async function ffLogout() {
-        try {
-            await fetch('/api/logout', { method: 'POST' });
-            window.location.href = '/';
-        } catch (error) {
-            console.error('Logout failed:', error);
-        }
-    }
-
-    // Initialize when DOM is ready
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', function() {
-            window.ffNav.init();
-        });
-    } else {
-        window.ffNav.init();
-    }
-    </script>
-
-    <!-- Add spacing after fixed header -->
-    <div style="height: 60px;"></div>
-
-    <div class="news-container">
-        <!-- Header Section -->
-        <div class="news-header">
-            <h1>
-                <i class="fas fa-newspaper text-primary me-3"></i>
-                Advanced News Analyzer
-            </h1>
-            <p>
-                Verify news authenticity with AI-powered analysis
-                <span class="tooltip-container">
-                    <span class="tooltip-icon">?</span>
-                    <span class="tooltip-content">
-                        Our AI analyzes 15+ factors including source credibility, writing patterns, 
-                        bias indicators, and cross-references with fact-checking databases.
-                    </span>
-                </span>
-            </p>
-            <!-- Overview Process Button -->
-            <button class="btn btn-outline-primary mt-3" onclick="showAnalysisProcess()">
-                <i class="fas fa-info-circle me-2"></i>View Our Analysis Process
-            </button>
-        </div>
-
-        <!-- Input Section with animated gradient background -->
-        <div class="input-section">
-            <div class="input-tabs">
-                <div class="input-tab active" onclick="switchInputType('url')">
-                    <i class="fas fa-link me-2"></i>Analyze URL
-                </div>
-                <div class="input-tab" onclick="switchInputType('text')">
-                    <i class="fas fa-file-alt me-2"></i>Paste Text
-                </div>
-            </div>
-            
-            <div id="url-input-section">
-                <input type="url" id="news-url" placeholder="https://example.com/article" />
-                <small class="text-muted d-block mt-2">
-                    <i class="fas fa-info-circle me-1"></i>
-                    We'll extract the full article, metadata, and verify the source
-                </small>
-                <small class="text-muted d-block mt-1">
-                    <i class="fas fa-lightbulb me-1"></i>
-                    <strong>Tip:</strong> Some news sites block automated access. If you encounter issues, use the "Paste Text" tab instead.
-                </small>
-            </div>
-            
-            <div id="text-input-section" style="display: none;">
-                <textarea id="news-text" placeholder="Paste the article text here..."></textarea>
-                <small class="text-muted d-block mt-2">
-                    <i class="fas fa-info-circle me-1"></i>
-                    Include the headline and author if available for best results
-                </small>
-            </div>
-            
-            <button class="analyze-button glow-effect" onclick="analyzeArticle()">
-                <i class="fas fa-search me-2"></i>Analyze Now
-            </button>
-        </div>
-
-        <!-- Loading Section with Enhanced Progress -->
-        <div id="loading-section" style="display: none;">
-            <!-- Compact Fixed Progress Bar -->
-            <div style="position: fixed; top: 0; left: 0; right: 0; background: white; box-shadow: 0 2px 10px rgba(0,0,0,0.1); z-index: 1000; padding: 20px;">
-                <div class="container">
-                    <h5 class="mb-2">
-                        <i class="fas fa-brain fa-pulse me-2 text-primary"></i>
-                        AI Analysis in Progress...
-                    </h5>
-                    <div class="progress-container" style="margin-bottom: 10px;">
-                        <div class="progress-bar" id="analysis-progress">0%</div>
-                    </div>
-                    <p class="mb-0 text-muted" id="current-stage-text">Initializing analysis...</p>
-                </div>
-            </div>
-            
-            <!-- Stages (below fixed header) -->
-            <div class="card shadow-lg border-0 mb-5" style="margin-top: 120px;">
-                <div class="card-body p-4">
-                    <!-- Enhanced stages -->
-                    <div class="analysis-stage" id="stage-1">
-                        <div class="stage-icon">
-                            <i class="fas fa-download"></i>
-                        </div>
-                        <div class="flex-grow-1">
-                            <h5 class="mb-1">Extracting Content</h5>
-                            <small class="text-muted">Retrieving article text, metadata, and author information</small>
-                        </div>
-                    </div>
-                    
-                    <div class="analysis-stage" id="stage-2">
-                        <div class="stage-icon">
-                            <i class="fas fa-brain"></i>
-                        </div>
-                        <div class="flex-grow-1">
-                            <h5 class="mb-1">AI Deep Analysis (GPT-4)</h5>
-                            <small class="text-muted">Analyzing writing patterns, style, and authenticity markers</small>
-                        </div>
-                    </div>
-                    
-                    <div class="analysis-stage" id="stage-3">
-                        <div class="stage-icon">
-                            <i class="fas fa-check-double"></i>
-                        </div>
-                        <div class="flex-grow-1">
-                            <h5 class="mb-1">Cross-Reference Fact Checking</h5>
-                            <small class="text-muted">Verifying claims against multiple fact-checking databases</small>
-                        </div>
-                    </div>
-                    
-                    <div class="analysis-stage" id="stage-4">
-                        <div class="stage-icon">
-                            <i class="fas fa-balance-scale"></i>
-                        </div>
-                        <div class="flex-grow-1">
-                            <h5 class="mb-1">Bias & Manipulation Detection</h5>
-                            <small class="text-muted">Scanning for political bias, emotional manipulation, and agenda</small>
-                        </div>
-                    </div>
-                    
-                    <div class="analysis-stage" id="stage-5">
-                        <div class="stage-icon">
-                            <i class="fas fa-chart-line"></i>
-                        </div>
-                        <div class="flex-grow-1">
-                            <h5 class="mb-1">Source Reliability Analysis</h5>
-                            <small class="text-muted">Checking historical accuracy and credibility patterns</small>
-                        </div>
-                    </div>
-                    
-                    <div class="analysis-stage" id="stage-6">
-                        <div class="stage-icon">
-                            <i class="fas fa-file-alt"></i>
-                        </div>
-                        <div class="flex-grow-1">
-                            <h5 class="mb-1">Generating Comprehensive Report</h5>
-                            <small class="text-muted">Compiling findings with confidence intervals and recommendations</small>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Results Section -->
-        <div id="results-section" style="display: none;">
-            <!-- Analysis Metadata -->
-            <div class="analysis-meta">
-                <div class="meta-item">
-                    <i class="fas fa-clock"></i>
-                    <span>Analyzed: <span id="analysis-time"></span></span>
-                </div>
-                <div class="meta-item">
-                    <i class="fas fa-code-branch"></i>
-                    <span>Model Version: GPT-4 v2.1</span>
-                </div>
-                <div class="meta-item">
-                    <i class="fas fa-server"></i>
-                    <span>Analysis ID: <span id="analysis-id"></span></span>
-                </div>
-                <div class="meta-item">
-                    <button class="pdf-button" onclick="generatePDF()">
-                        <i class="fas fa-file-pdf"></i>Generate PDF Report
-                    </button>
-                </div>
-            </div>
-
-            <!-- Enhanced Trust Meter (Larger) -->
-            <div class="trust-meter-container">
-                <div class="trust-meter">
-                    <svg class="trust-meter-circle" viewBox="0 0 200 200">
-                        <circle class="trust-meter-bg" cx="100" cy="100" r="90"/>
-                        <circle class="trust-meter-fill" cx="100" cy="100" r="90"
-                                stroke-dasharray="565.48" stroke-dashoffset="565.48"/>
-                    </svg>
-                    <div class="trust-meter-text">
-                        <span class="trust-score" id="trust-score">0</span>
-                        <span class="trust-label">Trust Score</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Overall Assessment (Always Open) -->
-            <div class="analysis-dropdown border-trust">
-                <div class="dropdown-header">
-                    <h3><i class="fas fa-chart-pie"></i>Overall Assessment</h3>
-                </div>
-                <div class="dropdown-content show">
-                    <div id="overall-assessment"></div>
-                    
-                    <!-- Why This Matters -->
-                    <div class="why-matters-box">
-                        <h4><i class="fas fa-lightbulb"></i>Why This Matters</h4>
-                        <p id="why-overall-matters">
-                            Understanding the overall credibility helps you make informed decisions about 
-                            sharing, citing, or acting on this information. High credibility means the article 
-                            is more likely to be factual and trustworthy.
-                        </p>
-                    </div>
-                    
-                    <!-- Confidence Interval -->
-                    <div class="mt-3">
-                        <h5>Confidence Level
-                            <span class="tooltip-container">
-                                <span class="tooltip-icon">?</span>
-                                <span class="tooltip-content">
-                                    Our confidence in this assessment based on available data and analysis certainty
-                                </span>
-                            </span>
-                        </h5>
-                        <div class="confidence-bar">
-                            <div class="confidence-fill" id="overall-confidence" style="width: 0%">
-                                <div class="confidence-label">0%</div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="key-findings mt-4">
-                        <h5>Key Findings:</h5>
-                        <ul id="key-findings-list"></ul>
-                    </div>
-                    
-                    <div class="red-flags mt-3">
-                        <h5>Red Flags:</h5>
-                        <ul id="red-flags-list"></ul>
-                    </div>
-                    
-                    <a href="#" class="learn-more-link mt-3" onclick="showMethodology()">
-                        Learn about our methodology <i class="fas fa-arrow-right"></i>
-                    </a>
-                </div>
-            </div>
-
-            <!-- Source Credibility -->
-            <div class="analysis-dropdown border-author">
-                <div class="dropdown-header" onclick="toggleDropdown(this)">
-                    <h3><i class="fas fa-globe"></i>Source Credibility & Comparison</h3>
-                </div>
-                <div class="dropdown-content">
-                    <div id="source-credibility"></div>
-                    
-                    <!-- Source Comparison Grid -->
-                    <h5 class="mt-4">How This Source Compares</h5>
-                    <div class="source-comparison">
-                        <div class="source-card">
-                            <div class="source-logo">CNN</div>
-                            <div class="source-score text-success">85%</div>
-                            <small class="text-muted">Avg. Accuracy</small>
-                        </div>
-                        <div class="source-card">
-                            <div class="source-logo">FOX</div>
-                            <div class="source-score text-warning">72%</div>
-                            <small class="text-muted">Avg. Accuracy</small>
-                        </div>
-                        <div class="source-card">
-                            <div class="source-logo">BBC</div>
-                            <div class="source-score text-success">91%</div>
-                            <small class="text-muted">Avg. Accuracy</small>
-                        </div>
-                        <div class="source-card">
-                            <div class="source-logo">THIS</div>
-                            <div class="source-score" id="this-source-score">--</div>
-                            <small class="text-muted">This Source</small>
-                        </div>
-                    </div>
-                    
-                    <!-- Historical Accuracy (Pro Feature Preview) -->
-                    <div class="pro-feature-locked mt-4">
-                        <h5>Historical Accuracy Trend</h5>
-                        <div class="accuracy-chart">
-                            <div class="chart-grid">
-                                <div class="chart-line"></div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="methodology-snippet">
-                        <strong>How we calculate this:</strong> Source credibility = 
-                        <code>0.4 × historical_accuracy + 0.3 × transparency + 0.2 × corrections_policy + 0.1 × awards</code>
-                    </div>
-                    
-                    <div class="what-this-means mt-3">
-                        <h5>What This Means:</h5>
-                        <p id="source-explanation"></p>
-                    </div>
-                    
-                    <div class="how-detected mt-3">
-                        <h5>How We Detected This:</h5>
-                        <p id="source-methodology"></p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Author Credibility -->
-            <div class="analysis-dropdown border-author">
-                <div class="dropdown-header" onclick="toggleDropdown(this)">
-                    <h3><i class="fas fa-user-check"></i>Author Credibility & Background</h3>
-                </div>
-                <div class="dropdown-content">
-                    <div id="author-credibility"></div>
-                    
-                    <!-- Author Research Links -->
-                    <div class="mt-3">
-                        <h5>Research This Author:</h5>
-                        <div class="btn-group" role="group">
-                            <a href="#" class="btn btn-outline-primary btn-sm" id="author-twitter" target="_blank">
-                                <i class="fab fa-twitter me-1"></i>Twitter
-                            </a>
-                            <a href="#" class="btn btn-outline-primary btn-sm" id="author-google" target="_blank">
-                                <i class="fab fa-google me-1"></i>Google
-                            </a>
-                            <a href="#" class="btn btn-outline-primary btn-sm" id="author-linkedin" target="_blank">
-                                <i class="fab fa-linkedin me-1"></i>LinkedIn
-                            </a>
-                        </div>
-                    </div>
-                    
-                    <div class="why-matters-box mt-3">
-                        <h4><i class="fas fa-lightbulb"></i>Why This Matters</h4>
-                        <p>
-                            Authors with established expertise and transparent backgrounds are more likely 
-                            to produce accurate, well-researched content. Anonymous or unverifiable authors 
-                            should be approached with more skepticism.
-                        </p>
-                    </div>
-                    
-                    <div class="what-this-means mt-3">
-                        <h5>What This Means:</h5>
-                        <p id="author-explanation"></p>
-                    </div>
-                    
-                    <div class="how-detected mt-3">
-                        <h5>How We Detected This:</h5>
-                        <p id="author-methodology"></p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Writing Quality -->
-            <div class="analysis-dropdown border-quality">
-                <div class="dropdown-header" onclick="toggleDropdown(this)">
-                    <h3><i class="fas fa-pen-fancy"></i>Writing Quality & Professionalism</h3>
-                </div>
-                <div class="dropdown-content">
-                    <div id="writing-quality"></div>
-                    
-                    <div class="methodology-snippet">
-                        <strong>Analysis includes:</strong> Grammar scoring, readability index (Flesch-Kincaid), 
-                        vocabulary diversity, sentence structure variation, and professional tone markers.
-                    </div>
-                    
-                    <div class="what-this-means mt-3">
-                        <h5>What This Means:</h5>
-                        <p id="quality-explanation"></p>
-                    </div>
-                    
-                    <div class="how-detected mt-3">
-                        <h5>How We Detected This:</h5>
-                        <p id="quality-methodology"></p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Fact-Checking -->
-            <div class="analysis-dropdown border-fact">
-                <div class="dropdown-header" onclick="toggleDropdown(this)">
-                    <h3><i class="fas fa-check-double"></i>Fact-Checking Results</h3>
-                </div>
-                <div class="dropdown-content">
-                    <div id="fact-checking"></div>
-                    
-                    <!-- Confidence Intervals for Each Claim -->
-                    <div class="mt-4" id="claim-confidence-section">
-                        <!-- Dynamically populated -->
-                    </div>
-                    
-                    <div class="why-matters-box mt-3">
-                        <h4><i class="fas fa-lightbulb"></i>Why This Matters</h4>
-                        <p>
-                            False or misleading claims can shape opinions and decisions. We verify each 
-                            claim against multiple trusted fact-checking databases and provide confidence 
-                            levels for our assessments.
-                        </p>
-                    </div>
-                    
-                    <div class="what-this-means mt-3">
-                        <h5>What This Means:</h5>
-                        <p id="fact-explanation"></p>
-                    </div>
-                    
-                    <div class="how-detected mt-3">
-                        <h5>How We Detected This:</h5>
-                        <p id="fact-methodology"></p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Political Bias -->
-            <div class="analysis-dropdown border-bias">
-                <div class="dropdown-header" onclick="toggleDropdown(this)">
-                    <h3><i class="fas fa-balance-scale"></i>Political Bias Detection</h3>
-                </div>
-                <div class="dropdown-content">
-                    <!-- Bias spectrum bar -->
-                    <div class="bias-spectrum mt-3 mb-4">
-                        <div style="position: relative; height: 30px; background: linear-gradient(to right, #3b82f6 0%, #e5e7eb 50%, #ef4444 100%); border-radius: 15px;">
-                            <div id="bias-marker" style="position: absolute; top: -5px; width: 40px; height: 40px; background: white; border: 3px solid #1f2937; border-radius: 50%; left: 50%; transform: translateX(-50%); box-shadow: 0 2px 10px rgba(0,0,0,0.3);"></div>
-                        </div>
-                        <div class="d-flex justify-content-between mt-2">
-                            <small>Far Left</small>
-                            <small>Center</small>
-                            <small>Far Right</small>
-                        </div>
-                    </div>
-                    
-                    <div id="political-bias"></div>
-                    
-                    <div class="methodology-snippet">
-                        <strong>Bias detection algorithm:</strong> We analyze word choice, framing, 
-                        source selection, and compare against our database of 50,000+ politically-charged 
-                        terms weighted by context and frequency.
-                    </div>
-                    
-                    <div class="what-this-means mt-3">
-                        <h5>What This Means:</h5>
-                        <p id="bias-explanation"></p>
-                    </div>
-                    
-                    <div class="how-detected mt-3">
-                        <h5>How We Detected This:</h5>
-                        <p id="bias-methodology"></p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Hidden Agenda -->
-            <div class="analysis-dropdown border-agenda">
-                <div class="dropdown-header" onclick="toggleDropdown(this)">
-                    <h3><i class="fas fa-user-secret"></i>Hidden Agenda Detection</h3>
-                </div>
-                <div class="dropdown-content">
-                    <div id="hidden-agenda"></div>
-                    
-                    <div class="why-matters-box mt-3">
-                        <h4><i class="fas fa-lightbulb"></i>Why This Matters</h4>
-                        <p>
-                            Articles with hidden agendas may appear objective but subtly push commercial, 
-                            political, or ideological interests. Recognizing these helps you understand 
-                            the true purpose behind the content.
-                        </p>
-                    </div>
-                    
-                    <div class="what-this-means mt-3">
-                        <h5>What This Means:</h5>
-                        <p id="agenda-explanation"></p>
-                    </div>
-                    
-                    <div class="how-detected mt-3">
-                        <h5>How We Detected This:</h5>
-                        <p id="agenda-methodology"></p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Clickbait Analysis -->
-            <div class="analysis-dropdown border-clickbait">
-                <div class="dropdown-header" onclick="toggleDropdown(this)">
-                    <h3><i class="fas fa-mouse-pointer"></i>Clickbait & Sensationalism</h3>
-                </div>
-                <div class="dropdown-content">
-                    <div id="clickbait-analysis"></div>
-                    
-                    <div class="what-this-means mt-3">
-                        <h5>What This Means:</h5>
-                        <p id="clickbait-explanation"></p>
-                    </div>
-                    
-                    <div class="how-detected mt-3">
-                        <h5>How We Detected This:</h5>
-                        <p id="clickbait-methodology"></p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Emotional Manipulation -->
-            <div class="analysis-dropdown border-emotion">
-                <div class="dropdown-header" onclick="toggleDropdown(this)">
-                    <h3><i class="fas fa-theater-masks"></i>Emotional Manipulation Check</h3>
-                </div>
-                <div class="dropdown-content">
-                    <!-- Emotional gauge -->
-                    <div class="gauge-container">
-                        <div class="gauge">
-                            <div class="gauge-mask"></div>
-                            <div class="gauge-needle" id="emotion-needle"></div>
-                        </div>
-                        <div class="gauge-labels">
-                            <small>0%</small>
-                            <small>50%</small>
-                            <small>100%</small>
-                        </div>
-                    </div>
-                    
-                    <div id="emotional-manipulation"></div>
-                    
-                    <div class="methodology-snippet">
-                        <strong>Emotional analysis:</strong> Using sentiment analysis and psychological 
-                        trigger word detection across 8 emotional categories (fear, anger, joy, sadness, 
-                        disgust, surprise, trust, anticipation).
-                    </div>
-                    
-                    <div class="what-this-means mt-3">
-                        <h5>What This Means:</h5>
-                        <p id="emotion-explanation"></p>
-                    </div>
-                    
-                    <div class="how-detected mt-3">
-                        <h5>How We Detected This:</h5>
-                        <p id="emotion-methodology"></p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Source Diversity -->
-            <div class="analysis-dropdown border-diversity">
-                <div class="dropdown-header" onclick="toggleDropdown(this)">
-                    <h3><i class="fas fa-project-diagram"></i>Source Diversity & Balance</h3>
-                </div>
-                <div class="dropdown-content">
-                    <!-- Progress bar for source diversity -->
-                    <div class="progress-container mb-3">
-                        <div class="progress-bar" id="diversity-bar" style="width: 0%">0%</div>
-                    </div>
-                    
-                    <div id="source-diversity"></div>
-                    
-                    <div class="what-this-means mt-3">
-                        <h5>What This Means:</h5>
-                        <p id="diversity-explanation"></p>
-                    </div>
-                    
-                    <div class="how-detected mt-3">
-                        <h5>How We Detected This:</h5>
-                        <p id="diversity-methodology"></p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Timeliness Check -->
-            <div class="analysis-dropdown border-time">
-                <div class="dropdown-header" onclick="toggleDropdown(this)">
-                    <h3><i class="fas fa-calendar-check"></i>Timeliness & Relevance</h3>
-                </div>
-                <div class="dropdown-content">
-                    <div id="timeliness-check"></div>
-                    
-                    <div class="what-this-means mt-3">
-                        <h5>What This Means:</h5>
-                        <p id="timeliness-explanation"></p>
-                    </div>
-                    
-                    <div class="how-detected mt-3">
-                        <h5>How We Detected This:</h5>
-                        <p id="timeliness-methodology"></p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- AI-Generated Content Detection (New Feature) -->
-            <div class="analysis-dropdown border-ai">
-                <div class="dropdown-header" onclick="toggleDropdown(this)">
-                    <h3><i class="fas fa-robot"></i>AI-Generated Content Detection</h3>
-                </div>
-                <div class="dropdown-content">
-                    <h5>AI Content Probability</h5>
-                    <div class="confidence-bar mb-3">
-                        <div class="confidence-fill" id="ai-probability" style="width: 0%">
-                            <div class="confidence-label">0%</div>
-                        </div>
-                    </div>
-                    
-                    <div class="mt-3">
-                        <h6>AI Pattern Indicators:</h6>
-                        <ul id="ai-patterns">
-                            <!-- Dynamically populated -->
-                        </ul>
-                    </div>
-                    
-                    <div class="methodology-snippet">
-                        <strong>Detection method:</strong> Perplexity analysis, burstiness scoring, 
-                        repetitive phrasing detection, and comparison against known AI writing patterns 
-                        from GPT, Claude, and other models.
-                    </div>
-                    
-                    <div class="what-this-means mt-3">
-                        <h5>What This Means:</h5>
-                        <p id="ai-explanation"></p>
-                    </div>
-                    
-                    <div class="how-detected mt-3">
-                        <h5>How We Detected This:</h5>
-                        <p id="ai-methodology"></p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Pricing Information -->
-            <div class="pricing-info">
-                <h4><i class="fas fa-crown me-2"></i>Upgrade for More Features</h4>
-                <div class="pricing-tier">
-                    <div>
-                        <h4>Free Tier</h4>
-                        <p class="mb-0">1 analysis per day</p>
-                    </div>
-                    <div class="price">$0</div>
-                </div>
-                <div class="pricing-tier">
-                    <div>
-                        <h4>Pro Tier</h4>
-                        <p class="mb-0">Unlimited analyses + API access</p>
-                    </div>
-                    <div class="price">$19/mo</div>
-                </div>
-            </div>
-
-            <!-- Download Complete Report Button -->
-            <div class="text-center mt-5">
-                <button class="btn btn-success btn-lg" onclick="downloadFullReport()">
-                    <i class="fas fa-file-pdf me-2"></i>Download Complete Analysis Report (PDF)
-                </button>
-            </div>
-        </div>
-
-        <!-- Enhanced Error Container -->
-        <div class="error-container" id="error-container">
-            <i class="fas fa-exclamation-triangle"></i>
-            <h3>Analysis Error</h3>
-            <p id="error-message">An error occurred during analysis.</p>
-            
-            <!-- Suggestions section (hidden by default) -->
-            <div class="error-suggestions" id="error-suggestions" style="display: none;">
-                <h4>Here's what you can do:</h4>
-                <ul id="suggestion-list">
-                    <!-- Populated dynamically -->
-                </ul>
-            </div>
-            
-            <!-- Alternate actions -->
-            <div class="alternate-action">
-                <button class="retry-btn" onclick="retryAnalysis()">
-                    <i class="fas fa-redo"></i> Retry Analysis
-                </button>
-                <button class="alternate-btn" onclick="switchInputType('text')">
-                    <i class="fas fa-file-alt"></i> Switch to Text Input
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Loading Overlay -->
-    <div class="loading-overlay" id="loading-overlay">
-        <div class="loading-content">
-            <div class="loading-spinner"></div>
-            <div class="loading-text" id="loading-text">Initializing Analysis...</div>
-            <div class="loading-subtext" id="loading-subtext">Please wait while we process your content</div>
-            <div class="progress-container">
-                <div class="progress-bar" id="progress-fill" style="width: 0%"></div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Sticky Upgrade Button -->
-    <div class="sticky-upgrade">
-        <button onclick="window.location.href='/pricing'">
-            <i class="fas fa-crown me-2"></i>Upgrade to Pro
-        </button>
-    </div>
-
-    <!-- Analysis Process Modal -->
-    <div class="modal fade" id="analysisProcessModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">
-                        <i class="fas fa-cogs me-2"></i>Our Comprehensive Analysis Process
-                    </h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <h6>Our AI-powered analysis examines:</h6>
-                    <div class="row mt-3">
-                        <div class="col-md-6">
-                            <ul>
-                                <li><strong>Source Credibility:</strong> Historical accuracy, transparency, corrections policy</li>
-                                <li><strong>Author Background:</strong> Expertise, publication history, credentials</li>
-                                <li><strong>Writing Quality:</strong> Grammar, structure, professionalism</li>
-                                <li><strong>Fact Verification:</strong> Cross-reference with multiple databases</li>
-                                <li><strong>Political Bias:</strong> 50,000+ term analysis, framing detection</li>
-                            </ul>
-                        </div>
-                        <div class="col-md-6">
-                            <ul>
-                                <li><strong>Hidden Agendas:</strong> Commercial interests, persuasion tactics</li>
-                                <li><strong>Clickbait Detection:</strong> Headline-content matching</li>
-                                <li><strong>Emotional Manipulation:</strong> 8 emotion categories analyzed</li>
-                                <li><strong>Source Diversity:</strong> Variety and balance assessment</li>
-                                <li><strong>AI Content Detection:</strong> Pattern analysis across models</li>
-                            </ul>
-                        </div>
-                    </div>
-                    <hr>
-                    <p><strong>Technology Stack:</strong></p>
-                    <ul>
-                        <li>GPT-4 for deep content analysis</li>
-                        <li>Natural Language Processing for linguistic patterns</li>
-                        <li>Machine Learning models trained on 1M+ articles</li>
-                        <li>Real-time fact-checking API integrations</li>
-                        <li>Proprietary bias detection algorithms</li>
-                    </ul>
-                    <hr>
-                    <p class="text-muted mb-0">Each analysis generates 100+ data points to ensure comprehensive, accurate results you can trust.</p>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Bootstrap JS from cdnjs (CSP approved) -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
-    
-    <script>
-    // Initialize page
-    document.addEventListener('DOMContentLoaded', function() {
-        // Initialize any needed components
-        console.log('News analyzer ready');
-    });
-
-    // Global variable to store current analysis results
-    let currentAnalysisResults = null;
-
-    // Switch between URL and text input
-    function switchInputType(type) {
-        const urlSection = document.getElementById('url-input-section');
-        const textSection = document.getElementById('text-input-section');
-        const tabs = document.querySelectorAll('.input-tab');
-        
-        tabs.forEach(tab => tab.classList.remove('active'));
-        
-        if (type === 'url') {
-            urlSection.style.display = 'block';
-            textSection.style.display = 'none';
-            tabs[0].classList.add('active');
-        } else {
-            urlSection.style.display = 'none';
-            textSection.style.display = 'block';
-            tabs[1].classList.add('active');
-        }
-        
-        // Hide error container if switching tabs
-        document.getElementById('error-container').style.display = 'none';
-    }
-
-    // ENHANCED analysis function with better error handling
-    async function analyzeArticle() {
-        const urlInput = document.getElementById('news-url');
-        const textInput = document.getElementById('news-text');
-        const loadingSection = document.getElementById('loading-section');
-        const resultsSection = document.getElementById('results-section');
-        const errorContainer = document.getElementById('error-container');
-        
-        // Get input based on active section
-        const isUrlMode = document.getElementById('url-input-section').style.display !== 'none';
-        const input = isUrlMode ? urlInput.value.trim() : textInput.value.trim();
-        
-        if (!input) {
-            alert('Please enter a URL or paste article text');
-            return;
-        }
-        
-        // Hide any previous errors
-        errorContainer.style.display = 'none';
-        
-        // Show loading
-        loadingSection.style.display = 'block';
-        resultsSection.style.display = 'none';
-        
-        // Reset stages
-        document.querySelectorAll('.analysis-stage').forEach(stage => {
-            stage.classList.remove('active', 'complete');
-        });
-        
-        // Initialize progress tracking
-        let progress = 0;
-        const progressBar = document.getElementById('analysis-progress');
-        const stages = document.querySelectorAll('.analysis-stage');
-        let currentStage = 0;
-        let progressInterval;
-        
-        try {
-            // Start progress animation
-            progressInterval = setInterval(() => {
-                if (progress < 90) {
-                    progress += 5;
-                    progressBar.style.width = progress + '%';
-                    progressBar.textContent = progress + '%';
-                    
-                    // Update stages
-                    const stageProgress = Math.floor((progress / 100) * stages.length);
-                    if (stageProgress > currentStage && currentStage < stages.length) {
-                        if (currentStage > 0) {
-                            stages[currentStage - 1].classList.remove('active');
-                            stages[currentStage - 1].classList.add('complete');
-                        }
-                        stages[currentStage].classList.add('active');
-                        currentStage = stageProgress;
-                    }
-                }
-            }, 200);
-            
-            // Prepare request body
-            const requestBody = {
-                content: input,
-                type: isUrlMode ? 'url' : 'text',
-                is_pro: true
-            };
-            
-            console.log('Sending analysis request:', requestBody);
-            
-            // CALL YOUR ACTUAL BACKEND
-            const response = await fetch('/api/analyze-news', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(requestBody)
-            });
-            
-            clearInterval(progressInterval);
-            
-            // Check response
-            if (!response.ok) {
-                let errorMessage = `Server error: ${response.status}`;
-                let suggestions = [];
-                
-                try {
-                    const errorData = await response.json();
-                    errorMessage = errorData.error || errorData.message || errorMessage;
-                    suggestions = errorData.suggestions || [];
-                } catch (e) {
-                    console.error('Error parsing error response:', e);
-                }
-                
-                const errorObj = new Error(errorMessage);
-                errorObj.suggestions = suggestions;
-                throw errorObj;
-            }
-            
-            const data = await response.json();
-            console.log('Analysis response:', data);
-            
-            // Complete progress
-            progressBar.style.width = '100%';
-            progressBar.textContent = '100%';
-            stages.forEach(stage => {
-                stage.classList.remove('active');
-                stage.classList.add('complete');
-            });
-            
-            // Check for success - handle both success flag and presence of results
-            if (data.success === true || (data.trust_score !== undefined && !data.error)) {
-                // Store results globally for PDF generation - data is at root level
-                currentAnalysisResults = data;
-                
-                // Display REAL results from YOUR backend - pass data directly
-                setTimeout(() => {
-                    displayRealResults(data);
-                    loadingSection.style.display = 'none';
-                    resultsSection.style.display = 'block';
-                    
-                    // Scroll to results
-                    resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }, 500);
-            } else {
-                // Log the full response for debugging
-                console.error('Analysis failed. Server response:', data);
-                
-                // Extract error details
-                const errorObj = new Error(data.error || data.message || 'Analysis failed');
-                errorObj.suggestions = data.suggestions || [];
-                throw errorObj;
-            }
-            
-        } catch (error) {
-            console.error('Analysis error:', error);
-            loadingSection.style.display = 'none';
-            
-            // Clear any running intervals
-            if (progressInterval) {
-                clearInterval(progressInterval);
-            }
-            
-            // Show enhanced error message with suggestions
-            showEnhancedError(error.message, error.suggestions || []);
-        }
-    }
-
-    // Enhanced error display function
-    function showEnhancedError(message, suggestions = []) {
-        const errorContainer = document.getElementById('error-container');
-        const errorMessage = document.getElementById('error-message');
-        const errorSuggestions = document.getElementById('error-suggestions');
-        const suggestionList = document.getElementById('suggestion-list');
-        
-        // Set the error message
-        errorMessage.textContent = message;
-        
-        // Handle suggestions if provided
-        if (suggestions && suggestions.length > 0) {
-            errorSuggestions.style.display = 'block';
-            suggestionList.innerHTML = suggestions.map(suggestion => 
-                `<li>${suggestion}</li>`
-            ).join('');
-        } else {
-            // Default suggestions based on error type
-            const defaultSuggestions = [];
-            
-            if (message.toLowerCase().includes('extract') || 
-                message.toLowerCase().includes('timeout') ||
-                message.toLowerCase().includes('blocked')) {
-                defaultSuggestions.push(
-                    'Copy and paste the article text using the "Paste Text" tab',
-                    'Try a different news article or source',
-                    'Check if the URL is correctly formatted',
-                    'Some major news sites (CNN, NYTimes, WSJ) block automated access'
-                );
-            } else if (message.includes('fetch')) {
-                defaultSuggestions.push(
-                    'Check your internet connection',
-                    'Try again in a few moments',
-                    'Use the "Paste Text" option instead'
-                );
-            } else {
-                defaultSuggestions.push(
-                    'Try again with a different article',
-                    'Use the "Paste Text" tab for better results',
-                    'Contact support if the issue persists'
-                );
-            }
-            
-            if (defaultSuggestions.length > 0) {
-                errorSuggestions.style.display = 'block';
-                suggestionList.innerHTML = defaultSuggestions.map(suggestion => 
-                    `<li>${suggestion}</li>`
-                ).join('');
-            } else {
-                errorSuggestions.style.display = 'none';
-            }
-        }
-        
-        // Show error container
-        errorContainer.style.display = 'block';
-        
-        // Hide results
-        document.getElementById('results-section').style.display = 'none';
-        
-        // Scroll to error
-        errorContainer.scrollIntoView({ behavior: 'smooth' });
-    }
-
-    // Fixed display function that matches your API structure
-    function displayRealResults(results) {
-        console.log('Displaying results:', results);
-        
-        // Update timestamp
-        const now = new Date();
-        document.getElementById('analysis-time').textContent = now.toLocaleString();
-        document.getElementById('analysis-id').textContent = results.analysis_id || 'AN-' + Date.now().toString(36).toUpperCase();
-        
-        // Get trust_score - check both root level and analysis object
-        const trustScore = results.trust_score || results.analysis?.trust_score || 0;
-        animateTrustMeter(trustScore);
-        
-        // Get summary - check both locations
-        const summary = results.summary || results.analysis?.summary || 'Analysis completed';
-        
-        // Overall Assessment
-        const overallAssessment = {
-            credibility: trustScore >= 80 ? 'High' : trustScore >= 60 ? 'Moderate' : 'Low',
-            summary: summary
-        };
-        
-        // Get recommendations from either location
-        const recommendations = results.recommendations || results.analysis?.recommendations || [];
-        const recommendationsHTML = recommendations.length > 0 ? `
-            <div class="mt-3">
-                <h5>Recommendations:</h5>
-                <ul>
-                    ${recommendations.map(rec => `<li>${rec}</li>`).join('')}
-                </ul>
-            </div>
-        ` : '';
-        
-        document.getElementById('overall-assessment').innerHTML = `
-            <div class="alert alert-${trustScore >= 80 ? 'success' : trustScore >= 60 ? 'warning' : 'danger'} mb-3">
-                <h4 class="alert-heading">
-                    <i class="fas fa-${trustScore >= 80 ? 'check-circle' : trustScore >= 60 ? 'exclamation-triangle' : 'times-circle'} me-2"></i>
-                    Credibility: ${overallAssessment.credibility}
-                </h4>
-                <p class="mb-0">${overallAssessment.summary}</p>
-            </div>
-            ${recommendationsHTML}
-        `;
-        
-        // Update confidence
-        const confidence = results.confidence_level || 85;
-        const confidenceBar = document.getElementById('overall-confidence');
-        setTimeout(() => {
-            confidenceBar.style.width = confidence + '%';
-            confidenceBar.querySelector('.confidence-label').textContent = confidence + '%';
-        }, 200);
-        
-        // Handle key findings and red flags
-        const keyFindings = results.key_claims || results.analysis?.key_claims || [];
-        const manipulationTactics = results.manipulation_tactics || results.analysis?.manipulation_tactics || [];
-        
-        // Display key findings
-        if (keyFindings.length > 0) {
-            const findingsHTML = keyFindings.map(claim => {
-                if (typeof claim === 'object' && claim.claim) {
-                    return `<li>${claim.importance ? `<strong>${claim.importance.toUpperCase()}:</strong> ` : ''}${claim.claim}</li>`;
-                }
-                return `<li>${claim}</li>`;
-            }).join('');
-            document.getElementById('key-findings-list').innerHTML = findingsHTML;
-        } else {
-            document.getElementById('key-findings-list').innerHTML = `
-                <li>Trust score: ${trustScore}%</li>
-                <li>Credibility score: ${Math.round((results.credibility_score || 0) * 100)}%</li>
-                ${results.bias_score !== undefined ? `<li>Bias score: ${results.bias_score}</li>` : ''}
-            `;
-        }
-        
-        // Display red flags (manipulation tactics)
-        if (manipulationTactics.length > 0) {
-            const redFlagsHTML = manipulationTactics.map(tactic => {
-                if (typeof tactic === 'object') {
-                    return `<li><strong>${tactic.tactic || tactic.name}:</strong> ${tactic.description || ''}${
-                        tactic.example ? ` <em>(Example: "${tactic.example}")</em>` : ''
-                    }</li>`;
-                }
-                return `<li>${tactic}</li>`;
-            }).join('');
-            document.getElementById('red-flags-list').innerHTML = redFlagsHTML;
-        } else {
-            document.getElementById('red-flags-list').innerHTML = `<li>No significant manipulation tactics detected</li>`;
-        }
-        
-        // Call the detailed populate function with the full results
-        populateDetailedSections(results);
-    }
-
-    // New detailed populate function that handles your API structure
-    function populateDetailedSections(results) {
-        console.log('Populating detailed sections with:', results);
-        
-        // Merge analysis data with root level data for easier access
-        const analysis = results.analysis || {};
-        const mergedResults = { ...results, ...analysis };
-        const manipulationTactics = results.manipulation_tactics || results.analysis?.manipulation_tactics || [];
-        
-        // Author Credibility
-        const author = results.article_info?.author || results.article?.author || 'Unknown';
-        if (author && author !== 'Unknown') {
-            document.getElementById('author-credibility').innerHTML = `
-                <h5>Author: ${author}</h5>
-                <p>Author credibility assessment based on available information</p>
-                <ul>
-                    <li>Name verification: ${author.includes(' ') ? 'Full name provided' : 'Single name only'}</li>
-                    <li>Attribution: Author identified</li>
-                    <li>Transparency: ${author.length > 3 ? 'Good' : 'Limited'}</li>
-                </ul>
-            `;
-            
-            // Update author research links
-            const authorQuery = encodeURIComponent(author);
-            document.getElementById('author-twitter').href = `https://twitter.com/search?q=${authorQuery}`;
-            document.getElementById('author-google').href = `https://www.google.com/search?q=${authorQuery}%20journalist`;
-            document.getElementById('author-linkedin').href = `https://www.linkedin.com/search/results/all/?keywords=${authorQuery}`;
-            
-            document.getElementById('author-explanation').textContent = 
-                `${author} is listed as the author. Verify their credentials and expertise in this subject area.`;
-            document.getElementById('author-methodology').textContent = 
-                'Author extracted from article metadata and byline detection';
-        } else {
-            document.getElementById('author-credibility').innerHTML = `
-                <h5>Author: Unknown</h5>
-                <p>No author information was found in the article</p>
-                <ul>
-                    <li>This may indicate lower transparency</li>
-                    <li>Consider verifying the source independently</li>
-                </ul>
-            `;
-            document.getElementById('author-explanation').textContent = 
-                'No author information provided, which may indicate lower credibility.';
-            document.getElementById('author-methodology').textContent = 
-                'Searched for author in metadata, bylines, and common author locations';
-        }
-        
-        // Source Credibility
-        const sourceData = results.source_credibility || {};
-        const domain = results.article_info?.domain || results.article?.domain || 'Unknown';
-        const credScore = Math.round((results.credibility_score || 0) * 100);
-        
-        document.getElementById('source-credibility').innerHTML = `
-            <h5>Source: ${domain}</h5>
-            <p>Credibility Score: <strong>${credScore}/100</strong></p>
-            ${sourceData.credibility ? `<p>Known Credibility: <strong>${sourceData.credibility}</strong></p>` : ''}
-            ${sourceData.bias ? `<p>Known Bias: <strong>${sourceData.bias}</strong></p>` : ''}
-            ${sourceData.type ? `<p>Source Type: <strong>${sourceData.type}</strong></p>` : ''}
-            <ul>
-                <li>Trust Score: ${results.trust_score || 0}</li>
-                <li>Article Title: ${results.article_info?.title || results.article?.title || 'N/A'}</li>
-                ${results.article_info?.publish_date ? `<li>Published: ${results.article_info.publish_date}</li>` : ''}
-            </ul>
-        `;
-        
-        document.getElementById('this-source-score').textContent = `${credScore}%`;
-        document.getElementById('source-explanation').textContent = 
-            sourceData.credibility ? 
-            `${domain} is a ${sourceData.type || 'news source'} with ${sourceData.credibility} credibility and ${sourceData.bias || 'unknown'} bias.` :
-            'Source credibility assessed based on trust score and analysis results';
-        document.getElementById('source-methodology').textContent = 
-            'Analysis based on historical accuracy, transparency, and editorial standards';
-        
-        // Writing Quality
-        const qualityMetrics = {
-            trustScore: results.trust_score || 0,
-            credibilityScore: Math.round((results.credibility_score || 0) * 100),
-            factChecks: mergedResults.fact_checks?.length || 0,
-            claims: mergedResults.key_claims?.length || 0,
-            sources: mergedResults.source_diversity?.sources_count || 1,
-            author: author,
-            textLength: results.article_info?.text?.length || results.article?.text?.length || 0
-        };
-        
-        document.getElementById('writing-quality').innerHTML = `
-            <h5>Quality Metrics:</h5>
-            <div class="row">
-                <div class="col-md-6">
-                    <ul>
-                        <li>Overall Trust Score: <strong>${qualityMetrics.trustScore}/100</strong></li>
-                        <li>Credibility Score: <strong>${qualityMetrics.credibilityScore}/100</strong></li>
-                        <li>Author: <strong>${qualityMetrics.author}</strong></li>
-                    </ul>
-                </div>
-                <div class="col-md-6">
-                    <ul>
-                        <li>Claims Identified: <strong>${qualityMetrics.claims}</strong></li>
-                        <li>Fact Checks: <strong>${qualityMetrics.factChecks}</strong></li>
-                        <li>Article Length: <strong>${qualityMetrics.textLength} characters</strong></li>
-                    </ul>
-                </div>
-            </div>
-        `;
-        
-        document.getElementById('quality-explanation').textContent = 
-            qualityMetrics.trustScore >= 80 ? 'High quality writing with strong credibility indicators' :
-            qualityMetrics.trustScore >= 60 ? 'Moderate quality with some areas for improvement' :
-            'Lower quality indicators suggest caution when evaluating this content';
-        document.getElementById('quality-methodology').textContent = 
-            'Quality assessed through trust scoring, credibility analysis, and content structure evaluation';
-        
-        // Fact-Checking Results
-        const factChecks = mergedResults.fact_checks || [];
-        const claims = mergedResults.key_claims || [];
-        
-        if (factChecks.length > 0 && typeof factChecks[0] === 'object' && factChecks[0].verdict) {
-            // Detailed fact checks available
-            const factCheckHTML = factChecks.map((check, index) => {
-                const verdictClass = {
-                    'true': 'status-verified',
-                    'false': 'status-false',
-                    'misleading': 'status-false',
-                    'unverified': 'status-unverified'
-                }[check.verdict] || 'status-unverified';
-                
-                return `
-                    <div class="claim-card">
-                        <p><strong>Claim ${index + 1}:</strong> "${check.claim}"</p>
-                        <span class="claim-status ${verdictClass}">${check.verdict.toUpperCase()}</span>
-                        <p class="mt-2">${check.explanation}</p>
-                        ${check.confidence ? `<p class="mt-1"><small>Confidence: ${check.confidence}%</small></p>` : ''}
-                        ${check.sources && check.sources.length > 0 ? 
-                            `<p class="mt-1"><small>Sources: ${check.sources.join(', ')}</small></p>` : ''}
-                    </div>
-                `;
-            }).join('');
-            
-            document.getElementById('fact-checking').innerHTML = `
-                <h5>Fact-Check Results: ${factChecks.length} claims verified</h5>
-                ${factCheckHTML}
-            `;
-        } else if (claims.length > 0) {
-            // Only claims available, no verdicts
-            const claimsHTML = claims.map((claim, index) => {
-                const claimText = typeof claim === 'object' ? claim.claim : claim;
-                const importance = typeof claim === 'object' ? claim.importance : 'medium';
-                
-                return `
-                    <div class="claim-card">
-                        <p><strong>Claim ${index + 1}:</strong> "${claimText}"</p>
-                        <span class="claim-status status-unverified">REQUIRES VERIFICATION</span>
-                        <p class="mt-2"><small>Importance: ${importance || 'Medium'}</small></p>
-                    </div>
-                `;
-            }).join('');
-            
-            document.getElementById('fact-checking').innerHTML = `
-                <h5>Claims Identified: ${claims.length}</h5>
-                <p class="text-muted">These claims require external fact-checking for verification</p>
-                ${claimsHTML}
-            `;
-        } else {
-            document.getElementById('fact-checking').innerHTML = `
-                <p>No specific claims identified for fact-checking</p>
-            `;
-        }
-        
-        document.getElementById('fact-explanation').textContent = 
-            factChecks.length > 0 ? 'Claims have been analyzed and fact-checked' :
-            claims.length > 0 ? 'Key claims identified but require external verification' :
-            'No specific factual claims were identified in this article';
-        document.getElementById('fact-methodology').textContent = 
-            'Claims extracted using natural language processing and verified against available data';
-        
-        // Political Bias
-        const biasScore = results.bias_score;
-        const biasData = mergedResults.bias_explanation ? mergedResults : {};
-        
-        if (biasScore !== undefined && biasScore !== 'N/A') {
-            const biasPosition = ((parseFloat(biasScore) + 1) / 2) * 100;
-            const biasMarker = document.getElementById('bias-marker');
-            biasMarker.style.left = biasPosition + '%';
-            
-            const biasLabel = biasScore < -0.5 ? 'Far Left' :
-                             biasScore < -0.2 ? 'Left-Leaning' :
-                             biasScore < 0.2 ? 'Center/Neutral' :
-                             biasScore < 0.5 ? 'Right-Leaning' : 'Far Right';
-            
-            document.getElementById('political-bias').innerHTML = `
-                <h5>Bias Assessment: <strong>${biasLabel}</strong></h5>
-                <p>Bias Score: <strong>${biasScore.toFixed(2)}</strong> (scale: -1 to +1)</p>
-                ${biasData.bias_explanation ? `<p>${biasData.bias_explanation}</p>` : ''}
-                ${biasData.bias_examples && biasData.bias_examples.length > 0 ? `
-                    <h6 class="mt-3">Examples Found:</h6>
-                    <ul>
-                        ${biasData.bias_examples.map(ex => `<li>${ex}</li>`).join('')}
-                    </ul>
-                ` : ''}
-            `;
-            
-            document.getElementById('bias-explanation').textContent = 
-                biasData.bias_explanation || `Article shows ${biasLabel.toLowerCase()} bias based on language analysis.`;
-            document.getElementById('bias-methodology').textContent = 
-                'Bias detected through analysis of word choice, framing, and political terminology';
-        } else {
-            document.getElementById('bias-marker').style.left = '50%';
-            document.getElementById('political-bias').innerHTML = `
-                <h5>Bias Assessment: Not Available</h5>
-                <p>Insufficient data to determine political bias</p>
-            `;
-            document.getElementById('bias-explanation').textContent = 'Bias analysis was not conclusive';
-            document.getElementById('bias-methodology').textContent = 'Content may be too neutral or short for bias detection';
-        }
-        
-        // Hidden Agenda
-        const hiddenAgenda = mergedResults.hidden_agenda || {};
-        const hasHiddenAgenda = hiddenAgenda.detected || manipulationTactics.length > 3;
-        
-        document.getElementById('hidden-agenda').innerHTML = `
-            <h5>Hidden Agenda Detection: <strong>${hasHiddenAgenda ? 'WARNING' : 'Clear'}</strong></h5>
-            ${hasHiddenAgenda ? `
-                <div class="alert alert-warning mt-3">
-                    ${hiddenAgenda.type ? `<h6>Type: ${hiddenAgenda.type.charAt(0).toUpperCase() + hiddenAgenda.type.slice(1)}</h6>` : ''}
-                    <p>${hiddenAgenda.explanation || 'Multiple manipulation tactics suggest potential hidden agenda'}</p>
-                    ${hiddenAgenda.evidence && hiddenAgenda.evidence.length > 0 ? `
-                        <h6>Evidence:</h6>
-                        <ul>
-                            ${hiddenAgenda.evidence.map(e => `<li>${e}</li>`).join('')}
-                        </ul>
-                    ` : ''}
-                </div>
-            ` : '<p>No clear hidden agenda detected in this article.</p>'}
-            ${manipulationTactics.length > 0 ? `
-                <h6 class="mt-3">Manipulation Tactics Found (${manipulationTactics.length}):</h6>
-                <ul>
-                    ${manipulationTactics.slice(0, 5).map(t => 
-                        `<li>${typeof t === 'object' ? t.tactic || t.name : t}</li>`
-                    ).join('')}
-                    ${manipulationTactics.length > 5 ? `<li>...and ${manipulationTactics.length - 5} more</li>` : ''}
-                </ul>
-            ` : ''}
-        `;
-        
-        document.getElementById('agenda-explanation').textContent = 
-            hasHiddenAgenda ? 'Analysis suggests this article may have ulterior motives beyond informing readers' :
-            'Article appears to be straightforward in its intent';
-        document.getElementById('agenda-methodology').textContent = 
-            'Hidden agenda detected through analysis of persuasion techniques, manipulation tactics, and rhetorical devices';
-        
-        // Populate remaining sections with available data
-        populateRemainingSection('clickbait', mergedResults);
-        populateRemainingSection('emotion', mergedResults, manipulationTactics);
-        populateRemainingSection('diversity', mergedResults);
-        populateRemainingSection('timeliness', results);
-        populateRemainingSection('ai', mergedResults);
-    }
-
-    // Helper function for remaining sections
-    function populateRemainingSection(section, data, manipulationTactics) {
-        switch(section) {
-            case 'clickbait':
-                const clickbaitData = data.clickbait_analysis || {};
-                const clickbaitScore = clickbaitData.score || 20;
-                const title = data.article_info?.title || data.article?.title || '';
-                
-                document.getElementById('clickbait-analysis').innerHTML = `
-                    <h5>Clickbait Score: <strong>${clickbaitScore}/100</strong></h5>
-                    <div class="progress mt-3 mb-3" style="height: 30px;">
-                        <div class="progress-bar ${
-                            clickbaitScore > 70 ? 'bg-danger' : 
-                            clickbaitScore > 40 ? 'bg-warning' : 'bg-success'
-                        }" role="progressbar" style="width: ${clickbaitScore}%">
-                            ${clickbaitScore}%
-                        </div>
-                    </div>
-                    <p>Title: "${title}"</p>
-                    ${clickbaitData.indicators && clickbaitData.indicators.length > 0 ? `
-                        <h6>Indicators:</h6>
-                        <ul>${clickbaitData.indicators.map(ind => `<li>${ind}</li>`).join('')}</ul>
-                    ` : ''}
-                `;
-                
-                document.getElementById('clickbait-explanation').textContent = 
-                    clickbaitScore > 70 ? 'High clickbait score - title may be misleading' :
-                    clickbaitScore > 40 ? 'Moderate clickbait elements detected' :
-                    'Low clickbait score - title appears straightforward';
-                document.getElementById('clickbait-methodology').textContent = 
-                    'Clickbait detected through headline analysis, sensational language patterns, and title-content matching';
-                break;
-                
-            case 'emotion':
-                const emotionData = data.emotional_manipulation || {};
-                const emotionScore = emotionData.score || (manipulationTactics?.length || 0) * 15;
-                const emotionNeedle = document.getElementById('emotion-needle');
-                const emotionAngle = -90 + Math.min(emotionScore * 1.8, 180);
-                emotionNeedle.style.transform = `translateX(-50%) rotate(${emotionAngle}deg)`;
-                
-                document.getElementById('emotional-manipulation').innerHTML = `
-                    <h5>Emotional Manipulation: <strong>${
-                        emotionScore > 60 ? 'High' : emotionScore > 30 ? 'Medium' : 'Low'
-                    }</strong> (${emotionScore}/100)</h5>
-                    ${emotionData.techniques && emotionData.techniques.length > 0 ? `
-                        <h6>Techniques Detected:</h6>
-                        <ul>${emotionData.techniques.map(tech => `<li>${tech}</li>`).join('')}</ul>
-                    ` : '<p>No specific emotional manipulation techniques identified</p>'}
-                `;
-                
-                document.getElementById('emotion-explanation').textContent = 
-                    emotionScore > 60 ? 'High emotional manipulation - article uses strong emotional triggers' :
-                    emotionScore > 30 ? 'Moderate emotional language present' :
-                    'Minimal emotional manipulation detected';
-                document.getElementById('emotion-methodology').textContent = 
-                    'Emotional content analyzed through sentiment analysis and psychological trigger detection';
-                break;
-                
-            case 'diversity':
-                const diversityData = data.source_diversity || {};
-                const diversityScore = diversityData.score || 25;
-                const diversityBar = document.getElementById('diversity-bar');
-                diversityBar.style.width = diversityScore + '%';
-                diversityBar.textContent = diversityScore + '%';
-                
-                document.getElementById('source-diversity').innerHTML = `
-                    <h5>Source Diversity Score: <strong>${diversityScore}/100</strong></h5>
-                    <p>Sources Referenced: <strong>${diversityData.sources_count || 1}</strong></p>
-                    ${diversityScore < 50 ? `
-                        <div class="alert alert-info mt-3">
-                            <p><strong>Note:</strong> This is a single-article analysis. For comprehensive verification, 
-                            consider checking multiple sources covering the same topic.</p>
-                        </div>
-                    ` : ''}
-                    ${diversityData.missing_perspectives && diversityData.missing_perspectives.length > 0 ? `
-                        <h6>Recommended Additional Perspectives:</h6>
-                        <ul>${diversityData.missing_perspectives.map(p => `<li>${p}</li>`).join('')}</ul>
-                    ` : ''}
-                `;
-                
-                document.getElementById('diversity-explanation').textContent = 
-                    'Source diversity measures how many different sources and perspectives are included';
-                document.getElementById('diversity-methodology').textContent = 
-                    'Analyzed by counting unique sources, quotes, and referenced materials within the article';
-                break;
-                
-            case 'timeliness':
-                const publishDate = data.article_info?.publish_date || data.article?.publish_date;
-                const currentDate = new Date();
-                
-                document.getElementById('timeliness-check').innerHTML = `
-                    <h5>Timeliness Assessment:</h5>
-                    <ul>
-                        <li>Article date: <strong>${publishDate || 'Unknown'}</strong></li>
-                        <li>Analysis date: <strong>${currentDate.toLocaleDateString()}</strong></li>
-                        <li>Source: <strong>${data.article_info?.domain || 'Unknown'}</strong></li>
-                        ${publishDate ? `<li>Age: <strong>${calculateAge(publishDate)}</strong></li>` : ''}
-                    </ul>
-                    ${!publishDate ? `
-                        <div class="alert alert-warning mt-3">
-                            <p>Publication date not found. Consider the timeliness of this information carefully.</p>
-                        </div>
-                    ` : ''}
-                `;
-                
-                document.getElementById('timeliness-explanation').textContent = 
-                    publishDate ? 'Article date information helps assess relevance and currency of information' :
-                    'Missing publication date makes it difficult to assess information currency';
-                document.getElementById('timeliness-methodology').textContent = 
-                    'Publication date extracted from article metadata and HTML markup';
-                break;
-                
-            case 'ai':
-                const aiData = data.ai_content_probability || {};
-                const aiScore = aiData.score || 15;
-                const aiBar = document.getElementById('ai-probability');
-                setTimeout(() => {
-                    aiBar.style.width = aiScore + '%';
-                    aiBar.querySelector('.confidence-label').textContent = aiScore + '%';
-                }, 300);
-                
-                document.getElementById('ai-patterns').innerHTML = `
-                    <li><strong>AI Probability: ${
-                        aiScore > 70 ? 'High' : aiScore > 40 ? 'Medium' : 'Low'
-                    }</strong></li>
-                    ${aiData.indicators && aiData.indicators.map(ind => 
-                        `<li><i class="fas fa-${aiScore > 50 ? 'exclamation' : 'check'}-circle text-${
-                            aiScore > 50 ? 'warning' : 'success'
-                        } me-2"></i>${ind}</li>`
-                    ).join('') || '<li>Natural writing patterns detected</li>'}
-                `;
-                
-                document.getElementById('ai-explanation').textContent = 
-                    aiData.explanation || `${
-                        aiScore > 70 ? 'High' : aiScore > 40 ? 'Medium' : 'Low'
-                    } probability of AI-generated content`;
-                document.getElementById('ai-methodology').textContent = 
-                    'AI detection through perplexity analysis, repetition patterns, and stylistic consistency checks';
-                break;
-        }
-    }
-
-    // Helper function to calculate article age
-    function calculateAge(publishDate) {
-        const published = new Date(publishDate);
-        const now = new Date();
-        const diffTime = Math.abs(now - published);
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        
-        if (diffDays === 0) return 'Today';
-        if (diffDays === 1) return '1 day ago';
-        if (diffDays < 7) return `${diffDays} days ago`;
-        if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
-        if (diffDays < 365) return `${Math.floor(diffDays / 30)} months ago`;
-        return `${Math.floor(diffDays / 365)} years ago`;
-    }
-
-    // Animate trust meter with REAL score
-    function animateTrustMeter(trustScore) {
-        const trustMeter = document.querySelector('.trust-meter-fill');
-        const trustScoreEl = document.getElementById('trust-score');
-        const circumference = 2 * Math.PI * 90;
-        const offset = circumference - (trustScore / 100) * circumference;
-        
-        // Set color based on REAL score
-        let color = '#10b981'; // green
-        if (trustScore < 60) color = '#ef4444'; // red
-        else if (trustScore < 80) color = '#f59e0b'; // orange
-        
-        setTimeout(() => {
-            trustMeter.style.stroke = color;
-            trustMeter.style.strokeDashoffset = offset;
-            
-            // Animate number
-            let current = 0;
-            const interval = setInterval(() => {
-                if (current < trustScore) {
-                    current += 2;
-                    trustScoreEl.textContent = Math.min(current, trustScore);
-                } else {
-                    clearInterval(interval);
-                }
-            }, 30);
-        }, 100);
-    }
-
-    // Show error
-    function showError(message) {
-        const errorContainer = document.getElementById('error-container');
-        const errorMessage = document.getElementById('error-message');
-        
-        // Convert newlines to <br> and bullet points to proper HTML
-        let formattedMessage = message
-            .replace(/\n/g, '<br>')
-            .replace(/•/g, '<br>•');
-        
-        errorMessage.innerHTML = formattedMessage;
-        errorContainer.style.display = 'block';
-        
-        // Hide results
-        document.getElementById('results-section').style.display = 'none';
-        
-        // Scroll to error
-        errorContainer.scrollIntoView({ behavior: 'smooth' });
-    }
-
-    // Retry analysis
-    function retryAnalysis() {
-        document.getElementById('error-container').style.display = 'none';
-        analyzeArticle();
-    }
-
-    // Toggle dropdown
-    function toggleDropdown(header) {
-        const content = header.nextElementSibling;
-        const isOpen = content.classList.contains('show');
-        
-        if (isOpen) {
-            content.classList.remove('show');
-            header.style.borderColor = 'transparent';
-        } else {
-            content.classList.add('show');
-            header.style.borderColor = 'var(--primary-blue)';
-        }
-    }
-
-    // Generate enhanced PDF report
-    async function generatePDF() {
-        if (!currentAnalysisResults) {
-            alert('Please run an analysis first');
-            return;
-        }
-        
-        const btn = event.target;
-        const originalHTML = btn.innerHTML;
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Generating...';
-        btn.disabled = true;
-        
-        try {
-            // Call your backend to generate PDF
-            const response = await fetch('/api/generate-pdf', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    analysis_type: 'news',
-                    results: currentAnalysisResults
+            if scheduled_count < min_coverage.get(shift_type, 2):
+                gaps.append({
+                    'date': current,
+                    'shift_type': shift_type,
+                    'scheduled': scheduled_count,
+                    'required': min_coverage.get(shift_type, 2),
+                    'gap': min_coverage.get(shift_type, 2) - scheduled_count,
+                    'crew': crew
                 })
-            });
+    
+        current += timedelta(days=1)
+    
+    return gaps
+
+def get_off_duty_crews(schedule_date, shift_type):
+    """Determine which crews are off duty for a given date and shift"""
+    # This is a simplified version - in reality, you'd check the actual rotation pattern
+    off_crews = []
+    
+    # Example logic: based on date, determine which crews are off
+    day_number = (schedule_date - date(2024, 1, 1)).days % 4
+    
+    if shift_type == 'day':
+        if day_number in [0, 1]:
+            off_crews = ['C', 'D']
+        else:
+            off_crews = ['A', 'B']
+    elif shift_type == 'night':
+        if day_number in [0, 1]:
+            off_crews = ['A', 'B']
+        else:
+            off_crews = ['C', 'D']
+    
+    return off_crews
+
+def update_circadian_profile_on_schedule_change(employee_id, shift_type):
+    """Update circadian profile when schedule changes"""
+    profile = CircadianProfile.query.filter_by(employee_id=employee_id).first()
+    if not profile:
+        profile = CircadianProfile(
+            employee_id=employee_id,
+            chronotype='intermediate',
+            preferred_shift=shift_type
+        )
+        db.session.add(profile)
+    
+    profile.current_shift_type = shift_type
+    profile.last_shift_change = datetime.now()
+
+def calculate_trade_compatibility(user, trade_post):
+    """Calculate compatibility score for a trade"""
+    schedule = trade_post.schedule
+    
+    # Check position match
+    if user.position_id == schedule.position_id:
+        return 'high'
+    
+    # Check skill match
+    if schedule.position:
+        required_skills = [s.id for s in schedule.position.required_skills]
+        user_skills = [s.id for s in user.skills]
+        if all(skill in user_skills for skill in required_skills):
+            return 'medium'
+    
+    return 'low'
+
+def get_trade_history(employee_id, limit=10):
+    """Get trade history for an employee"""
+    trades = ShiftTrade.query.filter(
+        or_(
+            ShiftTrade.employee1_id == employee_id,
+            ShiftTrade.employee2_id == employee_id
+        ),
+        ShiftTrade.status == 'completed'
+    ).order_by(ShiftTrade.completed_at.desc()).limit(limit).all()
+    
+    return trades
+
+def get_overtime_opportunities():
+    """Get upcoming overtime opportunities"""
+    # This would typically query from a dedicated table or calculate based on gaps
+    opportunities = []
+    gaps = get_coverage_gaps('ALL', 14)
+    
+    for gap in gaps:
+        if gap['gap'] > 0:
+            opportunities.append({
+                'id': f"{gap['date']}_{gap['shift_type']}",
+                'date': gap['date'],
+                'shift_type': gap['shift_type'],
+                'positions_needed': gap['gap'],
+                'start_time': datetime.strptime('07:00', '%H:%M').time() if gap['shift_type'] == 'day' else datetime.strptime('19:00', '%H:%M').time(),
+                'end_time': datetime.strptime('19:00', '%H:%M').time() if gap['shift_type'] == 'day' else datetime.strptime('07:00', '%H:%M').time(),
+                'hours': 12
+            })
+    
+    return opportunities[:10]  # Return first 10
+
+def get_overtime_eligible_employees():
+    """Get employees eligible for overtime"""
+    # Get employees with less than 40 hours this week
+    week_start = date.today() - timedelta(days=date.today().weekday())
+    week_end = week_start + timedelta(days=6)
+    
+    employees = Employee.query.filter_by(is_supervisor=False).all()
+    eligible = []
+    
+    for emp in employees:
+        week_hours = db.session.query(func.sum(Schedule.hours)).filter(
+            Schedule.employee_id == emp.id,
+            Schedule.date >= week_start,
+            Schedule.date <= week_end
+        ).scalar() or 0
+        
+        if week_hours < 60:  # Eligible if under 60 hours
+            eligible.append({
+                'employee': emp,
+                'current_hours': week_hours,
+                'available_hours': 60 - week_hours
+            })
+    
+    return eligible
+
+def is_eligible_for_overtime(employee, opportunity):
+    """Check if employee is eligible for specific overtime"""
+    # Check weekly hours limit
+    week_start = opportunity['date'] - timedelta(days=opportunity['date'].weekday())
+    week_end = week_start + timedelta(days=6)
+    
+    current_hours = db.session.query(func.sum(Schedule.hours)).filter(
+        Schedule.employee_id == employee.id,
+        Schedule.date >= week_start,
+        Schedule.date <= week_end
+    ).scalar() or 0
+    
+    if current_hours + opportunity['hours'] > 60:
+        return False
+    
+    # Check if already scheduled that day
+    existing = Schedule.query.filter_by(
+        employee_id=employee.id,
+        date=opportunity['date']
+    ).first()
+    
+    return existing is None
+
+def execute_shift_trade(trade):
+    """Execute an approved shift trade"""
+    schedule1 = Schedule.query.get(trade.schedule1_id)
+    schedule2 = Schedule.query.get(trade.schedule2_id)
+    
+    # Swap employee assignments
+    temp_employee = schedule1.employee_id
+    schedule1.employee_id = schedule2.employee_id
+    schedule2.employee_id = temp_employee
+    
+    # Update trade status
+    trade.status = 'completed'
+    trade.completed_at = datetime.now()
+
+# ==================== AUTHENTICATION ROUTES ====================
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        email = request.form.get('email')
+        password = request.form.get('password')
+        
+        employee = Employee.query.filter_by(email=email).first()
+        
+        if employee and employee.check_password(password):
+            login_user(employee)
+            flash(f'Welcome back, {employee.name}!', 'success')
             
-            if (!response.ok) {
-                throw new Error('PDF generation failed');
+            # Redirect based on role
+            if employee.is_supervisor:
+                return redirect(url_for('dashboard'))
+            else:
+                return redirect(url_for('employee_dashboard'))
+        else:
+            flash('Invalid email or password', 'danger')
+    
+    return render_template('login.html')
+
+@app.route('/logout')
+@login_required
+def logout():
+    logout_user()
+    flash('You have been logged out successfully.', 'info')
+    return redirect(url_for('index'))
+
+# ==================== COVERAGE GAP ROUTES ====================
+
+@app.route('/supervisor/coverage-gaps')
+@login_required
+def coverage_gaps():
+    """View detailed coverage gaps analysis"""
+    if not current_user.is_supervisor:
+        flash('Access denied. Supervisors only.', 'danger')
+        return redirect(url_for('employee_dashboard'))
+    
+    # Get filter parameters
+    selected_crew = request.args.get('crew', 'ALL')
+    days_ahead = int(request.args.get('days_ahead', 7))
+    shift_type = request.args.get('shift_type', '')
+    
+    # Get coverage gaps
+    gaps = get_coverage_gaps(selected_crew, days_ahead)
+    
+    # Filter by shift type if specified
+    if shift_type:
+        gaps = [g for g in gaps if g['shift_type'] == shift_type]
+    
+    # Get positions for filter
+    positions = Position.query.all()
+    
+    # Calculate dates for statistics
+    today = date.today()
+    week_end = today + timedelta(days=7)
+    
+    return render_template('coverage_gaps.html',
+                         coverage_gaps=gaps,
+                         selected_crew=selected_crew,
+                         days_ahead=days_ahead,
+                         shift_type=shift_type,
+                         positions=positions,
+                         today=today,
+                         week_end=week_end)
+
+@app.route('/supervisor/fill-gap')
+@login_required
+def fill_gap():
+    """Fill a specific coverage gap"""
+    if not current_user.is_supervisor:
+        flash('Access denied. Supervisors only.', 'danger')
+        return redirect(url_for('employee_dashboard'))
+    
+    # Get gap details from query params
+    gap_date = request.args.get('date')
+    if gap_date:
+        gap_date = datetime.strptime(gap_date, '%Y-%m-%d').date()
+    else:
+        gap_date = date.today()
+    
+    shift_type = request.args.get('shift_type', 'day')
+    crew = request.args.get('crew', 'ALL')
+    
+    # Get available employees (not already scheduled for this date/shift)
+    available_employees = []
+    all_employees = Employee.query.filter_by(is_supervisor=False).all()
+    
+    for emp in all_employees:
+        # Check if already scheduled
+        existing_schedule = Schedule.query.filter_by(
+            employee_id=emp.id,
+            date=gap_date,
+            shift_type=shift_type
+        ).first()
+        
+        if not existing_schedule:
+            # Check current week hours
+            week_start = gap_date - timedelta(days=gap_date.weekday())
+            week_end = week_start + timedelta(days=6)
+            
+            current_hours = db.session.query(func.sum(Schedule.hours)).filter(
+                Schedule.employee_id == emp.id,
+                Schedule.date >= week_start,
+                Schedule.date <= week_end
+            ).scalar() or 0
+            
+            # Check if on time off
+            time_off = VacationCalendar.query.filter_by(
+                employee_id=emp.id,
+                date=gap_date
+            ).first()
+            
+            emp.current_hours = current_hours
+            emp.is_available = time_off is None
+            emp.conflict_reason = 'Time Off' if time_off else None
+            
+            # Determine skills match (simplified)
+            emp.skills_match = 'full' if emp.skills else 'basic'
+            
+            available_employees.append(emp)
+    
+    # Get casual workers
+    casual_workers = CasualWorker.query.filter_by(is_active=True).all()
+    
+    # Get scheduled count for this gap
+    scheduled_count = Schedule.query.filter(
+        Schedule.date == gap_date,
+        Schedule.shift_type == shift_type
+    ).count()
+    
+    # Define minimum requirements
+    min_coverage = {'day': 4, 'evening': 3, 'night': 2}
+    required_count = min_coverage.get(shift_type, 2)
+    gap_count = required_count - scheduled_count
+    
+    # Get positions
+    positions = Position.query.all()
+    
+    return render_template('fill_gap.html',
+                         gap_date=gap_date,
+                         shift_type=shift_type,
+                         crew=crew,
+                         available_employees=available_employees,
+                         casual_workers=casual_workers,
+                         scheduled_count=scheduled_count,
+                         required_count=required_count,
+                         gap_count=gap_count,
+                         positions=positions)
+
+@app.route('/supervisor/todays-schedule')
+@login_required
+def todays_schedule():
+    """Redirect to schedule view for today"""
+    if not current_user.is_supervisor:
+        flash('Access denied. Supervisors only.', 'danger')
+        return redirect(url_for('employee_dashboard'))
+    
+    # Redirect to schedule view with today's date
+    return redirect(url_for('view_schedules', 
+                          start_date=date.today().strftime('%Y-%m-%d'),
+                          end_date=date.today().strftime('%Y-%m-%d'),
+                          crew=current_user.crew or 'ALL'))
+
+@app.route('/supervisor/create-schedule')
+@login_required
+def supervisor_create_schedule():
+    """Redirect to schedule creation"""
+    if not current_user.is_supervisor:
+        flash('Access denied. Supervisors only.', 'danger')
+        return redirect(url_for('employee_dashboard'))
+    
+    return redirect(url_for('create_schedule'))
+
+# ==================== DASHBOARD ROUTES ====================
+
+@app.route('/dashboard')
+@login_required
+def dashboard():
+    if not current_user.is_supervisor:
+        flash('Access denied. Supervisors only.', 'danger')
+        return redirect(url_for('employee_dashboard'))
+    
+    # Get selected crew from query params (default to supervisor's crew or 'ALL')
+    selected_crew = request.args.get('crew', current_user.crew or 'ALL')
+    
+    # Build query filters based on selected crew
+    crew_filter = None
+    if selected_crew != 'ALL':
+        crew_filter = Employee.crew == selected_crew
+    
+    # Get crew statistics
+    crew_stats = {}
+    
+    # Total employees in crew
+    query = Employee.query
+    if crew_filter is not None:
+        query = query.filter(crew_filter)
+    crew_stats['total_employees'] = query.count()
+    
+    # On duty now (based on current time and schedules)
+    now = datetime.now()
+    on_duty_query = Schedule.query.filter(
+        Schedule.date == date.today(),
+        Schedule.start_time <= now.time(),
+        Schedule.end_time >= now.time()
+    )
+    if crew_filter is not None:
+        on_duty_query = on_duty_query.join(Employee).filter(crew_filter)
+    crew_stats['on_duty'] = on_duty_query.count()
+    
+    # Current shift type
+    current_hour = now.hour
+    if 6 <= current_hour < 14:
+        crew_stats['current_shift'] = 'Day Shift'
+    elif 14 <= current_hour < 22:
+        crew_stats['current_shift'] = 'Evening Shift'
+    else:
+        crew_stats['current_shift'] = 'Night Shift'
+    
+    # Pending requests
+    pending_requests_query = TimeOffRequest.query.filter_by(status='pending')
+    if crew_filter is not None:
+        # Explicitly specify the join condition
+        pending_requests_query = pending_requests_query.join(
+            Employee, TimeOffRequest.employee_id == Employee.id
+        ).filter(crew_filter)
+    crew_stats['pending_requests'] = pending_requests_query.count()
+    
+    # Coverage gaps in next 7 days
+    coverage_gaps = get_coverage_gaps(selected_crew, days_ahead=7)
+    crew_stats['coverage_gaps'] = len(coverage_gaps)
+    
+    # Get pending items
+    pending_time_off_count = TimeOffRequest.query.filter_by(status='pending').count()
+    pending_swaps_count = ShiftSwapRequest.query.filter_by(status='pending').count()
+    
+    # Get recent requests for display
+    recent_time_off_requests = TimeOffRequest.query.filter_by(
+        status='pending'
+    ).order_by(TimeOffRequest.submitted_date.desc()).limit(3).all()
+    
+    recent_swap_requests = ShiftSwapRequest.query.filter_by(
+        status='pending'
+    ).order_by(ShiftSwapRequest.created_at.desc()).limit(3).all()
+    
+    # Get today's schedule
+    todays_schedule = Schedule.query.filter(
+        Schedule.date == date.today()
+    )
+    if crew_filter is not None:
+        todays_schedule = todays_schedule.join(Employee).filter(crew_filter)
+    todays_schedule = todays_schedule.order_by(Schedule.start_time).all()
+    
+    # Get coverage needs
+    coverage_needs = CoverageRequest.query.filter_by(
+        status='open'
+    ).count()
+    
+    # Get other supervisors for the quick message modal
+    other_supervisors = Employee.query.filter(
+        Employee.is_supervisor == True,
+        Employee.id != current_user.id
+    ).order_by(Employee.name).all()
+    
+    return render_template('dashboard.html',
+                         selected_crew=selected_crew,
+                         crew_stats=crew_stats,
+                         pending_time_off_count=pending_time_off_count,
+                         pending_swaps_count=pending_swaps_count,
+                         recent_time_off_requests=recent_time_off_requests,
+                         recent_swap_requests=recent_swap_requests,
+                         todays_schedule=todays_schedule,
+                         coverage_needs=coverage_needs,
+                         coverage_gaps=coverage_gaps[:3],  # Show first 3 gaps
+                         other_supervisors=other_supervisors)
+
+@app.route('/employee-dashboard')
+@login_required
+def employee_dashboard():
+    """Employee dashboard with schedules, requests, and sleep health info"""
+    employee = Employee.query.get(current_user.id)
+    
+    # Get upcoming schedules
+    schedules = Schedule.query.filter(
+        Schedule.employee_id == employee.id,
+        Schedule.date >= date.today()
+    ).order_by(Schedule.date, Schedule.start_time).limit(7).all()
+    
+    # Calculate this week's hours
+    week_start = date.today() - timedelta(days=date.today().weekday())
+    week_end = week_start + timedelta(days=6)
+    
+    week_schedules = Schedule.query.filter(
+        Schedule.employee_id == employee.id,
+        Schedule.date >= week_start,
+        Schedule.date <= week_end
+    ).all()
+    
+    weekly_hours = sum(s.hours or 8 for s in week_schedules if not s.is_overtime)
+    overtime_hours = sum(s.hours or 0 for s in week_schedules if s.is_overtime)
+    
+    # Get pending requests
+    swap_requests = ShiftSwapRequest.query.filter(
+        or_(
+            ShiftSwapRequest.requester_id == employee.id,
+            ShiftSwapRequest.target_employee_id == employee.id
+        ),
+        ShiftSwapRequest.status == 'pending'
+    ).all()
+    
+    time_off_requests = TimeOffRequest.query.filter_by(
+        employee_id=employee.id,
+        status='pending'
+    ).all()
+    
+    # Get sleep profile
+    sleep_profile = CircadianProfile.query.filter_by(employee_id=employee.id).first()
+    
+    # Check for coverage notifications
+    unread_notifications = CoverageNotification.query.filter(
+        CoverageNotification.sent_to_employee_id == employee.id,
+        CoverageNotification.read_at.is_(None)
+    ).count()
+    
+    return render_template('employee_dashboard.html',
+                         employee=employee,
+                         schedules=schedules,
+                         weekly_hours=weekly_hours,
+                         overtime_hours=overtime_hours,
+                         swap_requests=swap_requests,
+                         time_off_requests=time_off_requests,
+                         sleep_profile=sleep_profile,
+                         unread_notifications=unread_notifications)
+
+# ==================== VACATION/TIME OFF ROUTES ====================
+
+@app.route('/vacation/request', methods=['GET', 'POST'])
+@login_required
+def vacation_request():
+    """Request time off"""
+    if request.method == 'POST':
+        request_type = request.form.get('request_type')
+        start_date = datetime.strptime(request.form.get('start_date'), '%Y-%m-%d').date()
+        end_date = datetime.strptime(request.form.get('end_date'), '%Y-%m-%d').date()
+        reason = request.form.get('reason', '')
+        
+        # Calculate days (excluding weekends)
+        days_requested = 0
+        current = start_date
+        while current <= end_date:
+            if current.weekday() < 5:  # Monday = 0, Friday = 4
+                days_requested += 1
+            current += timedelta(days=1)
+        
+        # Check balance
+        if request_type == 'vacation' and days_requested > current_user.vacation_days:
+            flash('Insufficient vacation days available.', 'danger')
+            return redirect(url_for('vacation_request'))
+        elif request_type == 'sick' and days_requested > current_user.sick_days:
+            flash('Insufficient sick days available.', 'danger')
+            return redirect(url_for('vacation_request'))
+        elif request_type == 'personal' and days_requested > current_user.personal_days:
+            flash('Insufficient personal days available.', 'danger')
+            return redirect(url_for('vacation_request'))
+        
+        # Create request
+        time_off = TimeOffRequest(
+            employee_id=current_user.id,
+            request_type=request_type,
+            start_date=start_date,
+            end_date=end_date,
+            days_requested=days_requested,
+            reason=reason,
+            status='pending'
+        )
+        
+        db.session.add(time_off)
+        db.session.commit()
+        
+        flash('Time off request submitted successfully!', 'success')
+        return redirect(url_for('employee_dashboard'))
+    
+    return render_template('vacation_request.html',
+                         vacation_days=current_user.vacation_days,
+                         sick_days=current_user.sick_days,
+                         personal_days=current_user.personal_days)
+
+@app.route('/supervisor/time-off-requests')
+@login_required
+def time_off_requests():
+    """Review and manage time off requests"""
+    if not current_user.is_supervisor:
+        flash('Access denied. Supervisors only.', 'danger')
+        return redirect(url_for('employee_dashboard'))
+    
+    # Get pending requests
+    pending_requests = TimeOffRequest.query.filter_by(status='pending').order_by(TimeOffRequest.submitted_date.desc()).all()
+    
+    # Get recently processed requests
+    recent_requests = TimeOffRequest.query.filter(
+        TimeOffRequest.status.in_(['approved', 'denied'])
+    ).order_by(TimeOffRequest.submitted_date.desc()).limit(20).all()
+    
+    return render_template('time_off_requests.html',
+                         pending_requests=pending_requests,
+                         recent_requests=recent_requests)
+
+@app.route('/time-off/<int:request_id>/approve', methods=['POST'])
+@login_required
+def approve_time_off(request_id):
+    """Approve a time off request"""
+    if not current_user.is_supervisor:
+        flash('Access denied.', 'danger')
+        return redirect(url_for('employee_dashboard'))
+    
+    time_off = TimeOffRequest.query.get_or_404(request_id)
+    
+    if time_off.status != 'pending':
+        flash('This request has already been processed.', 'warning')
+        return redirect(url_for('time_off_requests'))
+    
+    # Update status
+    time_off.status = 'approved'
+    time_off.processed_date = datetime.now()
+    time_off.processed_by_id = current_user.id
+    
+    # Update employee balances
+    if time_off.request_type == 'vacation':
+        time_off.employee.vacation_days -= time_off.days_requested
+    elif time_off.request_type == 'sick':
+        time_off.employee.sick_days -= time_off.days_requested
+    elif time_off.request_type == 'personal':
+        time_off.employee.personal_days -= time_off.days_requested
+    
+    # Add to vacation calendar
+    current = time_off.start_date
+    while current <= time_off.end_date:
+        if current.weekday() < 5:  # Weekdays only
+            calendar_entry = VacationCalendar(
+                employee_id=time_off.employee_id,
+                date=current,
+                request_type=time_off.request_type,
+                time_off_request_id=time_off.id
+            )
+            db.session.add(calendar_entry)
+        current += timedelta(days=1)
+    
+    db.session.commit()
+    
+    flash(f'Time off request for {time_off.employee.name} has been approved!', 'success')
+    return redirect(url_for('time_off_requests'))
+
+@app.route('/time-off/<int:request_id>/deny', methods=['POST'])
+@login_required
+def deny_time_off(request_id):
+    """Deny a time off request"""
+    if not current_user.is_supervisor:
+        flash('Access denied.', 'danger')
+        return redirect(url_for('employee_dashboard'))
+    
+    time_off = TimeOffRequest.query.get_or_404(request_id)
+    
+    if time_off.status != 'pending':
+        flash('This request has already been processed.', 'warning')
+        return redirect(url_for('time_off_requests'))
+    
+    # Update status
+    time_off.status = 'denied'
+    time_off.processed_date = datetime.now()
+    time_off.processed_by_id = current_user.id
+    
+    db.session.commit()
+    
+    flash(f'Time off request for {time_off.employee.name} has been denied.', 'info')
+    return redirect(url_for('time_off_requests'))
+
+@app.route('/vacation-calendar')
+@login_required
+def vacation_calendar():
+    """View team vacation calendar"""
+    # Get calendar entries for the next 90 days
+    start_date = date.today()
+    end_date = start_date + timedelta(days=90)
+    
+    calendar_entries = VacationCalendar.query.filter(
+        VacationCalendar.date >= start_date,
+        VacationCalendar.date <= end_date
+    ).order_by(VacationCalendar.date).all()
+    
+    # Group by date for easier display
+    calendar_data = {}
+    for entry in calendar_entries:
+        if entry.date not in calendar_data:
+            calendar_data[entry.date] = []
+        calendar_data[entry.date].append(entry)
+    
+    return render_template('vacation_calendar.html',
+                         calendar_data=calendar_data,
+                         start_date=start_date,
+                         end_date=end_date)
+
+# ==================== SUGGESTIONS ROUTES ====================
+
+@app.route('/supervisor/suggestions')
+@login_required
+def suggestions():
+    """View employee suggestions"""
+    if not current_user.is_supervisor:
+        flash('Access denied. Supervisors only.', 'danger')
+        return redirect(url_for('employee_dashboard'))
+    
+    # Get all suggestions
+    all_suggestions = ScheduleSuggestion.query.order_by(ScheduleSuggestion.created_at.desc()).all()
+    
+    return render_template('suggestions.html', suggestions=all_suggestions)
+
+# ==================== CASUAL WORKER ROUTES ====================
+
+@app.route('/register-casual')
+def register_casual():
+    """Casual worker registration form"""
+    skills = Skill.query.all()
+    return render_template('register_casual.html', skills=skills)
+
+@app.route('/register-casual', methods=['POST'])
+def register_casual_post():
+    """Process casual worker registration"""
+    try:
+        # Create casual worker
+        casual = CasualWorker(
+            name=request.form.get('name'),
+            email=request.form.get('email'),
+            phone=request.form.get('phone'),
+            availability_days=request.form.get('availability_days', ''),
+            availability_shifts=request.form.get('availability_shifts', ''),
+            max_hours_per_week=int(request.form.get('max_hours_per_week', 20)),
+            hourly_rate=float(request.form.get('hourly_rate', 25.0))
+        )
+        
+        # Add skills
+        skill_ids = request.form.getlist('skills')
+        for skill_id in skill_ids:
+            skill = Skill.query.get(skill_id)
+            if skill:
+                casual.skills.append(skill)
+        
+        db.session.add(casual)
+        db.session.commit()
+        
+        flash('Registration successful! You will be contacted when shifts are available.', 'success')
+        return redirect(url_for('index'))
+    except Exception as e:
+        flash(f'Error during registration: {str(e)}', 'danger')
+        return redirect(url_for('register_casual'))
+
+@app.route('/casual-workers')
+@login_required
+def casual_workers():
+    """View and manage casual workers"""
+    if not current_user.is_supervisor:
+        flash('Access denied. Supervisors only.', 'danger')
+        return redirect(url_for('employee_dashboard'))
+    
+    # Get all casual workers
+    casuals = CasualWorker.query.filter_by(is_active=True).all()
+    inactive_casuals = CasualWorker.query.filter_by(is_active=False).all()
+    
+    return render_template('casual_workers.html',
+                         casuals=casuals,
+                         inactive_casuals=inactive_casuals)
+
+# ==================== COVERAGE MANAGEMENT ROUTES ====================
+
+@app.route('/supervisor/coverage-needs')
+@login_required
+def coverage_needs():
+    """View all coverage needs and gaps"""
+    if not current_user.is_supervisor:
+        flash('Access denied. Supervisors only.', 'danger')
+        return redirect(url_for('employee_dashboard'))
+    
+    # Get open coverage requests
+    open_requests = CoverageRequest.query.filter_by(status='open').all()
+    
+    # Get coverage gaps for next 14 days
+    coverage_gaps = get_coverage_gaps(crew='ALL', days_ahead=14)
+    
+    # Get available casual workers
+    casual_workers = CasualWorker.query.filter_by(is_active=True).all()
+    
+    return render_template('coverage_needs.html',
+                         open_requests=open_requests,
+                         coverage_gaps=coverage_gaps,
+                         casual_workers=casual_workers)
+
+@app.route('/coverage/push/<int:request_id>', methods=['POST'])
+@login_required
+def push_coverage(request_id):
+    """Push coverage request to employees"""
+    if not current_user.is_supervisor:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    coverage = CoverageRequest.query.get_or_404(request_id)
+    
+    push_to = request.form.get('push_to')
+    message = request.form.get('message', '')
+    
+    notifications_sent = 0
+    
+    if push_to == 'my_crew':
+        # Push to supervisor's crew only
+        employees = Employee.query.filter_by(
+            crew=current_user.crew,
+            is_supervisor=False
+        ).all()
+    elif push_to == 'off_crews':
+        # Find crews that are off during this shift
+        schedule_date = coverage.schedule.date
+        off_crews = get_off_duty_crews(schedule_date, coverage.schedule.shift_type)
+        employees = Employee.query.filter(
+            Employee.crew.in_(off_crews),
+            Employee.is_supervisor == False
+        ).all()
+    elif push_to == 'specific_crew':
+        crew = request.form.get('specific_crew')
+        employees = Employee.query.filter_by(
+            crew=crew,
+            is_supervisor=False
+        ).all()
+    elif push_to == 'supervisors':
+        # Push to other supervisors
+        employees = Employee.query.filter(
+            Employee.is_supervisor == True,
+            Employee.id != current_user.id
+        ).all()
+    else:
+        employees = []
+    
+    # Filter by required skills if specified
+    if coverage.position_required:
+        position = Position.query.get(coverage.position_required)
+        required_skills = [s.id for s in position.required_skills]
+        
+        qualified_employees = []
+        for emp in employees:
+            emp_skills = [s.id for s in emp.skills]
+            if all(skill in emp_skills for skill in required_skills):
+                qualified_employees.append(emp)
+        employees = qualified_employees
+    
+    # Send notifications
+    for employee in employees:
+        # Check if employee is already working that day
+        existing_schedule = Schedule.query.filter_by(
+            employee_id=employee.id,
+            date=coverage.schedule.date
+        ).first()
+        
+        if not existing_schedule:  # Only notify if not already scheduled
+            notification = CoverageNotification(
+                coverage_request_id=coverage.id,
+                sent_to_type='individual',
+                sent_to_employee_id=employee.id,
+                sent_by_id=current_user.id,
+                message=message or f"Coverage needed for {coverage.schedule.date} {coverage.schedule.shift_type} shift"
+            )
+            db.session.add(notification)
+            notifications_sent += 1
+    
+    # Update coverage request
+    coverage.pushed_to_crews = push_to
+    coverage.push_message = message
+    
+    db.session.commit()
+    
+    flash(f'Coverage request sent to {notifications_sent} qualified employees!', 'success')
+    return redirect(url_for('coverage_needs'))
+
+@app.route('/api/coverage-notifications')
+@login_required
+def get_coverage_notifications():
+    """Get coverage notifications for current user"""
+    notifications = CoverageNotification.query.filter_by(
+        sent_to_employee_id=current_user.id,
+        read_at=None
+    ).order_by(CoverageNotification.sent_at.desc()).all()
+    
+    return jsonify({
+        'notifications': [{
+            'id': n.id,
+            'message': n.message,
+            'sent_at': n.sent_at.strftime('%Y-%m-%d %H:%M'),
+            'coverage_id': n.coverage_request_id
+        } for n in notifications]
+    })
+
+@app.route('/coverage/respond/<int:notification_id>', methods=['POST'])
+@login_required
+def respond_to_coverage(notification_id):
+    """Respond to a coverage notification"""
+    notification = CoverageNotification.query.get_or_404(notification_id)
+    
+    if notification.sent_to_employee_id != current_user.id:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    response = request.form.get('response')  # 'accept' or 'decline'
+    
+    notification.read_at = datetime.now()
+    notification.responded_at = datetime.now()
+    notification.response = response
+    
+    if response == 'accept':
+        # Assign the coverage
+        coverage = notification.coverage_request
+        coverage.filled_by_id = current_user.id
+        coverage.filled_at = datetime.now()
+        coverage.status = 'filled'
+        
+        # Create schedule entry
+        original_schedule = coverage.schedule
+        new_schedule = Schedule(
+            employee_id=current_user.id,
+            date=original_schedule.date,
+            shift_type=original_schedule.shift_type,
+            start_time=original_schedule.start_time,
+            end_time=original_schedule.end_time,
+            position_id=original_schedule.position_id,
+            hours=original_schedule.hours,
+            is_overtime=True,  # Coverage is usually overtime
+            crew=current_user.crew
+        )
+        db.session.add(new_schedule)
+        
+        flash('You have accepted the coverage shift!', 'success')
+    else:
+        flash('You have declined the coverage request.', 'info')
+    
+    db.session.commit()
+    return redirect(url_for('employee_dashboard'))
+
+# ==================== EXCEL IMPORT ROUTES ====================
+
+@app.route('/import-employees', methods=['GET', 'POST'])
+@login_required
+def import_employees():
+    """Import employees from Excel file"""
+    if not current_user.is_supervisor:
+        flash('Access denied. Supervisors only.', 'danger')
+        return redirect(url_for('employee_dashboard'))
+    
+    if request.method == 'POST':
+        if 'file' not in request.files:
+            flash('No file selected', 'danger')
+            return redirect(request.url)
+        
+        file = request.files['file']
+        
+        if file.filename == '':
+            flash('No file selected', 'danger')
+            return redirect(request.url)
+        
+        if file and allowed_file(file.filename):
+            filename = secure_filename(file.filename)
+            
+            try:
+                # Read Excel file
+                df = pd.read_excel(file)
+                
+                # Expected columns: Name, Email, Phone, Hire Date, Crew, Position, Skills
+                required_columns = ['Name', 'Email', 'Phone']
+                
+                if not all(col in df.columns for col in required_columns):
+                    flash(f'Excel file must contain columns: {", ".join(required_columns)}', 'danger')
+                    return redirect(request.url)
+                
+                imported_count = 0
+                errors = []
+                
+                for idx, row in df.iterrows():
+                    try:
+                        # Check if employee already exists
+                        existing = Employee.query.filter_by(email=row['Email']).first()
+                        if existing:
+                            errors.append(f"Row {idx+2}: Employee {row['Email']} already exists")
+                            continue
+                        
+                        # Create new employee
+                        employee = Employee(
+                            name=row['Name'],
+                            email=row['Email'],
+                            phone=str(row.get('Phone', '')),
+                            hire_date=pd.to_datetime(row.get('Hire Date', date.today())).date() if pd.notna(row.get('Hire Date')) else date.today(),
+                            crew=str(row.get('Crew', 'A'))[:1],  # Ensure single character
+                            is_supervisor=False,
+                            vacation_days=10,
+                            sick_days=5,
+                            personal_days=3
+                        )
+                        
+                        # Set default password
+                        employee.set_password('password123')
+                        
+                        # Handle position
+                        if 'Position' in row and pd.notna(row['Position']):
+                            position = Position.query.filter_by(name=row['Position']).first()
+                            if position:
+                                employee.position_id = position.id
+                        
+                        # Handle skills (comma-separated)
+                        if 'Skills' in row and pd.notna(row['Skills']):
+                            skill_names = [s.strip() for s in str(row['Skills']).split(',')]
+                            for skill_name in skill_names:
+                                skill = Skill.query.filter_by(name=skill_name).first()
+                                if not skill:
+                                    # Create new skill if it doesn't exist
+                                    skill = Skill(name=skill_name, category='General')
+                                    db.session.add(skill)
+                                employee.skills.append(skill)
+                        
+                        db.session.add(employee)
+                        imported_count += 1
+                        
+                    except Exception as e:
+                        errors.append(f"Row {idx+2}: {str(e)}")
+                
+                db.session.commit()
+                
+                flash(f'Successfully imported {imported_count} employees!', 'success')
+                if errors:
+                    flash(f'Errors encountered: {"; ".join(errors[:5])}{"..." if len(errors) > 5 else ""}', 'warning')
+                
+                return redirect(url_for('dashboard'))
+                
+            except Exception as e:
+                flash(f'Error reading file: {str(e)}', 'danger')
+                return redirect(request.url)
+    
+    # GET request - show upload form
+    return render_template('import_employees.html')
+
+@app.route('/export-template')
+@login_required
+def export_template():
+    """Download Excel template for employee import"""
+    if not current_user.is_supervisor:
+        flash('Access denied. Supervisors only.', 'danger')
+        return redirect(url_for('employee_dashboard'))
+    
+    # Create template DataFrame
+    template_data = {
+        'Name': ['John Doe', 'Jane Smith'],
+        'Email': ['john.doe@example.com', 'jane.smith@example.com'],
+        'Phone': ['555-0123', '555-0124'],
+        'Hire Date': [date.today(), date.today()],
+        'Crew': ['A', 'B'],
+        'Position': ['Nurse', 'Security Officer'],
+        'Skills': ['CPR Certified, Emergency Response', 'Security, First Aid']
+    }
+    
+    df = pd.DataFrame(template_data)
+    
+    # Create Excel file in memory
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, sheet_name='Employees', index=False)
+        
+        # Add instructions sheet
+        instructions = pd.DataFrame({
+            'Instructions': [
+                'Fill in employee data in the Employees sheet',
+                'Required fields: Name, Email, Phone',
+                'Optional fields: Hire Date, Crew (A/B/C/D), Position, Skills',
+                'Skills should be comma-separated',
+                'All employees will be created with password: password123',
+                'Employees will need to change their password on first login'
+            ]
+        })
+        instructions.to_excel(writer, sheet_name='Instructions', index=False)
+    
+    output.seek(0)
+    
+    return send_file(
+        output,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True,
+        download_name='employee_import_template.xlsx'
+    )
+
+# ==================== OVERTIME DISTRIBUTION ROUTES ====================
+
+@app.route('/supervisor/overtime-distribution')
+@login_required
+def overtime_distribution():
+    """Smart overtime distribution interface"""
+    if not current_user.is_supervisor:
+        flash('Access denied. Supervisors only.', 'danger')
+        return redirect(url_for('employee_dashboard'))
+    
+    # Get upcoming overtime opportunities
+    overtime_opportunities = get_overtime_opportunities()
+    
+    # Get eligible employees for overtime
+    eligible_employees = get_overtime_eligible_employees()
+    
+    return render_template('overtime_distribution.html',
+                         opportunities=overtime_opportunities,
+                         eligible_employees=eligible_employees)
+
+@app.route('/overtime/assign', methods=['POST'])
+@login_required
+def assign_overtime():
+    """Assign overtime to qualified employees"""
+    if not current_user.is_supervisor:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    opportunity_id = request.form.get('opportunity_id')
+    employee_ids = request.form.getlist('employee_ids')
+    
+    # Parse opportunity ID to get date and shift type
+    parts = opportunity_id.split('_')
+    opp_date = datetime.strptime(parts[0], '%Y-%m-%d').date()
+    shift_type = parts[1]
+    
+    opportunity = {
+        'date': opp_date,
+        'shift_type': shift_type,
+        'hours': 12,
+        'start_time': datetime.strptime('07:00', '%H:%M').time() if shift_type == 'day' else datetime.strptime('19:00', '%H:%M').time(),
+        'end_time': datetime.strptime('19:00', '%H:%M').time() if shift_type == 'day' else datetime.strptime('07:00', '%H:%M').time()
+    }
+    
+    assignments_made = 0
+    
+    for emp_id in employee_ids:
+        employee = Employee.query.get(emp_id)
+        
+        # Verify employee is eligible
+        if not is_eligible_for_overtime(employee, opportunity):
+            continue
+        
+        # Create overtime schedule
+        schedule = Schedule(
+            employee_id=employee.id,
+            date=opportunity['date'],
+            shift_type=opportunity['shift_type'],
+            start_time=opportunity['start_time'],
+            end_time=opportunity['end_time'],
+            position_id=employee.position_id,
+            hours=opportunity['hours'],
+            is_overtime=True,
+            crew=employee.crew
+        )
+        db.session.add(schedule)
+        assignments_made += 1
+    
+    db.session.commit()
+    
+    flash(f'Overtime assigned to {assignments_made} employees!', 'success')
+    return redirect(url_for('overtime_distribution'))
+
+# ==================== ENHANCED SHIFT SWAP ROUTES ====================
+
+@app.route('/employee/swap-request', methods=['POST'])
+@login_required
+def create_swap_request():
+    """Create a shift swap request"""
+    schedule_id = request.form.get('schedule_id')
+    reason = request.form.get('reason', '')
+    
+    schedule = Schedule.query.get_or_404(schedule_id)
+    
+    if schedule.employee_id != current_user.id:
+        flash('You can only request swaps for your own shifts.', 'danger')
+        return redirect(url_for('employee_dashboard'))
+    
+    # Create swap request
+    swap_request = ShiftSwapRequest(
+        requester_id=current_user.id,
+        original_schedule_id=schedule_id,
+        reason=reason,
+        status='pending'
+    )
+    
+    db.session.add(swap_request)
+    db.session.commit()
+    
+    flash('Shift swap request submitted! Both supervisors will need to approve.', 'success')
+    return redirect(url_for('employee_dashboard'))
+
+@app.route('/supervisor/swap-requests')
+@login_required
+def swap_requests():
+    """View and manage shift swap requests"""
+    if not current_user.is_supervisor:
+        flash('Access denied. Supervisors only.', 'danger')
+        return redirect(url_for('employee_dashboard'))
+    
+    # Get pending swap requests that need this supervisor's approval
+    pending_swaps = ShiftSwapRequest.query.filter(
+        ShiftSwapRequest.status == 'pending'
+    ).all()
+    
+    # Filter to show only relevant swaps for this supervisor
+    relevant_swaps = []
+    for swap in pending_swaps:
+        requester = Employee.query.get(swap.requester_id)
+        target = Employee.query.get(swap.target_employee_id) if swap.target_employee_id else None
+        
+        # Check if this supervisor oversees either employee
+        if requester.crew == current_user.crew or (target and target.crew == current_user.crew):
+            relevant_swaps.append(swap)
+    
+    recent_swaps = ShiftSwapRequest.query.filter(
+        ShiftSwapRequest.status.in_(['approved', 'denied'])
+    ).order_by(ShiftSwapRequest.created_at.desc()).limit(10).all()
+    
+    return render_template('swap_requests.html',
+                         pending_swaps=relevant_swaps,
+                         recent_swaps=recent_swaps)
+
+@app.route('/swap-request/<int:swap_id>/<action>', methods=['POST'])
+@login_required
+def handle_swap_request(swap_id, action):
+    """Handle swap request with dual supervisor approval"""
+    if not current_user.is_supervisor:
+        flash('Access denied.', 'danger')
+        return redirect(url_for('employee_dashboard'))
+    
+    swap = ShiftSwapRequest.query.get_or_404(swap_id)
+    
+    # Determine which approval this supervisor is giving
+    requester = Employee.query.get(swap.requester_id)
+    target = Employee.query.get(swap.target_employee_id) if swap.target_employee_id else None
+    
+    is_requester_supervisor = requester.crew == current_user.crew
+    is_target_supervisor = target and target.crew == current_user.crew
+    
+    if action == 'approve':
+        if is_requester_supervisor and not swap.requester_supervisor_approved:
+            swap.requester_supervisor_approved = True
+            swap.requester_supervisor_id = current_user.id
+            swap.requester_supervisor_date = datetime.now()
+            flash('Approved for requester!', 'success')
+        
+        if is_target_supervisor and not swap.target_supervisor_approved:
+            swap.target_supervisor_approved = True
+            swap.target_supervisor_id = current_user.id
+            swap.target_supervisor_date = datetime.now()
+            flash('Approved for target employee!', 'success')
+        
+        # Check if both supervisors have approved
+        if swap.requester_supervisor_approved and (not target or swap.target_supervisor_approved):
+            # Execute the swap
+            original_schedule = Schedule.query.get(swap.original_schedule_id)
+            
+            if swap.target_schedule_id:
+                target_schedule = Schedule.query.get(swap.target_schedule_id)
+                # Swap employee assignments
+                original_employee_id = original_schedule.employee_id
+                original_schedule.employee_id = target_schedule.employee_id
+                target_schedule.employee_id = original_employee_id
+            
+            swap.status = 'approved'
+            flash('Shift swap fully approved and executed!', 'success')
+    
+    elif action == 'deny':
+        swap.status = 'denied'
+        if is_requester_supervisor:
+            swap.requester_supervisor_approved = False
+            swap.requester_supervisor_id = current_user.id
+            swap.requester_supervisor_date = datetime.now()
+        if is_target_supervisor:
+            swap.target_supervisor_approved = False
+            swap.target_supervisor_id = current_user.id
+            swap.target_supervisor_date = datetime.now()
+        
+        flash('Shift swap denied.', 'info')
+    
+    db.session.commit()
+    return redirect(url_for('swap_requests'))
+
+# ==================== SCHEDULE MANAGEMENT ROUTES ====================
+
+@app.route('/schedule/create', methods=['GET', 'POST'])
+@login_required
+def create_schedule():
+    if not current_user.is_supervisor:
+        flash('Access denied. Supervisors only.', 'danger')
+        return redirect(url_for('employee_dashboard'))
+    
+    if request.method == 'POST':
+        schedule_type = request.form.get('schedule_type')
+        start_date = datetime.strptime(request.form.get('start_date'), '%Y-%m-%d')
+        end_date = datetime.strptime(request.form.get('end_date'), '%Y-%m-%d')
+        
+        if schedule_type == '4_crew_rotation':
+            rotation_pattern = request.form.get('rotation_pattern')
+            return create_4_crew_schedule(start_date, end_date, rotation_pattern)
+        else:
+            # Standard schedule creation
+            shift_pattern = request.form.get('shift_pattern')
+            return create_standard_schedule(start_date, end_date, shift_pattern)
+    
+    employees = Employee.query.filter_by(is_supervisor=False).all()
+    positions = Position.query.all()
+    
+    # Group employees by crew for display
+    employees_by_crew = {}
+    for emp in employees:
+        crew = emp.crew or 'Unassigned'
+        if crew not in employees_by_crew:
+            employees_by_crew[crew] = []
+        employees_by_crew[crew].append(emp)
+    
+    return render_template('schedule_input.html', 
+                         employees=employees,
+                         positions=positions,
+                         employees_by_crew=employees_by_crew)
+
+def create_4_crew_schedule(start_date, end_date, rotation_pattern):
+    """Create schedules for 4-crew rotation patterns"""
+    crews = {'A': [], 'B': [], 'C': [], 'D': []}
+    
+    # Get employees by crew
+    for crew in crews:
+        crews[crew] = Employee.query.filter_by(crew=crew, is_supervisor=False).all()
+    
+    # Check if we have employees in all crews
+    empty_crews = [crew for crew, employees in crews.items() if not employees]
+    if empty_crews:
+        flash(f'No employees assigned to crew(s): {", ".join(empty_crews)}. Please assign employees to crews first.', 'danger')
+        return redirect(url_for('create_schedule'))
+    
+    # Define rotation patterns
+    if rotation_pattern == '2-2-3':
+        # 2-2-3 (Pitman) schedule
+        cycle_days = 14
+        pattern = {
+            'A': [1, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0],  # Day shifts
+            'B': [0, 0, 1, 1, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1],  # Day shifts (opposite A)
+            'C': [0, 0, 1, 1, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1],  # Night shifts
+            'D': [1, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0],  # Night shifts (opposite C)
+        }
+        shift_times = {
+            'A': ('day', 7, 19), 'B': ('day', 7, 19),
+            'C': ('night', 19, 7), 'D': ('night', 19, 7)
+        }
+    elif rotation_pattern == '4-4':
+        # 4 on, 4 off pattern
+        cycle_days = 16
+        pattern = {
+            'A': [1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0],
+            'B': [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1],
+            'C': [1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0],
+            'D': [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1],
+        }
+        shift_times = {
+            'A': ('day', 7, 19), 'B': ('day', 7, 19),
+            'C': ('night', 19, 7), 'D': ('night', 19, 7)
+        }
+    else:  # DuPont
+        # DuPont schedule
+        cycle_days = 28
+        # This is a simplified version - actual DuPont is more complex
+        pattern = {
+            'A': [1,1,1,1,0,0,0,1,1,1,0,0,0,0,0,1,1,1,1,0,0,0,1,1,1,0,0,0],
+            'B': [0,0,0,1,1,1,1,0,0,0,1,1,1,0,0,0,0,1,1,1,1,0,0,0,1,1,1,0],
+            'C': [1,0,0,0,0,1,1,1,1,0,0,0,1,1,1,0,0,0,0,1,1,1,1,0,0,0,1,1],
+            'D': [1,1,0,0,0,0,1,1,1,1,0,0,0,1,1,1,0,0,0,0,1,1,1,1,0,0,0,1],
+        }
+        shift_times = {
+            'A': ('day', 7, 19), 'B': ('day', 7, 19),
+            'C': ('night', 19, 7), 'D': ('night', 19, 7)
+        }
+    
+    # Create schedules
+    current_date = start_date
+    schedules_created = 0
+    
+    while current_date <= end_date:
+        day_in_cycle = (current_date - start_date).days % cycle_days
+        
+        for crew_name, crew_employees in crews.items():
+            if pattern[crew_name][day_in_cycle] == 1:  # Working day
+                shift_type, start_hour, end_hour = shift_times[crew_name]
+                
+                for employee in crew_employees:
+                    # Check for time off
+                    has_time_off = VacationCalendar.query.filter_by(
+                        employee_id=employee.id,
+                        date=current_date.date()
+                    ).first()
+                    
+                    if not has_time_off:
+                        start_time = current_date.replace(hour=start_hour, minute=0, second=0)
+                        end_time = current_date.replace(hour=end_hour, minute=0, second=0)
+                        
+                        # Handle overnight shifts
+                        if end_hour < start_hour:
+                            end_time += timedelta(days=1)
+                        
+                        # Calculate hours
+                        hours = (end_time - start_time).total_seconds() / 3600
+                        
+                        schedule = Schedule(
+                            employee_id=employee.id,
+                            date=current_date.date(),
+                            shift_type=shift_type,
+                            start_time=start_time.time(),
+                            end_time=end_time.time(),
+                            position_id=employee.position_id,
+                            hours=hours,
+                            crew=crew_name
+                        )
+                        db.session.add(schedule)
+                        schedules_created += 1
+                        
+                        # Update circadian profile
+                        update_circadian_profile_on_schedule_change(employee.id, shift_type)
+        
+        current_date += timedelta(days=1)
+    
+    db.session.commit()
+    flash(f'Successfully created {schedules_created} schedules using {rotation_pattern} pattern!', 'success')
+    return redirect(url_for('view_schedules'))
+
+def create_standard_schedule(start_date, end_date, shift_pattern):
+    """Create standard schedules"""
+    employees = Employee.query.filter_by(is_supervisor=False).all()
+    schedules_created = 0
+    
+    # Define shift times based on pattern
+    shift_times = {
+        'standard': [('day', 9, 17)],
+        'retail': [('day', 10, 18), ('evening', 14, 22)],
+        '2_shift': [('day', 7, 15), ('evening', 15, 23)],
+        '3_shift': [('day', 7, 15), ('evening', 15, 23), ('night', 23, 7)]
+    }
+    
+    shifts = shift_times.get(shift_pattern, [('day', 9, 17)])
+    
+    current_date = start_date
+    while current_date <= end_date:
+        # Skip weekends for standard pattern
+        if shift_pattern == 'standard' and current_date.weekday() >= 5:
+            current_date += timedelta(days=1)
+            continue
+        
+        # Assign employees to shifts
+        for i, employee in enumerate(employees):
+            # Check for time off
+            has_time_off = VacationCalendar.query.filter_by(
+                employee_id=employee.id,
+                date=current_date.date()
+            ).first()
+            
+            if not has_time_off:
+                # Rotate through available shifts
+                shift_type, start_hour, end_hour = shifts[i % len(shifts)]
+                
+                start_time = current_date.replace(hour=start_hour, minute=0, second=0)
+                end_time = current_date.replace(hour=end_hour, minute=0, second=0)
+                
+                # Handle overnight shifts
+                if end_hour < start_hour:
+                    end_time += timedelta(days=1)
+                
+                # Calculate hours
+                hours = (end_time - start_time).total_seconds() / 3600
+                
+                schedule = Schedule(
+                    employee_id=employee.id,
+                    date=current_date.date(),
+                    shift_type=shift_type,
+                    start_time=start_time.time(),
+                    end_time=end_time.time(),
+                    position_id=employee.position_id,
+                    hours=hours,
+                    crew=employee.crew
+                )
+                db.session.add(schedule)
+                schedules_created += 1
+                
+                # Update circadian profile
+                update_circadian_profile_on_schedule_change(employee.id, shift_type)
+        
+        current_date += timedelta(days=1)
+    
+    db.session.commit()
+    flash(f'Successfully created {schedules_created} schedules!', 'success')
+    return redirect(url_for('view_schedules'))
+
+@app.route('/schedule/view')
+@login_required
+def view_schedules():
+    """View schedules with crew filtering"""
+    # Get crew filter
+    crew = request.args.get('crew', 'ALL')
+    
+    # Get date range
+    start_date = request.args.get('start_date', date.today())
+    if isinstance(start_date, str):
+        start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
+    
+    end_date = request.args.get('end_date', start_date + timedelta(days=13))
+    if isinstance(end_date, str):
+        end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
+    
+    # Build query
+    query = Schedule.query.filter(
+        Schedule.date >= start_date,
+        Schedule.date <= end_date
+    )
+    
+    if crew != 'ALL':
+        query = query.filter(Schedule.crew == crew)
+    
+    schedules = query.order_by(Schedule.date, Schedule.shift_type, Schedule.start_time).all()
+    
+    # Group schedules by date and shift
+    schedule_grid = {}
+    for schedule in schedules:
+        date_key = schedule.date
+        if date_key not in schedule_grid:
+            schedule_grid[date_key] = {'day': [], 'evening': [], 'night': []}
+        
+        shift_type = schedule.shift_type or 'day'
+        schedule_grid[date_key][shift_type].append(schedule)
+    
+    return render_template('crew_schedule.html',
+                         schedule_grid=schedule_grid,
+                         start_date=start_date,
+                         end_date=end_date,
+                         selected_crew=crew)
+
+# ==================== COMMUNICATION ROUTES ====================
+
+@app.route('/supervisor/messages')
+@login_required
+def supervisor_messages():
+    """View and send messages to other supervisors"""
+    if not current_user.is_supervisor:
+        flash('Access denied. Supervisors only.', 'danger')
+        return redirect(url_for('employee_dashboard'))
+    
+    # Get inbox messages
+    inbox = SupervisorMessage.query.filter_by(
+        recipient_id=current_user.id,
+        archived=False
+    ).order_by(SupervisorMessage.sent_at.desc()).all()
+    
+    # Get sent messages
+    sent = SupervisorMessage.query.filter_by(
+        sender_id=current_user.id,
+        archived=False
+    ).order_by(SupervisorMessage.sent_at.desc()).limit(10).all()
+    
+    # Get other supervisors for new message dropdown
+    other_supervisors = Employee.query.filter(
+        Employee.is_supervisor == True,
+        Employee.id != current_user.id
+    ).order_by(Employee.name).all()
+    
+    # Count unread messages
+    unread_count = SupervisorMessage.query.filter_by(
+        recipient_id=current_user.id,
+        read_at=None
+    ).count()
+    
+    return render_template('supervisor_messages.html',
+                         inbox=inbox,
+                         sent=sent,
+                         other_supervisors=other_supervisors,
+                         unread_count=unread_count)
+
+@app.route('/supervisor/messages/send', methods=['POST'])
+@login_required
+def send_supervisor_message():
+    """Send a message to another supervisor"""
+    if not current_user.is_supervisor:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    recipient_id = request.form.get('recipient_id')
+    subject = request.form.get('subject')
+    message_text = request.form.get('message')
+    priority = request.form.get('priority', 'normal')
+    category = request.form.get('category', 'general')
+    
+    # Validate recipient is a supervisor
+    recipient = Employee.query.get_or_404(recipient_id)
+    if not recipient.is_supervisor:
+        flash('Recipient must be a supervisor.', 'danger')
+        return redirect(url_for('supervisor_messages'))
+    
+    # Create message
+    message = SupervisorMessage(
+        sender_id=current_user.id,
+        recipient_id=recipient_id,
+        subject=subject,
+        message=message_text,
+        priority=priority,
+        category=category
+    )
+    
+    db.session.add(message)
+    db.session.commit()
+    
+    flash(f'Message sent to {recipient.name}!', 'success')
+    return redirect(url_for('supervisor_messages'))
+
+@app.route('/supervisor/messages/<int:message_id>')
+@login_required
+def view_supervisor_message(message_id):
+    """View a specific supervisor message"""
+    message = SupervisorMessage.query.get_or_404(message_id)
+    
+    # Check authorization
+    if not current_user.is_supervisor or (message.recipient_id != current_user.id and message.sender_id != current_user.id):
+        flash('Unauthorized access.', 'danger')
+        return redirect(url_for('dashboard'))
+    
+    # Mark as read if recipient
+    if message.recipient_id == current_user.id and not message.read_at:
+        message.read_at = datetime.now()
+        db.session.commit()
+    
+    # Get thread messages
+    thread_messages = []
+    if message.parent_message_id:
+        # Get parent and all replies
+        parent = SupervisorMessage.query.get(message.parent_message_id)
+        thread_messages = SupervisorMessage.query.filter_by(
+            parent_message_id=parent.id
+        ).order_by(SupervisorMessage.sent_at).all()
+        thread_messages.insert(0, parent)
+    else:
+        # This is parent, get all replies
+        thread_messages = SupervisorMessage.query.filter_by(
+            parent_message_id=message.id
+        ).order_by(SupervisorMessage.sent_at).all()
+        thread_messages.insert(0, message)
+    
+    return render_template('view_supervisor_message.html',
+                         message=message,
+                         thread_messages=thread_messages)
+
+@app.route('/supervisor/messages/<int:message_id>/reply', methods=['POST'])
+@login_required
+def reply_supervisor_message(message_id):
+    """Reply to a supervisor message"""
+    original = SupervisorMessage.query.get_or_404(message_id)
+    
+    # Check authorization
+    if not current_user.is_supervisor or (original.recipient_id != current_user.id and original.sender_id != current_user.id):
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    reply_text = request.form.get('reply')
+    
+    # Determine recipient (other person in conversation)
+    recipient_id = original.sender_id if original.recipient_id == current_user.id else original.recipient_id
+    
+    # Create reply
+    reply = SupervisorMessage(
+        sender_id=current_user.id,
+        recipient_id=recipient_id,
+        subject=f"Re: {original.subject}",
+        message=reply_text,
+        priority=original.priority,
+        category=original.category,
+        parent_message_id=original.parent_message_id or original.id
+    )
+    
+    db.session.add(reply)
+    db.session.commit()
+    
+    flash('Reply sent!', 'success')
+    return redirect(url_for('view_supervisor_message', message_id=message_id))
+
+@app.route('/position/messages')
+@login_required
+def position_messages():
+    """View messages for employee's position"""
+    if not current_user.position_id:
+        flash('You must be assigned to a position to view position messages.', 'warning')
+        return redirect(url_for('employee_dashboard'))
+    
+    # Get messages for user's position
+    messages_query = PositionMessage.query.filter_by(
+        position_id=current_user.position_id
+    ).filter(
+        db.or_(
+            PositionMessage.expires_at.is_(None),
+            PositionMessage.expires_at > datetime.now()
+        )
+    )
+    
+    # Filter by shift if specified
+    shift_filter = request.args.get('shift', 'all')
+    if shift_filter != 'all':
+        messages_query = messages_query.filter(
+            db.or_(
+                PositionMessage.target_shifts == 'all',
+                PositionMessage.target_shifts.contains(shift_filter)
+            )
+        )
+    
+    # Get pinned messages first, then others by date
+    pinned_messages = messages_query.filter_by(pinned=True).all()
+    recent_messages = messages_query.filter_by(pinned=False).order_by(
+        PositionMessage.sent_at.desc()
+    ).limit(50).all()
+    
+    # Mark messages as read
+    for message in pinned_messages + recent_messages:
+        if not message.is_read_by(current_user.id):
+            message.mark_read_by(current_user.id)
+    
+    db.session.commit()
+    
+    # Get colleagues in same position but different shifts
+    colleagues = Employee.query.filter(
+        Employee.position_id == current_user.position_id,
+        Employee.id != current_user.id,
+        Employee.crew != current_user.crew
+    ).all()
+    
+    return render_template('position_messages.html',
+                         pinned_messages=pinned_messages,
+                         recent_messages=recent_messages,
+                         colleagues=colleagues,
+                         current_position=current_user.position,
+                         shift_filter=shift_filter)
+
+@app.route('/position/messages/send', methods=['POST'])
+@login_required
+def send_position_message():
+    """Send a message to colleagues in same position"""
+    if not current_user.position_id:
+        return jsonify({'error': 'No position assigned'}), 403
+    
+    subject = request.form.get('subject')
+    message_text = request.form.get('message')
+    category = request.form.get('category', 'general')
+    target_shifts = request.form.getlist('target_shifts')
+    expires_days = request.form.get('expires_days')
+    
+    # Handle target shifts
+    if 'all' in target_shifts or not target_shifts:
+        target_shifts_str = 'all'
+    else:
+        target_shifts_str = ','.join(target_shifts)
+    
+    # Calculate expiration
+    expires_at = None
+    if expires_days and expires_days.isdigit():
+        expires_at = datetime.now() + timedelta(days=int(expires_days))
+    
+    # Create message
+    message = PositionMessage(
+        sender_id=current_user.id,
+        position_id=current_user.position_id,
+        subject=subject,
+        message=message_text,
+        category=category,
+        target_shifts=target_shifts_str,
+        expires_at=expires_at
+    )
+    
+    db.session.add(message)
+    db.session.commit()
+    
+    flash('Message sent to position colleagues!', 'success')
+    return redirect(url_for('position_messages'))
+
+@app.route('/position/messages/<int:message_id>')
+@login_required
+def view_position_message(message_id):
+    """View a specific position message and its replies"""
+    message = PositionMessage.query.get_or_404(message_id)
+    
+    # Check authorization
+    if current_user.position_id != message.position_id:
+        flash('You cannot view messages for other positions.', 'danger')
+        return redirect(url_for('position_messages'))
+    
+    # Mark as read
+    if not message.is_read_by(current_user.id):
+        message.mark_read_by(current_user.id)
+        db.session.commit()
+    
+    # Get replies
+    replies = PositionMessage.query.filter_by(
+        parent_message_id=message.id
+    ).order_by(PositionMessage.sent_at).all()
+    
+    return render_template('view_position_message.html',
+                         message=message,
+                         replies=replies)
+
+@app.route('/position/messages/<int:message_id>/reply', methods=['POST'])
+@login_required
+def reply_position_message(message_id):
+    """Reply to a position message"""
+    original = PositionMessage.query.get_or_404(message_id)
+    
+    # Check authorization
+    if current_user.position_id != original.position_id:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    reply_text = request.form.get('reply')
+    
+    # Create reply
+    reply = PositionMessage(
+        sender_id=current_user.id,
+        position_id=current_user.position_id,
+        subject=f"Re: {original.subject}",
+        message=reply_text,
+        category=original.category,
+        target_shifts=original.target_shifts,
+        parent_message_id=original.id
+    )
+    
+    db.session.add(reply)
+    db.session.commit()
+    
+    flash('Reply posted!', 'success')
+    return redirect(url_for('view_position_message', message_id=message_id))
+
+@app.route('/maintenance/report', methods=['GET', 'POST'])
+@login_required
+def report_maintenance():
+    """Report a maintenance issue"""
+    if request.method == 'POST':
+        try:
+            title = request.form.get('title')
+            description = request.form.get('description')
+            location = request.form.get('location')
+            category = request.form.get('category', 'general')
+            priority = request.form.get('priority', 'normal')
+            safety_issue = request.form.get('safety_issue') == 'on'
+            
+            # Create issue
+            issue = MaintenanceIssue(
+                reporter_id=current_user.id,
+                title=title,
+                description=description,
+                location=location,
+                category=category,
+                priority=priority,
+                safety_issue=safety_issue,
+                status='open',  # Explicitly set status
+                reported_at=datetime.now()  # Explicitly set timestamp
+            )
+            
+            # Try to auto-assign to primary maintenance manager if exists
+            try:
+                primary_manager = MaintenanceManager.query.filter_by(is_primary=True).first()
+                if primary_manager:
+                    issue.assigned_to_id = primary_manager.employee_id
+            except:
+                # If MaintenanceManager table doesn't exist or query fails, continue without assignment
+                pass
+            
+            db.session.add(issue)
+            db.session.flush()  # Flush to get the issue ID
+            
+            # Create initial update
+            try:
+                update = MaintenanceUpdate(
+                    issue_id=issue.id,
+                    author_id=current_user.id,
+                    update_type='comment',
+                    message=f"Issue reported: {description}",
+                    created_at=datetime.now()  # Explicitly set timestamp
+                )
+                db.session.add(update)
+            except:
+                # If update fails, still continue (issue is more important)
+                pass
+            
+            db.session.commit()
+            
+            flash('Maintenance issue reported successfully!', 'success')
+            return redirect(url_for('view_maintenance_issue', issue_id=issue.id))
+            
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error reporting issue: {str(e)}', 'danger')
+            app.logger.error(f'Maintenance report error: {str(e)}')
+            return redirect(url_for('report_maintenance'))
+    
+    # GET request - show form
+    return render_template('report_maintenance.html')
+
+@app.route('/maintenance/issues')
+@login_required
+def maintenance_issues():
+    """View all maintenance issues (for maintenance managers and employees)"""
+    # Check if user is a maintenance manager
+    is_manager = False
+    try:
+        manager_check = MaintenanceManager.query.filter_by(employee_id=current_user.id).first()
+        is_manager = manager_check is not None
+    except:
+        is_manager = False
+    
+    # Base query
+    if is_manager:
+        # Managers see all issues
+        issues_query = MaintenanceIssue.query
+    else:
+        # Regular employees see only their reported issues
+        issues_query = MaintenanceIssue.query.filter_by(reporter_id=current_user.id)
+    
+    # Apply filters
+    status_filter = request.args.get('status', 'active')
+    if status_filter == 'active':
+        issues_query = issues_query.filter(
+            MaintenanceIssue.status.in_(['open', 'acknowledged', 'in_progress'])
+        )
+    elif status_filter != 'all':
+        issues_query = issues_query.filter_by(status=status_filter)
+    
+    # Sort by priority and date
+    issues = issues_query.order_by(
+        case(
+            (MaintenanceIssue.priority == 'critical', 1),
+            (MaintenanceIssue.priority == 'high', 2),
+            (MaintenanceIssue.priority == 'normal', 3),
+            (MaintenanceIssue.priority == 'low', 4)
+        ),
+        MaintenanceIssue.reported_at.desc()
+    ).all()
+    
+    # Get statistics for managers - ensure stats is always defined
+    stats = {
+        'open': 0,
+        'in_progress': 0,
+        'resolved': 0,
+        'critical': 0
+    }
+    
+    if is_manager:
+        try:
+            stats['open'] = MaintenanceIssue.query.filter_by(status='open').count()
+            stats['in_progress'] = MaintenanceIssue.query.filter_by(status='in_progress').count()
+            stats['resolved'] = MaintenanceIssue.query.filter_by(status='resolved').count()
+            stats['critical'] = MaintenanceIssue.query.filter_by(priority='critical', status='open').count()
+        except:
+            # If queries fail, keep default values
+            pass
+    
+    return render_template('maintenance_issues.html',
+                         issues=issues,
+                         is_manager=is_manager,
+                         stats=stats,
+                         status_filter=status_filter)
+
+@app.route('/maintenance/issues/<int:issue_id>')
+@login_required
+def view_maintenance_issue(issue_id):
+    """View a specific maintenance issue"""
+    issue = MaintenanceIssue.query.get_or_404(issue_id)
+    
+    # Check authorization
+    is_manager = False
+    try:
+        manager_check = MaintenanceManager.query.filter_by(employee_id=current_user.id).first()
+        is_manager = manager_check is not None
+    except:
+        # If MaintenanceManager table doesn't exist, assume not a manager
+        is_manager = False
+    
+    if not is_manager and issue.reporter_id != current_user.id:
+        flash('You can only view issues you reported.', 'danger')
+        return redirect(url_for('maintenance_issues'))
+    
+    # Get updates
+    try:
+        updates_query = MaintenanceUpdate.query.filter_by(issue_id=issue_id)
+        if not is_manager:
+            updates_query = updates_query.filter_by(is_internal=False)
+        updates = updates_query.order_by(MaintenanceUpdate.created_at).all()
+    except:
+        updates = []
+    
+    # Get available maintenance staff for assignment (managers only)
+    maintenance_staff = []
+    if is_manager:
+        try:
+            # Get all employees who are maintenance managers
+            maintenance_staff = Employee.query.join(
+                MaintenanceManager, 
+                Employee.id == MaintenanceManager.employee_id
+            ).all()
+        except:
+            maintenance_staff = []
+    
+    return render_template('view_maintenance_issue.html',
+                         issue=issue,
+                         updates=updates,
+                         is_manager=is_manager,
+                         maintenance_staff=maintenance_staff)
+
+@app.route('/maintenance/issues/<int:issue_id>/update', methods=['POST'])
+@login_required
+def update_maintenance_issue(issue_id):
+    """Update a maintenance issue"""
+    issue = MaintenanceIssue.query.get_or_404(issue_id)
+    
+    # Check authorization
+    is_manager = MaintenanceManager.query.filter_by(employee_id=current_user.id).first() is not None
+    if not is_manager and issue.reporter_id != current_user.id:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    update_text = request.form.get('update')
+    is_internal = request.form.get('is_internal') == 'on'
+    
+    # Create update
+    update = MaintenanceUpdate(
+        issue_id=issue.id,
+        author_id=current_user.id,
+        update_type='comment',
+        message=update_text,
+        is_internal=is_internal and is_manager
+    )
+    
+    db.session.add(update)
+    db.session.commit()
+    
+    flash('Update added to maintenance issue.', 'success')
+    return redirect(url_for('view_maintenance_issue', issue_id=issue_id))
+
+@app.route('/maintenance/issues/<int:issue_id>/status', methods=['POST'])
+@login_required
+def change_maintenance_status(issue_id):
+    """Change the status of a maintenance issue (managers only)"""
+    # Check if user is a maintenance manager
+    if not MaintenanceManager.query.filter_by(employee_id=current_user.id).first():
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    issue = MaintenanceIssue.query.get_or_404(issue_id)
+    new_status = request.form.get('status')
+    resolution = request.form.get('resolution')
+    
+    # Validate status
+    valid_statuses = ['open', 'acknowledged', 'in_progress', 'resolved', 'closed']
+    if new_status not in valid_statuses:
+        flash('Invalid status.', 'danger')
+        return redirect(url_for('view_maintenance_issue', issue_id=issue_id))
+    
+    # Update timestamps
+    old_status = issue.status
+    if new_status == 'acknowledged' and not issue.acknowledged_at:
+        issue.acknowledged_at = datetime.now()
+    elif new_status == 'resolved' and not issue.resolved_at:
+        issue.resolved_at = datetime.now()
+        if resolution:
+            issue.resolution = resolution
+    elif new_status == 'closed' and not issue.closed_at:
+        issue.closed_at = datetime.now()
+    
+    issue.status = new_status
+    
+    # Create status update
+    update = MaintenanceUpdate(
+        issue_id=issue.id,
+        author_id=current_user.id,
+        update_type='status_change',
+        message=f"Status changed from {old_status} to {new_status}",
+        old_status=old_status,
+        new_status=new_status
+    )
+    
+    db.session.add(update)
+    db.session.commit()
+    
+    flash(f'Issue status updated to {new_status}.', 'success')
+    return redirect(url_for('view_maintenance_issue', issue_id=issue_id))
+
+@app.route('/maintenance/issues/<int:issue_id>/assign', methods=['POST'])
+@login_required
+def assign_maintenance_issue(issue_id):
+    """Assign a maintenance issue to staff (managers only)"""
+    # Check if user is a maintenance manager with assignment privileges
+    manager = MaintenanceManager.query.filter_by(employee_id=current_user.id).first()
+    if not manager or not manager.can_assign:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    issue = MaintenanceIssue.query.get_or_404(issue_id)
+    assignee_id = request.form.get('assignee_id')
+    
+    # Validate assignee is maintenance staff
+    assignee = Employee.query.join(MaintenanceManager).filter(
+        Employee.id == assignee_id
+    ).first()
+    
+    if not assignee:
+        flash('Invalid assignee selected.', 'danger')
+        return redirect(url_for('view_maintenance_issue', issue_id=issue_id))
+    
+    # Update assignment
+    old_assignee = issue.assigned_to
+    issue.assigned_to_id = assignee_id
+    
+    # Create assignment update
+    update = MaintenanceUpdate(
+        issue_id=issue.id,
+        author_id=current_user.id,
+        update_type='assignment',
+        message=f"Assigned to {assignee.name}" + (f" (was: {old_assignee.name})" if old_assignee else "")
+    )
+    
+    db.session.add(update)
+    db.session.commit()
+    
+    flash(f'Issue assigned to {assignee.name}.', 'success')
+    return redirect(url_for('view_maintenance_issue', issue_id=issue_id))
+
+@app.route('/admin/maintenance-managers')
+@login_required
+def manage_maintenance_managers():
+    """Admin page to manage maintenance managers"""
+    if not current_user.is_supervisor:
+        flash('Access denied. Supervisors only.', 'danger')
+        return redirect(url_for('dashboard'))
+    
+    # Get all maintenance managers
+    managers = MaintenanceManager.query.all()
+    
+    # Get employees who could be maintenance managers
+    potential_managers = Employee.query.filter(
+        ~Employee.id.in_([m.employee_id for m in managers])
+    ).order_by(Employee.name).all()
+    
+    return render_template('admin_maintenance_managers.html',
+                         managers=managers,
+                         potential_managers=potential_managers)
+
+@app.route('/admin/maintenance-managers/add', methods=['POST'])
+@login_required
+def add_maintenance_manager():
+    """Add a new maintenance manager"""
+    if not current_user.is_supervisor:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    employee_id = request.form.get('employee_id')
+    is_primary = request.form.get('is_primary') == 'on'
+    can_assign = request.form.get('can_assign') == 'on'
+    
+    # Check if already a manager
+    existing = MaintenanceManager.query.filter_by(employee_id=employee_id).first()
+    if existing:
+        flash('Employee is already a maintenance manager.', 'warning')
+        return redirect(url_for('manage_maintenance_managers'))
+    
+    # If setting as primary, unset other primaries
+    if is_primary:
+        MaintenanceManager.query.update({'is_primary': False})
+    
+    # Create maintenance manager
+    manager = MaintenanceManager(
+        employee_id=employee_id,
+        is_primary=is_primary,
+        can_assign=can_assign
+    )
+    
+    db.session.add(manager)
+    db.session.commit()
+    
+    employee = Employee.query.get(employee_id)
+    flash(f'{employee.name} added as maintenance manager!', 'success')
+    return redirect(url_for('manage_maintenance_managers'))
+
+@app.route('/admin/maintenance-managers/<int:manager_id>/remove', methods=['POST'])
+@login_required
+def remove_maintenance_manager(manager_id):
+    """Remove a maintenance manager"""
+    if not current_user.is_supervisor:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    manager = MaintenanceManager.query.get_or_404(manager_id)
+    employee_name = manager.employee.name
+    
+    db.session.delete(manager)
+    db.session.commit()
+    
+    flash(f'{employee_name} removed from maintenance managers.', 'success')
+    return redirect(url_for('manage_maintenance_managers'))
+
+# ==================== API ROUTES FOR COMMUNICATION ====================
+
+@app.route('/api/supervisor-messages/unread-count')
+@login_required
+def supervisor_messages_unread_count():
+    """Get count of unread supervisor messages"""
+    if not current_user.is_supervisor:
+        return jsonify({'count': 0})
+    
+    count = SupervisorMessage.query.filter_by(
+        recipient_id=current_user.id,
+        read_at=None
+    ).count()
+    
+    return jsonify({'count': count})
+
+@app.route('/api/position-messages/unread-count')
+@login_required
+def position_messages_unread_count():
+    """Get count of unread position messages"""
+    if not current_user.position_id:
+        return jsonify({'count': 0})
+    
+    # Get messages for user's position that they haven't read
+    messages = PositionMessage.query.filter_by(
+        position_id=current_user.position_id
+    ).filter(
+        db.or_(
+            PositionMessage.expires_at.is_(None),
+            PositionMessage.expires_at > datetime.now()
+        )
+    ).all()
+    
+    unread_count = sum(1 for msg in messages if not msg.is_read_by(current_user.id))
+    
+    return jsonify({'count': unread_count})
+
+@app.route('/api/maintenance/my-issues-count')
+@login_required
+def my_maintenance_issues_count():
+    """Get count of user's open maintenance issues"""
+    # For managers, count assigned issues
+    is_manager = MaintenanceManager.query.filter_by(employee_id=current_user.id).first()
+    
+    if is_manager:
+        count = MaintenanceIssue.query.filter(
+            MaintenanceIssue.assigned_to_id == current_user.id,
+            MaintenanceIssue.status.in_(['open', 'acknowledged', 'in_progress'])
+        ).count()
+    else:
+        # For regular employees, count their reported issues
+        count = MaintenanceIssue.query.filter(
+            MaintenanceIssue.reporter_id == current_user.id,
+            MaintenanceIssue.status.in_(['open', 'acknowledged', 'in_progress'])
+        ).count()
+    
+    return jsonify({'count': count})
+
+# ==================== QUICK ACCESS ROUTES ====================
+
+@app.route('/quick/supervisor-message', methods=['POST'])
+@login_required
+def quick_supervisor_message():
+    """Quick send supervisor message from dashboard"""
+    if not current_user.is_supervisor:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    recipient_id = request.form.get('recipient_id')
+    message_text = request.form.get('message')
+    
+    # Create quick message
+    message = SupervisorMessage(
+        sender_id=current_user.id,
+        recipient_id=recipient_id,
+        subject='Quick Message',
+        message=message_text,
+        priority='normal',
+        category='general'
+    )
+    
+    db.session.add(message)
+    db.session.commit()
+    
+    return jsonify({'success': True, 'message': 'Message sent!'})
+
+@app.route('/quick/position-broadcast', methods=['POST'])
+@login_required
+def quick_position_broadcast():
+    """Quick broadcast to position colleagues"""
+    if not current_user.position_id:
+        return jsonify({'error': 'No position assigned'}), 403
+    
+    message_text = request.form.get('message')
+    
+    # Create broadcast
+    message = PositionMessage(
+        sender_id=current_user.id,
+        position_id=current_user.position_id,
+        subject='Quick Update',
+        message=message_text,
+        category='alert',
+        target_shifts='all',
+        expires_at=datetime.now() + timedelta(days=1)  # Expires in 24 hours
+    )
+    
+    db.session.add(message)
+    db.session.commit()
+    
+    return jsonify({'success': True, 'message': 'Broadcast sent!'})
+
+# ==================== SHIFT TRADE MARKETPLACE ROUTES ====================
+
+@app.route('/shift-marketplace')
+@login_required
+def shift_marketplace():
+    """Main shift trade marketplace view"""
+    # Get filters from query params
+    filters = {
+        'start_date': request.args.get('start_date', date.today().strftime('%Y-%m-%d')),
+        'end_date': request.args.get('end_date', (date.today() + timedelta(days=30)).strftime('%Y-%m-%d')),
+        'shift_type': request.args.get('shift_type', ''),
+        'position': request.args.get('position', ''),
+        'compatibility': request.args.get('compatibility', '')
+    }
+    
+    # Get available trades (exclude user's own posts)
+    available_trades_query = ShiftTradePost.query.filter(
+        ShiftTradePost.status == 'active',
+        ShiftTradePost.poster_id != current_user.id
+    ).join(Schedule)
+    
+    # Apply filters
+    if filters['start_date']:
+        available_trades_query = available_trades_query.filter(
+            Schedule.date >= datetime.strptime(filters['start_date'], '%Y-%m-%d').date()
+        )
+    if filters['end_date']:
+        available_trades_query = available_trades_query.filter(
+            Schedule.date <= datetime.strptime(filters['end_date'], '%Y-%m-%d').date()
+        )
+    if filters['shift_type']:
+        available_trades_query = available_trades_query.filter(
+            Schedule.shift_type == filters['shift_type']
+        )
+    if filters['position']:
+        available_trades_query = available_trades_query.filter(
+            Schedule.position_id == int(filters['position'])
+        )
+    
+    available_trades = available_trades_query.order_by(Schedule.date).all()
+    
+    # Calculate compatibility for each trade
+    for trade in available_trades:
+        trade.compatibility = calculate_trade_compatibility(current_user, trade)
+    
+    # Filter by compatibility if specified
+    if filters['compatibility']:
+        available_trades = [t for t in available_trades if t.compatibility == filters['compatibility']]
+    
+    # Get user's posted shifts
+    my_posts = ShiftTradePost.query.filter_by(
+        poster_id=current_user.id,
+        status='active'
+    ).all()
+    
+    # Get user's active trades
+    my_trades = ShiftTrade.query.filter(
+        or_(
+            ShiftTrade.employee1_id == current_user.id,
+            ShiftTrade.employee2_id == current_user.id
+        ),
+        ShiftTrade.status.in_(['pending', 'approved'])
+    ).all()
+    
+    # Get trade history
+    trade_history = get_trade_history(current_user.id)
+    
+    # Get upcoming shifts for posting
+    my_upcoming_shifts = Schedule.query.filter(
+        Schedule.employee_id == current_user.id,
+        Schedule.date >= date.today(),
+        Schedule.date <= date.today() + timedelta(days=60)
+    ).order_by(Schedule.date).all()
+    
+    # Get positions for filter
+    positions = Position.query.all()
+    
+    # Calculate statistics
+    stats = {
+        'available_trades': len(available_trades),
+        'my_posted_shifts': len(my_posts),
+        'my_active_trades': len(my_trades),
+        'pending_trades': len([t for t in my_trades if t.status == 'pending']),
+        'completed_trades': ShiftTrade.query.filter(
+            or_(
+                ShiftTrade.employee1_id == current_user.id,
+                ShiftTrade.employee2_id == current_user.id
+            ),
+            ShiftTrade.status == 'completed'
+        ).count()
+    }
+    
+    return render_template('shift_marketplace.html',
+                         available_trades=available_trades,
+                         my_posts=my_posts,
+                         my_trades=my_trades,
+                         trade_history=trade_history,
+                         my_upcoming_shifts=my_upcoming_shifts,
+                         positions=positions,
+                         filters=filters,
+                         stats=stats)
+
+@app.route('/shift-marketplace/post', methods=['POST'])
+@login_required
+def post_shift_for_trade():
+    """Post a shift for trade"""
+    schedule_id = request.form.get('schedule_id')
+    
+    # Verify ownership
+    schedule = Schedule.query.get_or_404(schedule_id)
+    if schedule.employee_id != current_user.id:
+        flash('You can only post your own shifts for trade.', 'danger')
+        return redirect(url_for('shift_marketplace'))
+    
+    # Check if already posted
+    existing_post = ShiftTradePost.query.filter_by(
+        schedule_id=schedule_id,
+        status='active'
+    ).first()
+    
+    if existing_post:
+        flash('This shift is already posted for trade.', 'warning')
+        return redirect(url_for('shift_marketplace'))
+    
+    # Create trade post
+    trade_post = ShiftTradePost(
+        poster_id=current_user.id,
+        schedule_id=schedule_id,
+        preferred_start_date=request.form.get('preferred_start_date') or None,
+        preferred_end_date=request.form.get('preferred_end_date') or None,
+        preferred_shift_types=','.join(request.form.getlist('preferred_shifts')),
+        notes=request.form.get('notes', ''),
+        auto_approve=request.form.get('auto_approve') == 'on',
+        expires_at=datetime.now() + timedelta(days=30)
+    )
+    
+    db.session.add(trade_post)
+    db.session.commit()
+    
+    flash('Your shift has been posted to the trade marketplace!', 'success')
+    return redirect(url_for('shift_marketplace'))
+
+@app.route('/api/trade-post/<int:post_id>')
+@login_required
+def get_trade_post_details(post_id):
+    """Get details of a trade post"""
+    post = ShiftTradePost.query.get_or_404(post_id)
+    
+    # Increment view count
+    post.view_count += 1
+    db.session.commit()
+    
+    # Get schedule details
+    schedule = post.schedule
+    
+    return jsonify({
+        'id': post.id,
+        'position': schedule.position.name if schedule.position else 'Unknown',
+        'date': schedule.date.strftime('%A, %B %d, %Y'),
+        'start_time': schedule.start_time.strftime('%I:%M %p'),
+        'end_time': schedule.end_time.strftime('%I:%M %p'),
+        'shift_type': schedule.shift_type,
+        'notes': post.notes,
+        'poster': post.poster.name
+    })
+
+@app.route('/api/my-compatible-shifts/<int:post_id>')
+@login_required
+def get_my_compatible_shifts(post_id):
+    """Get user's shifts compatible with a trade post"""
+    post = ShiftTradePost.query.get_or_404(post_id)
+    schedule = post.schedule
+    
+    # Get user's upcoming shifts
+    my_shifts_query = Schedule.query.filter(
+        Schedule.employee_id == current_user.id,
+        Schedule.date >= date.today(),
+        Schedule.date != schedule.date  # Can't trade for same date
+    )
+    
+    # Apply preferences if any
+    if post.preferred_start_date:
+        my_shifts_query = my_shifts_query.filter(
+            Schedule.date >= post.preferred_start_date
+        )
+    if post.preferred_end_date:
+        my_shifts_query = my_shifts_query.filter(
+            Schedule.date <= post.preferred_end_date
+        )
+    if post.preferred_shift_types:
+        preferred_types = post.preferred_shift_types.split(',')
+        my_shifts_query = my_shifts_query.filter(
+            Schedule.shift_type.in_(preferred_types)
+        )
+    
+    my_shifts = my_shifts_query.order_by(Schedule.date).all()
+    
+    # Calculate compatibility for each shift
+    shifts_data = []
+    for shift in my_shifts:
+        compatibility = 'high'
+        if shift.position_id != schedule.position_id:
+            compatibility = 'medium'
+        if shift.shift_type != schedule.shift_type:
+            compatibility = 'low' if compatibility == 'medium' else 'medium'
+        
+        shifts_data.append({
+            'id': shift.id,
+            'date': shift.date.strftime('%m/%d/%Y'),
+            'position': shift.position.name if shift.position else 'TBD',
+            'start_time': shift.start_time.strftime('%I:%M %p'),
+            'end_time': shift.end_time.strftime('%I:%M %p'),
+            'shift_type': shift.shift_type,
+            'compatibility': compatibility
+        })
+    
+    return jsonify(shifts_data)
+
+@app.route('/api/trade-proposal/create', methods=['POST'])
+@login_required
+def create_trade_proposal():
+    """Create a trade proposal"""
+    trade_post_id = request.form.get('trade_post_id')
+    offered_schedule_id = request.form.get('offered_schedule_id')
+    message = request.form.get('message', '')
+    
+    # Verify trade post exists and is active
+    trade_post = ShiftTradePost.query.get_or_404(trade_post_id)
+    if trade_post.status != 'active':
+        return jsonify({'success': False, 'message': 'This trade post is no longer active.'})
+    
+    # Verify ownership of offered schedule
+    offered_schedule = Schedule.query.get_or_404(offered_schedule_id)
+    if offered_schedule.employee_id != current_user.id:
+        return jsonify({'success': False, 'message': 'You can only offer your own shifts.'})
+    
+    # Check if already proposed
+    existing_proposal = ShiftTradeProposal.query.filter_by(
+        trade_post_id=trade_post_id,
+        proposer_id=current_user.id,
+        status='pending'
+    ).first()
+    
+    if existing_proposal:
+        return jsonify({'success': False, 'message': 'You already have a pending proposal for this trade.'})
+    
+    # Create proposal
+    proposal = ShiftTradeProposal(
+        trade_post_id=trade_post_id,
+        proposer_id=current_user.id,
+        offered_schedule_id=offered_schedule_id,
+        message=message
+    )
+    
+    db.session.add(proposal)
+    db.session.commit()
+    
+    return jsonify({'success': True, 'message': 'Trade proposal sent successfully!'})
+
+@app.route('/api/trade-proposals/<int:post_id>')
+@login_required
+def get_trade_proposals(post_id):
+    """Get proposals for a trade post"""
+    post = ShiftTradePost.query.get_or_404(post_id)
+    
+    # Verify ownership
+    if post.poster_id != current_user.id:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    proposals = ShiftTradeProposal.query.filter_by(
+        trade_post_id=post_id,
+        status='pending'
+    ).all()
+    
+    proposals_data = []
+    for proposal in proposals:
+        offered_shift = proposal.offered_schedule
+        proposals_data.append({
+            'id': proposal.id,
+            'proposer_name': proposal.proposer.name,
+            'offered_shift': f"{offered_shift.date.strftime('%m/%d')} - {offered_shift.position.name if offered_shift.position else 'TBD'} ({offered_shift.shift_type})",
+            'message': proposal.message,
+            'created_at': proposal.created_at.strftime('%m/%d %I:%M %p')
+        })
+    
+    return jsonify(proposals_data)
+
+@app.route('/api/trade-proposal/<int:proposal_id>/accept', methods=['POST'])
+@login_required
+def accept_trade_proposal(proposal_id):
+    """Accept a trade proposal"""
+    proposal = ShiftTradeProposal.query.get_or_404(proposal_id)
+    
+    # Verify ownership
+    if proposal.trade_post.poster_id != current_user.id:
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+    
+    if proposal.status != 'pending':
+        return jsonify({'success': False, 'message': 'This proposal is no longer pending.'})
+    
+    # Update proposal status
+    proposal.status = 'accepted'
+    proposal.responded_at = datetime.now()
+    
+    # Update trade post status
+    proposal.trade_post.status = 'matched'
+    
+    # Reject other proposals for this post
+    other_proposals = ShiftTradeProposal.query.filter(
+        ShiftTradeProposal.trade_post_id == proposal.trade_post_id,
+        ShiftTradeProposal.id != proposal_id,
+        ShiftTradeProposal.status == 'pending'
+    ).all()
+    
+    for other in other_proposals:
+        other.status = 'rejected'
+        other.responded_at = datetime.now()
+    
+    # Create shift trade record
+    trade = ShiftTrade(
+        employee1_id=proposal.trade_post.poster_id,
+        employee2_id=proposal.proposer_id,
+        schedule1_id=proposal.trade_post.schedule_id,
+        schedule2_id=proposal.offered_schedule_id,
+        trade_post_id=proposal.trade_post_id,
+        trade_proposal_id=proposal_id,
+        status='pending' if not proposal.trade_post.auto_approve else 'approved',
+        requires_approval=not proposal.trade_post.auto_approve
+    )
+    
+    db.session.add(trade)
+    
+    # If auto-approve, execute the trade immediately
+    if proposal.trade_post.auto_approve:
+        execute_shift_trade(trade)
+    
+    db.session.commit()
+    
+    return jsonify({'success': True, 'message': 'Trade proposal accepted!'})
+
+@app.route('/api/trade-proposal/<int:proposal_id>/reject', methods=['POST'])
+@login_required
+def reject_trade_proposal(proposal_id):
+    """Reject a trade proposal"""
+    proposal = ShiftTradeProposal.query.get_or_404(proposal_id)
+    
+    # Verify ownership
+    if proposal.trade_post.poster_id != current_user.id:
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+    
+    proposal.status = 'rejected'
+    proposal.responded_at = datetime.now()
+    
+    db.session.commit()
+    
+    return jsonify({'success': True})
+
+@app.route('/api/trade-post/<int:post_id>/cancel', methods=['POST'])
+@login_required
+def cancel_trade_post(post_id):
+    """Cancel a trade post"""
+    post = ShiftTradePost.query.get_or_404(post_id)
+    
+    # Verify ownership
+    if post.poster_id != current_user.id:
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+    
+    post.status = 'cancelled'
+    
+    # Reject all pending proposals
+    proposals = ShiftTradeProposal.query.filter_by(
+        trade_post_id=post_id,
+        status='pending'
+    ).all()
+    
+    for proposal in proposals:
+        proposal.status = 'rejected'
+        proposal.responded_at = datetime.now()
+    
+    db.session.commit()
+    
+    return jsonify({'success': True})
+
+@app.route('/api/trade/<int:trade_id>/cancel', methods=['POST'])
+@login_required
+def cancel_trade(trade_id):
+    """Cancel a pending trade"""
+    trade = ShiftTrade.query.get_or_404(trade_id)
+    
+    # Verify participant
+    if current_user.id not in [trade.employee1_id, trade.employee2_id]:
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+    
+    if trade.status != 'pending':
+        return jsonify({'success': False, 'message': 'Only pending trades can be cancelled.'})
+    
+    trade.status = 'cancelled'
+    
+    # Reactivate the trade post if it was from marketplace
+    if trade.trade_post:
+        trade.trade_post.status = 'active'
+    
+    db.session.commit()
+    
+    return jsonify({'success': True})
+
+# ==================== DATABASE INITIALIZATION ROUTES ====================
+
+@app.route('/init-db')
+def init_db():
+    """Initialize database with all tables"""
+    with app.app_context():
+        # Create all tables first
+        db.create_all()
+        
+        # Now check if admin exists
+        admin = Employee.query.filter_by(email='admin@workforce.com').first()
+        if not admin:
+            admin = Employee(
+                name='Admin User',
+                email='admin@workforce.com',
+                is_supervisor=True,
+                crew='A',
+                vacation_days=20,
+                sick_days=10,
+                personal_days=5
+            )
+            admin.set_password('admin123')
+            db.session.add(admin)
+            
+            # Create some default positions
+            positions = [
+                Position(name='Nurse', department='Healthcare', min_coverage=2),
+                Position(name='Security Officer', department='Security', min_coverage=1),
+                Position(name='Technician', department='Operations', min_coverage=3),
+                Position(name='Customer Service', department='Support', min_coverage=2)
+            ]
+            for pos in positions:
+                db.session.add(pos)
+            
+            # Create some default skills
+            skills = [
+                Skill(name='CPR Certified', category='Medical', requires_certification=True),
+                Skill(name='First Aid', category='Medical', requires_certification=True),
+                Skill(name='Security Clearance', category='Security', requires_certification=True),
+                Skill(name='Emergency Response', category='General'),
+                Skill(name='Equipment Operation', category='Technical')
+            ]
+            for skill in skills:
+                db.session.add(skill)
+            
+            db.session.commit()
+        
+        return '''
+        <h2>Database Initialized!</h2>
+        <p>Admin account created:</p>
+        <ul>
+            <li>Email: admin@workforce.com</li>
+            <li>Password: admin123</li>
+        </ul>
+        <p><a href="/login">Go to login</a></p>
+        '''
+
+@app.route('/add-communication-tables')
+def add_communication_tables():
+    """Add the new communication tables to the database"""
+    if request.args.get('confirm') != 'yes':
+        return '''
+        <h2>Add Communication Tables</h2>
+        <p>This will add the following new communication features to your database:</p>
+        <h3>Feature 1: Supervisor-to-Supervisor Messages</h3>
+        <ul>
+            <li>Direct messaging between shift supervisors</li>
+            <li>Priority levels and categories</li>
+            <li>Thread support for conversations</li>
+            <li>Read receipts</li>
+        </ul>
+        <h3>Feature 2: Position-Based Communication</h3>
+        <ul>
+            <li>Message board for employees in the same position</li>
+            <li>Share tips, handoff notes, and alerts</li>
+            <li>Target specific shifts or all shifts</li>
+            <li>Message expiration and pinning</li>
+        </ul>
+        <h3>Feature 3: Maintenance Issue Tracking</h3>
+        <ul>
+            <li>Report equipment and facility issues</li>
+            <li>Priority-based tracking</li>
+            <li>Assignment to maintenance staff</li>
+            <li>Progress updates and resolution tracking</li>
+            <li>Safety issue flagging</li>
+        </ul>
+        <p>New tables to be added:</p>
+        <ul>
+            <li>SupervisorMessage - Messages between supervisors</li>
+            <li>PositionMessage - Messages between position colleagues</li>
+            <li>PositionMessageRead - Read receipts for position messages</li>
+            <li>MaintenanceIssue - Maintenance issue reports</li>
+            <li>MaintenanceUpdate - Updates on maintenance issues</li>
+            <li>MaintenanceManager - Designate maintenance managers</li>
+        </ul>
+        <p><a href="/add-communication-tables?confirm=yes" class="btn btn-primary">Click here to add communication features</a></p>
+        <p><a href="/" class="btn btn-secondary">Cancel</a></p>
+        '''
+    
+    try:
+        # Create all tables (this will only add new ones)
+        db.create_all()
+        
+        # Check if we have a maintenance manager
+        if not MaintenanceManager.query.first():
+            # Make the admin a maintenance manager by default
+            admin = Employee.query.filter_by(email='admin@workforce.com').first()
+            if admin:
+                mm = MaintenanceManager(
+                    employee_id=admin.id,
+                    is_primary=True,
+                    can_assign=True
+                )
+                db.session.add(mm)
+                db.session.commit()
+        
+        return '''
+        <h2>✅ Success!</h2>
+        <p>Communication tables have been added to the database.</p>
+        <h3>New features now available:</h3>
+        <ol>
+            <li><strong>Supervisor Messages:</strong> Supervisors can now communicate directly with other shift supervisors</li>
+            <li><strong>Position Communication:</strong> Employees can share information with colleagues in the same position across all shifts</li>
+            <li><strong>Maintenance Tracking:</strong> Anyone can report maintenance issues and track their resolution</li>
+        </ol>
+        <h3>Next Steps:</h3>
+        <ul>
+            <li>Supervisors will see a "Supervisor Messages" button in their dashboard</li>
+            <li>Employees will see a "Position Board" in their dashboard</li>
+            <li>Everyone can report maintenance issues from their dashboard</li>
+            <li>The admin account has been designated as the primary maintenance manager</li>
+        </ul>
+        <p><a href="/" class="btn btn-primary">Return to home</a></p>
+        '''
+    except Exception as e:
+        return f'''
+        <h2>❌ Error</h2>
+        <p>Failed to add communication tables: {str(e)}</p>
+        <p>Please ensure your database connection is working and try again.</p>
+        <p><a href="/" class="btn btn-secondary">Return to home</a></p>
+        '''
+
+@app.route('/add-coverage-tables')
+def add_coverage_tables():
+    """Add the new coverage notification and overtime tables"""
+    if request.args.get('confirm') != 'yes':
+        return '''
+        <h2>Add Coverage Tables</h2>
+        <p>This will add the CoverageNotification and OvertimeOpportunity tables to your database.</p>
+        <p>These tables enable:</p>
+        <ul>
+            <li>Push notifications for coverage needs</li>
+            <li>Smart overtime distribution</li>
+            <li>Employee response tracking</li>
+        </ul>
+        <p><a href="/add-coverage-tables?confirm=yes" class="btn btn-primary">Click here to confirm</a></p>
+        '''
+    
+    try:
+        # Create all tables (this will only add new ones)
+        db.create_all()
+        return '''
+        <h2>Success!</h2>
+        <p>Coverage notification and overtime tables have been added to the database.</p>
+        <p>New features available:</p>
+        <ul>
+            <li>Coverage push notifications</li>
+            <li>Overtime opportunity management</li>
+            <li>Smart crew distribution</li>
+        </ul>
+        <p><a href="/">Return to home</a></p>
+        '''
+    except Exception as e:
+        return f'<h2>Error</h2><p>Failed to add tables: {str(e)}</p>'
+
+@app.route('/add-marketplace-tables')
+def add_marketplace_tables():
+    """Add the shift trade marketplace tables"""
+    if request.args.get('confirm') != 'yes':
+        return '''
+        <h2>Add Shift Trade Marketplace Tables</h2>
+        <p>This will add the new shift trade marketplace tables to your database.</p>
+        <p>New tables to be added:</p>
+        <ul>
+            <li>ShiftTradePost - Posts of shifts available for trade</li>
+            <li>ShiftTradeProposal - Trade proposals from employees</li>
+            <li>ShiftTrade - Completed or pending trades</li>
+            <li>TradeMatchPreference - Employee trade preferences</li>
+        </ul>
+        <p>Features enabled:</p>
+        <ul>
+            <li>Post shifts for trade in marketplace</li>
+            <li>Browse and filter available trades</li>
+            <li>Smart compatibility matching</li>
+            <li>Trade history tracking</li>
+            <li>Auto-approval options</li>
+        </ul>
+        <p><a href="/add-marketplace-tables?confirm=yes" class="btn btn-primary">Click here to confirm</a></p>
+        '''
+    
+    try:
+        # Create all tables (this will only add new ones)
+        db.create_all()
+        return '''
+        <h2>Success!</h2>
+        <p>Shift trade marketplace tables have been added to the database.</p>
+        <p>New features available:</p>
+        <ul>
+            <li>Shift Trade Marketplace - Employees can now post and trade shifts</li>
+            <li>Smart Matching - System suggests compatible trades</li>
+            <li>Trade History - Track all completed trades</li>
+        </ul>
+        <p>Employees can access the marketplace from their dashboard.</p>
+        <p><a href="/">Return to home</a></p>
+        '''
+    except Exception as e:
+        return f'<h2>Error</h2><p>Failed to add marketplace tables: {str(e)}</p>'
+
+@app.route('/reset-db')
+def reset_db():
+    """Reset database - WARNING: This will delete all data!"""
+    if request.args.get('confirm') != 'yes':
+        return '''
+        <h2>⚠️ WARNING: Reset Database</h2>
+        <p style="color: red;"><strong>This will DELETE ALL DATA in the database!</strong></p>
+        <p>Only use this for initial setup or if you're sure you want to start over.</p>
+        <p><a href="/reset-db?confirm=yes" onclick="return confirm('Are you SURE you want to delete all data?')" style="background: red; color: white; padding: 10px; text-decoration: none;">Yes, reset the database</a></p>
+        <p><a href="/" style="background: green; color: white; padding: 10px; text-decoration: none;">Cancel and go back</a></p>
+        '''
+    
+    try:
+        with app.app_context():
+            # For PostgreSQL, we need to drop tables with CASCADE
+            from sqlalchemy import text
+            
+            # Get the database engine
+            engine = db.engine
+            
+            # Drop all tables using raw SQL with CASCADE
+            with engine.connect() as conn:
+                # First, drop all tables in the public schema
+                conn.execute(text("DROP SCHEMA public CASCADE"))
+                conn.execute(text("CREATE SCHEMA public"))
+                conn.execute(text("GRANT ALL ON SCHEMA public TO public"))
+                conn.commit()
+            
+            # Now recreate all tables with correct schema
+            db.create_all()
+            
+        return '''
+        <h2>✅ Database Reset Complete!</h2>
+        <p>All tables have been dropped and recreated with the correct schema.</p>
+        <p><a href="/init-db" style="background: blue; color: white; padding: 10px; text-decoration: none;">Now initialize the database with default data</a></p>
+        '''
+    except Exception as e:
+        return f'<h2>Error</h2><p>Failed to reset database: {str(e)}</p>'
+
+@app.route('/create-demo-data')
+def create_demo_data():
+    """Create demo employees for testing"""
+    if request.args.get('confirm') != 'yes':
+        return '''
+        <h2>Create Demo Data</h2>
+        <p>This will create demo employees in each crew for testing.</p>
+        <p><a href="/create-demo-data?confirm=yes">Click here to confirm</a></p>
+        '''
+    
+    try:
+        from create_custom_demo_database import populate_demo_data
+        populate_demo_data()
+        return '<h2>Success!</h2><p>Demo data created!</p><p><a href="/dashboard">Go to dashboard</a></p>'
+    except ImportError:
+        # If the demo script doesn't exist, create basic demo data
+        crews = ['A', 'B', 'C', 'D']
+        positions = Position.query.all()
+        
+        for i, crew in enumerate(crews):
+            for j in range(3):  # 3 employees per crew
+                emp = Employee(
+                    name=f'{crew} Employee {j+1}',
+                    email=f'{crew.lower()}{j+1}@workforce.com',
+                    crew=crew,
+                    position_id=positions[j % len(positions)].id if positions else None,
+                    is_supervisor=False,
+                    vacation_days=10,
+                    sick_days=5,
+                    personal_days=3
+                )
+                emp.set_password('password123')
+                db.session.add(emp)
+        
+        db.session.commit()
+        return '<h2>Success!</h2><p>Basic demo data created!</p><p><a href="/dashboard">Go to dashboard</a></p>'
+
+@app.route('/debug-employees')
+def debug_employees():
+    """Debug employee data"""
+    employees = Employee.query.all()
+    return f'''
+    <h2>Employee Debug Info</h2>
+    <p>Total employees: {len(employees)}</p>
+    <h3>Employee List:</h3>
+    <ul>
+    {''.join([f'<li>{e.name} ({e.email}) - Crew: {e.crew}, Supervisor: {e.is_supervisor}</li>' for e in employees])}
+    </ul>
+    <p><a href="/dashboard">Back to dashboard</a></p>
+    '''
+
+@app.route('/reset-passwords')
+def reset_passwords():
+    """Reset all passwords to password123"""
+    if request.args.get('confirm') != 'yes':
+        return '''
+        <h2>Reset All Passwords</h2>
+        <p>This will reset ALL employee passwords to 'password123'.</p>
+        <p><a href="/reset-passwords?confirm=yes">Click here to confirm</a></p>
+        '''
+    
+    employees = Employee.query.all()
+    for emp in employees:
+        emp.set_password('password123')
+    db.session.commit()
+    
+    return f'<h2>Success!</h2><p>Reset passwords for {len(employees)} employees.</p><p><a href="/dashboard">Back to dashboard</a></p>'
+
+@app.route('/migrate-database')
+def migrate_database():
+    """Migrate database with new schema"""
+    if request.args.get('confirm') != 'yes':
+        return '''
+        <h2>Migrate Database</h2>
+        <p>This will update the database schema to include all new tables.</p>
+        <p><strong>Warning:</strong> This will preserve existing data but add new tables.</p>
+        <p><a href="/migrate-database?confirm=yes">Click here to confirm</a></p>
+        '''
+    
+    try:
+        db.create_all()
+        return '<h2>Success!</h2><p>Database migrated successfully!</p><p><a href="/dashboard">Back to dashboard</a></p>'
+    except Exception as e:
+        return f'<h2>Error</h2><p>Migration failed: {str(e)}</p>'
+
+@app.route('/populate-crews')
+def populate_crews():
+    """Populate database with 4 complete crews for development"""
+    if request.args.get('confirm') != 'yes':
+        return '''
+        <h2>🏗️ Populate 4 Crews for Development</h2>
+        <p>This will create <strong>40 employees</strong> (10 per crew) with:</p>
+        <ul>
+            <li><strong>Crew A:</strong> 10 employees (Day shift preference)</li>
+            <li><strong>Crew B:</strong> 10 employees (Day shift preference)</li>
+            <li><strong>Crew C:</strong> 10 employees (Night shift preference)</li>
+            <li><strong>Crew D:</strong> 10 employees (Night shift preference)</li>
+        </ul>
+        <p>Each crew will have:</p>
+        <ul>
+            <li>1 Crew Lead (supervisor)</li>
+            <li>3 Nurses</li>
+            <li>2 Security Officers</li>
+            <li>2 Technicians</li>
+            <li>2 Customer Service Representatives</li>
+        </ul>
+        <p><strong>Login credentials:</strong></p>
+        <ul>
+            <li>Email format: [name].[lastname]@company.com</li>
+            <li>Password: password123 (for all)</li>
+        </ul>
+        <p><a href="/populate-crews?confirm=yes" class="btn btn-primary" onclick="return confirm('Create 40 employees across 4 crews?')">Yes, Populate Crews</a></p>
+        <p><a href="/dashboard" class="btn btn-secondary">Cancel</a></p>
+        '''
+    
+    try:
+        # Get positions (assuming they exist from init-db)
+        nurse = Position.query.filter_by(name='Nurse').first()
+        security = Position.query.filter_by(name='Security Officer').first()
+        tech = Position.query.filter_by(name='Technician').first()
+        customer_service = Position.query.filter_by(name='Customer Service').first()
+        
+        # Get skills
+        skills = {
+            'cpr': Skill.query.filter_by(name='CPR Certified').first(),
+            'first_aid': Skill.query.filter_by(name='First Aid').first(),
+            'security': Skill.query.filter_by(name='Security Clearance').first(),
+            'emergency': Skill.query.filter_by(name='Emergency Response').first(),
+            'equipment': Skill.query.filter_by(name='Equipment Operation').first()
+        }
+        
+        # Employee data for each crew
+        crew_templates = {
+            'A': {
+                'shift_preference': 'day',
+                'employees': [
+                    {'name': 'Alice Anderson', 'email': 'alice.anderson@company.com', 'position': nurse, 'is_supervisor': True, 'skills': ['cpr', 'first_aid', 'emergency']},
+                    {'name': 'Adam Martinez', 'email': 'adam.martinez@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid']},
+                    {'name': 'Angela Brown', 'email': 'angela.brown@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid', 'emergency']},
+                    {'name': 'Andrew Wilson', 'email': 'andrew.wilson@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid']},
+                    {'name': 'Amanda Davis', 'email': 'amanda.davis@company.com', 'position': security, 'skills': ['security', 'emergency']},
+                    {'name': 'Aaron Johnson', 'email': 'aaron.johnson@company.com', 'position': security, 'skills': ['security', 'first_aid']},
+                    {'name': 'Anna Miller', 'email': 'anna.miller@company.com', 'position': tech, 'skills': ['equipment', 'emergency']},
+                    {'name': 'Alex Thompson', 'email': 'alex.thompson@company.com', 'position': tech, 'skills': ['equipment']},
+                    {'name': 'Amy Garcia', 'email': 'amy.garcia@company.com', 'position': customer_service, 'skills': ['emergency']},
+                    {'name': 'Anthony Lee', 'email': 'anthony.lee@company.com', 'position': customer_service, 'skills': ['first_aid']}
+                ]
+            },
+            'B': {
+                'shift_preference': 'day',
+                'employees': [
+                    {'name': 'Barbara Bennett', 'email': 'barbara.bennett@company.com', 'position': nurse, 'is_supervisor': True, 'skills': ['cpr', 'first_aid', 'emergency']},
+                    {'name': 'Brian Clark', 'email': 'brian.clark@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid']},
+                    {'name': 'Betty Rodriguez', 'email': 'betty.rodriguez@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid', 'emergency']},
+                    {'name': 'Benjamin Lewis', 'email': 'benjamin.lewis@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid']},
+                    {'name': 'Brenda Walker', 'email': 'brenda.walker@company.com', 'position': security, 'skills': ['security', 'emergency']},
+                    {'name': 'Blake Hall', 'email': 'blake.hall@company.com', 'position': security, 'skills': ['security', 'first_aid']},
+                    {'name': 'Bonnie Allen', 'email': 'bonnie.allen@company.com', 'position': tech, 'skills': ['equipment', 'emergency']},
+                    {'name': 'Bruce Young', 'email': 'bruce.young@company.com', 'position': tech, 'skills': ['equipment']},
+                    {'name': 'Brittany King', 'email': 'brittany.king@company.com', 'position': customer_service, 'skills': ['emergency']},
+                    {'name': 'Bradley Wright', 'email': 'bradley.wright@company.com', 'position': customer_service, 'skills': ['first_aid']}
+                ]
+            },
+            'C': {
+                'shift_preference': 'night',
+                'employees': [
+                    {'name': 'Carol Campbell', 'email': 'carol.campbell@company.com', 'position': nurse, 'is_supervisor': True, 'skills': ['cpr', 'first_aid', 'emergency']},
+                    {'name': 'Charles Parker', 'email': 'charles.parker@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid']},
+                    {'name': 'Christine Evans', 'email': 'christine.evans@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid', 'emergency']},
+                    {'name': 'Christopher Turner', 'email': 'christopher.turner@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid']},
+                    {'name': 'Cynthia Collins', 'email': 'cynthia.collins@company.com', 'position': security, 'skills': ['security', 'emergency']},
+                    {'name': 'Craig Edwards', 'email': 'craig.edwards@company.com', 'position': security, 'skills': ['security', 'first_aid']},
+                    {'name': 'Catherine Stewart', 'email': 'catherine.stewart@company.com', 'position': tech, 'skills': ['equipment', 'emergency']},
+                    {'name': 'Carl Sanchez', 'email': 'carl.sanchez@company.com', 'position': tech, 'skills': ['equipment']},
+                    {'name': 'Cheryl Morris', 'email': 'cheryl.morris@company.com', 'position': customer_service, 'skills': ['emergency']},
+                    {'name': 'Chad Rogers', 'email': 'chad.rogers@company.com', 'position': customer_service, 'skills': ['first_aid']}
+                ]
+            },
+            'D': {
+                'shift_preference': 'night',
+                'employees': [
+                    {'name': 'Diana Davidson', 'email': 'diana.davidson@company.com', 'position': nurse, 'is_supervisor': True, 'skills': ['cpr', 'first_aid', 'emergency']},
+                    {'name': 'David Foster', 'email': 'david.foster@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid']},
+                    {'name': 'Deborah Murphy', 'email': 'deborah.murphy@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid', 'emergency']},
+                    {'name': 'Daniel Rivera', 'email': 'daniel.rivera@company.com', 'position': nurse, 'skills': ['cpr', 'first_aid']},
+                    {'name': 'Donna Cook', 'email': 'donna.cook@company.com', 'position': security, 'skills': ['security', 'emergency']},
+                    {'name': 'Dennis Morgan', 'email': 'dennis.morgan@company.com', 'position': security, 'skills': ['security', 'first_aid']},
+                    {'name': 'Dorothy Peterson', 'email': 'dorothy.peterson@company.com', 'position': tech, 'skills': ['equipment', 'emergency']},
+                    {'name': 'Douglas Cooper', 'email': 'douglas.cooper@company.com', 'position': tech, 'skills': ['equipment']},
+                    {'name': 'Denise Bailey', 'email': 'denise.bailey@company.com', 'position': customer_service, 'skills': ['emergency']},
+                    {'name': 'Derek Reed', 'email': 'derek.reed@company.com', 'position': customer_service, 'skills': ['first_aid']}
+                ]
             }
-            
-            // If backend returns PDF blob
-            const blob = await response.blob();
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.style.display = 'none';
-            a.href = url;
-            a.download = `news-analysis-${Date.now()}.pdf`;
-            document.body.appendChild(a);
-            a.click();
-            window.URL.revokeObjectURL(url);
-            
-        } catch (error) {
-            console.error('PDF generation error:', error);
-            // Fallback: Generate client-side PDF with enhanced results
-            generateEnhancedClientSidePDF();
-        } finally {
-            btn.innerHTML = originalHTML;
-            btn.disabled = false;
-        }
-    }
-
-    // Enhanced client-side PDF generation with full details
-    function generateEnhancedClientSidePDF() {
-        if (!currentAnalysisResults) {
-            alert('Please run an analysis first');
-            return;
         }
         
-        const results = currentAnalysisResults;
+        created_count = 0
         
-        // Helper function to safely get nested values
-        const safeGet = (obj, path, defaultValue = 'N/A') => {
-            return path.split('.').reduce((o, p) => o?.[p], obj) || defaultValue;
-        };
+        for crew_letter, crew_data in crew_templates.items():
+            for emp_data in crew_data['employees']:
+                # Check if employee already exists
+                existing = Employee.query.filter_by(email=emp_data['email']).first()
+                if existing:
+                    continue
+                
+                # Create employee
+                employee = Employee(
+                    name=emp_data['name'],
+                    email=emp_data['email'],
+                    phone=f'555-{crew_letter}{str(created_count).zfill(3)}',
+                    is_supervisor=emp_data.get('is_supervisor', False),
+                    position_id=emp_data['position'].id if emp_data['position'] else None,
+                    crew=crew_letter,
+                    shift_pattern=crew_data['shift_preference'],
+                    hire_date=date.today() - timedelta(days=365),  # 1 year ago
+                    vacation_days=10,
+                    sick_days=5,
+                    personal_days=3
+                )
+                
+                # Set password
+                employee.set_password('password123')
+                
+                # Add skills
+                for skill_key in emp_data.get('skills', []):
+                    if skill_key in skills and skills[skill_key]:
+                        employee.skills.append(skills[skill_key])
+                
+                db.session.add(employee)
+                db.session.flush()  # This assigns the ID to the employee
+                created_count += 1
+                
+                # Create circadian profile after employee has ID
+                profile = CircadianProfile(
+                    employee_id=employee.id,
+                    chronotype='morning' if crew_data['shift_preference'] == 'day' else 'evening',
+                    current_shift_type=crew_data['shift_preference']
+                )
+                db.session.add(profile)
         
-        // Create a new window with comprehensive results
-        const printWindow = window.open('', '_blank');
-        printWindow.document.write(`
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Comprehensive News Analysis Report - Facts & Fakes AI</title>
-                <style>
-                    @page { margin: 1in; }
-                    body { 
-                        font-family: Arial, sans-serif; 
-                        line-height: 1.6;
-                        color: #333;
-                        max-width: 800px;
-                        margin: 0 auto;
-                        padding: 20px;
-                    }
-                    h1 { 
-                        color: #4a90e2; 
-                        border-bottom: 3px solid #4a90e2;
-                        padding-bottom: 10px;
-                    }
-                    h2 { 
-                        color: #2c3e50; 
-                        margin-top: 30px;
-                        border-bottom: 2px solid #e0e0e0;
-                        padding-bottom: 8px;
-                    }
-                    h3 { 
-                        color: #34495e;
-                        margin-top: 20px;
-                    }
-                    .header {
-                        text-align: center;
-                        margin-bottom: 40px;
-                    }
-                    .logo {
-                        font-size: 24px;
-                        font-weight: bold;
-                        color: #4a90e2;
-                    }
-                    .score-box {
-                        background: #f8f9fa;
-                        border: 2px solid #4a90e2;
-                        border-radius: 10px;
-                        padding: 20px;
-                        text-align: center;
-                        margin: 20px 0;
-                    }
-                    .trust-score {
-                        font-size: 48px;
-                        font-weight: bold;
-                        color: ${results.trust_score >= 80 ? '#27ae60' : results.trust_score >= 60 ? '#f39c12' : '#e74c3c'};
-                    }
-                    .section {
-                        margin-bottom: 30px;
-                        padding: 20px;
-                        background: #f8f9fa;
-                        border-radius: 8px;
-                        page-break-inside: avoid;
-                    }
-                    .alert {
-                        padding: 15px;
-                        border-radius: 5px;
-                        margin: 15px 0;
-                    }
-                    .alert-success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
-                    .alert-warning { background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
-                    .alert-danger { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
-                    .claim-box {
-                        background: white;
-                        border: 1px solid #ddd;
-                        border-radius: 5px;
-                        padding: 15px;
-                        margin: 10px 0;
-                    }
-                    .verdict {
-                        display: inline-block;
-                        padding: 5px 15px;
-                        border-radius: 20px;
-                        font-weight: bold;
-                        margin: 5px 0;
-                    }
-                    .verdict-true { background: #d4edda; color: #155724; }
-                    .verdict-false { background: #f8d7da; color: #721c24; }
-                    .verdict-unverified { background: #fff3cd; color: #856404; }
-                    .metric {
-                        display: flex;
-                        justify-content: space-between;
-                        padding: 8px 0;
-                        border-bottom: 1px solid #e0e0e0;
-                    }
-                    .metric:last-child { border-bottom: none; }
-                    .footer {
-                        margin-top: 50px;
-                        padding-top: 20px;
-                        border-top: 2px solid #e0e0e0;
-                        text-align: center;
-                        color: #666;
-                        font-size: 12px;
-                    }
-                    ul { padding-left: 20px; }
-                    li { margin: 5px 0; }
-                    strong { color: #2c3e50; }
-                    .progress-bar {
-                        background: #e0e0e0;
-                        height: 20px;
-                        border-radius: 10px;
-                        overflow: hidden;
-                        margin: 10px 0;
-                    }
-                    .progress-fill {
-                        height: 100%;
-                        background: #4a90e2;
-                        text-align: center;
-                        color: white;
-                        font-size: 12px;
-                        line-height: 20px;
-                    }
-                </style>
-            </head>
-            <body>
-                <div class="header">
-                    <div class="logo">Facts & Fakes AI</div>
-                    <h1>Comprehensive News Analysis Report</h1>
-                    <p>Generated: ${new Date().toLocaleString()}</p>
-                    <p>Analysis ID: ${safeGet(results, 'analysis_id', 'AN-' + Date.now().toString(36).toUpperCase())}</p>
-                </div>
-                
-                <div class="score-box">
-                    <h2>Overall Trust Score</h2>
-                    <div class="trust-score">${results.trust_score || 0}%</div>
-                    <p>${results.trust_score >= 80 ? 'HIGH CREDIBILITY' : results.trust_score >= 60 ? 'MODERATE CREDIBILITY' : 'LOW CREDIBILITY'}</p>
-                </div>
-                
-                <div class="section">
-                    <h2>Executive Summary</h2>
-                    <p>${safeGet(results, 'summary', 'Analysis completed')}</p>
-                    ${results.recommendations && results.recommendations.length > 0 ? `
-                        <h3>Key Recommendations:</h3>
-                        <ul>
-                            ${results.recommendations.map(rec => `<li>${rec}</li>`).join('')}
-                        </ul>
-                    ` : ''}
-                </div>
-                
-                <div class="section">
-                    <h2>Article Information</h2>
-                    <div class="metric">
-                        <strong>Title:</strong>
-                        <span>${safeGet(results, 'article_info.title', 'Not provided')}</span>
-                    </div>
-                    <div class="metric">
-                        <strong>Author:</strong>
-                        <span>${safeGet(results, 'article_info.author', 'Unknown')}</span>
-                    </div>
-                    <div class="metric">
-                        <strong>Source Domain:</strong>
-                        <span>${safeGet(results, 'article_info.domain', 'Unknown')}</span>
-                    </div>
-                    <div class="metric">
-                        <strong>Published Date:</strong>
-                        <span>${safeGet(results, 'article_info.publish_date', 'Not available')}</span>
-                    </div>
-                    <div class="metric">
-                        <strong>Analysis Date:</strong>
-                        <span>${new Date().toLocaleDateString()}</span>
-                    </div>
-                </div>
-                
-                <div class="section">
-                    <h2>Credibility Scores</h2>
-                    <div class="metric">
-                        <strong>Trust Score:</strong>
-                        <span>${results.trust_score || 0}/100</span>
-                    </div>
-                    <div class="metric">
-                        <strong>Credibility Score:</strong>
-                        <span>${Math.round((results.credibility_score || 0) * 100)}/100</span>
-                    </div>
-                    <div class="metric">
-                        <strong>Factual Accuracy:</strong>
-                        <span>${results.factual_accuracy ? Math.round(results.factual_accuracy * 100) : 'N/A'}/100</span>
-                    </div>
-                </div>
-                
-                <div class="section">
-                    <h2>Political Bias Analysis</h2>
-                    ${results.bias_score !== 'N/A' && results.bias_score !== undefined ? `
-                        <div class="alert ${Math.abs(results.bias_score) < 0.3 ? 'alert-success' : 'alert-warning'}">
-                            <strong>Bias Score:</strong> ${results.bias_score.toFixed(2)} 
-                            (${results.bias_score < -0.5 ? 'Far Left' :
-                               results.bias_score < -0.2 ? 'Left-Leaning' :
-                               results.bias_score < 0.2 ? 'Center/Neutral' :
-                               results.bias_score < 0.5 ? 'Right-Leaning' : 'Far Right'})
-                        </div>
-                        <p><strong>Explanation:</strong> ${safeGet(results, 'bias_explanation', 'Bias analysis based on language patterns')}</p>
-                        ${results.bias_examples && results.bias_examples.length > 0 ? `
-                            <h3>Examples Found:</h3>
-                            <ul>
-                                ${results.bias_examples.map(ex => `<li>${ex}</li>`).join('')}
-                            </ul>
-                        ` : ''}
-                    ` : '<p>Insufficient data to determine political bias</p>'}
-                </div>
-                
-                <div class="section">
-                    <h2>Fact-Checking Results</h2>
-                    <p><strong>Claims Analyzed:</strong> ${results.fact_checks?.length || results.key_claims?.length || 0}</p>
-                    ${results.fact_checks && results.fact_checks.length > 0 ? 
-                        results.fact_checks.map((check, index) => {
-                            if (typeof check === 'object' && check.verdict) {
-                                return `
-                                    <div class="claim-box">
-                                        <h4>Claim ${index + 1}</h4>
-                                        <p><strong>Statement:</strong> "${check.claim}"</p>
-                                        <div class="verdict verdict-${check.verdict}">${check.verdict.toUpperCase()}</div>
-                                        <p><strong>Explanation:</strong> ${check.explanation}</p>
-                                        <p><strong>Confidence:</strong> ${check.confidence || 0}%</p>
-                                        ${check.sources && check.sources.length > 0 ? 
-                                            `<p><strong>Sources:</strong> ${check.sources.join(', ')}</p>` : ''}
-                                    </div>
-                                `;
-                            }
-                            return `<div class="claim-box"><p>${check}</p></div>`;
-                        }).join('') : 
-                        results.key_claims && results.key_claims.length > 0 ? `
-                            <h3>Key Claims Identified:</h3>
-                            <ul>
-                                ${results.key_claims.map(claim => `<li>${typeof claim === 'object' ? claim.claim : claim}</li>`).join('')}
-                            </ul>
-                            <p><em>Note: These claims require external fact-checking for verification</em></p>
-                        ` : '<p>No fact checks performed</p>'}
-                </div>
-                
-                <div class="section">
-                    <h2>Manipulation Tactics</h2>
-                    ${results.manipulation_tactics && results.manipulation_tactics.length > 0 ? `
-                        <div class="alert alert-warning">
-                            <strong>${results.manipulation_tactics.length} manipulation tactics detected</strong>
-                        </div>
-                        <ul>
-                            ${results.manipulation_tactics.map(tactic => {
-                                if (typeof tactic === 'object') {
-                                    return `<li><strong>${tactic.tactic}:</strong> ${tactic.description}${
-                                        tactic.example ? ` (Example: "${tactic.example}")` : ''
-                                    }</li>`;
-                                }
-                                return `<li>${tactic}</li>`;
-                            }).join('')}
-                        </ul>
-                    ` : '<p>No manipulation tactics detected</p>'}
-                </div>
-                
-                <div class="section">
-                    <h2>Hidden Agenda Analysis</h2>
-                    ${results.hidden_agenda && typeof results.hidden_agenda === 'object' ? `
-                        <div class="alert ${results.hidden_agenda.detected ? 'alert-warning' : 'alert-success'}">
-                            <strong>Hidden Agenda:</strong> ${results.hidden_agenda.detected ? 'DETECTED' : 'Not Detected'}
-                        </div>
-                        ${results.hidden_agenda.detected ? `
-                            <p><strong>Type:</strong> ${results.hidden_agenda.type || 'Unknown'}</p>
-                            <p><strong>Explanation:</strong> ${results.hidden_agenda.explanation}</p>
-                            ${results.hidden_agenda.evidence && results.hidden_agenda.evidence.length > 0 ? `
-                                <h3>Evidence:</h3>
-                                <ul>
-                                    ${results.hidden_agenda.evidence.map(e => `<li>${e}</li>`).join('')}
-                                </ul>
-                            ` : ''}
-                        ` : ''}
-                    ` : '<p>Hidden agenda analysis not available</p>'}
-                </div>
-                
-                <div class="section">
-                    <h2>Additional Analysis</h2>
-                    
-                    <h3>Clickbait Analysis</h3>
-                    ${results.clickbait_analysis ? `
-                        <div class="progress-bar">
-                            <div class="progress-fill" style="width: ${results.clickbait_analysis.score}%">
-                                Clickbait Score: ${results.clickbait_analysis.score}%
-                            </div>
-                        </div>
-                        ${results.clickbait_analysis.indicators?.length > 0 ? `
-                            <ul>${results.clickbait_analysis.indicators.map(i => `<li>${i}</li>`).join('')}</ul>
-                        ` : ''}
-                    ` : '<p>Not analyzed</p>'}
-                    
-                    <h3>Emotional Manipulation</h3>
-                    ${results.emotional_manipulation ? `
-                        <p><strong>Score:</strong> ${results.emotional_manipulation.score}/100</p>
-                        ${results.emotional_manipulation.techniques?.length > 0 ? `
-                            <ul>${results.emotional_manipulation.techniques.map(t => `<li>${t}</li>`).join('')}</ul>
-                        ` : ''}
-                    ` : '<p>Not analyzed</p>'}
-                    
-                    <h3>Source Diversity</h3>
-                    ${results.source_diversity ? `
-                        <p><strong>Score:</strong> ${results.source_diversity.score}/100</p>
-                        <p><strong>Sources Count:</strong> ${results.source_diversity.sources_count || 1}</p>
-                        ${results.source_diversity.missing_perspectives?.length > 0 ? `
-                            <p><strong>Missing Perspectives:</strong></p>
-                            <ul>${results.source_diversity.missing_perspectives.map(p => `<li>${p}</li>`).join('')}</ul>
-                        ` : ''}
-                    ` : '<p>Not analyzed</p>'}
-                    
-                    <h3>AI Content Detection</h3>
-                    ${results.ai_content_probability ? `
-                        <p><strong>AI Probability:</strong> ${results.ai_content_probability.score}%</p>
-                        <p>${results.ai_content_probability.explanation || 'Analysis based on writing patterns'}</p>
-                    ` : '<p>Not analyzed</p>'}
-                </div>
-                
-                <div class="footer">
-                    <p>This report was generated by Facts & Fakes AI</p>
-                    <p>Advanced news verification powered by artificial intelligence</p>
-                    <p>For more information, visit factsandfakes.com</p>
-                </div>
-            </body>
-            </html>
-        `);
+        db.session.commit()
         
-        printWindow.document.close();
+        return f'''
+        <h2>✅ Crews Populated Successfully!</h2>
+        <p><strong>{created_count} employees</strong> have been created across 4 crews.</p>
         
-        // Auto-trigger print dialog
-        printWindow.onload = function() {
-            printWindow.print();
-        };
-    }
+        <h3>Crew Supervisors (can approve requests):</h3>
+        <ul>
+            <li><strong>Crew A:</strong> Alice Anderson (alice.anderson@company.com)</li>
+            <li><strong>Crew B:</strong> Barbara Bennett (barbara.bennett@company.com)</li>
+            <li><strong>Crew C:</strong> Carol Campbell (carol.campbell@company.com)</li>
+            <li><strong>Crew D:</strong> Diana Davidson (diana.davidson@company.com)</li>
+        </ul>
+        
+        <h3>Sample Regular Employees:</h3>
+        <ul>
+            <li><strong>Nurse:</strong> Adam Martinez (adam.martinez@company.com)</li>
+            <li><strong>Security:</strong> Amanda Davis (amanda.davis@company.com)</li>
+            <li><strong>Technician:</strong> Anna Miller (anna.miller@company.com)</li>
+            <li><strong>Customer Service:</strong> Amy Garcia (amy.garcia@company.com)</li>
+        </ul>
+        
+        <p><strong>All passwords:</strong> password123</p>
+        
+        <h3>Next Steps:</h3>
+        <ol>
+            <li><a href="/schedule/create" class="btn btn-primary">Create Schedules</a> - Set up shifts for your crews</li>
+            <li><a href="/schedule/view" class="btn btn-info">View Schedules</a> - See crew assignments</li>
+            <li><a href="/logout" class="btn btn-warning">Logout</a> - Try logging in as an employee</li>
+        </ol>
+        
+        <p><a href="/dashboard" class="btn btn-success">Return to Dashboard</a></p>
+        '''
+        
+    except Exception as e:
+        db.session.rollback()
+        return f'''
+        <h2>❌ Error Populating Crews</h2>
+        <p>An error occurred: {str(e)}</p>
+        <p>Make sure you've run <a href="/init-db">/init-db</a> first to create positions and skills.</p>
+        <p><a href="/dashboard" class="btn btn-secondary">Return to Dashboard</a></p>
+        '''
 
-    // Show analysis process modal
-    function showAnalysisProcess() {
-        const modal = document.getElementById('analysisProcessModal');
-        if (modal) {
-            // If Bootstrap is available
-            if (typeof bootstrap !== 'undefined') {
-                const bsModal = new bootstrap.Modal(modal);
-                bsModal.show();
-            } else {
-                // Fallback
-                modal.style.display = 'block';
-                modal.classList.add('show');
-            }
-        }
-    }
+# ==================== ERROR HANDLERS ====================
 
-    // Show methodology
-    function showMethodology() {
-        showAnalysisProcess();
-    }
+@app.errorhandler(404)
+def not_found_error(error):
+    return render_template('404.html'), 404
 
-    // Download full report
-    async function downloadFullReport() {
-        if (!currentAnalysisResults) {
-            alert('Please run an analysis first');
-            return;
-        }
-        
-        // Same as generatePDF but with more comprehensive data
-        generatePDF();
-    }
-    </script>
-</body>
-</html>
+@app.errorhandler(500)
+def internal_error(error):
+    db.session.rollback()
+    return render_template('500.html'), 500
+
+# ==================== MAIN ====================
+
+if __name__ == '__main__':
+    app.run(debug=True)
