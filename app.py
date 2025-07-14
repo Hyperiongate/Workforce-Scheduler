@@ -82,7 +82,8 @@ def get_coverage_gaps(crew='ALL', days_ahead=7):
                     'shift_type': shift_type,
                     'scheduled': scheduled_count,
                     'required': min_coverage.get(shift_type, 2),
-                    'gap': min_coverage.get(shift_type, 2) - scheduled_count
+                    'gap': min_coverage.get(shift_type, 2) - scheduled_count,
+                    'crew': crew
                 })
     
         current += timedelta(days=1)
@@ -269,6 +270,152 @@ def logout():
     logout_user()
     flash('You have been logged out successfully.', 'info')
     return redirect(url_for('index'))
+
+# ==================== COVERAGE GAP ROUTES ====================
+
+@app.route('/supervisor/coverage-gaps')
+@login_required
+def coverage_gaps():
+    """View detailed coverage gaps analysis"""
+    if not current_user.is_supervisor:
+        flash('Access denied. Supervisors only.', 'danger')
+        return redirect(url_for('employee_dashboard'))
+    
+    # Get filter parameters
+    selected_crew = request.args.get('crew', 'ALL')
+    days_ahead = int(request.args.get('days_ahead', 7))
+    shift_type = request.args.get('shift_type', '')
+    
+    # Get coverage gaps
+    gaps = get_coverage_gaps(selected_crew, days_ahead)
+    
+    # Filter by shift type if specified
+    if shift_type:
+        gaps = [g for g in gaps if g['shift_type'] == shift_type]
+    
+    # Get positions for filter
+    positions = Position.query.all()
+    
+    # Calculate dates for statistics
+    today = date.today()
+    week_end = today + timedelta(days=7)
+    
+    return render_template('coverage_gaps.html',
+                         coverage_gaps=gaps,
+                         selected_crew=selected_crew,
+                         days_ahead=days_ahead,
+                         shift_type=shift_type,
+                         positions=positions,
+                         today=today,
+                         week_end=week_end)
+
+@app.route('/supervisor/fill-gap')
+@login_required
+def fill_gap():
+    """Fill a specific coverage gap"""
+    if not current_user.is_supervisor:
+        flash('Access denied. Supervisors only.', 'danger')
+        return redirect(url_for('employee_dashboard'))
+    
+    # Get gap details from query params
+    gap_date = request.args.get('date')
+    if gap_date:
+        gap_date = datetime.strptime(gap_date, '%Y-%m-%d').date()
+    else:
+        gap_date = date.today()
+    
+    shift_type = request.args.get('shift_type', 'day')
+    crew = request.args.get('crew', 'ALL')
+    
+    # Get available employees (not already scheduled for this date/shift)
+    available_employees = []
+    all_employees = Employee.query.filter_by(is_supervisor=False).all()
+    
+    for emp in all_employees:
+        # Check if already scheduled
+        existing_schedule = Schedule.query.filter_by(
+            employee_id=emp.id,
+            date=gap_date,
+            shift_type=shift_type
+        ).first()
+        
+        if not existing_schedule:
+            # Check current week hours
+            week_start = gap_date - timedelta(days=gap_date.weekday())
+            week_end = week_start + timedelta(days=6)
+            
+            current_hours = db.session.query(func.sum(Schedule.hours)).filter(
+                Schedule.employee_id == emp.id,
+                Schedule.date >= week_start,
+                Schedule.date <= week_end
+            ).scalar() or 0
+            
+            # Check if on time off
+            time_off = VacationCalendar.query.filter_by(
+                employee_id=emp.id,
+                date=gap_date
+            ).first()
+            
+            emp.current_hours = current_hours
+            emp.is_available = time_off is None
+            emp.conflict_reason = 'Time Off' if time_off else None
+            
+            # Determine skills match (simplified)
+            emp.skills_match = 'full' if emp.skills else 'basic'
+            
+            available_employees.append(emp)
+    
+    # Get casual workers
+    casual_workers = CasualWorker.query.filter_by(is_active=True).all()
+    
+    # Get scheduled count for this gap
+    scheduled_count = Schedule.query.filter(
+        Schedule.date == gap_date,
+        Schedule.shift_type == shift_type
+    ).count()
+    
+    # Define minimum requirements
+    min_coverage = {'day': 4, 'evening': 3, 'night': 2}
+    required_count = min_coverage.get(shift_type, 2)
+    gap_count = required_count - scheduled_count
+    
+    # Get positions
+    positions = Position.query.all()
+    
+    return render_template('fill_gap.html',
+                         gap_date=gap_date,
+                         shift_type=shift_type,
+                         crew=crew,
+                         available_employees=available_employees,
+                         casual_workers=casual_workers,
+                         scheduled_count=scheduled_count,
+                         required_count=required_count,
+                         gap_count=gap_count,
+                         positions=positions)
+
+@app.route('/supervisor/todays-schedule')
+@login_required
+def todays_schedule():
+    """Redirect to schedule view for today"""
+    if not current_user.is_supervisor:
+        flash('Access denied. Supervisors only.', 'danger')
+        return redirect(url_for('employee_dashboard'))
+    
+    # Redirect to schedule view with today's date
+    return redirect(url_for('view_schedules', 
+                          start_date=date.today().strftime('%Y-%m-%d'),
+                          end_date=date.today().strftime('%Y-%m-%d'),
+                          crew=current_user.crew or 'ALL'))
+
+@app.route('/supervisor/create-schedule')
+@login_required
+def supervisor_create_schedule():
+    """Redirect to schedule creation"""
+    if not current_user.is_supervisor:
+        flash('Access denied. Supervisors only.', 'danger')
+        return redirect(url_for('employee_dashboard'))
+    
+    return redirect(url_for('create_schedule'))
 
 # ==================== DASHBOARD ROUTES ====================
 
