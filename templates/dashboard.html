@@ -1,462 +1,201 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Supervisor Dashboard - Workforce Scheduler</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
-</head>
-<body>
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
-        <div class="container-fluid">
-            <a class="navbar-brand" href="/">
-                <i class="bi bi-calendar-check"></i> Workforce Scheduler
-            </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav me-auto">
-                    <li class="nav-item">
-                        <a class="nav-link active" href="/dashboard">
-                            <i class="bi bi-speedometer2"></i> Dashboard
-                        </a>
-                    </li>
-                    
-                    <!-- Employee Management Dropdown -->
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" id="employeeDropdown" role="button" data-bs-toggle="dropdown">
-                            <i class="bi bi-people-fill"></i> Employees
-                        </a>
-                        <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="/import-employees">
-                                <i class="bi bi-upload"></i> Import Employees
-                            </a></li>
-                            <li><a class="dropdown-item" href="/export-template">
-                                <i class="bi bi-download"></i> Download Excel Template
-                            </a></li>
-                            <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="/supervisor/coverage-needs">
-                                <i class="bi bi-exclamation-triangle"></i> Coverage Needs
-                            </a></li>
-                            <li><a class="dropdown-item" href="/supervisor/overtime-distribution">
-                                <i class="bi bi-clock-history"></i> Overtime Distribution
-                            </a></li>
-                        </ul>
-                    </li>
-                    
-                    <!-- Requests Dropdown -->
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" id="requestsDropdown" role="button" data-bs-toggle="dropdown">
-                            <i class="bi bi-inbox"></i> Requests
-                            {% if pending_time_off_count > 0 or pending_swaps_count > 0 %}
-                                <span class="badge bg-danger">{{ pending_time_off_count + pending_swaps_count }}</span>
-                            {% endif %}
-                        </a>
-                        <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="/supervisor/time-off-requests">
-                                <i class="bi bi-calendar-x"></i> Time Off Requests
-                                {% if pending_time_off_count > 0 %}
-                                    <span class="badge bg-danger">{{ pending_time_off_count }}</span>
-                                {% endif %}
-                            </a></li>
-                            <li><a class="dropdown-item" href="/supervisor/swap-requests">
-                                <i class="bi bi-arrow-left-right"></i> Swap Requests
-                                {% if pending_swaps_count > 0 %}
-                                    <span class="badge bg-warning">{{ pending_swaps_count }}</span>
-                                {% endif %}
-                            </a></li>
-                            <li><a class="dropdown-item" href="/supervisor/suggestions">
-                                <i class="bi bi-lightbulb"></i> Employee Suggestions
-                            </a></li>
-                        </ul>
-                    </li>
-                    
-                    <!-- Communication Dropdown -->
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" id="communicationDropdown" role="button" data-bs-toggle="dropdown">
-                            <i class="bi bi-chat-dots"></i> Communication
-                            <span class="badge bg-warning" id="commBadge" style="display: none;">0</span>
-                        </a>
-                        <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="/supervisor/messages">
-                                <i class="bi bi-envelope"></i> Supervisor Messages
-                                <span class="badge bg-danger" id="supervisorMsgBadge" style="display: none;">0</span>
-                            </a></li>
-                            <li><a class="dropdown-item" href="/maintenance/issues">
-                                <i class="bi bi-tools"></i> Maintenance Issues
-                                <span class="badge bg-info" id="maintenanceBadge" style="display: none;">0</span>
-                            </a></li>
-                            <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="/admin/maintenance-managers">
-                                <i class="bi bi-person-gear"></i> Manage Maintenance Staff
-                            </a></li>
-                        </ul>
-                    </li>
-                    
-                    <li class="nav-item">
-                        <a class="nav-link" href="/vacation/calendar">
-                            <i class="bi bi-calendar-week"></i> Vacation Calendar
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/casual-workers">
-                            <i class="bi bi-people"></i> Casual Workers
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/shift-marketplace">
-                            <i class="bi bi-shop"></i> Shift Marketplace
-                        </a>
-                    </li>
-                </ul>
-                <ul class="navbar-nav">
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown">
-                            <i class="bi bi-person-circle"></i> {{ current_user.name }}
-                        </a>
-                        <ul class="dropdown-menu dropdown-menu-end">
-                            <li><h6 class="dropdown-header">Supervisor Account</h6></li>
-                            <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="/profile">
-                                <i class="bi bi-person"></i> My Profile
-                            </a></li>
-                            <li><a class="dropdown-item" href="/settings">
-                                <i class="bi bi-gear"></i> Settings
-                            </a></li>
-                            <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="/logout">
-                                <i class="bi bi-box-arrow-right"></i> Logout
-                            </a></li>
-                        </ul>
-                    </li>
-                </ul>
-            </div>
-        </div>
-    </nav>
-
-    <div class="container-fluid mt-4">
-        <!-- Page Header with Crew Selector -->
-        <div class="row mb-4">
-            <div class="col-md-8">
-                <h2>
-                    <i class="bi bi-speedometer2"></i> Supervisor Dashboard
-                </h2>
-                <p class="text-muted">Manage schedules, review requests, and oversee operations</p>
-            </div>
-            <div class="col-md-4 text-end">
-                <div class="btn-group" role="group">
-                    <button type="button" class="btn btn-outline-primary dropdown-toggle" data-bs-toggle="dropdown">
-                        <i class="bi bi-funnel"></i> Crew: {{ selected_crew }}
-                    </button>
-                    <ul class="dropdown-menu">
-                        <li><a class="dropdown-item" href="?crew=ALL">All Crews</a></li>
-                        <li><hr class="dropdown-divider"></li>
-                        <li><a class="dropdown-item" href="?crew=A">Crew A</a></li>
-                        <li><a class="dropdown-item" href="?crew=B">Crew B</a></li>
-                        <li><a class="dropdown-item" href="?crew=C">Crew C</a></li>
-                        <li><a class="dropdown-item" href="?crew=D">Crew D</a></li>
-                    </ul>
-                </div>
-            </div>
-        </div>
-
-        <!-- Crew Stats Cards -->
-        <div class="row mb-4">
-            <div class="col-md-3">
-                <div class="card text-white bg-primary">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <div>
-                                <h6 class="text-uppercase">Total Employees</h6>
-                                <h2 class="mb-0">{{ crew_stats.total_employees }}</h2>
-                                <small>{{ selected_crew }} Crew{% if selected_crew == 'ALL' %}s{% endif %}</small>
-                            </div>
-                            <div class="fs-1">
-                                <i class="bi bi-people-fill"></i>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card text-white bg-success">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <div>
-                                <h6 class="text-uppercase">On Duty Now</h6>
-                                <h2 class="mb-0">{{ crew_stats.on_duty }}</h2>
-                                <small>{{ crew_stats.current_shift }}</small>
-                            </div>
-                            <div class="fs-1">
-                                <i class="bi bi-person-check"></i>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card text-white bg-warning">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <div>
-                                <h6 class="text-uppercase">Coverage Gaps</h6>
-                                <h2 class="mb-0">{{ crew_stats.coverage_gaps }}</h2>
-                                <small>Next 7 days</small>
-                            </div>
-                            <div class="fs-1">
-                                <i class="bi bi-exclamation-triangle"></i>
-                            </div>
-                        </div>
-                        {% if crew_stats.coverage_gaps > 0 %}
-                        <a href="/supervisor/coverage-needs" class="stretched-link"></a>
-                        {% endif %}
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card text-white bg-danger">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <div>
-                                <h6 class="text-uppercase">Pending Requests</h6>
-                                <h2 class="mb-0">{{ crew_stats.pending_requests }}</h2>
-                                <small>Awaiting approval</small>
-                            </div>
-                            <div class="fs-1">
-                                <i class="bi bi-inbox"></i>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Main Content -->
-        <div class="row">
-            <!-- Left Column -->
-            <div class="col-md-8">
-                <!-- Alerts for Urgent Items -->
-                {% if pending_time_off_count > 0 %}
-                <div class="alert alert-danger alert-dismissible fade show mb-4" role="alert">
-                    <h5 class="alert-heading">
-                        <i class="bi bi-exclamation-circle"></i> {{ pending_time_off_count }} Pending Time Off Request{% if pending_time_off_count > 1 %}s{% endif %}
-                    </h5>
-                    <div class="row mt-3">
-                        {% for request in recent_time_off_requests %}
-                        <div class="col-md-4 mb-2">
-                            <div class="card">
-                                <div class="card-body p-2">
-                                    <h6 class="mb-1">{{ request.employee.name }}</h6>
-                                    <small class="text-muted">{{ request.start_date.strftime('%m/%d') }} - {{ request.end_date.strftime('%m/%d') }}</small><br>
-                                    <span class="badge bg-{{ 'info' if request.request_type == 'vacation' else 'warning' }}">{{ request.request_type }}</span>
-                                </div>
-                            </div>
-                        </div>
-                        {% endfor %}
-                    </div>
-                    <hr>
-                    <a href="/supervisor/time-off-requests" class="btn btn-danger">
-                        <i class="bi bi-check-circle"></i> Review All Requests
+<!-- Employee Management Dropdown -->
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle" href="#" id="employeeDropdown" role="button" data-bs-toggle="dropdown">
+                        <i class="bi bi-people-fill"></i> Employees
                     </a>
-                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                </div>
-                {% endif %}
-
-                <!-- Today's Schedule -->
-                <div class="card mb-4">
-                    <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-                        <h5 class="mb-0">
-                            <i class="bi bi-calendar-check"></i> Today's Schedule
-                        </h5>
-                        <a href="/schedule/view" class="btn btn-sm btn-light">View Full Schedule</a>
-                    </div>
-                    <div class="card-body">
-                        <div class="table-responsive">
-                            <table class="table table-hover">
-                                <thead>
-                                    <tr>
-                                        <th>Time</th>
-                                        <th>Employee</th>
-                                        <th>Position</th>
-                                        <th>Crew</th>
-                                        <th>Status</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {% if todays_schedule %}
-                                        {% for schedule in todays_schedule %}
-                                        <tr>
-                                            <td>
-                                                {{ schedule.start_time.strftime('%I:%M %p') if schedule.start_time else 'N/A' }} - 
-                                                {{ schedule.end_time.strftime('%I:%M %p') if schedule.end_time else 'N/A' }}
-                                            </td>
-                                            <td>{{ schedule.employee.name if schedule.employee else 'Unassigned' }}</td>
-                                            <td>{{ schedule.position.name if schedule.position else 'N/A' }}</td>
-                                            <td><span class="badge bg-secondary">{{ schedule.crew or 'N/A' }}</span></td>
-                                            <td>
-                                                {% if schedule.is_overtime %}
-                                                    <span class="badge bg-warning">Overtime</span>
-                                                {% else %}
-                                                    <span class="badge bg-success">Regular</span>
-                                                {% endif %}
-                                            </td>
-                                        </tr>
-                                        {% endfor %}
-                                    {% else %}
-                                        <tr>
-                                            <td colspan="5" class="text-center text-muted">No schedules for today</td>
-                                        </tr>
-                                    {% endif %}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Coverage Gaps -->
-                {% if coverage_gaps %}
-                <div class="card mb-4">
-                    <div class="card-header bg-warning text-dark">
-                        <h5 class="mb-0">
-                            <i class="bi bi-exclamation-triangle"></i> Upcoming Coverage Gaps
-                        </h5>
-                    </div>
-                    <div class="card-body">
-                        {% for gap in coverage_gaps %}
-                        <div class="alert alert-warning d-flex justify-content-between align-items-center mb-2">
-                            <div>
-                                <strong>{{ gap.date.strftime('%A, %B %d') }}</strong> - {{ gap.shift_type|title }} Shift<br>
-                                <small>Need {{ gap.gap }} more employee{% if gap.gap > 1 %}s{% endif %} ({{ gap.scheduled }}/{{ gap.required }})</small>
-                            </div>
-                            <a href="/supervisor/coverage-needs" class="btn btn-sm btn-primary">
-                                <i class="bi bi-person-plus"></i> Fill Gap
-                            </a>
-                        </div>
-                        {% endfor %}
-                        {% if coverage_gaps|length > 3 %}
-                        <a href="/supervisor/coverage-needs" class="btn btn-warning w-100">View All Coverage Gaps</a>
+                    <ul class="dropdown-menu">
+                        <li><a class="dropdown-item" href="/import-employees">
+                            <i class="bi bi-upload"></i> Import Employees
+                        </a></li>
+                        <li><a class="dropdown-item" href="/export-template">
+                            <i class="bi bi-download"></i> Download Excel Template
+                        </a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item" href="/supervisor/coverage-needs">
+                            <i class="bi bi-exclamation-triangle"></i> Coverage Needs
+                        </a></li>
+                        <li><a class="dropdown-item" href="/supervisor/overtime-distribution">
+                            <i class="bi bi-clock-history"></i> Overtime Distribution
+                        </a></li>
+                    </ul>
+                </li>
+                
+                <!-- Requests Dropdown -->
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle" href="#" id="requestsDropdown" role="button" data-bs-toggle="dropdown">
+                        <i class="bi bi-inbox"></i> Requests
+                        {% if pending_time_off_count > 0 or pending_swaps_count > 0 %}
+                            <span class="badge bg-danger">{{ pending_time_off_count + pending_swaps_count }}</span>
                         {% endif %}
-                    </div>
-                </div>
-                {% endif %}
+                    </a>
+                    <ul class="dropdown-menu">
+                        <li><a class="dropdown-item" href="/supervisor/time-off-requests">
+                            <i class="bi bi-calendar-x"></i> Time Off Requests
+                            {% if pending_time_off_count > 0 %}
+                                <span class="badge bg-danger">{{ pending_time_off_count }}</span>
+                            {% endif %}
+                        </a></li>
+                        <li><a class="dropdown-item" href="/supervisor/swap-requests">
+                            <i class="bi bi-arrow-left-right"></i> Swap Requests
+                            {% if pending_swaps_count > 0 %}
+                                <span class="badge bg-warning">{{ pending_swaps_count }}</span>
+                            {% endif %}
+                        </a></li>
+                        <li><a class="dropdown-item" href="/supervisor/suggestions">
+                            <i class="bi bi-lightbulb"></i> Employee Suggestions
+                        </a></li>
+                    </ul>
+                </li>
+                
+                <!-- Communication Dropdown -->
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle" href="#" id="communicationDropdown" role="button" data-bs-toggle="dropdown">
+                        <i class="bi bi-chat-dots"></i> Communication
+                        <span class="badge bg-warning" id="commBadge" style="display: none;">0</span>
+                    </a>
+                    <ul class="dropdown-menu">
+                        <li><a class="dropdown-item" href="/supervisor/messages">
+                            <i class="bi bi-envelope"></i> Supervisor Messages
+                            <span class="badge bg-danger" id="supervisorMsgBadge" style="display: none;">0</span>
+                        </a></li>
+                        <li><a class="dropdown-item" href="/maintenance/issues">
+                            <i class="bi bi-tools"></i> Maintenance Issues
+                            <span class="badge bg-info" id="maintenanceBadge" style="display: none;">0</span>
+                        </a></li>
+                    </ul>
+                </li>
+                
+                <li class="nav-item">
+                    <a class="nav-link" href="/vacation-calendar">
+                        <i class="bi bi-calendar-week"></i> Vacation Calendar
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="/casual-workers">
+                        <i class="bi bi-people"></i> Casual Workers
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="/shift-marketplace">
+                        <i class="bi bi-shop"></i> Shift Marketplace
+                    </a>
+                </li>
+            </ul>
+            <ul class="navbar-nav">
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown">
+                        <i class="bi bi-person-circle"></i> {{ current_user.name }}
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li><h6 class="dropdown-header">Supervisor Account</h6></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item" href="/profile">
+                            <i class="bi bi-person"></i> My Profile
+                        </a></li>
+                        <li><a class="dropdown-item" href="/settings">
+                            <i class="bi bi-gear"></i> Settings
+                        </a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item" href="/logout">
+                            <i class="bi bi-box-arrow-right"></i> Logout
+                        </a></li>
+                    </ul>
+                </li>
+            </ul>
+        </div>
+    </div>
+</nav>
 
-                <!-- Recent Activity -->
-                <div class="card">
-                    <div class="card-header">
-                        <h5 class="mb-0">
-                            <i class="bi bi-activity"></i> Recent Activity
-                        </h5>
-                    </div>
-                    <div class="card-body">
-                        <div class="list-group list-group-flush">
-                            {% for swap in recent_swap_requests %}
-                            <div class="list-group-item">
-                                <div class="d-flex w-100 justify-content-between">
-                                    <h6 class="mb-1">Shift Swap Request</h6>
-                                    <small>{{ swap.created_at.strftime('%m/%d %I:%M %p') }}</small>
-                                </div>
-                                <p class="mb-1">{{ swap.requester.name }} requests to swap {{ swap.original_schedule.date.strftime('%m/%d') }} shift</p>
-                                <small class="text-muted">Status: <span class="badge bg-warning">Pending</span></small>
-                            </div>
-                            {% endfor %}
+<div class="container-fluid mt-4">
+    <!-- Page Header with Crew Selector -->
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <h2>
+                <i class="bi bi-speedometer2"></i> Supervisor Dashboard
+            </h2>
+            <p class="text-muted">Manage schedules, review requests, and oversee operations</p>
+        </div>
+        <div class="col-md-4 text-end">
+            <div class="btn-group" role="group">
+                <button type="button" class="btn btn-outline-primary dropdown-toggle" data-bs-toggle="dropdown">
+                    <i class="bi bi-funnel"></i> Crew: {{ selected_crew }}
+                </button>
+                <ul class="dropdown-menu">
+                    <li><a class="dropdown-item" href="?crew=ALL">All Crews</a></li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li><a class="dropdown-item" href="?crew=A">Crew A</a></li>
+                    <li><a class="dropdown-item" href="?crew=B">Crew B</a></li>
+                    <li><a class="dropdown-item" href="?crew=C">Crew C</a></li>
+                    <li><a class="dropdown-item" href="?crew=D">Crew D</a></li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- Crew Stats Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card text-white bg-primary">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-uppercase">Total Employees</h6>
+                            <h2 class="mb-0">{{ crew_stats.total_employees }}</h2>
+                            <small>{{ selected_crew }} Crew{% if selected_crew == 'ALL' %}s{% endif %}</small>
+                        </div>
+                        <div class="fs-1">
+                            <i class="bi bi-people-fill"></i>
                         </div>
                     </div>
                 </div>
             </div>
-
-            <!-- Right Column -->
-            <div class="col-md-4">
-                <!-- Quick Actions -->
-                <div class="card mb-4">
-                    <div class="card-header bg-dark text-white">
-                        <h5 class="mb-0">
-                            <i class="bi bi-lightning"></i> Quick Actions
-                        </h5>
-                    </div>
-                    <div class="card-body">
-                        <div class="d-grid gap-2">
-                            <button class="btn btn-primary" onclick="window.location.href='/schedule/create'">
-                                <i class="bi bi-calendar-plus"></i> Create New Schedule
-                            </button>
-                            <button class="btn btn-success" onclick="window.location.href='/import-employees'">
-                                <i class="bi bi-person-plus"></i> Import Employees
-                            </button>
-                            <button class="btn btn-info" onclick="window.location.href='/schedule/view'">
-                                <i class="bi bi-calendar-week"></i> View Full Schedule
-                            </button>
-                            <button class="btn btn-warning" onclick="window.location.href='/supervisor/coverage-needs'">
-                                <i class="bi bi-exclamation-triangle"></i> Manage Coverage
-                            </button>
-                            <button class="btn btn-secondary" data-bs-toggle="modal" data-bs-target="#broadcastModal">
-                                <i class="bi bi-megaphone"></i> Send Announcement
-                            </button>
-                            
-                            <!-- Communication Actions -->
-                            <hr class="my-3">
-                            <h6 class="text-muted mb-2">Communication</h6>
-                            <button class="btn btn-info" onclick="window.location.href='/supervisor/messages'">
-                                <i class="bi bi-envelope"></i> Supervisor Messages
-                                <span class="badge bg-danger" id="supervisorMessageBadge" style="display: none;">0</span>
-                            </button>
-                            <button class="btn btn-warning" onclick="window.location.href='/maintenance/issues'">
-                                <i class="bi bi-tools"></i> Maintenance Issues
-                                <span class="badge bg-danger" id="maintenanceIssueBadge" style="display: none;">0</span>
-                            </button>
-
-                            <!-- Quick Message Modal Trigger -->
-                            <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#quickSupervisorMessage">
-                                <i class="bi bi-chat-dots"></i> Quick Message
-                            </button>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white bg-success">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-uppercase">On Duty Now</h6>
+                            <h2 class="mb-0">{{ crew_stats.on_duty }}</h2>
+                            <small>{{ crew_stats.current_shift }}</small>
+                        </div>
+                        <div class="fs-1">
+                            <i class="bi bi-person-check"></i>
                         </div>
                     </div>
                 </div>
-
-                <!-- System Status -->
-                <div class="card mb-4">
-                    <div class="card-header">
-                        <h5 class="mb-0">
-                            <i class="bi bi-info-circle"></i> System Status
-                        </h5>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white bg-warning">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-uppercase">Coverage Gaps</h6>
+                            <h2 class="mb-0">{{ crew_stats.coverage_gaps }}</h2>
+                            <small>Next 7 days</small>
+                        </div>
+                        <div class="fs-1">
+                            <i class="bi bi-exclamation-triangle"></i>
+                        </div>
                     </div>
-                    <div class="card-body">
-                        <div class="mb-3">
-                            <div class="d-flex justify-content-between">
-                                <span>Database Status</span>
-                                <span class="badge bg-success">Online</span>
-                            </div>
-                        </div>
-                        <div class="mb-3">
-                            <div class="d-flex justify-content-between">
-                                <span>Coverage Needs</span>
-                                <span>{{ coverage_needs }}</span>
-                            </div>
-                        </div>
-                        <div class="mb-3">
-                            <div class="d-flex justify-content-between">
-                                <span>Today's Schedules</span>
-                                <span>{{ todays_schedule|length }}</span>
-                            </div>
-                        </div>
-                        <hr>
-                        <small class="text-muted">System Online</small>
-                    </div>
+                    {% if crew_stats.coverage_gaps > 0 %}
+                    <a href="/supervisor/coverage-needs" class="stretched-link"></a>
+                    {% endif %}
                 </div>
-
-                <!-- Marketplace Stats -->
-                <div class="card">
-                    <div class="card-header">
-                        <h5 class="mb-0">
-                            <i class="bi bi-shop"></i> Shift Marketplace
-                        </h5>
-                    </div>
-                    <div class="card-body">
-                        <p class="mb-2">Enable employees to trade shifts directly</p>
-                        <div class="d-grid">
-                            <a href="/shift-marketplace" class="btn btn-outline-primary">
-                                <i class="bi bi-arrow-right-circle"></i> Go to Marketplace
-                            </a>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white bg-danger">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-uppercase">Pending Requests</h6>
+                            <h2 class="mb-0">{{ crew_stats.pending_requests }}</h2>
+                            <small>Awaiting approval</small>
+                        </div>
+                        <div class="fs-1">
+                            <i class="bi bi-inbox"></i>
                         </div>
                     </div>
                 </div>
@@ -464,184 +203,413 @@
         </div>
     </div>
 
-    <!-- Broadcast Modal -->
-    <div class="modal fade" id="broadcastModal" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">
-                        <i class="bi bi-megaphone"></i> Send Announcement
-                    </h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+    <!-- Main Content -->
+    <div class="row">
+        <!-- Left Column -->
+        <div class="col-md-8">
+            <!-- Alerts for Urgent Items -->
+            {% if pending_time_off_count > 0 %}
+            <div class="alert alert-danger alert-dismissible fade show mb-4" role="alert">
+                <h5 class="alert-heading">
+                    <i class="bi bi-exclamation-circle"></i> {{ pending_time_off_count }} Pending Time Off Request{% if pending_time_off_count > 1 %}s{% endif %}
+                </h5>
+                <div class="row mt-3">
+                    {% for request in recent_time_off_requests %}
+                    <div class="col-md-4 mb-2">
+                        <div class="card">
+                            <div class="card-body p-2">
+                                <h6 class="mb-1">{{ request.employee.name }}</h6>
+                                <small class="text-muted">{{ request.start_date.strftime('%m/%d') }} - {{ request.end_date.strftime('%m/%d') }}</small><br>
+                                <span class="badge bg-{{ 'info' if request.request_type == 'vacation' else 'warning' }}">{{ request.request_type }}</span>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
                 </div>
+                <hr>
+                <a href="/supervisor/time-off-requests" class="btn btn-danger">
+                    <i class="bi bi-check-circle"></i> Review All Requests
+                </a>
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+            {% endif %}
+
+            <!-- Today's Schedule -->
+            <div class="card mb-4">
+                <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="bi bi-calendar-check"></i> Today's Schedule
+                    </h5>
+                    <a href="/schedule/view" class="btn btn-sm btn-light">View Full Schedule</a>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Employee</th>
+                                    <th>Position</th>
+                                    <th>Crew</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% if todays_schedule %}
+                                    {% for schedule in todays_schedule %}
+                                    <tr>
+                                        <td>
+                                            {{ schedule.start_time.strftime('%I:%M %p') if schedule.start_time else 'N/A' }} - 
+                                            {{ schedule.end_time.strftime('%I:%M %p') if schedule.end_time else 'N/A' }}
+                                        </td>
+                                        <td>{{ schedule.employee.name if schedule.employee else 'Unassigned' }}</td>
+                                        <td>{{ schedule.position.name if schedule.position else 'N/A' }}</td>
+                                        <td><span class="badge bg-secondary">{{ schedule.crew or 'N/A' }}</span></td>
+                                        <td>
+                                            {% if schedule.is_overtime %}
+                                                <span class="badge bg-warning">Overtime</span>
+                                            {% else %}
+                                                <span class="badge bg-success">Regular</span>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                {% else %}
+                                    <tr>
+                                        <td colspan="5" class="text-center text-muted">No schedules for today</td>
+                                    </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Coverage Gaps -->
+            {% if coverage_gaps %}
+            <div class="card mb-4">
+                <div class="card-header bg-warning text-dark">
+                    <h5 class="mb-0">
+                        <i class="bi bi-exclamation-triangle"></i> Upcoming Coverage Gaps
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% for gap in coverage_gaps %}
+                    <div class="alert alert-warning d-flex justify-content-between align-items-center mb-2">
+                        <div>
+                            <strong>{{ gap.date.strftime('%A, %B %d') }}</strong> - {{ gap.shift_type|title }} Shift<br>
+                            <small>Need {{ gap.gap }} more employee{% if gap.gap > 1 %}s{% endif %} ({{ gap.scheduled }}/{{ gap.required }})</small>
+                        </div>
+                        <a href="/supervisor/coverage-needs" class="btn btn-sm btn-primary">
+                            <i class="bi bi-person-plus"></i> Fill Gap
+                        </a>
+                    </div>
+                    {% endfor %}
+                    {% if coverage_gaps|length > 3 %}
+                    <a href="/supervisor/coverage-needs" class="btn btn-warning w-100">View All Coverage Gaps</a>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Recent Activity -->
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="bi bi-activity"></i> Recent Activity
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="list-group list-group-flush">
+                        {% for swap in recent_swap_requests %}
+                        <div class="list-group-item">
+                            <div class="d-flex w-100 justify-content-between">
+                                <h6 class="mb-1">Shift Swap Request</h6>
+                                <small>{{ swap.created_at.strftime('%m/%d %I:%M %p') }}</small>
+                            </div>
+                            <p class="mb-1">{{ swap.requester.name }} requests to swap {{ swap.original_schedule.date.strftime('%m/%d') }} shift</p>
+                            <small class="text-muted">Status: <span class="badge bg-warning">Pending</span></small>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Column -->
+        <div class="col-md-4">
+            <!-- Quick Actions -->
+            <div class="card mb-4">
+                <div class="card-header bg-dark text-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-lightning"></i> Quick Actions
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-primary" onclick="window.location.href='/schedule/create'">
+                            <i class="bi bi-calendar-plus"></i> Create New Schedule
+                        </button>
+                        <button class="btn btn-success" onclick="window.location.href='/import-employees'">
+                            <i class="bi bi-person-plus"></i> Import Employees
+                        </button>
+                        <button class="btn btn-info" onclick="window.location.href='/schedule/view'">
+                            <i class="bi bi-calendar-week"></i> View Full Schedule
+                        </button>
+                        <button class="btn btn-warning" onclick="window.location.href='/supervisor/coverage-needs'">
+                            <i class="bi bi-exclamation-triangle"></i> Manage Coverage
+                        </button>
+                        <button class="btn btn-secondary" data-bs-toggle="modal" data-bs-target="#broadcastModal">
+                            <i class="bi bi-megaphone"></i> Send Announcement
+                        </button>
+                        
+                        <!-- Communication Actions -->
+                        <hr class="my-3">
+                        <h6 class="text-muted mb-2">Communication</h6>
+                        <button class="btn btn-info" onclick="window.location.href='/supervisor/messages'">
+                            <i class="bi bi-envelope"></i> Supervisor Messages
+                            <span class="badge bg-danger" id="supervisorMessageBadge" style="display: none;">0</span>
+                        </button>
+                        <button class="btn btn-warning" onclick="window.location.href='/maintenance/issues'">
+                            <i class="bi bi-tools"></i> Maintenance Issues
+                            <span class="badge bg-danger" id="maintenanceIssueBadge" style="display: none;">0</span>
+                        </button>
+
+                        <!-- Quick Message Modal Trigger -->
+                        <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#quickSupervisorMessage">
+                            <i class="bi bi-chat-dots"></i> Quick Message
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- System Status -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="bi bi-info-circle"></i> System Status
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between">
+                            <span>Database Status</span>
+                            <span class="badge bg-success">Online</span>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between">
+                            <span>Coverage Needs</span>
+                            <span>{{ coverage_needs }}</span>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between">
+                            <span>Today's Schedules</span>
+                            <span>{{ todays_schedule|length }}</span>
+                        </div>
+                    </div>
+                    <hr>
+                    <small class="text-muted">System Online</small>
+                </div>
+            </div>
+
+            <!-- Marketplace Stats -->
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="bi bi-shop"></i> Shift Marketplace
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <p class="mb-2">Enable employees to trade shifts directly</p>
+                    <div class="d-grid">
+                        <a href="/shift-marketplace" class="btn btn-outline-primary">
+                            <i class="bi bi-arrow-right-circle"></i> Go to Marketplace
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Broadcast Modal -->
+<div class="modal fade" id="broadcastModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-megaphone"></i> Send Announcement
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label for="broadcastTitle" class="form-label">Subject</label>
+                    <input type="text" class="form-control" id="broadcastTitle" placeholder="e.g., Schedule Update">
+                </div>
+                <div class="mb-3">
+                    <label for="broadcastMessage" class="form-label">Message</label>
+                    <textarea class="form-control" id="broadcastMessage" rows="4" placeholder="Enter your announcement..."></textarea>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Send To</label>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="sendToAll" checked>
+                        <label class="form-check-label" for="sendToAll">All Employees</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="sendToCasual">
+                        <label class="form-check-label" for="sendToCasual">Casual Workers</label>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary">
+                    <i class="bi bi-send"></i> Send Announcement
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Supervisor Message Modal -->
+<div class="modal fade" id="quickSupervisorMessage" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-chat-dots"></i> Quick Message to Supervisor
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="quickMessageForm">
                 <div class="modal-body">
                     <div class="mb-3">
-                        <label for="broadcastTitle" class="form-label">Subject</label>
-                        <input type="text" class="form-control" id="broadcastTitle" placeholder="e.g., Schedule Update">
+                        <label for="quickRecipient" class="form-label">Send to:</label>
+                        <select class="form-select" id="quickRecipient" required>
+                            <option value="">Select supervisor...</option>
+                            {% for emp in other_supervisors %}
+                                <option value="{{ emp.id }}">{{ emp.name }} (Crew {{ emp.crew }})</option>
+                            {% endfor %}
+                        </select>
                     </div>
                     <div class="mb-3">
-                        <label for="broadcastMessage" class="form-label">Message</label>
-                        <textarea class="form-control" id="broadcastMessage" rows="4" placeholder="Enter your announcement..."></textarea>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Send To</label>
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" id="sendToAll" checked>
-                            <label class="form-check-label" for="sendToAll">All Employees</label>
-                        </div>
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" id="sendToCasual">
-                            <label class="form-check-label" for="sendToCasual">Casual Workers</label>
-                        </div>
+                        <label for="quickMessage" class="form-label">Message:</label>
+                        <textarea class="form-control" id="quickMessage" rows="3" required
+                                  placeholder="Type your message..."></textarea>
                     </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-primary">
-                        <i class="bi bi-send"></i> Send Announcement
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-send"></i> Send
                     </button>
                 </div>
-            </div>
+            </form>
         </div>
     </div>
+</div>
 
-    <!-- Quick Supervisor Message Modal -->
-    <div class="modal fade" id="quickSupervisorMessage" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">
-                        <i class="bi bi-chat-dots"></i> Quick Message to Supervisor
-                    </h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <form id="quickMessageForm">
-                    <div class="modal-body">
-                        <div class="mb-3">
-                            <label for="quickRecipient" class="form-label">Send to:</label>
-                            <select class="form-select" id="quickRecipient" required>
-                                <option value="">Select supervisor...</option>
-                                {% for emp in other_supervisors %}
-                                    <option value="{{ emp.id }}">{{ emp.name }} (Crew {{ emp.crew }})</option>
-                                {% endfor %}
-                            </select>
-                        </div>
-                        <div class="mb-3">
-                            <label for="quickMessage" class="form-label">Message:</label>
-                            <textarea class="form-control" id="quickMessage" rows="3" required
-                                      placeholder="Type your message..."></textarea>
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="submit" class="btn btn-primary">
-                            <i class="bi bi-send"></i> Send
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        // Check for new messages and issues
-        function checkCommunications() {
-            // Check supervisor messages
-            fetch('/api/supervisor-messages/unread-count')
-                .then(response => response.json())
-                .then(data => {
-                    const badge = document.getElementById('supervisorMessageBadge');
-                    const navBadge = document.getElementById('supervisorMsgBadge');
-                    const commBadge = document.getElementById('commBadge');
-                    
-                    if (data.count > 0) {
-                        badge.textContent = data.count;
-                        badge.style.display = 'inline';
-                        navBadge.textContent = data.count;
-                        navBadge.style.display = 'inline';
-                        updateCommBadge();
-                    } else {
-                        badge.style.display = 'none';
-                        navBadge.style.display = 'none';
-                        updateCommBadge();
-                    }
-                });
-            
-            // Check maintenance issues if manager
-            fetch('/api/maintenance/my-issues-count')
-                .then(response => response.json())
-                .then(data => {
-                    const badge = document.getElementById('maintenanceIssueBadge');
-                    const navBadge = document.getElementById('maintenanceBadge');
-                    
-                    if (data.count > 0) {
-                        badge.textContent = data.count;
-                        badge.style.display = 'inline';
-                        navBadge.textContent = data.count;
-                        navBadge.style.display = 'inline';
-                        updateCommBadge();
-                    } else {
-                        badge.style.display = 'none';
-                        navBadge.style.display = 'none';
-                        updateCommBadge();
-                    }
-                });
-        }
-
-        function updateCommBadge() {
-            const supervisorCount = parseInt(document.getElementById('supervisorMsgBadge').textContent || '0');
-            const maintenanceCount = parseInt(document.getElementById('maintenanceBadge').textContent || '0');
-            const total = supervisorCount + maintenanceCount;
-            const commBadge = document.getElementById('commBadge');
-            
-            if (total > 0) {
-                commBadge.textContent = total;
-                commBadge.style.display = 'inline';
-            } else {
-                commBadge.style.display = 'none';
-            }
-        }
-
-        // Check on page load
-        checkCommunications();
-
-        // Check periodically
-        setInterval(checkCommunications, 30000); // Every 30 seconds
-
-        // Handle quick message form
-        document.getElementById('quickMessageForm').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            
-            const formData = new FormData();
-            formData.append('recipient_id', document.getElementById('quickRecipient').value);
-            formData.append('message', document.getElementById('quickMessage').value);
-            
-            try {
-                const response = await fetch('/quick/supervisor-message', {
-                    method: 'POST',
-                    body: formData
-                });
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    // Check for new messages and issues
+    function checkCommunications() {
+        // Check supervisor messages
+        fetch('/api/supervisor-messages/unread-count')
+            .then(response => response.json())
+            .then(data => {
+                const badge = document.getElementById('supervisorMessageBadge');
+                const navBadge = document.getElementById('supervisorMsgBadge');
+                const commBadge = document.getElementById('commBadge');
                 
-                const result = await response.json();
-                
-                if (result.success) {
-                    // Close modal
-                    const modal = bootstrap.Modal.getInstance(document.getElementById('quickSupervisorMessage'));
-                    modal.hide();
-                    
-                    // Clear form
-                    document.getElementById('quickMessageForm').reset();
-                    
-                    // Show success message
-                    alert('Message sent successfully!');
+                if (data.count > 0) {
+                    badge.textContent = data.count;
+                    badge.style.display = 'inline';
+                    navBadge.textContent = data.count;
+                    navBadge.style.display = 'inline';
+                    updateCommBadge();
                 } else {
-                    alert('Error sending message: ' + (result.error || 'Unknown error'));
+                    badge.style.display = 'none';
+                    navBadge.style.display = 'none';
+                    updateCommBadge();
                 }
-            } catch (error) {
-                alert('Error sending message: ' + error.message);
+            });
+        
+        // Check maintenance issues if manager
+        fetch('/api/maintenance/my-issues-count')
+            .then(response => response.json())
+            .then(data => {
+                const badge = document.getElementById('maintenanceIssueBadge');
+                const navBadge = document.getElementById('maintenanceBadge');
+                
+                if (data.count > 0) {
+                    badge.textContent = data.count;
+                    badge.style.display = 'inline';
+                    navBadge.textContent = data.count;
+                    navBadge.style.display = 'inline';
+                    updateCommBadge();
+                } else {
+                    badge.style.display = 'none';
+                    navBadge.style.display = 'none';
+                    updateCommBadge();
+                }
+            });
+    }
+
+    function updateCommBadge() {
+        const supervisorCount = parseInt(document.getElementById('supervisorMsgBadge').textContent || '0');
+        const maintenanceCount = parseInt(document.getElementById('maintenanceBadge').textContent || '0');
+        const total = supervisorCount + maintenanceCount;
+        const commBadge = document.getElementById('commBadge');
+        
+        if (total > 0) {
+            commBadge.textContent = total;
+            commBadge.style.display = 'inline';
+        } else {
+            commBadge.style.display = 'none';
+        }
+    }
+
+    // Check on page load
+    checkCommunications();
+
+    // Check periodically
+    setInterval(checkCommunications, 30000); // Every 30 seconds
+
+    // Handle quick message form
+    document.getElementById('quickMessageForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const formData = new FormData();
+        formData.append('recipient_id', document.getElementById('quickRecipient').value);
+        formData.append('message', document.getElementById('quickMessage').value);
+        
+        try {
+            const response = await fetch('/quick/supervisor-message', {
+                method: 'POST',
+                body: formData
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                // Close modal
+                const modal = bootstrap.Modal.getInstance(document.getElementById('quickSupervisorMessage'));
+                modal.hide();
+                
+                // Clear form
+                document.getElementById('quickMessageForm').reset();
+                
+                // Show success message
+                alert('Message sent successfully!');
+            } else {
+                alert('Error sending message: ' + (result.error || 'Unknown error'));
             }
-        });
-    </script>
-</body>
-</html>
+        } catch (error) {
+            alert('Error sending message: ' + error.message);
+        }
+    });
+</script>
