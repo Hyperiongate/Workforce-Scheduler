@@ -52,7 +52,7 @@
             .col-md-8 { flex: 0 0 66.666667%; max-width: 66.666667%; }
         }
         
-        /* Navigation */
+        /* Navigation - Fixed to prevent wrapping */
         .navbar {
             position: relative;
             display: flex;
@@ -63,6 +63,9 @@
             background-color: #212529;
             color: white;
             overflow-x: auto;
+            overflow-y: hidden;
+            white-space: nowrap;
+            min-height: 50px;
         }
         
         .navbar-brand {
@@ -74,6 +77,7 @@
             color: white;
             text-decoration: none;
             white-space: nowrap;
+            flex-shrink: 0;
         }
         
         .navbar-nav {
@@ -82,10 +86,12 @@
             padding-left: 0;
             margin-bottom: 0;
             list-style: none;
+            flex-wrap: nowrap;
         }
         
         .nav-item {
             position: relative;
+            flex-shrink: 0;
         }
         
         .nav-link {
@@ -101,6 +107,35 @@
         
         .nav-link:hover {
             color: white;
+        }
+        
+        /* Navbar responsive adjustments */
+        .navbar-collapse {
+            flex-basis: auto;
+            flex-grow: 1;
+            align-items: center;
+            display: flex !important;
+            flex-wrap: nowrap;
+        }
+        
+        .navbar-toggler {
+            display: none;
+        }
+        
+        /* Make navbar scrollable on small screens */
+        @media (max-width: 1200px) {
+            .navbar {
+                padding: 0.25rem 0.25rem;
+            }
+            
+            .nav-link {
+                font-size: 0.85rem;
+                padding: 0.25rem 0.4rem;
+            }
+            
+            .navbar-brand {
+                font-size: 0.95rem;
+            }
         }
         
         /* Dropdown */
@@ -601,43 +636,6 @@
             white-space: nowrap;
         }
         
-        /* Navbar collapse styles */
-        .navbar-toggler {
-            padding: 0.25rem 0.75rem;
-            font-size: 1.25rem;
-            line-height: 1;
-            background-color: transparent;
-            border: 1px solid transparent;
-            border-radius: 0.25rem;
-            color: rgba(255, 255, 255, 0.5);
-            border-color: rgba(255, 255, 255, 0.1);
-        }
-        
-        .navbar-toggler-icon {
-            display: inline-block;
-            width: 1.5em;
-            height: 1.5em;
-            vertical-align: middle;
-            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba%28255, 255, 255, 0.5%29' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e");
-            background-repeat: no-repeat;
-            background-position: center;
-            background-size: 100%;
-        }
-        
-        .collapse {
-            display: none;
-        }
-        
-        .collapse.show {
-            display: block;
-        }
-        
-        .navbar-collapse {
-            flex-basis: 100%;
-            flex-grow: 1;
-            align-items: center;
-        }
-        
         /* Button group */
         .btn-group {
             position: relative;
@@ -672,9 +670,6 @@
         <a class="navbar-brand" href="/">
             <i>📅</i> Schedule System
         </a>
-        <button class="navbar-toggler" type="button" onclick="toggleNav()">
-            <span class="navbar-toggler-icon"></span>
-        </button>
         <div class="navbar-collapse" id="navbarNav">
             <ul class="navbar-nav me-auto">
                 <!-- Employee Management Dropdown --> 
@@ -683,17 +678,17 @@
                         <i>👥</i> Employees
                     </a>
                     <ul class="dropdown-menu" id="employeeDropdown">
-                        <li><a class="dropdown-item" href="import-employees.html">
+                        <li><a class="dropdown-item" href="/import-employees">
                             <i>⬆️</i> Import Employees
                         </a></li>
-                        <li><a class="dropdown-item" href="export-template.html">
+                        <li><a class="dropdown-item" href="/export-template">
                             <i>⬇️</i> Download Excel Template
                         </a></li>
                         <li><hr class="dropdown-divider"></li>
-                        <li><a class="dropdown-item" href="coverage-needs.html">
+                        <li><a class="dropdown-item" href="/supervisor/coverage-needs">
                             <i>⚠️</i> Coverage Needs
                         </a></li>
-                        <li><a class="dropdown-item" href="overtime-distribution.html">
+                        <li><a class="dropdown-item" href="/supervisor/overtime-distribution">
                             <i>🕐</i> Overtime Distribution
                         </a></li>
                     </ul>
@@ -705,13 +700,13 @@
                         <i>📥</i> Requests
                     </a>
                     <ul class="dropdown-menu" id="requestsDropdown">
-                        <li><a class="dropdown-item" href="time-off-requests.html">
+                        <li><a class="dropdown-item" href="/supervisor/time-off-requests">
                             <i>📅</i> Time Off Requests
                         </a></li>
-                        <li><a class="dropdown-item" href="swap-requests.html">
+                        <li><a class="dropdown-item" href="/supervisor/swap-requests">
                             <i>🔄</i> Swap Requests
                         </a></li>
-                        <li><a class="dropdown-item" href="suggestions.html">
+                        <li><a class="dropdown-item" href="/supervisor/suggestions">
                             <i>💡</i> Employee Suggestions
                         </a></li>
                     </ul>
@@ -724,10 +719,10 @@
                         <span class="badge bg-warning">2</span>
                     </a>
                     <ul class="dropdown-menu" id="communicationDropdown">
-                        <li><a class="dropdown-item" href="messages.html">
+                        <li><a class="dropdown-item" href="/supervisor/messages">
                             <i>✉️</i> Supervisor Messages
                         </a></li>
-                        <li><a class="dropdown-item" href="maintenance-issues.html">
+                        <li><a class="dropdown-item" href="/maintenance/issues">
                             <i>🔧</i> Maintenance Issues
                             <span class="badge bg-info">2</span>
                         </a></li>
@@ -735,17 +730,17 @@
                 </li>
                 
                 <li class="nav-item">
-                    <a class="nav-link" href="vacation-calendar.html">
+                    <a class="nav-link" href="/vacation-calendar">
                         <i>📆</i> Vacation Calendar
                     </a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link" href="casual-workers.html">
+                    <a class="nav-link" href="/casual-workers">
                         <i>👤</i> Casual Workers
                     </a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link" href="shift-marketplace.html">
+                    <a class="nav-link" href="/shift-marketplace">
                         <i>🏪</i> Shift Marketplace
                     </a>
                 </li>
@@ -753,19 +748,19 @@
             <ul class="navbar-nav">
                 <li class="nav-item dropdown">
                     <a class="nav-link dropdown-toggle" href="#" onclick="toggleDropdown(event, 'userDropdown')">
-                        <i>👤</i> Admin User
+                        <i>👤</i> {{ current_user.name }}
                     </a>
                     <ul class="dropdown-menu dropdown-menu-end" id="userDropdown">
                         <li><h6 class="dropdown-header">Supervisor Account</h6></li>
                         <li><hr class="dropdown-divider"></li>
-                        <li><a class="dropdown-item" href="profile.html">
+                        <li><a class="dropdown-item" href="/profile">
                             <i>👤</i> My Profile
                         </a></li>
-                        <li><a class="dropdown-item" href="settings.html">
+                        <li><a class="dropdown-item" href="/settings">
                             <i>⚙️</i> Settings
                         </a></li>
                         <li><hr class="dropdown-divider"></li>
-                        <li><a class="dropdown-item" href="logout.html">
+                        <li><a class="dropdown-item" href="/logout">
                             <i>🚪</i> Logout
                         </a></li>
                     </ul>
@@ -787,7 +782,7 @@
         <div class="col-md-4 text-end">
             <div class="btn-group" role="group">
                 <button type="button" class="btn btn-outline-primary dropdown-toggle" onclick="toggleDropdown(event, 'crewDropdown')">
-                    <i>🔽</i> Crew: A
+                    <i>🔽</i> Crew: {{ selected_crew }}
                 </button>
                 <ul class="dropdown-menu" id="crewDropdown">
                     <li><a class="dropdown-item" href="?crew=ALL">All Crews</a></li>
@@ -809,8 +804,8 @@
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
                             <h6 class="text-uppercase">Total Employees</h6>
-                            <h2 class="mb-0">11</h2>
-                            <small>A Crew</small>
+                            <h2 class="mb-0">{{ crew_stats.total_employees }}</h2>
+                            <small>{{ selected_crew }} Crew</small>
                         </div>
                         <div class="fs-1">
                             <i>👥</i>
@@ -825,8 +820,8 @@
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
                             <h6 class="text-uppercase">On Duty Now</h6>
-                            <h2 class="mb-0">0</h2>
-                            <small>Day Shift</small>
+                            <h2 class="mb-0">{{ crew_stats.on_duty }}</h2>
+                            <small>{{ crew_stats.current_shift }}</small>
                         </div>
                         <div class="fs-1">
                             <i>✅</i>
@@ -841,14 +836,14 @@
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
                             <h6 class="text-uppercase">Coverage Gaps</h6>
-                            <h2 class="mb-0">24</h2>
+                            <h2 class="mb-0">{{ crew_stats.coverage_gaps }}</h2>
                             <small>Next 7 days</small>
                         </div>
                         <div class="fs-1">
                             <i>⚠️</i>
                         </div>
                     </div>
-                    <a href="coverage-needs.html" class="stretched-link"></a>
+                    <a href="/supervisor/coverage-needs" class="stretched-link"></a>
                 </div>
             </div>
         </div>
@@ -858,7 +853,7 @@
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
                             <h6 class="text-uppercase">Pending Requests</h6>
-                            <h2 class="mb-0">0</h2>
+                            <h2 class="mb-0">{{ crew_stats.pending_requests }}</h2>
                             <small>Awaiting approval</small>
                         </div>
                         <div class="fs-1">
@@ -880,7 +875,7 @@
                     <h5 class="mb-0">
                         <i>📅</i> Today's Schedule
                     </h5>
-                    <a href="view-schedule.html" class="btn btn-sm btn-white">View Full Schedule</a>
+                    <a href="/schedule/view" class="btn btn-sm btn-white">View Full Schedule</a>
                 </div>
                 <div class="card-body">
                     <div class="table-responsive">
@@ -895,9 +890,21 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr>
-                                    <td colspan="5" class="text-center text-muted">No schedules for today</td>
-                                </tr>
+                                {% if todays_schedule %}
+                                    {% for schedule in todays_schedule %}
+                                    <tr>
+                                        <td>{{ schedule.start_time.strftime('%I:%M %p') }} - {{ schedule.end_time.strftime('%I:%M %p') }}</td>
+                                        <td>{{ schedule.employee.name }}</td>
+                                        <td>{{ schedule.position.name if schedule.position else 'N/A' }}</td>
+                                        <td>{{ schedule.crew }}</td>
+                                        <td><span class="badge bg-success">On Duty</span></td>
+                                    </tr>
+                                    {% endfor %}
+                                {% else %}
+                                    <tr>
+                                        <td colspan="5" class="text-center text-muted">No schedules for today</td>
+                                    </tr>
+                                {% endif %}
                             </tbody>
                         </table>
                     </div>
@@ -912,33 +919,20 @@
                     </h5>
                 </div>
                 <div class="card-body">
+                    {% for gap in coverage_gaps %}
                     <div class="alert alert-warning d-flex justify-content-between align-items-center mb-2">
                         <div>
-                            <strong>Tuesday, July 15</strong> - Day Shift<br>
-                            <small>Need 4 more employees (0/4)</small>
+                            <strong>{{ gap.date.strftime('%A, %B %d') }}</strong> - {{ gap.shift_type|title }} Shift<br>
+                            <small>Need {{ gap.gap }} more employees ({{ gap.scheduled }}/{{ gap.required }})</small>
                         </div>
-                        <a href="coverage-needs.html" class="btn btn-sm btn-primary">
+                        <a href="/supervisor/fill-gap?date={{ gap.date }}&shift_type={{ gap.shift_type }}&crew={{ gap.crew }}" class="btn btn-sm btn-primary">
                             <i>➕</i> Fill Gap
                         </a>
                     </div>
-                    <div class="alert alert-warning d-flex justify-content-between align-items-center mb-2">
-                        <div>
-                            <strong>Tuesday, July 15</strong> - Evening Shift<br>
-                            <small>Need 3 more employees (0/3)</small>
-                        </div>
-                        <a href="coverage-needs.html" class="btn btn-sm btn-primary">
-                            <i>➕</i> Fill Gap
-                        </a>
-                    </div>
-                    <div class="alert alert-warning d-flex justify-content-between align-items-center mb-2">
-                        <div>
-                            <strong>Tuesday, July 15</strong> - Night Shift<br>
-                            <small>Need 2 more employees (0/2)</small>
-                        </div>
-                        <a href="coverage-needs.html" class="btn btn-sm btn-primary">
-                            <i>➕</i> Fill Gap
-                        </a>
-                    </div>
+                    {% endfor %}
+                    {% if not coverage_gaps %}
+                    <p class="text-muted text-center">No coverage gaps in the next 7 days</p>
+                    {% endif %}
                 </div>
             </div>
 
@@ -951,9 +945,24 @@
                 </div>
                 <div class="card-body">
                     <div class="list-group list-group-flush">
-                        <div class="list-group-item">
-                            <p class="text-muted text-center">No recent activity</p>
-                        </div>
+                        {% if recent_time_off_requests or recent_swap_requests %}
+                            {% for request in recent_time_off_requests %}
+                            <div class="list-group-item">
+                                <strong>{{ request.employee.name }}</strong> requested time off<br>
+                                <small class="text-muted">{{ request.start_date }} to {{ request.end_date }}</small>
+                            </div>
+                            {% endfor %}
+                            {% for swap in recent_swap_requests %}
+                            <div class="list-group-item">
+                                <strong>{{ swap.requester.name }}</strong> requested a shift swap<br>
+                                <small class="text-muted">{{ swap.created_at.strftime('%m/%d %I:%M %p') }}</small>
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <div class="list-group-item">
+                                <p class="text-muted text-center">No recent activity</p>
+                            </div>
+                        {% endif %}
                     </div>
                 </div>
             </div>
@@ -970,16 +979,16 @@
                 </div>
                 <div class="card-body">
                     <div class="d-grid gap-2">
-                        <button class="btn btn-primary" onclick="window.location.href='create-schedule.html'">
+                        <button class="btn btn-primary" onclick="window.location.href='/schedule/create'">
                             <i>➕</i> Create New Schedule
                         </button>
-                        <button class="btn btn-success" onclick="window.location.href='import-employees.html'">
+                        <button class="btn btn-success" onclick="window.location.href='/import-employees'">
                             <i>👤</i> Import Employees
                         </button>
-                        <button class="btn btn-info" onclick="window.location.href='view-schedule.html'">
+                        <button class="btn btn-info" onclick="window.location.href='/schedule/view'">
                             <i>📆</i> View Full Schedule
                         </button>
-                        <button class="btn btn-warning" onclick="window.location.href='coverage-needs.html'">
+                        <button class="btn btn-warning" onclick="window.location.href='/supervisor/coverage-needs'">
                             <i>⚠️</i> Manage Coverage
                         </button>
                         <button class="btn btn-secondary" onclick="toggleModal('broadcastModal')">
@@ -989,10 +998,10 @@
                         <!-- Communication Actions -->
                         <hr class="my-3">
                         <h6 class="text-muted mb-2">Communication</h6>
-                        <button class="btn btn-info" onclick="window.location.href='messages.html'">
+                        <button class="btn btn-info" onclick="window.location.href='/supervisor/messages'">
                             <i>✉️</i> Supervisor Messages
                         </button>
-                        <button class="btn btn-warning" onclick="window.location.href='maintenance-issues.html'">
+                        <button class="btn btn-warning" onclick="window.location.href='/maintenance/issues'">
                             <i>🔧</i> Maintenance Issues
                             <span class="badge bg-danger">2</span>
                         </button>
@@ -1022,13 +1031,13 @@
                     <div class="mb-3">
                         <div class="d-flex justify-content-between">
                             <span>Coverage Needs</span>
-                            <span>500</span>
+                            <span>{{ coverage_needs }}</span>
                         </div>
                     </div>
                     <div class="mb-3">
                         <div class="d-flex justify-content-between">
                             <span>Today's Schedules</span>
-                            <span>0</span>
+                            <span>{{ todays_schedule|length }}</span>
                         </div>
                     </div>
                     <hr>
@@ -1046,7 +1055,7 @@
                 <div class="card-body">
                     <p class="mb-2">Enable employees to trade shifts directly</p>
                     <div class="d-grid">
-                        <a href="shift-marketplace.html" class="btn btn-outline-primary">
+                        <a href="/shift-marketplace" class="btn btn-outline-primary">
                             <i>➡️</i> Go to Marketplace
                         </a>
                     </div>
@@ -1107,21 +1116,20 @@
                 </h5>
                 <button type="button" class="btn-close" onclick="toggleModal('quickSupervisorMessage')"></button>
             </div>
-            <form id="quickMessageForm">
+            <form id="quickMessageForm" action="/quick/supervisor-message" method="POST">
                 <div class="modal-body">
                     <div class="mb-3">
                         <label for="quickRecipient" class="form-label">Send to:</label>
-                        <select class="form-select" id="quickRecipient" required>
+                        <select class="form-select" id="quickRecipient" name="recipient_id" required>
                             <option value="">Select supervisor...</option>
-                            <option value="1">Alice Anderson (Crew A)</option>
-                            <option value="2">Barbara Bennett (Crew B)</option>
-                            <option value="3">Carol Campbell (Crew C)</option>
-                            <option value="4">Diana Davidson (Crew D)</option>
+                            {% for supervisor in other_supervisors %}
+                            <option value="{{ supervisor.id }}">{{ supervisor.name }} (Crew {{ supervisor.crew }})</option>
+                            {% endfor %}
                         </select>
                     </div>
                     <div class="mb-3">
                         <label for="quickMessage" class="form-label">Message:</label>
-                        <textarea class="form-control" id="quickMessage" rows="3" required
+                        <textarea class="form-control" id="quickMessage" name="message" rows="3" required
                                   placeholder="Type your message..."></textarea>
                     </div>
                 </div>
@@ -1166,16 +1174,6 @@
         }
     }
     
-    // Toggle navbar
-    function toggleNav() {
-        const nav = document.getElementById('navbarNav');
-        if (nav.classList.contains('show')) {
-            nav.classList.remove('show');
-        } else {
-            nav.classList.add('show');
-        }
-    }
-    
     // Close dropdowns when clicking outside
     document.addEventListener('click', function(event) {
         if (!event.target.closest('.dropdown')) {
@@ -1192,21 +1190,6 @@
                 modal.classList.remove('show');
             }
         });
-    });
-    
-    // Handle quick message form
-    document.getElementById('quickMessageForm').addEventListener('submit', function(e) {
-        e.preventDefault();
-        
-        const recipientId = document.getElementById('quickRecipient').value;
-        const message = document.getElementById('quickMessage').value;
-        
-        // Simulated for demo
-        alert(`Message sent to supervisor ${recipientId}: ${message}`);
-        
-        // Close modal and reset form
-        toggleModal('quickSupervisorMessage');
-        this.reset();
     });
 </script>
 
