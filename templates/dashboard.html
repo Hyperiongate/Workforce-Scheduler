@@ -698,7 +698,7 @@
                             <i>⬇️</i> Download Excel Template
                         </a></li>
                         <li><hr class="dropdown-divider"></li>
-                        <li><a class="dropdown-item" href="/supervisor/coverage-gaps">
+                        <li><a class="dropdown-item" href="/supervisor/coverage-needs">
                             <i>⚠️</i> Coverage Needs
                         </a></li>
                         <li><a class="dropdown-item" href="/supervisor/overtime-distribution">
@@ -856,7 +856,7 @@
                             <i>⚠️</i>
                         </div>
                     </div>
-                    <a href="/supervisor/coverage-gaps" class="stretched-link"></a>
+                    <a href="/supervisor/coverage-needs" class="stretched-link"></a>
                 </div>
             </div>
         </div>
@@ -1001,7 +1001,7 @@
                         <button class="btn btn-info" onclick="window.location.href='/schedule/view'">
                             <i>📆</i> View Full Schedule
                         </button>
-                        <button class="btn btn-warning" onclick="window.location.href='/supervisor/coverage-gaps'">
+                        <button class="btn btn-warning" onclick="window.location.href='/supervisor/coverage-needs'">
                             <i>⚠️</i> Manage Coverage
                         </button>
                         <button class="btn btn-secondary" onclick="toggleModal('broadcastModal')">
@@ -1043,8 +1043,8 @@
                     </div>
                     <div class="mb-3">
                         <div class="d-flex justify-content-between">
-                            <span>Coverage Needs</span>
-                            <span>{{ coverage_needs }}</span>
+                            <span>Coverage Gaps</span>
+                            <span>{{ crew_stats.coverage_gaps }}</span>
                         </div>
                     </div>
                     <div class="mb-3">
