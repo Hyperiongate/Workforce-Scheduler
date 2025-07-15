@@ -679,7 +679,7 @@
 
 <!-- Navigation -->
 <nav class="navbar">
-    <div class="container-fluid">
+    <div class="container-fluid" style="overflow: visible;">
         <a class="navbar-brand" href="/">
             <i>📅</i> Schedule System
         </a>
@@ -698,7 +698,7 @@
                             <i>⬇️</i> Download Excel Template
                         </a></li>
                         <li><hr class="dropdown-divider"></li>
-                        <li><a class="dropdown-item" href="/supervisor/coverage-needs">
+                        <li><a class="dropdown-item" href="/supervisor/coverage-gaps">
                             <i>⚠️</i> Coverage Needs
                         </a></li>
                         <li><a class="dropdown-item" href="/supervisor/overtime-distribution">
@@ -856,7 +856,7 @@
                             <i>⚠️</i>
                         </div>
                     </div>
-                    <a href="/supervisor/coverage-needs" class="stretched-link"></a>
+                    <a href="/supervisor/coverage-gaps" class="stretched-link"></a>
                 </div>
             </div>
         </div>
@@ -1001,7 +1001,7 @@
                         <button class="btn btn-info" onclick="window.location.href='/schedule/view'">
                             <i>📆</i> View Full Schedule
                         </button>
-                        <button class="btn btn-warning" onclick="window.location.href='/supervisor/coverage-needs'">
+                        <button class="btn btn-warning" onclick="window.location.href='/supervisor/coverage-gaps'">
                             <i>⚠️</i> Manage Coverage
                         </button>
                         <button class="btn btn-secondary" onclick="toggleModal('broadcastModal')">
