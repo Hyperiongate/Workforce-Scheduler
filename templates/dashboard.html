@@ -56,22 +56,24 @@
         .navbar {
             position: relative;
             display: flex;
-            flex-wrap: wrap;
+            flex-wrap: nowrap;
             align-items: center;
             justify-content: space-between;
-            padding: 0.5rem 1rem;
+            padding: 0.25rem 0.5rem;
             background-color: #212529;
             color: white;
+            overflow-x: auto;
         }
         
         .navbar-brand {
             display: inline-block;
-            padding-top: 0.3125rem;
-            padding-bottom: 0.3125rem;
-            margin-right: 1rem;
-            font-size: 1.25rem;
+            padding-top: 0.2rem;
+            padding-bottom: 0.2rem;
+            margin-right: 0.5rem;
+            font-size: 1rem;
             color: white;
             text-decoration: none;
+            white-space: nowrap;
         }
         
         .navbar-nav {
@@ -88,11 +90,13 @@
         
         .nav-link {
             display: block;
-            padding: 0.5rem 1rem;
+            padding: 0.25rem 0.5rem;
             color: rgba(255, 255, 255, 0.75);
             text-decoration: none;
             transition: color 0.15s ease-in-out;
             cursor: pointer;
+            font-size: 0.9rem;
+            white-space: nowrap;
         }
         
         .nav-link:hover {
@@ -645,6 +649,19 @@
             position: relative;
             flex: 1 1 auto;
         }
+        
+        /* White button on blue background */
+        .btn-white {
+            color: #0d6efd;
+            background-color: white;
+            border-color: white;
+        }
+        
+        .btn-white:hover {
+            color: #0b5ed7;
+            background-color: #f8f9fa;
+            border-color: #f8f9fa;
+        }
     </style>
 </head>
 <body>
@@ -666,17 +683,17 @@
                         <i>👥</i> Employees
                     </a>
                     <ul class="dropdown-menu" id="employeeDropdown">
-                        <li><a class="dropdown-item" href="/import-employees">
+                        <li><a class="dropdown-item" href="import-employees.html">
                             <i>⬆️</i> Import Employees
                         </a></li>
-                        <li><a class="dropdown-item" href="/export-template">
+                        <li><a class="dropdown-item" href="export-template.html">
                             <i>⬇️</i> Download Excel Template
                         </a></li>
                         <li><hr class="dropdown-divider"></li>
-                        <li><a class="dropdown-item" href="/supervisor/coverage-needs">
+                        <li><a class="dropdown-item" href="coverage-needs.html">
                             <i>⚠️</i> Coverage Needs
                         </a></li>
-                        <li><a class="dropdown-item" href="/supervisor/overtime-distribution">
+                        <li><a class="dropdown-item" href="overtime-distribution.html">
                             <i>🕐</i> Overtime Distribution
                         </a></li>
                     </ul>
@@ -688,13 +705,13 @@
                         <i>📥</i> Requests
                     </a>
                     <ul class="dropdown-menu" id="requestsDropdown">
-                        <li><a class="dropdown-item" href="/supervisor/time-off-requests">
+                        <li><a class="dropdown-item" href="time-off-requests.html">
                             <i>📅</i> Time Off Requests
                         </a></li>
-                        <li><a class="dropdown-item" href="/supervisor/swap-requests">
+                        <li><a class="dropdown-item" href="swap-requests.html">
                             <i>🔄</i> Swap Requests
                         </a></li>
-                        <li><a class="dropdown-item" href="/supervisor/suggestions">
+                        <li><a class="dropdown-item" href="suggestions.html">
                             <i>💡</i> Employee Suggestions
                         </a></li>
                     </ul>
@@ -707,10 +724,10 @@
                         <span class="badge bg-warning">2</span>
                     </a>
                     <ul class="dropdown-menu" id="communicationDropdown">
-                        <li><a class="dropdown-item" href="/supervisor/messages">
+                        <li><a class="dropdown-item" href="messages.html">
                             <i>✉️</i> Supervisor Messages
                         </a></li>
-                        <li><a class="dropdown-item" href="/maintenance/issues">
+                        <li><a class="dropdown-item" href="maintenance-issues.html">
                             <i>🔧</i> Maintenance Issues
                             <span class="badge bg-info">2</span>
                         </a></li>
@@ -718,17 +735,17 @@
                 </li>
                 
                 <li class="nav-item">
-                    <a class="nav-link" href="/vacation-calendar">
+                    <a class="nav-link" href="vacation-calendar.html">
                         <i>📆</i> Vacation Calendar
                     </a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link" href="/casual-workers">
+                    <a class="nav-link" href="casual-workers.html">
                         <i>👤</i> Casual Workers
                     </a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link" href="/shift-marketplace">
+                    <a class="nav-link" href="shift-marketplace.html">
                         <i>🏪</i> Shift Marketplace
                     </a>
                 </li>
@@ -741,14 +758,14 @@
                     <ul class="dropdown-menu dropdown-menu-end" id="userDropdown">
                         <li><h6 class="dropdown-header">Supervisor Account</h6></li>
                         <li><hr class="dropdown-divider"></li>
-                        <li><a class="dropdown-item" href="/profile">
+                        <li><a class="dropdown-item" href="profile.html">
                             <i>👤</i> My Profile
                         </a></li>
-                        <li><a class="dropdown-item" href="/settings">
+                        <li><a class="dropdown-item" href="settings.html">
                             <i>⚙️</i> Settings
                         </a></li>
                         <li><hr class="dropdown-divider"></li>
-                        <li><a class="dropdown-item" href="/logout">
+                        <li><a class="dropdown-item" href="logout.html">
                             <i>🚪</i> Logout
                         </a></li>
                     </ul>
@@ -831,7 +848,7 @@
                             <i>⚠️</i>
                         </div>
                     </div>
-                    <a href="/supervisor/coverage-needs" class="stretched-link"></a>
+                    <a href="coverage-needs.html" class="stretched-link"></a>
                 </div>
             </div>
         </div>
@@ -863,7 +880,7 @@
                     <h5 class="mb-0">
                         <i>📅</i> Today's Schedule
                     </h5>
-                    <a href="/schedule/view" class="btn btn-sm btn-light">View Full Schedule</a>
+                    <a href="view-schedule.html" class="btn btn-sm btn-white">View Full Schedule</a>
                 </div>
                 <div class="card-body">
                     <div class="table-responsive">
@@ -900,7 +917,7 @@
                             <strong>Tuesday, July 15</strong> - Day Shift<br>
                             <small>Need 4 more employees (0/4)</small>
                         </div>
-                        <a href="/supervisor/coverage-needs" class="btn btn-sm btn-primary">
+                        <a href="coverage-needs.html" class="btn btn-sm btn-primary">
                             <i>➕</i> Fill Gap
                         </a>
                     </div>
@@ -909,7 +926,7 @@
                             <strong>Tuesday, July 15</strong> - Evening Shift<br>
                             <small>Need 3 more employees (0/3)</small>
                         </div>
-                        <a href="/supervisor/coverage-needs" class="btn btn-sm btn-primary">
+                        <a href="coverage-needs.html" class="btn btn-sm btn-primary">
                             <i>➕</i> Fill Gap
                         </a>
                     </div>
@@ -918,7 +935,7 @@
                             <strong>Tuesday, July 15</strong> - Night Shift<br>
                             <small>Need 2 more employees (0/2)</small>
                         </div>
-                        <a href="/supervisor/coverage-needs" class="btn btn-sm btn-primary">
+                        <a href="coverage-needs.html" class="btn btn-sm btn-primary">
                             <i>➕</i> Fill Gap
                         </a>
                     </div>
@@ -953,16 +970,16 @@
                 </div>
                 <div class="card-body">
                     <div class="d-grid gap-2">
-                        <button class="btn btn-primary" onclick="window.location.href='/schedule/create'">
+                        <button class="btn btn-primary" onclick="window.location.href='create-schedule.html'">
                             <i>➕</i> Create New Schedule
                         </button>
-                        <button class="btn btn-success" onclick="window.location.href='/import-employees'">
+                        <button class="btn btn-success" onclick="window.location.href='import-employees.html'">
                             <i>👤</i> Import Employees
                         </button>
-                        <button class="btn btn-info" onclick="window.location.href='/schedule/view'">
+                        <button class="btn btn-info" onclick="window.location.href='view-schedule.html'">
                             <i>📆</i> View Full Schedule
                         </button>
-                        <button class="btn btn-warning" onclick="window.location.href='/supervisor/coverage-needs'">
+                        <button class="btn btn-warning" onclick="window.location.href='coverage-needs.html'">
                             <i>⚠️</i> Manage Coverage
                         </button>
                         <button class="btn btn-secondary" onclick="toggleModal('broadcastModal')">
@@ -972,10 +989,10 @@
                         <!-- Communication Actions -->
                         <hr class="my-3">
                         <h6 class="text-muted mb-2">Communication</h6>
-                        <button class="btn btn-info" onclick="window.location.href='/supervisor/messages'">
+                        <button class="btn btn-info" onclick="window.location.href='messages.html'">
                             <i>✉️</i> Supervisor Messages
                         </button>
-                        <button class="btn btn-warning" onclick="window.location.href='/maintenance/issues'">
+                        <button class="btn btn-warning" onclick="window.location.href='maintenance-issues.html'">
                             <i>🔧</i> Maintenance Issues
                             <span class="badge bg-danger">2</span>
                         </button>
@@ -1005,7 +1022,7 @@
                     <div class="mb-3">
                         <div class="d-flex justify-content-between">
                             <span>Coverage Needs</span>
-                            <span>0</span>
+                            <span>500</span>
                         </div>
                     </div>
                     <div class="mb-3">
@@ -1029,7 +1046,7 @@
                 <div class="card-body">
                     <p class="mb-2">Enable employees to trade shifts directly</p>
                     <div class="d-grid">
-                        <a href="/shift-marketplace" class="btn btn-outline-primary">
+                        <a href="shift-marketplace.html" class="btn btn-outline-primary">
                             <i>➡️</i> Go to Marketplace
                         </a>
                     </div>
