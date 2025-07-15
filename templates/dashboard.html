@@ -64,8 +64,7 @@
             padding: 0.25rem 0.5rem;
             background-color: #212529;
             color: white;
-            overflow-x: auto;
-            overflow-y: visible;
+            overflow: visible !important;
             white-space: nowrap;
             min-height: 50px;
             z-index: 1030;
@@ -119,6 +118,16 @@
             align-items: center;
             display: flex !important;
             flex-wrap: nowrap;
+            overflow: visible !important;
+        }
+        
+        /* Inner navbar container to allow horizontal scroll while keeping dropdowns visible */
+        .navbar-inner {
+            display: flex;
+            align-items: center;
+            width: 100%;
+            overflow-x: auto;
+            overflow-y: visible;
         }
         
         .navbar-toggler {
