@@ -1585,11 +1585,21 @@ def view_schedules():
         shift_type = schedule.shift_type or 'day'
         schedule_grid[date_key][shift_type].append(schedule)
     
+    # Calculate previous and next dates for navigation
+    prev_start = start_date - timedelta(days=14)
+    prev_end = end_date - timedelta(days=14)
+    next_start = start_date + timedelta(days=14)
+    next_end = end_date + timedelta(days=14)
+    
     return render_template('crew_schedule.html',
                          schedule_grid=schedule_grid,
                          start_date=start_date,
                          end_date=end_date,
-                         selected_crew=crew)
+                         selected_crew=crew,
+                         prev_start=prev_start,
+                         prev_end=prev_end,
+                         next_start=next_start,
+                         next_end=next_end)
     
 @app.route('/supervisor/messages')
 @login_required
