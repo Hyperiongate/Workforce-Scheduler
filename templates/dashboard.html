@@ -29,6 +29,8 @@
             padding-left: 15px;
             margin-right: auto;
             margin-left: auto;
+            position: relative;
+            z-index: 1;
         }
         
         /* Grid System */
@@ -63,9 +65,10 @@
             background-color: #212529;
             color: white;
             overflow-x: auto;
-            overflow-y: hidden;
+            overflow-y: visible;
             white-space: nowrap;
             min-height: 50px;
+            z-index: 1030;
         }
         
         .navbar-brand {
@@ -158,7 +161,7 @@
             position: absolute;
             top: 100%;
             left: 0;
-            z-index: 1000;
+            z-index: 1050;
             display: none;
             min-width: 10rem;
             padding: 0.5rem 0;
@@ -213,6 +216,7 @@
             border-radius: 0.25rem;
             margin-bottom: 1rem;
             box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+            z-index: 1;
         }
         
         .card-body {
