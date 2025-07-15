@@ -12,7 +12,7 @@ import pandas as pd
 from io import BytesIO
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key-here')
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key-here') 
 
 # Fixed database URL configuration
 database_url = os.environ.get('DATABASE_URL')
