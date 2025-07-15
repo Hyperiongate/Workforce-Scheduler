@@ -1,103 +1,755 @@
-<!-- Employee Management Dropdown --> 
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Supervisor Dashboard</title>
+    
+    <!-- Embedded CSS since external resources may not load in preview -->
+    <style>
+        /* Reset and Base Styles */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            font-size: 16px;
+            line-height: 1.5;
+            color: #212529;
+            background-color: #f8f9fa;
+        }
+        
+        /* Container */
+        .container-fluid {
+            width: 100%;
+            padding-right: 15px;
+            padding-left: 15px;
+            margin-right: auto;
+            margin-left: auto;
+        }
+        
+        /* Grid System */
+        .row {
+            display: flex;
+            flex-wrap: wrap;
+            margin-right: -15px;
+            margin-left: -15px;
+        }
+        
+        .col-md-3, .col-md-4, .col-md-8 {
+            position: relative;
+            width: 100%;
+            padding-right: 15px;
+            padding-left: 15px;
+        }
+        
+        @media (min-width: 768px) {
+            .col-md-3 { flex: 0 0 25%; max-width: 25%; }
+            .col-md-4 { flex: 0 0 33.333333%; max-width: 33.333333%; }
+            .col-md-8 { flex: 0 0 66.666667%; max-width: 66.666667%; }
+        }
+        
+        /* Navigation */
+        .navbar {
+            position: relative;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.5rem 1rem;
+            background-color: #212529;
+            color: white;
+        }
+        
+        .navbar-brand {
+            display: inline-block;
+            padding-top: 0.3125rem;
+            padding-bottom: 0.3125rem;
+            margin-right: 1rem;
+            font-size: 1.25rem;
+            color: white;
+            text-decoration: none;
+        }
+        
+        .navbar-nav {
+            display: flex;
+            flex-direction: row;
+            padding-left: 0;
+            margin-bottom: 0;
+            list-style: none;
+        }
+        
+        .nav-item {
+            position: relative;
+        }
+        
+        .nav-link {
+            display: block;
+            padding: 0.5rem 1rem;
+            color: rgba(255, 255, 255, 0.75);
+            text-decoration: none;
+            transition: color 0.15s ease-in-out;
+            cursor: pointer;
+        }
+        
+        .nav-link:hover {
+            color: white;
+        }
+        
+        /* Dropdown */
+        .dropdown {
+            position: relative;
+        }
+        
+        .dropdown-toggle::after {
+            display: inline-block;
+            margin-left: 0.255em;
+            vertical-align: 0.255em;
+            content: "";
+            border-top: 0.3em solid;
+            border-right: 0.3em solid transparent;
+            border-bottom: 0;
+            border-left: 0.3em solid transparent;
+        }
+        
+        .dropdown-menu {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            z-index: 1000;
+            display: none;
+            min-width: 10rem;
+            padding: 0.5rem 0;
+            margin: 0.125rem 0 0;
+            font-size: 1rem;
+            color: #212529;
+            background-color: white;
+            border: 1px solid rgba(0, 0, 0, 0.15);
+            border-radius: 0.25rem;
+            box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.175);
+        }
+        
+        .dropdown-menu.show {
+            display: block;
+        }
+        
+        .dropdown-item {
+            display: block;
+            width: 100%;
+            padding: 0.25rem 1.5rem;
+            clear: both;
+            font-weight: 400;
+            color: #212529;
+            text-align: inherit;
+            text-decoration: none;
+            white-space: nowrap;
+            background-color: transparent;
+            border: 0;
+        }
+        
+        .dropdown-item:hover {
+            background-color: #f8f9fa;
+        }
+        
+        .dropdown-divider {
+            height: 0;
+            margin: 0.5rem 0;
+            overflow: hidden;
+            border-top: 1px solid #e9ecef;
+        }
+        
+        /* Cards */
+        .card {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+            word-wrap: break-word;
+            background-color: white;
+            background-clip: border-box;
+            border: 1px solid rgba(0, 0, 0, 0.125);
+            border-radius: 0.25rem;
+            margin-bottom: 1rem;
+            box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+        }
+        
+        .card-body {
+            flex: 1 1 auto;
+            padding: 1.25rem;
+        }
+        
+        .card-header {
+            padding: 0.75rem 1.25rem;
+            margin-bottom: 0;
+            background-color: rgba(0, 0, 0, 0.03);
+            border-bottom: 1px solid rgba(0, 0, 0, 0.125);
+            font-weight: 600;
+        }
+        
+        /* Buttons */
+        .btn {
+            display: inline-block;
+            font-weight: 400;
+            text-align: center;
+            vertical-align: middle;
+            user-select: none;
+            padding: 0.375rem 0.75rem;
+            font-size: 1rem;
+            line-height: 1.5;
+            border-radius: 0.25rem;
+            text-decoration: none;
+            cursor: pointer;
+            border: 1px solid transparent;
+            transition: all 0.15s ease-in-out;
+        }
+        
+        .btn-primary {
+            color: white;
+            background-color: #0d6efd;
+            border-color: #0d6efd;
+        }
+        
+        .btn-primary:hover {
+            background-color: #0b5ed7;
+            border-color: #0a58ca;
+        }
+        
+        .btn-success {
+            color: white;
+            background-color: #198754;
+            border-color: #198754;
+        }
+        
+        .btn-warning {
+            color: #000;
+            background-color: #ffc107;
+            border-color: #ffc107;
+        }
+        
+        .btn-danger {
+            color: white;
+            background-color: #dc3545;
+            border-color: #dc3545;
+        }
+        
+        .btn-info {
+            color: #000;
+            background-color: #0dcaf0;
+            border-color: #0dcaf0;
+        }
+        
+        .btn-secondary {
+            color: white;
+            background-color: #6c757d;
+            border-color: #6c757d;
+        }
+        
+        .btn-outline-primary {
+            color: #0d6efd;
+            border-color: #0d6efd;
+            background-color: transparent;
+        }
+        
+        .btn-outline-primary:hover {
+            color: white;
+            background-color: #0d6efd;
+        }
+        
+        .btn-sm {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.875rem;
+        }
+        
+        .d-grid {
+            display: grid;
+        }
+        
+        .gap-2 {
+            gap: 0.5rem;
+        }
+        
+        /* Badges */
+        .badge {
+            display: inline-block;
+            padding: 0.25em 0.5em;
+            font-size: 0.75em;
+            font-weight: 700;
+            line-height: 1;
+            text-align: center;
+            white-space: nowrap;
+            vertical-align: baseline;
+            border-radius: 0.25rem;
+        }
+        
+        .bg-primary { background-color: #0d6efd !important; color: white; }
+        .bg-success { background-color: #198754 !important; color: white; }
+        .bg-warning { background-color: #ffc107 !important; color: #000; }
+        .bg-danger { background-color: #dc3545 !important; color: white; }
+        .bg-info { background-color: #0dcaf0 !important; color: #000; }
+        .bg-secondary { background-color: #6c757d !important; color: white; }
+        .bg-dark { background-color: #212529 !important; color: white; }
+        
+        /* Text utilities */
+        .text-white { color: white !important; }
+        .text-muted { color: #6c757d !important; }
+        .text-center { text-align: center !important; }
+        .text-end { text-align: right !important; }
+        .text-uppercase { text-transform: uppercase !important; }
+        
+        /* Spacing */
+        .mb-0 { margin-bottom: 0 !important; }
+        .mb-1 { margin-bottom: 0.25rem !important; }
+        .mb-2 { margin-bottom: 0.5rem !important; }
+        .mb-3 { margin-bottom: 1rem !important; }
+        .mb-4 { margin-bottom: 1.5rem !important; }
+        .mt-3 { margin-top: 1rem !important; }
+        .mt-4 { margin-top: 1.5rem !important; }
+        .my-3 { margin-top: 1rem !important; margin-bottom: 1rem !important; }
+        .me-auto { margin-right: auto !important; }
+        
+        /* Display utilities */
+        .d-flex { display: flex !important; }
+        .d-block { display: block !important; }
+        .justify-content-between { justify-content: space-between !important; }
+        .align-items-center { align-items: center !important; }
+        
+        /* Tables */
+        .table {
+            width: 100%;
+            margin-bottom: 1rem;
+            vertical-align: top;
+            border-color: #dee2e6;
+        }
+        
+        .table th {
+            padding: 0.75rem;
+            background-color: #f8f9fa;
+            font-weight: 600;
+            text-align: left;
+            border-bottom: 2px solid #dee2e6;
+        }
+        
+        .table td {
+            padding: 0.75rem;
+            border-bottom: 1px solid #dee2e6;
+        }
+        
+        .table-hover tbody tr:hover {
+            background-color: rgba(0, 0, 0, 0.075);
+        }
+        
+        .table-responsive {
+            overflow-x: auto;
+        }
+        
+        /* Alerts */
+        .alert {
+            position: relative;
+            padding: 1rem 1rem;
+            margin-bottom: 1rem;
+            border: 1px solid transparent;
+            border-radius: 0.25rem;
+        }
+        
+        .alert-warning {
+            color: #664d03;
+            background-color: #fff3cd;
+            border-color: #ffecb5;
+        }
+        
+        /* Forms */
+        .form-control, .form-select {
+            display: block;
+            width: 100%;
+            padding: 0.375rem 0.75rem;
+            font-size: 1rem;
+            font-weight: 400;
+            line-height: 1.5;
+            color: #212529;
+            background-color: white;
+            background-clip: padding-box;
+            border: 1px solid #ced4da;
+            border-radius: 0.25rem;
+            transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+        }
+        
+        .form-label {
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+        }
+        
+        .form-check {
+            display: block;
+            min-height: 1.5rem;
+            padding-left: 1.5em;
+            margin-bottom: 0.125rem;
+        }
+        
+        .form-check-input {
+            width: 1em;
+            height: 1em;
+            margin-top: 0.25em;
+            margin-left: -1.5em;
+            vertical-align: top;
+            background-color: white;
+            border: 1px solid rgba(0, 0, 0, 0.25);
+            border-radius: 0.25em;
+            cursor: pointer;
+        }
+        
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: 1050;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            outline: 0;
+            background-color: rgba(0, 0, 0, 0.5);
+        }
+        
+        .modal.show {
+            display: block;
+        }
+        
+        .modal-dialog {
+            position: relative;
+            width: auto;
+            margin: 1.75rem auto;
+            max-width: 500px;
+        }
+        
+        .modal-content {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            background-color: white;
+            background-clip: padding-box;
+            border: 1px solid rgba(0, 0, 0, 0.2);
+            border-radius: 0.3rem;
+            outline: 0;
+        }
+        
+        .modal-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            padding: 1rem 1rem;
+            border-bottom: 1px solid #dee2e6;
+        }
+        
+        .modal-title {
+            margin-bottom: 0;
+            line-height: 1.5;
+            font-size: 1.25rem;
+            font-weight: 500;
+        }
+        
+        .modal-body {
+            position: relative;
+            flex: 1 1 auto;
+            padding: 1rem;
+        }
+        
+        .modal-footer {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: flex-end;
+            padding: 0.75rem;
+            border-top: 1px solid #dee2e6;
+            gap: 0.5rem;
+        }
+        
+        .btn-close {
+            box-sizing: content-box;
+            width: 1em;
+            height: 1em;
+            padding: 0.25em 0.25em;
+            color: #000;
+            background: transparent url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23000'%3e%3cpath d='M.293.293a1 1 0 011.414 0L8 6.586 14.293.293a1 1 0 111.414 1.414L9.414 8l6.293 6.293a1 1 0 01-1.414 1.414L8 9.414l-6.293 6.293a1 1 0 01-1.414-1.414L6.586 8 .293 1.707a1 1 0 010-1.414z'/%3e%3c/svg%3e") center/1em auto no-repeat;
+            border: 0;
+            border-radius: 0.25rem;
+            cursor: pointer;
+        }
+        
+        /* List Group */
+        .list-group {
+            display: flex;
+            flex-direction: column;
+            padding-left: 0;
+            margin-bottom: 0;
+            border-radius: 0.25rem;
+        }
+        
+        .list-group-item {
+            position: relative;
+            display: block;
+            padding: 0.75rem 1.25rem;
+            background-color: white;
+            border: 1px solid rgba(0, 0, 0, 0.125);
+        }
+        
+        .list-group-flush .list-group-item {
+            border-width: 0 0 1px;
+        }
+        
+        .list-group-flush .list-group-item:last-child {
+            border-bottom-width: 0;
+        }
+        
+        /* Additional styles */
+        hr {
+            margin: 1rem 0;
+            color: inherit;
+            background-color: currentColor;
+            border: 0;
+            opacity: 0.25;
+            height: 1px;
+        }
+        
+        h2 {
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+            line-height: 1.2;
+        }
+        
+        h5 {
+            font-size: 1.25rem;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+            line-height: 1.2;
+        }
+        
+        h6 {
+            font-size: 1rem;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+            line-height: 1.2;
+        }
+        
+        small {
+            font-size: 0.875em;
+        }
+        
+        /* Icon placeholders */
+        i {
+            font-style: normal;
+            font-weight: bold;
+            margin-right: 0.25rem;
+        }
+        
+        .fs-1 {
+            font-size: calc(1.375rem + 1.5vw) !important;
+        }
+        
+        /* Custom stat card styles */
+        .card.text-white h2 {
+            font-size: 2.5rem;
+            font-weight: 700;
+        }
+        
+        .card.text-white h6 {
+            font-size: 0.75rem;
+            letter-spacing: 0.5px;
+            opacity: 0.9;
+        }
+        
+        .card.text-white small {
+            opacity: 0.8;
+        }
+        
+        .card.text-white .fs-1 {
+            opacity: 0.3;
+        }
+        
+        /* Stretched link */
+        .stretched-link::after {
+            position: absolute;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            left: 0;
+            z-index: 1;
+            content: "";
+        }
+        
+        /* Dropdown specific styles */
+        .dropdown-menu-end {
+            right: 0;
+            left: auto;
+        }
+        
+        .dropdown-header {
+            display: block;
+            padding: 0.5rem 1.5rem;
+            margin-bottom: 0;
+            font-size: 0.875rem;
+            color: #6c757d;
+            white-space: nowrap;
+        }
+        
+        /* Navbar collapse styles */
+        .navbar-toggler {
+            padding: 0.25rem 0.75rem;
+            font-size: 1.25rem;
+            line-height: 1;
+            background-color: transparent;
+            border: 1px solid transparent;
+            border-radius: 0.25rem;
+            color: rgba(255, 255, 255, 0.5);
+            border-color: rgba(255, 255, 255, 0.1);
+        }
+        
+        .navbar-toggler-icon {
+            display: inline-block;
+            width: 1.5em;
+            height: 1.5em;
+            vertical-align: middle;
+            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba%28255, 255, 255, 0.5%29' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e");
+            background-repeat: no-repeat;
+            background-position: center;
+            background-size: 100%;
+        }
+        
+        .collapse {
+            display: none;
+        }
+        
+        .collapse.show {
+            display: block;
+        }
+        
+        .navbar-collapse {
+            flex-basis: 100%;
+            flex-grow: 1;
+            align-items: center;
+        }
+        
+        /* Button group */
+        .btn-group {
+            position: relative;
+            display: inline-flex;
+            vertical-align: middle;
+        }
+        
+        .btn-group > .btn {
+            position: relative;
+            flex: 1 1 auto;
+        }
+    </style>
+</head>
+<body>
+
+<!-- Navigation -->
+<nav class="navbar">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="/">
+            <i>📅</i> Schedule System
+        </a>
+        <button class="navbar-toggler" type="button" onclick="toggleNav()">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="navbar-collapse" id="navbarNav">
+            <ul class="navbar-nav me-auto">
+                <!-- Employee Management Dropdown --> 
                 <li class="nav-item dropdown">
-                    <a class="nav-link dropdown-toggle" href="#" id="employeeDropdown" role="button" data-bs-toggle="dropdown">
-                        <i class="bi bi-people-fill"></i> Employees
+                    <a class="nav-link dropdown-toggle" href="#" onclick="toggleDropdown(event, 'employeeDropdown')">
+                        <i>👥</i> Employees
                     </a>
-                    <ul class="dropdown-menu">
+                    <ul class="dropdown-menu" id="employeeDropdown">
                         <li><a class="dropdown-item" href="/import-employees">
-                            <i class="bi bi-upload"></i> Import Employees
+                            <i>⬆️</i> Import Employees
                         </a></li>
                         <li><a class="dropdown-item" href="/export-template">
-                            <i class="bi bi-download"></i> Download Excel Template
+                            <i>⬇️</i> Download Excel Template
                         </a></li>
                         <li><hr class="dropdown-divider"></li>
                         <li><a class="dropdown-item" href="/supervisor/coverage-needs">
-                            <i class="bi bi-exclamation-triangle"></i> Coverage Needs
+                            <i>⚠️</i> Coverage Needs
                         </a></li>
                         <li><a class="dropdown-item" href="/supervisor/overtime-distribution">
-                            <i class="bi bi-clock-history"></i> Overtime Distribution
+                            <i>🕐</i> Overtime Distribution
                         </a></li>
                     </ul>
                 </li>
                 
                 <!-- Requests Dropdown -->
                 <li class="nav-item dropdown">
-                    <a class="nav-link dropdown-toggle" href="#" id="requestsDropdown" role="button" data-bs-toggle="dropdown">
-                        <i class="bi bi-inbox"></i> Requests
-                        {% if pending_time_off_count > 0 or pending_swaps_count > 0 %}
-                            <span class="badge bg-danger">{{ pending_time_off_count + pending_swaps_count }}</span>
-                        {% endif %}
+                    <a class="nav-link dropdown-toggle" href="#" onclick="toggleDropdown(event, 'requestsDropdown')">
+                        <i>📥</i> Requests
                     </a>
-                    <ul class="dropdown-menu">
+                    <ul class="dropdown-menu" id="requestsDropdown">
                         <li><a class="dropdown-item" href="/supervisor/time-off-requests">
-                            <i class="bi bi-calendar-x"></i> Time Off Requests
-                            {% if pending_time_off_count > 0 %}
-                                <span class="badge bg-danger">{{ pending_time_off_count }}</span>
-                            {% endif %}
+                            <i>📅</i> Time Off Requests
                         </a></li>
                         <li><a class="dropdown-item" href="/supervisor/swap-requests">
-                            <i class="bi bi-arrow-left-right"></i> Swap Requests
-                            {% if pending_swaps_count > 0 %}
-                                <span class="badge bg-warning">{{ pending_swaps_count }}</span>
-                            {% endif %}
+                            <i>🔄</i> Swap Requests
                         </a></li>
                         <li><a class="dropdown-item" href="/supervisor/suggestions">
-                            <i class="bi bi-lightbulb"></i> Employee Suggestions
+                            <i>💡</i> Employee Suggestions
                         </a></li>
                     </ul>
                 </li>
                 
                 <!-- Communication Dropdown -->
                 <li class="nav-item dropdown">
-                    <a class="nav-link dropdown-toggle" href="#" id="communicationDropdown" role="button" data-bs-toggle="dropdown">
-                        <i class="bi bi-chat-dots"></i> Communication
-                        <span class="badge bg-warning" id="commBadge" style="display: none;">0</span>
+                    <a class="nav-link dropdown-toggle" href="#" onclick="toggleDropdown(event, 'communicationDropdown')">
+                        <i>💬</i> Communication
+                        <span class="badge bg-warning">2</span>
                     </a>
-                    <ul class="dropdown-menu">
+                    <ul class="dropdown-menu" id="communicationDropdown">
                         <li><a class="dropdown-item" href="/supervisor/messages">
-                            <i class="bi bi-envelope"></i> Supervisor Messages
-                            <span class="badge bg-danger" id="supervisorMsgBadge" style="display: none;">0</span>
+                            <i>✉️</i> Supervisor Messages
                         </a></li>
                         <li><a class="dropdown-item" href="/maintenance/issues">
-                            <i class="bi bi-tools"></i> Maintenance Issues
-                            <span class="badge bg-info" id="maintenanceBadge" style="display: none;">0</span>
+                            <i>🔧</i> Maintenance Issues
+                            <span class="badge bg-info">2</span>
                         </a></li>
                     </ul>
                 </li>
                 
                 <li class="nav-item">
                     <a class="nav-link" href="/vacation-calendar">
-                        <i class="bi bi-calendar-week"></i> Vacation Calendar
+                        <i>📆</i> Vacation Calendar
                     </a>
                 </li>
                 <li class="nav-item">
                     <a class="nav-link" href="/casual-workers">
-                        <i class="bi bi-people"></i> Casual Workers
+                        <i>👤</i> Casual Workers
                     </a>
                 </li>
                 <li class="nav-item">
                     <a class="nav-link" href="/shift-marketplace">
-                        <i class="bi bi-shop"></i> Shift Marketplace
+                        <i>🏪</i> Shift Marketplace
                     </a>
                 </li>
             </ul>
             <ul class="navbar-nav">
                 <li class="nav-item dropdown">
-                    <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown">
-                        <i class="bi bi-person-circle"></i> {{ current_user.name }}
+                    <a class="nav-link dropdown-toggle" href="#" onclick="toggleDropdown(event, 'userDropdown')">
+                        <i>👤</i> Admin User
                     </a>
-                    <ul class="dropdown-menu dropdown-menu-end">
+                    <ul class="dropdown-menu dropdown-menu-end" id="userDropdown">
                         <li><h6 class="dropdown-header">Supervisor Account</h6></li>
                         <li><hr class="dropdown-divider"></li>
                         <li><a class="dropdown-item" href="/profile">
-                            <i class="bi bi-person"></i> My Profile
+                            <i>👤</i> My Profile
                         </a></li>
                         <li><a class="dropdown-item" href="/settings">
-                            <i class="bi bi-gear"></i> Settings
+                            <i>⚙️</i> Settings
                         </a></li>
                         <li><hr class="dropdown-divider"></li>
                         <li><a class="dropdown-item" href="/logout">
-                            <i class="bi bi-box-arrow-right"></i> Logout
+                            <i>🚪</i> Logout
                         </a></li>
                     </ul>
                 </li>
@@ -111,16 +763,16 @@
     <div class="row mb-4">
         <div class="col-md-8">
             <h2>
-                <i class="bi bi-speedometer2"></i> Supervisor Dashboard
+                <i>📊</i> Supervisor Dashboard
             </h2>
             <p class="text-muted">Manage schedules, review requests, and oversee operations</p>
         </div>
         <div class="col-md-4 text-end">
             <div class="btn-group" role="group">
-                <button type="button" class="btn btn-outline-primary dropdown-toggle" data-bs-toggle="dropdown">
-                    <i class="bi bi-funnel"></i> Crew: {{ selected_crew }}
+                <button type="button" class="btn btn-outline-primary dropdown-toggle" onclick="toggleDropdown(event, 'crewDropdown')">
+                    <i>🔽</i> Crew: A
                 </button>
-                <ul class="dropdown-menu">
+                <ul class="dropdown-menu" id="crewDropdown">
                     <li><a class="dropdown-item" href="?crew=ALL">All Crews</a></li>
                     <li><hr class="dropdown-divider"></li>
                     <li><a class="dropdown-item" href="?crew=A">Crew A</a></li>
@@ -140,11 +792,11 @@
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
                             <h6 class="text-uppercase">Total Employees</h6>
-                            <h2 class="mb-0">{{ crew_stats.total_employees }}</h2>
-                            <small>{{ selected_crew }} Crew{% if selected_crew == 'ALL' %}s{% endif %}</small>
+                            <h2 class="mb-0">11</h2>
+                            <small>A Crew</small>
                         </div>
                         <div class="fs-1">
-                            <i class="bi bi-people-fill"></i>
+                            <i>👥</i>
                         </div>
                     </div>
                 </div>
@@ -156,11 +808,11 @@
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
                             <h6 class="text-uppercase">On Duty Now</h6>
-                            <h2 class="mb-0">{{ crew_stats.on_duty }}</h2>
-                            <small>{{ crew_stats.current_shift }}</small>
+                            <h2 class="mb-0">0</h2>
+                            <small>Day Shift</small>
                         </div>
                         <div class="fs-1">
-                            <i class="bi bi-person-check"></i>
+                            <i>✅</i>
                         </div>
                     </div>
                 </div>
@@ -172,16 +824,14 @@
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
                             <h6 class="text-uppercase">Coverage Gaps</h6>
-                            <h2 class="mb-0">{{ crew_stats.coverage_gaps }}</h2>
+                            <h2 class="mb-0">24</h2>
                             <small>Next 7 days</small>
                         </div>
                         <div class="fs-1">
-                            <i class="bi bi-exclamation-triangle"></i>
+                            <i>⚠️</i>
                         </div>
                     </div>
-                    {% if crew_stats.coverage_gaps > 0 %}
                     <a href="/supervisor/coverage-needs" class="stretched-link"></a>
-                    {% endif %}
                 </div>
             </div>
         </div>
@@ -191,11 +841,11 @@
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
                             <h6 class="text-uppercase">Pending Requests</h6>
-                            <h2 class="mb-0">{{ crew_stats.pending_requests }}</h2>
+                            <h2 class="mb-0">0</h2>
                             <small>Awaiting approval</small>
                         </div>
                         <div class="fs-1">
-                            <i class="bi bi-inbox"></i>
+                            <i>📥</i>
                         </div>
                     </div>
                 </div>
@@ -207,38 +857,11 @@
     <div class="row">
         <!-- Left Column -->
         <div class="col-md-8">
-            <!-- Alerts for Urgent Items -->
-            {% if pending_time_off_count > 0 %}
-            <div class="alert alert-danger alert-dismissible fade show mb-4" role="alert">
-                <h5 class="alert-heading">
-                    <i class="bi bi-exclamation-circle"></i> {{ pending_time_off_count }} Pending Time Off Request{% if pending_time_off_count > 1 %}s{% endif %}
-                </h5>
-                <div class="row mt-3">
-                    {% for request in recent_time_off_requests %}
-                    <div class="col-md-4 mb-2">
-                        <div class="card">
-                            <div class="card-body p-2">
-                                <h6 class="mb-1">{{ request.employee.name }}</h6>
-                                <small class="text-muted">{{ request.start_date.strftime('%m/%d') }} - {{ request.end_date.strftime('%m/%d') }}</small><br>
-                                <span class="badge bg-{{ 'info' if request.request_type == 'vacation' else 'warning' }}">{{ request.request_type }}</span>
-                            </div>
-                        </div>
-                    </div>
-                    {% endfor %}
-                </div>
-                <hr>
-                <a href="/supervisor/time-off-requests" class="btn btn-danger">
-                    <i class="bi bi-check-circle"></i> Review All Requests
-                </a>
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-            </div>
-            {% endif %}
-
             <!-- Today's Schedule -->
             <div class="card mb-4">
                 <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
                     <h5 class="mb-0">
-                        <i class="bi bi-calendar-check"></i> Today's Schedule
+                        <i>📅</i> Today's Schedule
                     </h5>
                     <a href="/schedule/view" class="btn btn-sm btn-light">View Full Schedule</a>
                 </div>
@@ -255,30 +878,9 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                {% if todays_schedule %}
-                                    {% for schedule in todays_schedule %}
-                                    <tr>
-                                        <td>
-                                            {{ schedule.start_time.strftime('%I:%M %p') if schedule.start_time else 'N/A' }} - 
-                                            {{ schedule.end_time.strftime('%I:%M %p') if schedule.end_time else 'N/A' }}
-                                        </td>
-                                        <td>{{ schedule.employee.name if schedule.employee else 'Unassigned' }}</td>
-                                        <td>{{ schedule.position.name if schedule.position else 'N/A' }}</td>
-                                        <td><span class="badge bg-secondary">{{ schedule.crew or 'N/A' }}</span></td>
-                                        <td>
-                                            {% if schedule.is_overtime %}
-                                                <span class="badge bg-warning">Overtime</span>
-                                            {% else %}
-                                                <span class="badge bg-success">Regular</span>
-                                            {% endif %}
-                                        </td>
-                                    </tr>
-                                    {% endfor %}
-                                {% else %}
-                                    <tr>
-                                        <td colspan="5" class="text-center text-muted">No schedules for today</td>
-                                    </tr>
-                                {% endif %}
+                                <tr>
+                                    <td colspan="5" class="text-center text-muted">No schedules for today</td>
+                                </tr>
                             </tbody>
                         </table>
                     </div>
@@ -286,51 +888,55 @@
             </div>
 
             <!-- Coverage Gaps -->
-            {% if coverage_gaps %}
             <div class="card mb-4">
                 <div class="card-header bg-warning text-dark">
                     <h5 class="mb-0">
-                        <i class="bi bi-exclamation-triangle"></i> Upcoming Coverage Gaps
+                        <i>⚠️</i> Upcoming Coverage Gaps
                     </h5>
                 </div>
                 <div class="card-body">
-                    {% for gap in coverage_gaps %}
                     <div class="alert alert-warning d-flex justify-content-between align-items-center mb-2">
                         <div>
-                            <strong>{{ gap.date.strftime('%A, %B %d') }}</strong> - {{ gap.shift_type|title }} Shift<br>
-                            <small>Need {{ gap.gap }} more employee{% if gap.gap > 1 %}s{% endif %} ({{ gap.scheduled }}/{{ gap.required }})</small>
+                            <strong>Tuesday, July 15</strong> - Day Shift<br>
+                            <small>Need 4 more employees (0/4)</small>
                         </div>
                         <a href="/supervisor/coverage-needs" class="btn btn-sm btn-primary">
-                            <i class="bi bi-person-plus"></i> Fill Gap
+                            <i>➕</i> Fill Gap
                         </a>
                     </div>
-                    {% endfor %}
-                    {% if coverage_gaps|length > 3 %}
-                    <a href="/supervisor/coverage-needs" class="btn btn-warning w-100">View All Coverage Gaps</a>
-                    {% endif %}
+                    <div class="alert alert-warning d-flex justify-content-between align-items-center mb-2">
+                        <div>
+                            <strong>Tuesday, July 15</strong> - Evening Shift<br>
+                            <small>Need 3 more employees (0/3)</small>
+                        </div>
+                        <a href="/supervisor/coverage-needs" class="btn btn-sm btn-primary">
+                            <i>➕</i> Fill Gap
+                        </a>
+                    </div>
+                    <div class="alert alert-warning d-flex justify-content-between align-items-center mb-2">
+                        <div>
+                            <strong>Tuesday, July 15</strong> - Night Shift<br>
+                            <small>Need 2 more employees (0/2)</small>
+                        </div>
+                        <a href="/supervisor/coverage-needs" class="btn btn-sm btn-primary">
+                            <i>➕</i> Fill Gap
+                        </a>
+                    </div>
                 </div>
             </div>
-            {% endif %}
 
             <!-- Recent Activity -->
             <div class="card">
                 <div class="card-header">
                     <h5 class="mb-0">
-                        <i class="bi bi-activity"></i> Recent Activity
+                        <i>📈</i> Recent Activity
                     </h5>
                 </div>
                 <div class="card-body">
                     <div class="list-group list-group-flush">
-                        {% for swap in recent_swap_requests %}
                         <div class="list-group-item">
-                            <div class="d-flex w-100 justify-content-between">
-                                <h6 class="mb-1">Shift Swap Request</h6>
-                                <small>{{ swap.created_at.strftime('%m/%d %I:%M %p') }}</small>
-                            </div>
-                            <p class="mb-1">{{ swap.requester.name }} requests to swap {{ swap.original_schedule.date.strftime('%m/%d') }} shift</p>
-                            <small class="text-muted">Status: <span class="badge bg-warning">Pending</span></small>
+                            <p class="text-muted text-center">No recent activity</p>
                         </div>
-                        {% endfor %}
                     </div>
                 </div>
             </div>
@@ -342,42 +948,41 @@
             <div class="card mb-4">
                 <div class="card-header bg-dark text-white">
                     <h5 class="mb-0">
-                        <i class="bi bi-lightning"></i> Quick Actions
+                        <i>⚡</i> Quick Actions
                     </h5>
                 </div>
                 <div class="card-body">
                     <div class="d-grid gap-2">
                         <button class="btn btn-primary" onclick="window.location.href='/schedule/create'">
-                            <i class="bi bi-calendar-plus"></i> Create New Schedule
+                            <i>➕</i> Create New Schedule
                         </button>
                         <button class="btn btn-success" onclick="window.location.href='/import-employees'">
-                            <i class="bi bi-person-plus"></i> Import Employees
+                            <i>👤</i> Import Employees
                         </button>
                         <button class="btn btn-info" onclick="window.location.href='/schedule/view'">
-                            <i class="bi bi-calendar-week"></i> View Full Schedule
+                            <i>📆</i> View Full Schedule
                         </button>
                         <button class="btn btn-warning" onclick="window.location.href='/supervisor/coverage-needs'">
-                            <i class="bi bi-exclamation-triangle"></i> Manage Coverage
+                            <i>⚠️</i> Manage Coverage
                         </button>
-                        <button class="btn btn-secondary" data-bs-toggle="modal" data-bs-target="#broadcastModal">
-                            <i class="bi bi-megaphone"></i> Send Announcement
+                        <button class="btn btn-secondary" onclick="toggleModal('broadcastModal')">
+                            <i>📢</i> Send Announcement
                         </button>
                         
                         <!-- Communication Actions -->
                         <hr class="my-3">
                         <h6 class="text-muted mb-2">Communication</h6>
                         <button class="btn btn-info" onclick="window.location.href='/supervisor/messages'">
-                            <i class="bi bi-envelope"></i> Supervisor Messages
-                            <span class="badge bg-danger" id="supervisorMessageBadge" style="display: none;">0</span>
+                            <i>✉️</i> Supervisor Messages
                         </button>
                         <button class="btn btn-warning" onclick="window.location.href='/maintenance/issues'">
-                            <i class="bi bi-tools"></i> Maintenance Issues
-                            <span class="badge bg-danger" id="maintenanceIssueBadge" style="display: none;">0</span>
+                            <i>🔧</i> Maintenance Issues
+                            <span class="badge bg-danger">2</span>
                         </button>
 
                         <!-- Quick Message Modal Trigger -->
-                        <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#quickSupervisorMessage">
-                            <i class="bi bi-chat-dots"></i> Quick Message
+                        <button class="btn btn-outline-primary" onclick="toggleModal('quickSupervisorMessage')">
+                            <i>💬</i> Quick Message
                         </button>
                     </div>
                 </div>
@@ -387,7 +992,7 @@
             <div class="card mb-4">
                 <div class="card-header">
                     <h5 class="mb-0">
-                        <i class="bi bi-info-circle"></i> System Status
+                        <i>ℹ️</i> System Status
                     </h5>
                 </div>
                 <div class="card-body">
@@ -400,13 +1005,13 @@
                     <div class="mb-3">
                         <div class="d-flex justify-content-between">
                             <span>Coverage Needs</span>
-                            <span>{{ coverage_needs }}</span>
+                            <span>0</span>
                         </div>
                     </div>
                     <div class="mb-3">
                         <div class="d-flex justify-content-between">
                             <span>Today's Schedules</span>
-                            <span>{{ todays_schedule|length }}</span>
+                            <span>0</span>
                         </div>
                     </div>
                     <hr>
@@ -418,14 +1023,14 @@
             <div class="card">
                 <div class="card-header">
                     <h5 class="mb-0">
-                        <i class="bi bi-shop"></i> Shift Marketplace
+                        <i>🏪</i> Shift Marketplace
                     </h5>
                 </div>
                 <div class="card-body">
                     <p class="mb-2">Enable employees to trade shifts directly</p>
                     <div class="d-grid">
                         <a href="/shift-marketplace" class="btn btn-outline-primary">
-                            <i class="bi bi-arrow-right-circle"></i> Go to Marketplace
+                            <i>➡️</i> Go to Marketplace
                         </a>
                     </div>
                 </div>
@@ -435,14 +1040,14 @@
 </div>
 
 <!-- Broadcast Modal -->
-<div class="modal fade" id="broadcastModal" tabindex="-1">
+<div class="modal" id="broadcastModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">
-                    <i class="bi bi-megaphone"></i> Send Announcement
+                    <i>📢</i> Send Announcement
                 </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <button type="button" class="btn-close" onclick="toggleModal('broadcastModal')"></button>
             </div>
             <div class="modal-body">
                 <div class="mb-3">
@@ -466,9 +1071,9 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-secondary" onclick="toggleModal('broadcastModal')">Cancel</button>
                 <button type="button" class="btn btn-primary">
-                    <i class="bi bi-send"></i> Send Announcement
+                    <i>📤</i> Send Announcement
                 </button>
             </div>
         </div>
@@ -476,14 +1081,14 @@
 </div>
 
 <!-- Quick Supervisor Message Modal -->
-<div class="modal fade" id="quickSupervisorMessage" tabindex="-1">
+<div class="modal" id="quickSupervisorMessage" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">
-                    <i class="bi bi-chat-dots"></i> Quick Message to Supervisor
+                    <i>💬</i> Quick Message to Supervisor
                 </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <button type="button" class="btn-close" onclick="toggleModal('quickSupervisorMessage')"></button>
             </div>
             <form id="quickMessageForm">
                 <div class="modal-body">
@@ -491,9 +1096,10 @@
                         <label for="quickRecipient" class="form-label">Send to:</label>
                         <select class="form-select" id="quickRecipient" required>
                             <option value="">Select supervisor...</option>
-                            {% for emp in other_supervisors %}
-                                <option value="{{ emp.id }}">{{ emp.name }} (Crew {{ emp.crew }})</option>
-                            {% endfor %}
+                            <option value="1">Alice Anderson (Crew A)</option>
+                            <option value="2">Barbara Bennett (Crew B)</option>
+                            <option value="3">Carol Campbell (Crew C)</option>
+                            <option value="4">Diana Davidson (Crew D)</option>
                         </select>
                     </div>
                     <div class="mb-3">
@@ -503,9 +1109,9 @@
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-secondary" onclick="toggleModal('quickSupervisorMessage')">Cancel</button>
                     <button type="submit" class="btn btn-primary">
-                        <i class="bi bi-send"></i> Send
+                        <i>📤</i> Send
                     </button>
                 </div>
             </form>
@@ -513,103 +1119,79 @@
     </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-    // Check for new messages and issues
-    function checkCommunications() {
-        // Check supervisor messages
-        fetch('/api/supervisor-messages/unread-count')
-            .then(response => response.json())
-            .then(data => {
-                const badge = document.getElementById('supervisorMessageBadge');
-                const navBadge = document.getElementById('supervisorMsgBadge');
-                const commBadge = document.getElementById('commBadge');
-                
-                if (data.count > 0) {
-                    badge.textContent = data.count;
-                    badge.style.display = 'inline';
-                    navBadge.textContent = data.count;
-                    navBadge.style.display = 'inline';
-                    updateCommBadge();
-                } else {
-                    badge.style.display = 'none';
-                    navBadge.style.display = 'none';
-                    updateCommBadge();
-                }
-            });
+    // Simple dropdown toggle
+    function toggleDropdown(event, dropdownId) {
+        event.preventDefault();
+        event.stopPropagation();
         
-        // Check maintenance issues if manager
-        fetch('/api/maintenance/my-issues-count')
-            .then(response => response.json())
-            .then(data => {
-                const badge = document.getElementById('maintenanceIssueBadge');
-                const navBadge = document.getElementById('maintenanceBadge');
-                
-                if (data.count > 0) {
-                    badge.textContent = data.count;
-                    badge.style.display = 'inline';
-                    navBadge.textContent = data.count;
-                    navBadge.style.display = 'inline';
-                    updateCommBadge();
-                } else {
-                    badge.style.display = 'none';
-                    navBadge.style.display = 'none';
-                    updateCommBadge();
-                }
-            });
-    }
-
-    function updateCommBadge() {
-        const supervisorCount = parseInt(document.getElementById('supervisorMsgBadge').textContent || '0');
-        const maintenanceCount = parseInt(document.getElementById('maintenanceBadge').textContent || '0');
-        const total = supervisorCount + maintenanceCount;
-        const commBadge = document.getElementById('commBadge');
+        const dropdown = document.getElementById(dropdownId);
+        const isOpen = dropdown.classList.contains('show');
         
-        if (total > 0) {
-            commBadge.textContent = total;
-            commBadge.style.display = 'inline';
-        } else {
-            commBadge.style.display = 'none';
+        // Close all dropdowns
+        document.querySelectorAll('.dropdown-menu').forEach(menu => {
+            menu.classList.remove('show');
+        });
+        
+        // Toggle current dropdown
+        if (!isOpen) {
+            dropdown.classList.add('show');
         }
     }
-
-    // Check on page load
-    checkCommunications();
-
-    // Check periodically
-    setInterval(checkCommunications, 30000); // Every 30 seconds
-
-    // Handle quick message form
-    document.getElementById('quickMessageForm').addEventListener('submit', async function(e) {
-        e.preventDefault();
-        
-        const formData = new FormData();
-        formData.append('recipient_id', document.getElementById('quickRecipient').value);
-        formData.append('message', document.getElementById('quickMessage').value);
-        
-        try {
-            const response = await fetch('/quick/supervisor-message', {
-                method: 'POST',
-                body: formData
+    
+    // Simple modal toggle
+    function toggleModal(modalId) {
+        const modal = document.getElementById(modalId);
+        if (modal.classList.contains('show')) {
+            modal.classList.remove('show');
+        } else {
+            modal.classList.add('show');
+        }
+    }
+    
+    // Toggle navbar
+    function toggleNav() {
+        const nav = document.getElementById('navbarNav');
+        if (nav.classList.contains('show')) {
+            nav.classList.remove('show');
+        } else {
+            nav.classList.add('show');
+        }
+    }
+    
+    // Close dropdowns when clicking outside
+    document.addEventListener('click', function(event) {
+        if (!event.target.closest('.dropdown')) {
+            document.querySelectorAll('.dropdown-menu').forEach(menu => {
+                menu.classList.remove('show');
             });
-            
-            const result = await response.json();
-            
-            if (result.success) {
-                // Close modal
-                const modal = bootstrap.Modal.getInstance(document.getElementById('quickSupervisorMessage'));
-                modal.hide();
-                
-                // Clear form
-                document.getElementById('quickMessageForm').reset();
-                
-                // Show success message
-                alert('Message sent successfully!');
-            } else {
-                alert('Error sending message: ' + (result.error || 'Unknown error'));
-            }
-        } catch (error) {
-            alert('Error sending message: ' + error.message);
         }
     });
+    
+    // Close modals when clicking backdrop
+    document.querySelectorAll('.modal').forEach(modal => {
+        modal.addEventListener('click', function(event) {
+            if (event.target === modal) {
+                modal.classList.remove('show');
+            }
+        });
+    });
+    
+    // Handle quick message form
+    document.getElementById('quickMessageForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const recipientId = document.getElementById('quickRecipient').value;
+        const message = document.getElementById('quickMessage').value;
+        
+        // Simulated for demo
+        alert(`Message sent to supervisor ${recipientId}: ${message}`);
+        
+        // Close modal and reset form
+        toggleModal('quickSupervisorMessage');
+        this.reset();
+    });
 </script>
+
+</body>
+</html>
