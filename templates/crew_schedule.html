@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -159,7 +158,7 @@
         <div class="row mb-3 no-print">
             <div class="col-12">
                 <div class="d-flex justify-content-between align-items-center">
-                    <a href="?crew={{ selected_crew }}&start_date={{ (start_date - timedelta(days=14)).strftime('%Y-%m-%d') }}" 
+                    <a href="?crew={{ selected_crew }}&start_date={{ prev_start.strftime('%Y-%m-%d') }}" 
                        class="btn btn-outline-secondary">
                         <i class="bi bi-chevron-left"></i> Previous 2 Weeks
                     </a>
@@ -171,7 +170,7 @@
                         {% endif %}
                     </h5>
                     
-                    <a href="?crew={{ selected_crew }}&start_date={{ (start_date + timedelta(days=14)).strftime('%Y-%m-%d') }}" 
+                    <a href="?crew={{ selected_crew }}&start_date={{ next_start.strftime('%Y-%m-%d') }}" 
                        class="btn btn-outline-secondary">
                         Next 2 Weeks <i class="bi bi-chevron-right"></i>
                     </a>
@@ -187,10 +186,10 @@
                     <div class="schedule-cell schedule-header">Shift</div>
                     {% set current_date = start_date %}
                     {% for i in range(14) %}
-                        <div class="schedule-cell schedule-header {% if current_date.date() == today %}today-column{% elif current_date.weekday() >= 5 %}weekend-column{% endif %}">
+                        <div class="schedule-cell schedule-header {% if current_date == today %}today-column{% elif current_date.weekday() >= 5 %}weekend-column{% endif %}">
                             {{ current_date.strftime('%a') }}<br>
                             {{ current_date.strftime('%m/%d') }}
-                            {% if current_date.date() == today %}
+                            {% if current_date == today %}
                             <br><small>TODAY</small>
                             {% endif %}
                         </div>
@@ -205,8 +204,8 @@
                         
                         {% set current_date = start_date %}
                         {% for i in range(14) %}
-                            <div class="schedule-cell {% if current_date.date() == today %}today-column{% elif current_date.weekday() >= 5 %}weekend-column{% endif %}">
-                                {% set date_key = current_date.date() %}
+                            <div class="schedule-cell {% if current_date == today %}today-column{% elif current_date.weekday() >= 5 %}weekend-column{% endif %}">
+                                {% set date_key = current_date %}
                                 {% if date_key in schedule_grid and shift in schedule_grid[date_key] %}
                                     {% set shift_schedules = schedule_grid[date_key][shift] %}
                                     {% if shift_schedules %}
