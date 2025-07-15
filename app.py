@@ -1352,12 +1352,13 @@ def create_schedule():
         if crew not in employees_by_crew:
             employees_by_crew[crew] = []
         employees_by_crew[crew].append(emp)
+    
     # Calculate employees near overtime
-week_start = date.today() - timedelta(days=date.today().weekday())
-week_end = week_start + timedelta(days=6)
-
-employees_near_overtime = []
-for emp in employees:
+    week_start = date.today() - timedelta(days=date.today().weekday())
+    week_end = week_start + timedelta(days=6)
+    
+    employees_near_overtime = []
+    for emp in employees:
         current_hours = db.session.query(func.sum(Schedule.hours)).filter(
             Schedule.employee_id == emp.id,
             Schedule.date >= week_start,
@@ -1368,7 +1369,7 @@ for emp in employees:
             emp.current_hours = current_hours
             employees_near_overtime.append(emp)
     
-    return render_template('schedule_input.html',   # NOW it's outside the loop!
+    return render_template('schedule_input.html',
                          employees=employees,
                          positions=positions,
                          employees_by_crew=employees_by_crew,
