@@ -724,26 +724,79 @@ def deny_time_off(request_id):
 @login_required
 def vacation_calendar():
     """View team vacation calendar"""
-    # Get calendar entries for the next 90 days
-    start_date = date.today()
-    end_date = start_date + timedelta(days=90)
+    # Get month and year from query params, default to current month
+    import calendar
+    from datetime import datetime, date, timedelta
     
-    calendar_entries = VacationCalendar.query.filter(
-        VacationCalendar.date >= start_date,
-        VacationCalendar.date <= end_date
+    # Get month/year from query params or use current
+    month = request.args.get('month', type=int, default=date.today().month)
+    year = request.args.get('year', type=int, default=date.today().year)
+    
+    # Create calendar date
+    calendar_date = date(year, month, 1)
+    
+    # Calculate previous and next month/year
+    if month == 1:
+        prev_month = 12
+        prev_year = year - 1
+    else:
+        prev_month = month - 1
+        prev_year = year
+    
+    if month == 12:
+        next_month = 1
+        next_year = year + 1
+    else:
+        next_month = month + 1
+        next_year = year
+    
+    # Get calendar entries for the month
+    month_start = date(year, month, 1)
+    # Get last day of month
+    if month == 12:
+        month_end = date(year + 1, 1, 1) - timedelta(days=1)
+    else:
+        month_end = date(year, month + 1, 1) - timedelta(days=1)
+    
+    # Get all vacation calendar entries for the month
+    monthly_entries = VacationCalendar.query.filter(
+        VacationCalendar.date >= month_start,
+        VacationCalendar.date <= month_end
     ).order_by(VacationCalendar.date).all()
     
-    # Group by date for easier display
-    calendar_data = {}
-    for entry in calendar_entries:
-        if entry.date not in calendar_data:
-            calendar_data[entry.date] = []
-        calendar_data[entry.date].append(entry)
+    # Create calendar grid
+    cal = calendar.monthcalendar(year, month)
+    calendar_data = []
+    
+    for week in cal:
+        week_data = []
+        for day in week:
+            if day == 0:
+                week_data.append((0, []))
+            else:
+                day_date = date(year, month, day)
+                # Get entries for this specific day
+                day_entries = [
+                    entry for entry in monthly_entries 
+                    if entry.date == day_date
+                ]
+                week_data.append((day, day_entries))
+        calendar_data.append(week_data)
+    
+    # Get today's date for highlighting
+    today = date.today()
     
     return render_template('vacation_calendar.html',
                          calendar_data=calendar_data,
-                         start_date=start_date,
-                         end_date=end_date)
+                         calendar_date=calendar_date,
+                         month=month,
+                         year=year,
+                         prev_month=prev_month,
+                         prev_year=prev_year,
+                         next_month=next_month,
+                         next_year=next_year,
+                         today=today,
+                         monthly_entries=monthly_entries)
 
 # ==================== SUGGESTIONS ROUTES ====================
 
@@ -1575,15 +1628,24 @@ def view_schedules():
     
     schedules = query.order_by(Schedule.date, Schedule.shift_type, Schedule.start_time).all()
     
-    # Group schedules by date and shift
-    schedule_grid = {}
+    # Get all employees for the schedule grid
+    employees_query = Employee.query.filter_by(is_supervisor=False)
+    if crew != 'ALL':
+        employees_query = employees_query.filter_by(crew=crew)
+    employees = employees_query.order_by(Employee.crew, Employee.name).all()
+    
+    # Create date range
+    dates = []
+    current = start_date
+    while current <= end_date:
+        dates.append(current)
+        current += timedelta(days=1)
+    
+    # Create schedule dictionary for easy lookup
+    schedule_dict = {}
     for schedule in schedules:
-        date_key = schedule.date
-        if date_key not in schedule_grid:
-            schedule_grid[date_key] = {'day': [], 'evening': [], 'night': []}
-        
-        shift_type = schedule.shift_type or 'day'
-        schedule_grid[date_key][shift_type].append(schedule)
+        key = (schedule.employee_id, schedule.date.strftime('%Y-%m-%d'))
+        schedule_dict[key] = schedule
     
     # Calculate previous and next dates for navigation
     prev_start = start_date - timedelta(days=14)
@@ -1591,18 +1653,18 @@ def view_schedules():
     next_start = start_date + timedelta(days=14)
     next_end = end_date + timedelta(days=14)
     
-    # Pass timedelta to template
     return render_template('crew_schedule.html',
-                         schedule_grid=schedule_grid,
+                         employees=employees,
+                         dates=dates,
+                         schedules=schedule_dict,
                          start_date=start_date,
                          end_date=end_date,
                          selected_crew=crew,
-                         prev_start=prev_start,
-                         prev_end=prev_end,
-                         next_start=next_start,
-                         next_end=next_end,
-                         timedelta=timedelta,  # Add this line
-                         today=date.today())  # Add this line too
+                         prev_start=prev_start.strftime('%Y-%m-%d'),
+                         prev_end=prev_end.strftime('%Y-%m-%d'),
+                         next_start=next_start.strftime('%Y-%m-%d'),
+                         next_end=next_end.strftime('%Y-%m-%d'),
+                         today=date.today())
     
 @app.route('/supervisor/messages')
 @login_required
