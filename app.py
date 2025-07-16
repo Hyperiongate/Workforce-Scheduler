@@ -1591,6 +1591,7 @@ def view_schedules():
     next_start = start_date + timedelta(days=14)
     next_end = end_date + timedelta(days=14)
     
+    # Pass timedelta to template
     return render_template('crew_schedule.html',
                          schedule_grid=schedule_grid,
                          start_date=start_date,
@@ -1599,7 +1600,9 @@ def view_schedules():
                          prev_start=prev_start,
                          prev_end=prev_end,
                          next_start=next_start,
-                         next_end=next_end)
+                         next_end=next_end,
+                         timedelta=timedelta,  # Add this line
+                         today=date.today())  # Add this line too
     
 @app.route('/supervisor/messages')
 @login_required
