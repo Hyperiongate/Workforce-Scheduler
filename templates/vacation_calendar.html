@@ -3,266 +3,176 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Vacation Calendar - Workforce Scheduler</title>
+    <title>Team Vacation Calendar</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
     <style>
-        .calendar-day {
-            height: 100px;
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 1px;
+            background-color: #dee2e6;
             border: 1px solid #dee2e6;
+        }
+        .calendar-cell {
+            background-color: white;
+            min-height: 100px;
             padding: 5px;
-            overflow-y: auto;
             position: relative;
         }
-        .calendar-day.today {
-            background-color: #e7f3ff;
-        }
-        .calendar-day.other-month {
+        .calendar-header {
             background-color: #f8f9fa;
-            color: #6c757d;
+            text-align: center;
+            padding: 10px;
+            font-weight: bold;
         }
-        .day-number {
+        .calendar-day-number {
             font-weight: bold;
             margin-bottom: 5px;
+        }
+        .other-month {
+            color: #6c757d;
+            background-color: #f8f9fa;
         }
         .vacation-entry {
             font-size: 0.75rem;
             padding: 2px 4px;
             margin: 1px 0;
             border-radius: 3px;
-            white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+            white-space: nowrap;
         }
-        .vacation-entry.vacation {
-            background-color: #cfe2ff;
-            color: #084298;
-        }
-        .vacation-entry.sick {
+        .vacation-vacation { background-color: #d1ecf1; color: #0c5460; }
+        .vacation-sick { background-color: #f8d7da; color: #721c24; }
+        .vacation-personal { background-color: #d4edda; color: #155724; }
+        .today {
             background-color: #fff3cd;
-            color: #664d03;
         }
-        .vacation-entry.personal {
-            background-color: #cff4fc;
-            color: #055160;
-        }
-        .vacation-entry.unpaid {
-            background-color: #e2e3e5;
-            color: #41464b;
-        }
-        .calendar-header {
-            background-color: #0d6efd;
-            color: white;
-            font-weight: bold;
-        }
-        .weekend {
-            background-color: #f8f9fa;
+        .month-navigation {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
         }
     </style>
 </head>
 <body>
-    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
         <div class="container-fluid">
-            <a class="navbar-brand" href="/">
-                <i class="bi bi-calendar3"></i> Workforce Scheduler
-            </a>
+            <a class="navbar-brand" href="/">Workforce Scheduler</a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto">
-                    {% if current_user.is_authenticated %}
-                        <li class="nav-item">
-                            <a class="nav-link" href="{{ '/dashboard' if current_user.is_supervisor else '/employee-dashboard' }}">
-                                <i class="bi bi-speedometer2"></i> Dashboard
-                            </a>
-                        </li>
-                        {% if not current_user.is_supervisor %}
-                            <li class="nav-item">
-                                <a class="nav-link" href="/vacation/request">
-                                    <i class="bi bi-calendar-plus"></i> Request Time Off
-                                </a>
-                            </li>
-                        {% endif %}
-                        <li class="nav-item">
-                            <a class="nav-link" href="/logout">
-                                <i class="bi bi-box-arrow-right"></i> Logout
-                            </a>
-                        </li>
-                    {% else %}
-                        <li class="nav-item">
-                            <a class="nav-link" href="/login">
-                                <i class="bi bi-box-arrow-in-right"></i> Login
-                            </a>
-                        </li>
-                    {% endif %}
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/dashboard">Dashboard</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/vacation/request">Request Time Off</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/vacation/calendar">Team Calendar</a>
+                    </li>
+                </ul>
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/logout">Logout</a>
+                    </li>
                 </ul>
             </div>
         </div>
     </nav>
 
     <div class="container-fluid mt-4">
-        <div class="row">
-            <div class="col-12">
-                <div class="card shadow">
-                    <div class="card-header bg-primary text-white">
-                        <div class="row align-items-center">
-                            <div class="col-md-4">
-                                <h4 class="mb-0">
-                                    <i class="bi bi-calendar-week"></i> Vacation Calendar
-                                </h4>
-                            </div>
-                            <div class="col-md-4 text-center">
-                                <h5 class="mb-0">{{ month_name }} {{ year }}</h5>
-                            </div>
-                            <div class="col-md-4 text-end">
-                                <div class="btn-group" role="group">
-                                    <a href="?year={{ year - 1 if month == 1 else year }}&month={{ 12 if month == 1 else month - 1 }}" 
-                                       class="btn btn-sm btn-light">
-                                        <i class="bi bi-chevron-left"></i> Previous
-                                    </a>
-                                    <a href="?year={{ datetime.now().year }}&month={{ datetime.now().month }}" 
-                                       class="btn btn-sm btn-light">
-                                        Today
-                                    </a>
-                                    <a href="?year={{ year + 1 if month == 12 else year }}&month={{ 1 if month == 12 else month + 1 }}" 
-                                       class="btn btn-sm btn-light">
-                                        Next <i class="bi bi-chevron-right"></i>
-                                    </a>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="card-body p-0">
-                        <div class="table-responsive">
-                            <table class="table table-bordered mb-0">
-                                <thead>
-                                    <tr class="calendar-header">
-                                        <th class="text-center">Sunday</th>
-                                        <th class="text-center">Monday</th>
-                                        <th class="text-center">Tuesday</th>
-                                        <th class="text-center">Wednesday</th>
-                                        <th class="text-center">Thursday</th>
-                                        <th class="text-center">Friday</th>
-                                        <th class="text-center">Saturday</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {% for week in calendar %}
-                                        <tr>
-                                            {% for day in week %}
-                                                {% if day == 0 %}
-                                                    <td class="calendar-day other-month"></td>
-                                                {% else %}
-                                                    {% set date_str = '%04d-%02d-%02d'|format(year, month, day) %}
-                                                    {% set is_weekend = loop.index0 == 0 or loop.index0 == 6 %}
-                                                    {% set is_today = date_str == today.strftime('%Y-%m-%d') %}
-                                                    <td class="calendar-day {% if is_weekend %}weekend{% endif %} {% if is_today %}today{% endif %}">
-                                                        <div class="day-number">{{ day }}</div>
-                                                        {% if date_str in vacation_by_date %}
-                                                            {% for entry in vacation_by_date[date_str] %}
-                                                                <div class="vacation-entry {{ entry.leave_type }}" 
-                                                                     title="{{ entry.employee_name }} - {{ entry.leave_type|title }}">
-                                                                    {{ entry.employee_name.split()[0] }}
-                                                                    {% if entry.leave_type == 'vacation' %}
-                                                                        <i class="bi bi-palm-tree"></i>
-                                                                    {% elif entry.leave_type == 'sick' %}
-                                                                        <i class="bi bi-bandaid"></i>
-                                                                    {% elif entry.leave_type == 'personal' %}
-                                                                        <i class="bi bi-person"></i>
-                                                                    {% else %}
-                                                                        <i class="bi bi-dash-circle"></i>
-                                                                    {% endif %}
-                                                                </div>
-                                                            {% endfor %}
-                                                        {% endif %}
-                                                    </td>
-                                                {% endif %}
-                                            {% endfor %}
-                                        </tr>
-                                    {% endfor %}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                    <div class="card-footer">
-                        <div class="row">
-                            <div class="col-12">
-                                <small class="text-muted">
-                                    <span class="badge bg-primary">
-                                        <i class="bi bi-palm-tree"></i> Vacation
-                                    </span>
-                                    <span class="badge bg-warning ms-2">
-                                        <i class="bi bi-bandaid"></i> Sick Leave
-                                    </span>
-                                    <span class="badge bg-info ms-2">
-                                        <i class="bi bi-person"></i> Personal Leave
-                                    </span>
-                                    <span class="badge bg-secondary ms-2">
-                                        <i class="bi bi-dash-circle"></i> Unpaid Leave
-                                    </span>
-                                </small>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+        <h2>Team Vacation Calendar</h2>
 
-                <!-- Summary Statistics -->
-                <div class="card shadow mt-4">
-                    <div class="card-header bg-secondary text-white">
-                        <h5 class="mb-0">
-                            <i class="bi bi-graph-up"></i> Time Off Summary
-                        </h5>
-                    </div>
-                    <div class="card-body">
-                        <div class="row">
-                            <div class="col-md-6">
-                                <h6>Employees Out This Month</h6>
-                                <div class="progress mb-3" style="height: 20px;">
-                                    {% set total_days_in_month = vacation_by_date|length %}
-                                    {% set days_with_absence = vacation_by_date|selectattr(1)|list|length %}
-                                    {% set coverage_percent = (days_with_absence / 30 * 100) if total_days_in_month > 0 else 0 %}
-                                    <div class="progress-bar bg-warning" role="progressbar" 
-                                         style="width: {{ coverage_percent }}%">
-                                        {{ days_with_absence }} days with absences
-                                    </div>
+        <!-- Month Navigation -->
+        <div class="month-navigation">
+            <a href="{{ url_for('vacation_calendar', year=prev_year, month=prev_month) }}" 
+               class="btn btn-outline-primary">
+                <i class="bi bi-chevron-left"></i> Previous Month
+            </a>
+            <h3>{{ calendar_date.strftime('%B %Y') }}</h3>
+            <a href="{{ url_for('vacation_calendar', year=next_year, month=next_month) }}" 
+               class="btn btn-outline-primary">
+                Next Month <i class="bi bi-chevron-right"></i>
+            </a>
+        </div>
+
+        <!-- Calendar Grid -->
+        <div class="calendar-grid">
+            <!-- Day Headers -->
+            {% for day in ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] %}
+                <div class="calendar-header">{{ day }}</div>
+            {% endfor %}
+
+            <!-- Calendar Days -->
+            {% for week in calendar_data %}
+                {% for day, entries in week %}
+                    <div class="calendar-cell {% if day == 0 %}other-month{% elif day == today.day and calendar_date.month == today.month and calendar_date.year == today.year %}today{% endif %}">
+                        {% if day != 0 %}
+                            <div class="calendar-day-number">{{ day }}</div>
+                            {% for entry in entries %}
+                                <div class="vacation-entry vacation-{{ entry.request_type }}" 
+                                     title="{{ entry.employee.first_name }} {{ entry.employee.last_name }} - {{ entry.request_type|title }}">
+                                    {{ entry.employee.first_name }} {{ entry.employee.last_name[0] }}.
                                 </div>
-                            </div>
-                            <div class="col-md-6">
-                                <h6>Quick Actions</h6>
-                                {% if current_user.is_authenticated %}
-                                    {% if not current_user.is_supervisor %}
-                                        <a href="/vacation/request" class="btn btn-primary btn-sm">
-                                            <i class="bi bi-calendar-plus"></i> Request Time Off
-                                        </a>
-                                    {% else %}
-                                        <a href="/supervisor/time-off-requests" class="btn btn-warning btn-sm">
-                                            <i class="bi bi-clock-history"></i> Review Requests
-                                        </a>
-                                    {% endif %}
-                                {% endif %}
-                            </div>
-                        </div>
+                            {% endfor %}
+                        {% endif %}
                     </div>
+                {% endfor %}
+            {% endfor %}
+        </div>
+
+        <!-- Legend -->
+        <div class="row mt-4">
+            <div class="col-md-12">
+                <h5>Legend</h5>
+                <div class="d-flex gap-3">
+                    <span class="badge vacation-vacation text-dark">Vacation</span>
+                    <span class="badge vacation-sick text-dark">Sick Leave</span>
+                    <span class="badge vacation-personal text-dark">Personal Time</span>
                 </div>
+            </div>
+        </div>
+
+        <!-- Summary -->
+        <div class="row mt-4">
+            <div class="col-md-12">
+                <h5>Time Off Summary for {{ calendar_date.strftime('%B %Y') }}</h5>
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>Employee</th>
+                            <th>Type</th>
+                            <th>Dates</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for entry in monthly_entries %}
+                            <tr>
+                                <td>{{ entry.employee.first_name }} {{ entry.employee.last_name }}</td>
+                                <td>
+                                    <span class="badge bg-secondary">{{ entry.request_type|title }}</span>
+                                </td>
+                                <td>{{ entry.date.strftime('%m/%d/%Y') }}</td>
+                            </tr>
+                        {% endfor %}
+                        {% if not monthly_entries %}
+                            <tr>
+                                <td colspan="3" class="text-center text-muted">
+                                    No time off scheduled for this month
+                                </td>
+                            </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        // Add tooltip functionality
-        var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
-        var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
-            return new bootstrap.Tooltip(tooltipTriggerEl)
-        });
-
-        // Highlight today
-        document.querySelectorAll('.calendar-day').forEach(function(day) {
-            if (day.classList.contains('today')) {
-                day.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }
-        });
-    </script>
 </body>
 </html>
