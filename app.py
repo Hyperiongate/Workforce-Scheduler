@@ -1377,9 +1377,174 @@ def handle_swap_request(swap_id, action):
 
 # Replace the create_schedule route and related functions in app.py with these updated versions
 
+# ==================== SCHEDULE MANAGEMENT ROUTES ====================
+
+def create_standard_schedule(start_date, end_date, shift_pattern):
+    """Create standard (non-rotation) schedules"""
+    if shift_pattern == 'standard':
+        # Standard 9-5 schedule, Monday-Friday
+        shift_type = 'day'
+        start_hour = 9
+        end_hour = 17
+        work_days = [0, 1, 2, 3, 4]  # Monday-Friday
+    elif shift_pattern == 'retail':
+        # Retail schedule - varies by employee
+        shift_type = 'day'
+        start_hour = 8
+        end_hour = 16
+        work_days = [0, 1, 2, 3, 4, 5, 6]  # All days
+    elif shift_pattern == '2_shift':
+        # 2-shift pattern
+        shift_type = 'day'  # Will alternate
+        start_hour = 6
+        end_hour = 14
+        work_days = [0, 1, 2, 3, 4]
+    elif shift_pattern == '3_shift':
+        # 3-shift pattern
+        shift_type = 'day'  # Will rotate
+        start_hour = 6
+        end_hour = 14
+        work_days = [0, 1, 2, 3, 4]
+    else:
+        flash('Invalid shift pattern selected.', 'danger')
+        return redirect(url_for('create_schedule'))
+    
+    # Get all non-supervisor employees
+    employees = Employee.query.filter_by(is_supervisor=False).all()
+    
+    if not employees:
+        flash('No employees found. Please add employees first.', 'warning')
+        return redirect(url_for('create_schedule'))
+    
+    schedules_created = 0
+    current_date = start_date
+    
+    while current_date <= end_date:
+        # Skip weekends for standard pattern
+        if shift_pattern == 'standard' and current_date.weekday() not in work_days:
+            current_date += timedelta(days=1)
+            continue
+        
+        # Create schedules for applicable employees
+        for i, employee in enumerate(employees):
+            # For 2-shift pattern, alternate between day and evening
+            if shift_pattern == '2_shift':
+                if i % 2 == 0:
+                    shift_type = 'day'
+                    start_hour = 6
+                    end_hour = 14
+                else:
+                    shift_type = 'evening'
+                    start_hour = 14
+                    end_hour = 22
+            
+            # For 3-shift pattern, rotate through shifts
+            elif shift_pattern == '3_shift':
+                shift_num = i % 3
+                if shift_num == 0:
+                    shift_type = 'day'
+                    start_hour = 6
+                    end_hour = 14
+                elif shift_num == 1:
+                    shift_type = 'evening'
+                    start_hour = 14
+                    end_hour = 22
+                else:
+                    shift_type = 'night'
+                    start_hour = 22
+                    end_hour = 6
+            
+            # Check for time off
+            has_time_off = VacationCalendar.query.filter_by(
+                employee_id=employee.id,
+                date=current_date.date()
+            ).first()
+            
+            if not has_time_off and current_date.weekday() in work_days:
+                schedule = create_shift(
+                    employee, 
+                    current_date, 
+                    shift_type, 
+                    start_hour, 
+                    end_hour, 
+                    employee.crew or 'U'
+                )
+                db.session.add(schedule)
+                schedules_created += 1
+        
+        current_date += timedelta(days=1)
+    
+    db.session.commit()
+    flash(f'Successfully created {schedules_created} schedules!', 'success')
+    return redirect(url_for('view_schedules', 
+                          start_date=start_date.strftime('%Y-%m-%d'),
+                          end_date=end_date.strftime('%Y-%m-%d')))
+
 @app.route('/schedule/create', methods=['GET', 'POST'])
 @login_required
-def create_standard_schedule(start_date, end_date, shift_pattern):
+def create_schedule():
+    if not current_user.is_supervisor:
+        flash('Access denied. Supervisors only.', 'danger')
+        return redirect(url_for('employee_dashboard'))
+    
+    if request.method == 'POST':
+        schedule_type = request.form.get('schedule_type')
+        start_date = datetime.strptime(request.form.get('start_date'), '%Y-%m-%d')
+        end_date = datetime.strptime(request.form.get('end_date'), '%Y-%m-%d')
+        
+        if schedule_type == '4_crew_rotation':
+            rotation_pattern = request.form.get('rotation_pattern')
+            rotation_type = request.form.get('rotation_type', 'rotating')
+            
+            # Route to appropriate creation function based on pattern
+            if rotation_pattern == 'pitman':
+                return create_pitman_schedule(start_date, end_date, request.form)
+            elif rotation_pattern == 'southern_swing':
+                return create_southern_swing_schedule(start_date, end_date)
+            elif rotation_pattern == 'fixed_fixed':
+                return create_fixed_fixed_schedule(start_date, end_date, request.form)
+            elif rotation_pattern == 'dupont':
+                return create_dupont_schedule(start_date, end_date)
+            elif rotation_pattern == 'five_and_two':
+                return create_five_and_two_schedule(start_date, end_date)
+            elif rotation_pattern == 'four_on_four_off':
+                return create_four_on_four_off_schedule(start_date, end_date, request.form)
+            elif rotation_pattern == 'three_on_three_off':
+                return create_three_on_three_off_schedule(start_date, end_date, request.form)
+            elif rotation_pattern == 'alternating_fixed':
+                return create_alternating_fixed_schedule(start_date, end_date, request.form)
+            else:
+                flash('Invalid rotation pattern selected.', 'danger')
+                return redirect(url_for('create_schedule'))
+        else:
+            # Standard schedule creation
+            shift_pattern = request.form.get('shift_pattern')
+            return create_standard_schedule(start_date, end_date, shift_pattern)
+    
+    employees = Employee.query.filter_by(is_supervisor=False).all()
+    positions = Position.query.all()
+    
+    # Group employees by crew for display
+    employees_by_crew = {}
+    for emp in employees:
+        crew = emp.crew or 'Unassigned'
+        if crew not in employees_by_crew:
+            employees_by_crew[crew] = []
+        employees_by_crew[crew].append(emp)
+    
+    # Calculate employees near overtime
+    week_start = date.today() - timedelta(days=date.today().weekday())
+    week_end = week_start + timedelta(days=6)
+    
+    employees_near_overtime = []
+    for emp in employees:
+        current_hours = db.session.query(func.sum(Schedule.hours)).filter(
+            Schedule.employee_id == emp.id,
+            Schedule.date >= week_start,
+            Schedule.date <= week_end
+        ).scalar() or 0
+        
+        if current_hours >= 35:  # Near overtime thre
     """Create standard (non-rotation) schedules"""
     if shift_pattern == 'standard':
         # Standard 9-5 schedule, Monday-Friday
