@@ -1665,7 +1665,7 @@ def create_fixed_fixed_schedule(start_date, end_date, form_data):
     flash(f'Successfully created {schedules_created} schedules using Fixed-Fixed pattern!', 'success')
     return redirect(url_for('view_schedules'))
 
-def create_dupont_schedule(start_date, end_date):
+    def create_dupont_schedule(start_date, end_date):
     """Create DuPont schedule (complex 4-week cycle with 7 consecutive days off)"""
     crews = get_crews()
     if not crews:
