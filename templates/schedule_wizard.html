@@ -1,8 +1,59 @@
-{% extends "base.html" %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create Pitman Schedule - Workforce Scheduler</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
+    
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+        
+        .step-item.active {
+            background-color: #e7f1ff;
+            border-left: 3px solid #0066cc;
+        }
 
-{% block title %}Create Schedule - Workforce Scheduler{% endblock %}
+        .step-item.completed .step-number {
+            background-color: #28a745 !important;
+        }
 
-{% block content %}
+        .step-number {
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .pattern-card {
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+
+        .pattern-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+
+        .pattern-card.selected {
+            border: 2px solid #0066cc;
+            background-color: #e7f1ff;
+        }
+        
+        .sticky-top {
+            position: -webkit-sticky;
+            position: sticky;
+        }
+    </style>
+</head>
+<body>
+
 <div class="container-fluid mt-4">
     <div class="row">
         <!-- Sidebar with Steps -->
@@ -60,6 +111,11 @@
                         </a>
                     </div>
                 </div>
+                <div class="card-footer">
+                    <a href="{{ url_for('schedule_select') }}" class="btn btn-secondary btn-sm w-100">
+                        <i class="bi bi-arrow-left"></i> Back to Pattern Selection
+                    </a>
+                </div>
             </div>
         </div>
 
@@ -80,7 +136,7 @@
                                 {% for crew in ['A', 'B', 'C', 'D'] %}
                                 <div class="col-md-3 text-center">
                                     <h6>Crew {{ crew }}</h6>
-                                    <h3 id="crew{{ crew }}Count">0</h3>
+                                    <h3 id="crew{{ crew }}Count">{{ crew_stats[crew]['count'] }}</h3>
                                     <small class="text-muted">Employees</small>
                                 </div>
                                 {% endfor %}
@@ -136,7 +192,8 @@
 
                         <!-- Next Button -->
                         <div class="text-end mt-4">
-                            <button class="btn btn-primary" onclick="validateAndProceed(1)" id="step1Next" disabled>
+                            <button class="btn btn-primary" onclick="validateAndProceed(1)" id="step1Next" 
+                                    {% if not (crew_stats['A']['count'] > 0 and crew_stats['B']['count'] > 0 and crew_stats['C']['count'] > 0 and crew_stats['D']['count'] > 0) %}disabled{% endif %}>
                                 Next: Position Requirements <i class="bi bi-arrow-right"></i>
                             </button>
                         </div>
@@ -158,7 +215,27 @@
                         </div>
 
                         <div id="positionRequirements">
-                            <!-- This will be populated dynamically based on positions from uploaded file -->
+                            {% for position in positions %}
+                            <div class="position-requirement mb-3">
+                                <div class="row align-items-center">
+                                    <div class="col-md-6">
+                                        <h6>{{ position.name }}</h6>
+                                        <small class="text-muted">{{ position.employee_count }} employees in this position</small>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="input-group">
+                                            <span class="input-group-text">Minimum Required</span>
+                                            <input type="number" class="form-control position-min" 
+                                                   data-position="{{ position.name }}" 
+                                                   value="{{ position.min_coverage or 1 }}" 
+                                                   min="1" 
+                                                   max="{{ position.employee_count }}">
+                                            <span class="input-group-text">per shift</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
                         </div>
 
                         <!-- Navigation -->
@@ -243,12 +320,9 @@
                                 <small class="text-muted">Pitman works best starting on a Sunday</small>
                             </div>
                             <div class="col-md-6">
-                                <label for="scheduleLength" class="form-label">Schedule Length</label>
-                                <select class="form-select" id="scheduleLength">
-                                    <option value="28">4 weeks (2 full cycles)</option>
-                                    <option value="56">8 weeks (4 full cycles)</option>
-                                    <option value="84">12 weeks (6 full cycles)</option>
-                                </select>
+                                <label for="endDate" class="form-label">Schedule End Date</label>
+                                <input type="date" class="form-control" id="endDate" required>
+                                <small class="text-muted">Select the last day of the schedule period</small>
                             </div>
                         </div>
 
@@ -276,36 +350,24 @@
                                 </label>
                             </div>
                             <div class="form-check mt-3">
-                                <input class="form-check-input" type="radio" name="rotationType" id="rotatingShifts" value="rotating">
-                                <label class="form-check-label" for="rotatingShifts">
-                                    <strong>Rotating Shifts</strong><br>
-                                    <small class="text-muted">Crews alternate between day and night shifts</small>
+                                <input class="form-check-input" type="radio" name="rotationType" id="rapidShifts" value="rapid">
+                                <label class="form-check-label" for="rapidShifts">
+                                    <strong>Rapid Rotation</strong><br>
+                                    <small class="text-muted">Crews change shifts after every break period</small>
                                 </label>
                             </div>
-                        </div>
-
-                        <!-- Rotation Speed (shown only if rotating selected) -->
-                        <div id="rotationSpeed" style="display: none;" class="mt-4">
-                            <h5 class="mb-3">Rotation Frequency</h5>
-                            <div class="form-check">
-                                <input class="form-check-input" type="radio" name="rotationFrequency" id="weeklyRotation" value="weekly">
-                                <label class="form-check-label" for="weeklyRotation">
-                                    <strong>Weekly</strong><br>
-                                    <small class="text-muted">Change shifts every week (rapid rotation)</small>
+                            <div class="form-check mt-3">
+                                <input class="form-check-input" type="radio" name="rotationType" id="2weekShifts" value="2_week">
+                                <label class="form-check-label" for="2weekShifts">
+                                    <strong>2-Week Rotation</strong><br>
+                                    <small class="text-muted">Crews work same shift for 2 weeks then rotate</small>
                                 </label>
                             </div>
-                            <div class="form-check mt-2">
-                                <input class="form-check-input" type="radio" name="rotationFrequency" id="biweeklyRotation" value="biweekly" checked>
-                                <label class="form-check-label" for="biweeklyRotation">
-                                    <strong>Every 2 Weeks</strong><br>
-                                    <small class="text-muted">Change shifts every 2 weeks (standard)</small>
-                                </label>
-                            </div>
-                            <div class="form-check mt-2">
-                                <input class="form-check-input" type="radio" name="rotationFrequency" id="monthlyRotation" value="monthly">
-                                <label class="form-check-label" for="monthlyRotation">
-                                    <strong>Every 4 Weeks</strong><br>
-                                    <small class="text-muted">Change shifts every 4 weeks (slow rotation)</small>
+                            <div class="form-check mt-3">
+                                <input class="form-check-input" type="radio" name="rotationType" id="4weekShifts" value="4_week">
+                                <label class="form-check-label" for="4weekShifts">
+                                    <strong>4-Week Rotation</strong><br>
+                                    <small class="text-muted">Crews work same shift for 4 weeks then rotate</small>
                                 </label>
                             </div>
                         </div>
@@ -335,11 +397,6 @@
                             <!-- This will be populated with a summary of all settings -->
                         </div>
 
-                        <!-- Schedule Preview will go here -->
-                        <div id="schedulePreview" class="mt-4">
-                            <!-- This will show a preview of the schedule -->
-                        </div>
-
                         <!-- Navigation -->
                         <div class="d-flex justify-content-between mt-4">
                             <button class="btn btn-secondary" onclick="goToStep(4)">
@@ -356,46 +413,15 @@
     </div>
 </div>
 
-<style>
-.step-item.active {
-    background-color: #e7f1ff;
-    border-left: 3px solid #0066cc;
-}
-
-.step-item.completed .step-number {
-    background-color: #28a745 !important;
-}
-
-.step-number {
-    width: 30px;
-    height: 30px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.pattern-card {
-    transition: all 0.3s;
-    cursor: pointer;
-}
-
-.pattern-card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-}
-
-.pattern-card.selected {
-    border: 2px solid #0066cc;
-    background-color: #e7f1ff;
-}
-</style>
+<!-- Bootstrap Bundle with Popper -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
 
 <script>
 // Global variables to store wizard state
 let wizardData = {
-    crews: {},
-    positions: {},
-    pattern: null,
+    crews: {{ crew_stats | tojson }},
+    positions: {{ positions | length }},
+    pattern: '{{ pattern }}',
     config: {},
     currentStep: 1
 };
@@ -404,39 +430,43 @@ let wizardData = {
 document.addEventListener('DOMContentLoaded', function() {
     checkCrewStatus();
     
-    // Set default date to next Sunday
+    // Set default dates
     const today = new Date();
     const nextSunday = new Date(today);
     nextSunday.setDate(today.getDate() + (7 - today.getDay()) % 7);
     document.getElementById('startDate').value = nextSunday.toISOString().split('T')[0];
+    
+    // Set end date to 4 weeks later
+    const endDate = new Date(nextSunday);
+    endDate.setDate(endDate.getDate() + 27);
+    document.getElementById('endDate').value = endDate.toISOString().split('T')[0];
 });
 
 // Check current crew status
 function checkCrewStatus() {
-    // In real app, this would fetch from server
     fetch('/api/crew-status')
         .then(response => response.json())
         .then(data => {
-            wizardData.crews = data.crews;
+            wizardData.crews = data.stats;
             updateCrewCounts();
             checkStep1Completion();
         })
         .catch(() => {
-            // Fallback for demo
-            updateCrewCounts();
+            // Use existing data
+            checkStep1Completion();
         });
 }
 
 function updateCrewCounts() {
     ['A', 'B', 'C', 'D'].forEach(crew => {
-        const count = wizardData.crews[crew]?.length || 0;
+        const count = wizardData.crews[crew]?.count || 0;
         document.getElementById(`crew${crew}Count`).textContent = count;
     });
 }
 
 function checkStep1Completion() {
     const allCrewsHaveEmployees = ['A', 'B', 'C', 'D'].every(crew => 
-        wizardData.crews[crew] && wizardData.crews[crew].length > 0
+        wizardData.crews[crew] && wizardData.crews[crew].count > 0
     );
     
     document.getElementById('step1Next').disabled = !allCrewsHaveEmployees;
@@ -474,7 +504,6 @@ document.getElementById('uploadCrewForm')?.addEventListener('submit', function(e
     submitBtn.disabled = true;
     submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Uploading...';
     
-    // In real app, this would upload to server
     fetch('/import-crew-roster', {
         method: 'POST',
         body: formData
@@ -482,30 +511,14 @@ document.getElementById('uploadCrewForm')?.addEventListener('submit', function(e
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            wizardData.crews = data.crews;
-            wizardData.positions = data.positions;
-            updateCrewCounts();
-            checkStep1Completion();
             alert('Crew roster uploaded successfully!');
+            checkCrewStatus();
         } else {
             alert('Error uploading crew roster: ' + data.error);
         }
     })
     .catch(error => {
-        // Demo fallback
-        wizardData.crews = {
-            'A': Array(10).fill(null).map((_, i) => ({id: i+1, name: `A${i+1}`, position: 'Nurse'})),
-            'B': Array(10).fill(null).map((_, i) => ({id: i+11, name: `B${i+1}`, position: 'Nurse'})),
-            'C': Array(10).fill(null).map((_, i) => ({id: i+21, name: `C${i+1}`, position: 'Technician'})),
-            'D': Array(10).fill(null).map((_, i) => ({id: i+31, name: `D${i+1}`, position: 'Technician'}))
-        };
-        wizardData.positions = {
-            'Nurse': { count: 20, current_min: 2 },
-            'Technician': { count: 20, current_min: 2 }
-        };
-        updateCrewCounts();
-        checkStep1Completion();
-        populatePositionRequirements();
+        alert('Error uploading file');
     })
     .finally(() => {
         submitBtn.disabled = false;
@@ -513,7 +526,7 @@ document.getElementById('uploadCrewForm')?.addEventListener('submit', function(e
     });
 });
 
-// Step navigation
+// Step navigation functions
 function goToStep(stepNumber) {
     // Hide all steps
     document.querySelectorAll('.step-content').forEach(content => {
@@ -532,11 +545,6 @@ function goToStep(stepNumber) {
     });
     
     wizardData.currentStep = stepNumber;
-    
-    // Step-specific initialization
-    if (stepNumber === 2) {
-        populatePositionRequirements();
-    }
 }
 
 function enableStep(stepNumber) {
@@ -558,14 +566,12 @@ function validateAndProceed(currentStep) {
             goToStep(2);
             break;
         case 2:
-            // Save position requirements
             savePositionRequirements();
             completeStep(2);
             enableStep(3);
             goToStep(3);
             break;
         case 4:
-            // Save configuration
             saveConfiguration();
             completeStep(4);
             enableStep(5);
@@ -575,41 +581,14 @@ function validateAndProceed(currentStep) {
     }
 }
 
-// Step 2: Position Requirements
-function populatePositionRequirements() {
-    const container = document.getElementById('positionRequirements');
-    container.innerHTML = '';
-    
-    Object.entries(wizardData.positions).forEach(([position, data]) => {
-        const div = document.createElement('div');
-        div.className = 'position-requirement mb-3';
-        div.innerHTML = `
-            <div class="row align-items-center">
-                <div class="col-md-6">
-                    <h6>${position}</h6>
-                    <small class="text-muted">${data.count} employees in this position</small>
-                </div>
-                <div class="col-md-6">
-                    <div class="input-group">
-                        <span class="input-group-text">Minimum Required</span>
-                        <input type="number" class="form-control position-min" 
-                               data-position="${position}" 
-                               value="${data.current_min || 1}" 
-                               min="1" 
-                               max="${data.count}">
-                        <span class="input-group-text">per shift</span>
-                    </div>
-                </div>
-            </div>
-        `;
-        container.appendChild(div);
-    });
-}
-
+// Step 2: Save position requirements
 function savePositionRequirements() {
+    wizardData.positions = {};
     document.querySelectorAll('.position-min').forEach(input => {
         const position = input.dataset.position;
-        wizardData.positions[position].minimum = parseInt(input.value);
+        wizardData.positions[position] = {
+            minimum: parseInt(input.value)
+        };
     });
 }
 
@@ -632,35 +611,22 @@ document.querySelectorAll('.select-pattern').forEach(btn => {
     });
 });
 
-// Step 4: Configuration
-document.querySelectorAll('input[name="rotationType"]').forEach(radio => {
-    radio.addEventListener('change', function() {
-        const rotationSpeed = document.getElementById('rotationSpeed');
-        rotationSpeed.style.display = this.value === 'rotating' ? 'block' : 'none';
-    });
-});
-
+// Step 4: Save configuration
 function saveConfiguration() {
     wizardData.config = {
-        startDate: document.getElementById('startDate').value,
-        scheduleLength: parseInt(document.getElementById('scheduleLength').value),
+        start_date: document.getElementById('startDate').value,
+        end_date: document.getElementById('endDate').value,
         dayShiftStart: document.getElementById('dayShiftStart').value,
         nightShiftStart: document.getElementById('nightShiftStart').value,
-        rotationType: document.querySelector('input[name="rotationType"]:checked').value,
-        rotationFrequency: document.querySelector('input[name="rotationType"]:checked').value === 'rotating' 
-            ? document.querySelector('input[name="rotationFrequency"]:checked')?.value 
-            : null
+        variation: document.querySelector('input[name="rotationType"]:checked').value
     };
 }
 
-// Step 5: Review
+// Step 5: Generate review
 function generateReview() {
     const reviewContainer = document.getElementById('scheduleReview');
     
-    const totalEmployees = Object.values(wizardData.crews).reduce((sum, crew) => sum + crew.length, 0);
-    const rotationText = wizardData.config.rotationType === 'fixed' 
-        ? 'Fixed shifts (no rotation)' 
-        : `Rotating every ${wizardData.config.rotationFrequency}`;
+    const totalEmployees = Object.values(wizardData.crews).reduce((sum, crew) => sum + (crew.count || 0), 0);
     
     reviewContainer.innerHTML = `
         <div class="row">
@@ -671,10 +637,10 @@ function generateReview() {
                     <dd class="col-sm-7">Pitman (2-2-3)</dd>
                     
                     <dt class="col-sm-5">Start Date:</dt>
-                    <dd class="col-sm-7">${new Date(wizardData.config.startDate).toLocaleDateString()}</dd>
+                    <dd class="col-sm-7">${new Date(wizardData.config.start_date).toLocaleDateString()}</dd>
                     
-                    <dt class="col-sm-5">Duration:</dt>
-                    <dd class="col-sm-7">${wizardData.config.scheduleLength} days</dd>
+                    <dt class="col-sm-5">End Date:</dt>
+                    <dd class="col-sm-7">${new Date(wizardData.config.end_date).toLocaleDateString()}</dd>
                     
                     <dt class="col-sm-5">Shift Times:</dt>
                     <dd class="col-sm-7">
@@ -682,8 +648,8 @@ function generateReview() {
                         Night: ${wizardData.config.nightShiftStart} - ${wizardData.config.dayShiftStart}
                     </dd>
                     
-                    <dt class="col-sm-5">Rotation:</dt>
-                    <dd class="col-sm-7">${rotationText}</dd>
+                    <dt class="col-sm-5">Rotation Type:</dt>
+                    <dd class="col-sm-7">${wizardData.config.variation}</dd>
                 </dl>
             </div>
             <div class="col-md-6">
@@ -692,67 +658,36 @@ function generateReview() {
                     <dt class="col-sm-5">Total Employees:</dt>
                     <dd class="col-sm-7">${totalEmployees}</dd>
                     
-                    ${Object.entries(wizardData.crews).map(([crew, employees]) => `
+                    ${Object.entries(wizardData.crews).map(([crew, data]) => `
                         <dt class="col-sm-5">Crew ${crew}:</dt>
-                        <dd class="col-sm-7">${employees.length} employees</dd>
-                    `).join('')}
-                </dl>
-                
-                <h5 class="mt-3">Position Coverage</h5>
-                <dl class="row">
-                    ${Object.entries(wizardData.positions).map(([position, data]) => `
-                        <dt class="col-sm-7">${position}:</dt>
-                        <dd class="col-sm-5">${data.minimum} min per shift</dd>
+                        <dd class="col-sm-7">${data.count || 0} employees</dd>
                     `).join('')}
                 </dl>
             </div>
         </div>
-    `;
-    
-    // Generate preview
-    generateSchedulePreview();
-}
-
-function generateSchedulePreview() {
-    const previewContainer = document.getElementById('schedulePreview');
-    previewContainer.innerHTML = `
-        <h5>Schedule Preview (First 2 Weeks)</h5>
-        <div class="alert alert-info">
-            <i class="bi bi-info-circle"></i> 
-            This shows the first 14 days of the Pitman pattern. The full schedule will repeat this pattern.
-        </div>
-        <div id="previewGrid" class="mt-3">
-            <!-- Preview grid will be generated here -->
-        </div>
-    `;
-    
-    // In a real app, this would generate an actual preview grid
-    // For now, we'll add a placeholder
-    document.getElementById('previewGrid').innerHTML = `
-        <div class="text-center p-5 bg-light rounded">
-            <i class="bi bi-calendar3 display-1 text-muted"></i>
-            <p class="mt-3">Schedule preview will be displayed here after processing</p>
+        
+        <div class="alert alert-warning mt-3">
+            <i class="bi bi-exclamation-triangle"></i> 
+            <strong>Important:</strong> Creating this schedule will replace any existing schedules for the selected date range.
         </div>
     `;
 }
 
-// Final step: Create Schedule
+// Create schedule
 function createSchedule() {
     if (!confirm('Are you ready to create this schedule? This will replace any existing schedules for the selected date range.')) {
         return;
     }
     
-    // Show loading state
     const btn = event.target;
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Creating Schedule...';
     
-    // Prepare data for submission
+    // Prepare data
     const scheduleData = {
-        pattern: wizardData.pattern,
-        crews: wizardData.crews,
-        positions: wizardData.positions,
-        config: wizardData.config
+        start_date: wizardData.config.start_date,
+        end_date: wizardData.config.end_date,
+        variation: wizardData.config.variation
     };
     
     // Submit to server
@@ -767,17 +702,15 @@ function createSchedule() {
     .then(data => {
         if (data.success) {
             alert('Schedule created successfully!');
-            window.location.href = `/schedule/view?start_date=${wizardData.config.startDate}`;
+            window.location.href = data.redirect || `/schedule/view?start_date=${scheduleData.start_date}`;
         } else {
             alert('Error creating schedule: ' + data.error);
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-check-circle"></i> Create Schedule';
         }
     })
     .catch(error => {
-        // Demo fallback
-        alert('Schedule created successfully! (Demo mode)');
-        window.location.href = '/schedule/view';
-    })
-    .finally(() => {
+        alert('Error creating schedule. Please try again.');
         btn.disabled = false;
         btn.innerHTML = '<i class="bi bi-check-circle"></i> Create Schedule';
     });
@@ -793,4 +726,6 @@ document.querySelectorAll('.step-item').forEach(item => {
     });
 });
 </script>
-{% endblock %}
+
+</body>
+</html>
