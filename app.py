@@ -1535,71 +1535,691 @@ def create_4_crew_schedule(start_date, end_date, rotation_pattern):
     flash(f'Successfully created {schedules_created} schedules using {rotation_pattern} pattern!', 'success')
     return redirect(url_for('view_schedules'))
 
-def create_standard_schedule(start_date, end_date, shift_pattern):
-    """Create standard schedules"""
-    employees = Employee.query.filter_by(is_supervisor=False).all()
-    schedules_created = 0
+# Replace the create_schedule route and related functions in app.py with these updated versions
+
+@app.route('/schedule/create', methods=['GET', 'POST'])
+@login_required
+def create_schedule():
+    if not current_user.is_supervisor:
+        flash('Access denied. Supervisors only.', 'danger')
+        return redirect(url_for('employee_dashboard'))
     
-    # Define shift times based on pattern
-    shift_times = {
-        'standard': [('day', 9, 17)],
-        'retail': [('day', 10, 18), ('evening', 14, 22)],
-        '2_shift': [('day', 7, 15), ('evening', 15, 23)],
-        '3_shift': [('day', 7, 15), ('evening', 15, 23), ('night', 23, 7)]
+    if request.method == 'POST':
+        schedule_type = request.form.get('schedule_type')
+        start_date = datetime.strptime(request.form.get('start_date'), '%Y-%m-%d')
+        end_date = datetime.strptime(request.form.get('end_date'), '%Y-%m-%d')
+        
+        if schedule_type == '4_crew_rotation':
+            rotation_pattern = request.form.get('rotation_pattern')
+            rotation_type = request.form.get('rotation_type', 'rotating')
+            
+            # Route to appropriate creation function based on pattern
+            if rotation_pattern == 'pitman':
+                return create_pitman_schedule(start_date, end_date, request.form)
+            elif rotation_pattern == 'southern_swing':
+                return create_southern_swing_schedule(start_date, end_date)
+            elif rotation_pattern == 'fixed_fixed':
+                return create_fixed_fixed_schedule(start_date, end_date, request.form)
+            elif rotation_pattern == 'dupont':
+                return create_dupont_schedule(start_date, end_date)
+            elif rotation_pattern == 'five_and_two':
+                return create_five_and_two_schedule(start_date, end_date)
+            elif rotation_pattern == 'four_on_four_off':
+                return create_four_on_four_off_schedule(start_date, end_date, request.form)
+            elif rotation_pattern == 'three_on_three_off':
+                return create_three_on_three_off_schedule(start_date, end_date, request.form)
+            elif rotation_pattern == 'alternating_fixed':
+                return create_alternating_fixed_schedule(start_date, end_date, request.form)
+            else:
+                flash('Invalid rotation pattern selected.', 'danger')
+                return redirect(url_for('create_schedule'))
+        else:
+            # Standard schedule creation
+            shift_pattern = request.form.get('shift_pattern')
+            return create_standard_schedule(start_date, end_date, shift_pattern)
+    
+    employees = Employee.query.filter_by(is_supervisor=False).all()
+    positions = Position.query.all()
+    
+    # Group employees by crew for display
+    employees_by_crew = {}
+    for emp in employees:
+        crew = emp.crew or 'Unassigned'
+        if crew not in employees_by_crew:
+            employees_by_crew[crew] = []
+        employees_by_crew[crew].append(emp)
+    
+    # Calculate employees near overtime
+    week_start = date.today() - timedelta(days=date.today().weekday())
+    week_end = week_start + timedelta(days=6)
+    
+    employees_near_overtime = []
+    for emp in employees:
+        current_hours = db.session.query(func.sum(Schedule.hours)).filter(
+            Schedule.employee_id == emp.id,
+            Schedule.date >= week_start,
+            Schedule.date <= week_end
+        ).scalar() or 0
+        
+        if current_hours >= 35:  # Near overtime threshold
+            emp.current_hours = current_hours
+            employees_near_overtime.append(emp)
+    
+    return render_template('schedule_input.html',
+                         employees=employees,
+                         positions=positions,
+                         employees_by_crew=employees_by_crew,
+                         employees_near_overtime=employees_near_overtime)
+
+def get_crews():
+    """Get employees organized by crew"""
+    crews = {'A': [], 'B': [], 'C': [], 'D': []}
+    
+    for crew in crews:
+        crews[crew] = Employee.query.filter_by(crew=crew, is_supervisor=False).all()
+    
+    # Check if we have employees in all crews
+    empty_crews = [crew for crew, employees in crews.items() if not employees]
+    if empty_crews:
+        flash(f'No employees assigned to crew(s): {", ".join(empty_crews)}. Please assign employees to crews first.', 'danger')
+        return None
+    
+    return crews
+
+def create_pitman_schedule(start_date, end_date, form_data):
+    """Create Pitman (2-2-3) schedule with variations"""
+    crews = get_crews()
+    if not crews:
+        return redirect(url_for('create_schedule'))
+    
+    variation = form_data.get('pitman_variation', 'fixed')
+    
+    # Base Pitman pattern (2-2-3)
+    # Starting on Sunday minimizes overtime
+    base_pattern = {
+        'A': [1, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0],  # Week 1: Sun-Mon on, Tue-Wed off, Thu-Sat on; Week 2: Sun-Mon on, Tue-Fri off
+        'B': [0, 0, 1, 1, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1],  # Opposite of A
+        'C': [0, 0, 1, 1, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1],  # Same as B for nights
+        'D': [1, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0],  # Same as A for nights
     }
     
-    shifts = shift_times.get(shift_pattern, [('day', 9, 17)])
+    if variation == 'fixed':
+        # Fixed shifts - allow different patterns for day/night if specified
+        day_pattern_type = form_data.get('day_crews_pattern', 'pitman')
+        night_pattern_type = form_data.get('night_crews_pattern', 'pitman')
+        
+        # For now, we'll use Pitman for both, but this structure allows expansion
+        shift_assignments = {
+            'A': ('day', 7, 19), 'B': ('day', 7, 19),
+            'C': ('night', 19, 7), 'D': ('night', 19, 7)
+        }
+        return create_pattern_schedule(start_date, end_date, crews, base_pattern, shift_assignments, 14)
+    
+    elif variation == 'rapid':
+        # Rapid rotation - change shifts after every break
+        # This requires a 4-week cycle
+        rapid_pattern = {}
+        rapid_assignments = {}
+        
+        # Week 1-2: A&B days, C&D nights
+        # Week 3-4: A&B nights, C&D days
+        for week in range(4):
+            week_offset = week * 14
+            for day in range(14):
+                for crew in ['A', 'B', 'C', 'D']:
+                    if week < 2:
+                        # First 2 weeks: A&B days, C&D nights
+                        rapid_assignments[crew] = ('day', 7, 19) if crew in ['A', 'B'] else ('night', 19, 7)
+                    else:
+                        # Last 2 weeks: A&B nights, C&D days
+                        rapid_assignments[crew] = ('night', 19, 7) if crew in ['A', 'B'] else ('day', 7, 19)
+        
+        # Use base pattern but with changing shifts
+        return create_pattern_schedule_rotating(start_date, end_date, crews, base_pattern, rapid_assignments, 28, 'rapid')
+    
+    elif variation in ['2_week', '4_week']:
+        # Standard rotation - crews work same shift for 2 or 4 weeks then rotate
+        weeks = 2 if variation == '2_week' else 4
+        cycle_days = weeks * 2 * 7  # Full cycle is double the rotation period
+        
+        shift_assignments = {
+            'A': ('day', 7, 19), 'B': ('day', 7, 19),
+            'C': ('night', 19, 7), 'D': ('night', 19, 7)
+        }
+        
+        return create_pattern_schedule_rotating(start_date, end_date, crews, base_pattern, shift_assignments, cycle_days, variation)
+
+def create_southern_swing_schedule(start_date, end_date):
+    """Create Southern Swing schedule (8-hour shifts, 4-week rotation)"""
+    crews = get_crews()
+    if not crews:
+        return redirect(url_for('create_schedule'))
+    
+    # Southern Swing is a 4-week cycle rotating through all 3 shifts
+    # Week 1: Mon-Fri days, weekend off
+    # Week 2: Mon-Tue off, Wed-Sun evenings  
+    # Week 3: Mon-Tue evenings, Wed off, Thu-Sun nights
+    # Week 4: Mon-Wed nights, Thu-Fri off, Sat-Sun days
+    
+    # 28-day pattern for each crew (4 weeks x 7 days)
+    # 1 = work, 0 = off
+    southern_pattern = {
+        'A': [
+            # Week 1 (Days): Mon-Fri on, Sat-Sun off
+            0, 1, 1, 1, 1, 1, 0,
+            # Week 2 (Evenings): Mon-Tue off, Wed-Sun on
+            0, 0, 1, 1, 1, 1, 1,
+            # Week 3 (Nights transition): Mon-Tue eve, Wed off, Thu-Sun nights
+            1, 1, 0, 1, 1, 1, 1,
+            # Week 4 (Back to days): Mon-Wed nights, Thu-Fri off, Sat-Sun days
+            1, 1, 1, 0, 0, 1, 1
+        ]
+    }
+    
+    # Other crews start at different points in the cycle
+    southern_pattern['B'] = southern_pattern['A'][7:] + southern_pattern['A'][:7]
+    southern_pattern['C'] = southern_pattern['A'][14:] + southern_pattern['A'][:14]
+    southern_pattern['D'] = southern_pattern['A'][21:] + southern_pattern['A'][:21]
+    
+    # Create schedules
+    current_date = start_date
+    schedules_created = 0
+    
+    while current_date <= end_date:
+        day_in_cycle = (current_date - start_date).days % 28
+        week_in_cycle = day_in_cycle // 7
+        
+        for crew_name, crew_employees in crews.items():
+            if southern_pattern[crew_name][day_in_cycle] == 1:
+                # Determine shift type based on week and crew offset
+                crew_week = (week_in_cycle + {'A': 0, 'B': 1, 'C': 2, 'D': 3}[crew_name]) % 4
+                
+                if crew_week == 0:
+                    shift_type, start_hour, end_hour = 'day', 7, 15
+                elif crew_week == 1:
+                    shift_type, start_hour, end_hour = 'evening', 15, 23
+                elif crew_week == 2:
+                    # Transition week - first part evening, later nights
+                    if day_in_cycle % 7 < 2:  # Mon-Tue
+                        shift_type, start_hour, end_hour = 'evening', 15, 23
+                    else:  # Thu-Sun (Wed is off)
+                        shift_type, start_hour, end_hour = 'night', 23, 7
+                else:  # crew_week == 3
+                    # Transition week - first part nights, later days
+                    if day_in_cycle % 7 < 3:  # Mon-Wed
+                        shift_type, start_hour, end_hour = 'night', 23, 7
+                    else:  # Sat-Sun (Thu-Fri off)
+                        shift_type, start_hour, end_hour = 'day', 7, 15
+                
+                for employee in crew_employees:
+                    # Check for time off
+                    has_time_off = VacationCalendar.query.filter_by(
+                        employee_id=employee.id,
+                        date=current_date.date()
+                    ).first()
+                    
+                    if not has_time_off:
+                        schedule = create_shift(employee, current_date, shift_type, start_hour, end_hour, crew_name)
+                        db.session.add(schedule)
+                        schedules_created += 1
+        
+        current_date += timedelta(days=1)
+    
+    db.session.commit()
+    flash(f'Successfully created {schedules_created} schedules using Southern Swing pattern!', 'success')
+    return redirect(url_for('view_schedules'))
+
+def create_fixed_fixed_schedule(start_date, end_date, form_data):
+    """Create Fixed-Fixed schedule (Mon-Thu vs Fri-Sun crews)"""
+    crews = get_crews()
+    if not crews:
+        return redirect(url_for('create_schedule'))
+    
+    shift_hours = int(form_data.get('fixed_fixed_hours', '12'))
+    
+    # Fixed assignments:
+    # Crews A & B: Monday-Thursday (4 days)
+    # Crews C & D: Friday-Sunday (3 days)
     
     current_date = start_date
+    schedules_created = 0
+    
     while current_date <= end_date:
-        # Skip weekends for standard pattern
-        if shift_pattern == 'standard' and current_date.weekday() >= 5:
-            current_date += timedelta(days=1)
-            continue
+        weekday = current_date.weekday()  # 0=Monday, 6=Sunday
         
-        # Assign employees to shifts
-        for i, employee in enumerate(employees):
-            # Check for time off
-            has_time_off = VacationCalendar.query.filter_by(
-                employee_id=employee.id,
-                date=current_date.date()
-            ).first()
+        # Determine which crews work today
+        if weekday < 4:  # Monday-Thursday
+            working_crews = ['A', 'B']
+        elif weekday >= 4:  # Friday-Sunday
+            working_crews = ['C', 'D']
+        else:
+            working_crews = []
+        
+        # Assign shifts
+        for crew_name in working_crews:
+            # Determine if day or night crew (A&C = days, B&D = nights)
+            if crew_name in ['A', 'C']:
+                shift_type = 'day'
+                start_hour = 6 if shift_hours == 12 else 7
+                end_hour = start_hour + shift_hours
+            else:  # B, D
+                shift_type = 'night'
+                start_hour = 18 if shift_hours == 12 else 19
+                end_hour = start_hour + shift_hours
             
-            if not has_time_off:
-                # Rotate through available shifts
-                shift_type, start_hour, end_hour = shifts[i % len(shifts)]
-                
-                start_time = current_date.replace(hour=start_hour, minute=0, second=0)
-                end_time = current_date.replace(hour=end_hour, minute=0, second=0)
-                
-                # Handle overnight shifts
-                if end_hour < start_hour:
-                    end_time += timedelta(days=1)
-                
-                # Calculate hours
-                hours = (end_time - start_time).total_seconds() / 3600
-                
-                schedule = Schedule(
+            for employee in crews[crew_name]:
+                # Check for time off
+                has_time_off = VacationCalendar.query.filter_by(
                     employee_id=employee.id,
-                    date=current_date.date(),
-                    shift_type=shift_type,
-                    start_time=start_time.time(),
-                    end_time=end_time.time(),
-                    position_id=employee.position_id,
-                    hours=hours,
-                    crew=employee.crew
-                )
-                db.session.add(schedule)
-                schedules_created += 1
+                    date=current_date.date()
+                ).first()
                 
-                # Update circadian profile
-                update_circadian_profile_on_schedule_change(employee.id, shift_type)
+                if not has_time_off:
+                    schedule = create_shift(employee, current_date, shift_type, start_hour, end_hour, crew_name)
+                    db.session.add(schedule)
+                    schedules_created += 1
+        
+        current_date += timedelta(days=1)
+    
+    db.session.commit()
+    flash(f'Successfully created {schedules_created} schedules using Fixed-Fixed pattern!', 'success')
+    return redirect(url_for('view_schedules'))
+
+def create_dupont_schedule(start_date, end_date):
+    """Create DuPont schedule (complex 4-week cycle with 7 consecutive days off)"""
+    crews = get_crews()
+    if not crews:
+        return redirect(url_for('create_schedule'))
+    
+    # DuPont pattern - 4 week cycle (28 days)
+    # Each crew gets 7 consecutive days off
+    # Pattern: 4 nights, 3 off, 3 days, 1 off, 3 nights, 1 off, 3 days, 7 off
+    dupont_pattern = {
+        'A': [
+            # Week 1: 4 nights on, 3 off
+            1, 1, 1, 1, 0, 0, 0,
+            # Week 2: 3 days on, 1 off, 3 nights on
+            1, 1, 1, 0, 1, 1, 1,
+            # Week 3: 1 off, 3 days on, 3 off
+            0, 1, 1, 1, 0, 0, 0,
+            # Week 4: 7 off
+            0, 0, 0, 0, 0, 0, 0
+        ]
+    }
+    
+    # Shift types for each day (N=night, D=day)
+    dupont_shifts = {
+        'A': [
+            # Week 1: nights
+            'N', 'N', 'N', 'N', '', '', '',
+            # Week 2: days then nights
+            'D', 'D', 'D', '', 'N', 'N', 'N',
+            # Week 3: days
+            '', 'D', 'D', 'D', '', '', '',
+            # Week 4: off
+            '', '', '', '', '', '', ''
+        ]
+    }
+    
+    # Other crews are offset by 1 week each
+    for i, crew in enumerate(['B', 'C', 'D']):
+        offset = (i + 1) * 7
+        dupont_pattern[crew] = dupont_pattern['A'][offset:] + dupont_pattern['A'][:offset]
+        dupont_shifts[crew] = dupont_shifts['A'][offset:] + dupont_shifts['A'][:offset]
+    
+    # Create schedules
+    current_date = start_date
+    schedules_created = 0
+    
+    while current_date <= end_date:
+        day_in_cycle = (current_date - start_date).days % 28
+        
+        for crew_name, crew_employees in crews.items():
+            if dupont_pattern[crew_name][day_in_cycle] == 1:
+                shift_code = dupont_shifts[crew_name][day_in_cycle]
+                
+                if shift_code == 'D':
+                    shift_type, start_hour, end_hour = 'day', 7, 19
+                elif shift_code == 'N':
+                    shift_type, start_hour, end_hour = 'night', 19, 7
+                else:
+                    continue
+                
+                for employee in crew_employees:
+                    # Check for time off
+                    has_time_off = VacationCalendar.query.filter_by(
+                        employee_id=employee.id,
+                        date=current_date.date()
+                    ).first()
+                    
+                    if not has_time_off:
+                        schedule = create_shift(employee, current_date, shift_type, start_hour, end_hour, crew_name)
+                        db.session.add(schedule)
+                        schedules_created += 1
+        
+        current_date += timedelta(days=1)
+    
+    db.session.commit()
+    flash(f'Successfully created {schedules_created} schedules using DuPont pattern!', 'success')
+    return redirect(url_for('view_schedules'))
+
+def create_five_and_two_schedule(start_date, end_date):
+    """Create 5&2 schedule (complex pattern with 5 on, 2 off variations)"""
+    crews = get_crews()
+    if not crews:
+        return redirect(url_for('create_schedule'))
+    
+    # 5&2 has 4 different 2-week patterns
+    # Pattern 1 (Crew A - Days): 5 on, 2 off, 5 on, 2 off
+    # Pattern 2 (Crew B - Days): 2 off, 5 on, 2 off, 5 on  
+    # Pattern 3 (Crew C - Nights): 5 on, 2 off, 5 on, 2 off
+    # Pattern 4 (Crew D - Nights): 2 off, 5 on, 2 off, 5 on
+    
+    five_two_pattern = {
+        'A': [1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 0, 0],  # 5 on, 2 off pattern
+        'B': [0, 0, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1],  # Offset by 2 days
+        'C': [1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 0, 0],  # Same as A but nights
+        'D': [0, 0, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1],  # Same as B but nights
+    }
+    
+    shift_assignments = {
+        'A': ('day', 7, 19), 'B': ('day', 7, 19),
+        'C': ('night', 19, 7), 'D': ('night', 19, 7)
+    }
+    
+    return create_pattern_schedule(start_date, end_date, crews, five_two_pattern, shift_assignments, 14)
+
+def create_four_on_four_off_schedule(start_date, end_date, form_data):
+    """Create 4-on-4-off schedule with variations"""
+    crews = get_crews()
+    if not crews:
+        return redirect(url_for('create_schedule'))
+    
+    variation = form_data.get('four_variation', 'basic')
+    shift_type_option = form_data.get('four_shift_type', 'fixed')
+    
+    if variation == 'basic':
+        # Basic 4-on-4-off pattern
+        pattern = {
+            'A': [1, 1, 1, 1, 0, 0, 0, 0],
+            'B': [0, 0, 0, 0, 1, 1, 1, 1],
+            'C': [1, 1, 1, 1, 0, 0, 0, 0],
+            'D': [0, 0, 0, 0, 1, 1, 1, 1],
+        }
+        cycle_days = 8
+        
+    elif variation == 'split':
+        # Split shift (2D-2N) - 2 days, 24hr break, 2 nights, 4 off
+        # This requires special handling
+        return create_split_four_schedule(start_date, end_date, crews)
+        
+    elif variation == 'modified':
+        # Modified for full weekends - irregular pattern
+        # 16-day cycle to align weekends
+        pattern = {
+            'A': [1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0],
+            'B': [0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1],
+            'C': [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1],
+            'D': [1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, 0, 0],
+        }
+        cycle_days = 16
+    
+    if shift_type_option == 'fixed':
+        shift_assignments = {
+            'A': ('day', 7, 19), 'B': ('day', 7, 19),
+            'C': ('night', 19, 7), 'D': ('night', 19, 7)
+        }
+    else:
+        # Rotating - will need to implement rotation logic
+        shift_assignments = {
+            'A': ('day', 7, 19), 'B': ('day', 7, 19),
+            'C': ('night', 19, 7), 'D': ('night', 19, 7)
+        }
+    
+    return create_pattern_schedule(start_date, end_date, crews, pattern, shift_assignments, cycle_days)
+
+def create_split_four_schedule(start_date, end_date, crews):
+    """Create split 4-on-4-off (2D-2N) schedule"""
+    # Special pattern: 2 days, 24hr off, 2 nights, 4 days off
+    # 8-day cycle but with mid-cycle break
+    
+    current_date = start_date
+    schedules_created = 0
+    
+    while current_date <= end_date:
+        for crew_name, crew_employees in crews.items():
+            # Calculate position in 8-day cycle
+            crew_offset = {'A': 0, 'B': 4, 'C': 0, 'D': 4}[crew_name]
+            day_in_cycle = ((current_date - start_date).days + crew_offset) % 8
+            
+            # Determine if working and what shift
+            if day_in_cycle in [0, 1]:  # First 2 days
+                shift_type, start_hour, end_hour = 'day', 7, 19
+            elif day_in_cycle == 2:  # 24-hour break
+                continue
+            elif day_in_cycle in [3, 4]:  # 2 nights
+                shift_type, start_hour, end_hour = 'night', 19, 7
+            else:  # days 5-7 off
+                continue
+            
+            for employee in crew_employees:
+                # Check for time off
+                has_time_off = VacationCalendar.query.filter_by(
+                    employee_id=employee.id,
+                    date=current_date.date()
+                ).first()
+                
+                if not has_time_off:
+                    schedule = create_shift(employee, current_date, shift_type, start_hour, end_hour, crew_name)
+                    db.session.add(schedule)
+                    schedules_created += 1
+        
+        current_date += timedelta(days=1)
+    
+    db.session.commit()
+    flash(f'Successfully created {schedules_created} schedules using Split 4-on-4-off (2D-2N) pattern!', 'success')
+    return redirect(url_for('view_schedules'))
+
+def create_three_on_three_off_schedule(start_date, end_date, form_data):
+    """Create 3-on-3-off schedule with variations"""
+    crews = get_crews()
+    if not crews:
+        return redirect(url_for('create_schedule'))
+    
+    variation = form_data.get('three_variation', 'basic')
+    shift_type_option = form_data.get('three_shift_type', 'fixed')
+    
+    if variation == 'basic':
+        # Basic 3-on-3-off pattern - 6 day cycle
+        pattern = {
+            'A': [1, 1, 1, 0, 0, 0],
+            'B': [0, 0, 0, 1, 1, 1],
+            'C': [1, 1, 1, 0, 0, 0],
+            'D': [0, 0, 0, 1, 1, 1],
+        }
+        cycle_days = 6
+        
+    else:  # modified for full weekends
+        # Modified pattern - 12 day cycle to align weekends better
+        pattern = {
+            'A': [1, 1, 0, 0, 1, 1, 1, 0, 0, 0, 1, 1],
+            'B': [0, 0, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0],
+            'C': [1, 0, 0, 0, 1, 1, 1, 0, 0, 1, 1, 1],
+            'D': [0, 1, 1, 1, 0, 0, 0, 1, 1, 0, 0, 0],
+        }
+        cycle_days = 12
+    
+    if shift_type_option == 'fixed':
+        shift_assignments = {
+            'A': ('day', 7, 19), 'B': ('day', 7, 19),
+            'C': ('night', 19, 7), 'D': ('night', 19, 7)
+        }
+    else:
+        shift_assignments = {
+            'A': ('day', 7, 19), 'B': ('day', 7, 19),
+            'C': ('night', 19, 7), 'D': ('night', 19, 7)
+        }
+    
+    return create_pattern_schedule(start_date, end_date, crews, pattern, shift_assignments, cycle_days)
+
+def create_alternating_fixed_schedule(start_date, end_date, form_data):
+    """Create Alternating Fixed (3-4-3-4) schedule"""
+    crews = get_crews()
+    if not crews:
+        return redirect(url_for('create_schedule'))
+    
+    shift_type_option = form_data.get('alt_shift_type', 'fixed')
+    
+    # Pattern: Each crew works 3 core days + alternating 4th day
+    # Crews A & C: Sun-Mon-Tue + alternating Wed
+    # Crews B & D: Thu-Fri-Sat + alternating Wed
+    # 14-day cycle
+    
+    pattern = {
+        # A works Sun-Mon-Tue + Wed of week 1
+        'A': [1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0],
+        # B works Thu-Fri-Sat + Wed of week 2  
+        'B': [0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1],
+        # C works Sun-Mon-Tue + Wed of week 2
+        'C': [1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0],
+        # D works Thu-Fri-Sat + Wed of week 1
+        'D': [0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1],
+    }
+    
+    if shift_type_option == 'fixed':
+        shift_assignments = {
+            'A': ('day', 7, 19), 'B': ('day', 7, 19),
+            'C': ('night', 19, 7), 'D': ('night', 19, 7)
+        }
+    else:
+        # Rotating implementation would go here
+        shift_assignments = {
+            'A': ('day', 7, 19), 'B': ('day', 7, 19),
+            'C': ('night', 19, 7), 'D': ('night', 19, 7)
+        }
+    
+    return create_pattern_schedule(start_date, end_date, crews, pattern, shift_assignments, 14)
+
+# Helper functions for pattern-based schedule creation
+
+def create_pattern_schedule(start_date, end_date, crews, pattern, shift_assignments, cycle_days):
+    """Generic pattern-based schedule creator for fixed shifts"""
+    current_date = start_date
+    schedules_created = 0
+    
+    while current_date <= end_date:
+        day_in_cycle = (current_date - start_date).days % cycle_days
+        
+        for crew_name, crew_employees in crews.items():
+            if pattern[crew_name][day_in_cycle] == 1:  # Working day
+                shift_type, start_hour, end_hour = shift_assignments[crew_name]
+                
+                for employee in crew_employees:
+                    # Check for time off
+                    has_time_off = VacationCalendar.query.filter_by(
+                        employee_id=employee.id,
+                        date=current_date.date()
+                    ).first()
+                    
+                    if not has_time_off:
+                        schedule = create_shift(employee, current_date, shift_type, start_hour, end_hour, crew_name)
+                        db.session.add(schedule)
+                        schedules_created += 1
+                        
+                        # Update circadian profile
+                        update_circadian_profile_on_schedule_change(employee.id, shift_type)
         
         current_date += timedelta(days=1)
     
     db.session.commit()
     flash(f'Successfully created {schedules_created} schedules!', 'success')
     return redirect(url_for('view_schedules'))
+
+def create_pattern_schedule_rotating(start_date, end_date, crews, pattern, base_assignments, cycle_days, rotation_type):
+    """Pattern-based schedule creator for rotating shifts"""
+    current_date = start_date
+    schedules_created = 0
+    
+    while current_date <= end_date:
+        day_in_cycle = (current_date - start_date).days % cycle_days
+        
+        # Determine current rotation phase
+        if rotation_type == 'rapid':
+            # Change after each break (complex logic based on pattern)
+            phase = determine_rapid_rotation_phase(day_in_cycle, pattern)
+        elif rotation_type == '2_week':
+            phase = (day_in_cycle // 14) % 2
+        elif rotation_type == '4_week':
+            phase = (day_in_cycle // 28) % 2
+        else:
+            phase = 0
+        
+        for crew_name, crew_employees in crews.items():
+            pattern_cycle = len(pattern[crew_name])
+            pattern_day = day_in_cycle % pattern_cycle
+            
+            if pattern[crew_name][pattern_day] == 1:  # Working day
+                # Determine shift based on rotation phase
+                if phase == 0:
+                    shift_type, start_hour, end_hour = base_assignments[crew_name]
+                else:
+                    # Swap day/night crews
+                    if crew_name in ['A', 'B']:
+                        shift_type, start_hour, end_hour = ('night', 19, 7)
+                    else:
+                        shift_type, start_hour, end_hour = ('day', 7, 19)
+                
+                for employee in crew_employees:
+                    # Check for time off
+                    has_time_off = VacationCalendar.query.filter_by(
+                        employee_id=employee.id,
+                        date=current_date.date()
+                    ).first()
+                    
+                    if not has_time_off:
+                        schedule = create_shift(employee, current_date, shift_type, start_hour, end_hour, crew_name)
+                        db.session.add(schedule)
+                        schedules_created += 1
+                        
+                        # Update circadian profile
+                        update_circadian_profile_on_schedule_change(employee.id, shift_type)
+        
+        current_date += timedelta(days=1)
+    
+    db.session.commit()
+    flash(f'Successfully created {schedules_created} schedules with {rotation_type} rotation!', 'success')
+    return redirect(url_for('view_schedules'))
+
+def determine_rapid_rotation_phase(day_in_cycle, pattern):
+    """Determine rotation phase for rapid rotation (after each break)"""
+    # This is simplified - in reality would need more complex logic
+    # based on analyzing the pattern for break periods
+    return (day_in_cycle // 7) % 2
+
+def create_shift(employee, date, shift_type, start_hour, end_hour, crew):
+    """Create a single shift schedule entry"""
+    start_time = date.replace(hour=start_hour, minute=0, second=0)
+    end_time = date.replace(hour=end_hour, minute=0, second=0)
+    
+    # Handle overnight shifts
+    if end_hour < start_hour:
+        end_time += timedelta(days=1)
+    
+    # Calculate hours
+    hours = (end_time - start_time).total_seconds() / 3600
+    
+    schedule = Schedule(
+        employee_id=employee.id,
+        date=date.date(),
+        shift_type=shift_type,
+        start_time=start_time.time(),
+        end_time=end_time.time(),
+        position_id=employee.position_id,
+        hours=hours,
+        crew=crew
+    )
+    
+    return schedule
 
 @app.route('/schedule/view')
 @login_required
