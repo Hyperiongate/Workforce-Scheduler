@@ -1380,19 +1380,7 @@ def handle_swap_request(swap_id, action):
 # ==================== SCHEDULE MANAGEMENT ROUTES ====================
 
 def create_standard_schedule(start_date, end_date, shift_pattern):
-    """Create standard (non-rotation) schedules"""
-    if shift_pattern == 'standard':
-        # Standard 9-5 schedule, Monday-Friday
-        shift_type = 'day'
-        start_hour = 9
-        end_hour = 17
-        work_days = [0, 1, 2, 3, 4]  # Monday-Friday
-    elif shift_pattern == 'retail':
-        # Retail schedule - varies by employee
-        shift_type = 'day'
-        start_hour = 8
-        end_hour = 16
-        work_days = [0, 1, 2, 3, 4, 5, 6]  # All days
+    
     elif shift_pattern == '2_shift':
         # 2-shift pattern
         shift_type = 'day'  # Will alternate
@@ -1544,7 +1532,15 @@ def create_schedule():
             Schedule.date <= week_end
         ).scalar() or 0
         
-        if current_hours >= 35:  # Near overtime threshold
+       if current_hours >= 35:  # Near overtime threshold
+            emp.current_hours = current_hours
+            employees_near_overtime.append(emp)
+    
+    return render_template('schedule_input.html',
+                         employees=employees,
+                         positions=positions,
+                         employees_by_crew=employees_by_crew,
+                         employees_near_overtime=employees_near_overtime)
             emp.current_hours = current_hours
             employees_near_overtime.append(emp)
     
