@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ pattern_name }} Schedule - Workforce Scheduler</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
+    <style>
+        .rotation-grid {
+            display: grid;
+            grid-template-columns: 100px repeat(14, 60px);
+            gap: 2px;
+            margin-bottom: 30px;
+            font-size: 0.9rem;
+        }
+        
+        .rotation-header {
+            background-color: #f8f9fa;
+            padding: 8px;
+            text-align: center;
+            font-weight: bold;
+            border: 1px solid #dee2e6;
+        }
+        
+        .crew-label {
+            background-color: #e9ecef;
+            padding: 8px;
+            text-align: center;
+            font-weight: bold;
+            border: 1px solid #dee2e6;
+        }
+        
+        .shift-cell {
+            padding: 8px;
+            text-align: center;
+            border: 1px solid #dee2e6;
+            min-height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .shift-cell:hover {
+            transform: scale(1.05);
+            z-index: 10;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+        
+        .shift-day {
+            background-color: #fff3cd;
+            color: #856404;
+            font-weight: 500;
+        }
+        
+        .shift-night {
+            background-color: #cfe2ff;
+            color: #084298;
+            font-weight: 500;
+        }
+        
+        .shift-evening {
+            background-color: #f8d7da;
+            color: #842029;
+            font-weight: 500;
+        }
+        
+        .shift-off {
+            background-color: #d1e7dd;
+            color: #0f5132;
+        }
+        
+        .today-marker {
+            border: 3px solid #ff6b6b !important;
+            box-shadow: 0 0 10px rgba(255, 107, 107, 0.5);
+        }
+        
+        .weekend-day {
+            background-color: rgba(0, 0, 0, 0.05);
+        }
+        
+        .pattern-summary {
+            background-color: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .coverage-chart {
+            margin: 20px 0;
+        }
+        
+        .coverage-bar {
+            display: flex;
+            height: 40px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .coverage-segment {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+        
+        .coverage-segment:hover {
+            transform: scale(1.02);
+            z-index: 10;
+        }
+        
+        .legend {
+            display: flex;
+            gap: 20px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .legend-box {
+            width: 24px;
+            height: 24px;
+            border-radius: 4px;
+            border: 1px solid #dee2e6;
+        }
+        
+        .stats-card {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .stat-item:last-child {
+            border-bottom: none;
+        }
+        
+        .pattern-description {
+            background-color: #e7f3ff;
+            border-left: 4px solid #0066cc;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 0 5px 5px 0;
+        }
+        
+        @media (max-width: 1200px) {
+            .rotation-grid {
+                grid-template-columns: 80px repeat(14, 50px);
+                font-size: 0.8rem;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .rotation-grid {
+                overflow-x: auto;
+                display: block;
+            }
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="{{ url_for('dashboard') }}">
+                <i class="bi bi-calendar3"></i> Workforce Scheduler
+            </a>
+            <span class="navbar-text text-white">
+                {{ pattern_name }} Pattern View
+            </span>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <!-- Pattern Summary -->
+        <div class="pattern-summary">
+            <div class="row">
+                <div class="col-md-8">
+                    <h2>{{ pattern_name }} Schedule Pattern</h2>
+                    <p class="lead mb-0">{{ pattern_description }}</p>
+                </div>
+                <div class="col-md-4 text-end">
+                    <a href="{{ url_for('view_schedules', crew=selected_crew, start_date=start_date, end_date=end_date) }}" 
+                       class="btn btn-secondary">
+                        <i class="bi bi-grid-3x3-gap"></i> Standard View
+                    </a>
+                    <a href="{{ url_for('create_schedule') }}" class="btn btn-primary">
+                        <i class="bi bi-plus-circle"></i> New Schedule
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pattern Description -->
+        <div class="pattern-description">
+            <h5><i class="bi bi-info-circle"></i> Pattern Details</h5>
+            <ul class="mb-0">
+                {% if pattern_name == 'Pitman' %}
+                    <li>2-2-3 pattern: Work 2, off 2, work 3</li>
+                    <li>14-day cycle per crew</li>
+                    <li>Averages 42 hours per week</li>
+                    <li>Every other weekend off</li>
+                {% elif pattern_name == 'DuPont' %}
+                    <li>4-week rotating cycle</li>
+                    <li>7 consecutive days off per cycle</li>
+                    <li>Mix of day and night shifts</li>
+                    <li>Built-in recovery time</li>
+                {% elif pattern_name == 'Panama' %}
+                    <li>2-2-3 pattern variation</li>
+                    <li>Slow rotation schedule</li>
+                    <li>Predictable pattern</li>
+                {% elif pattern_name == 'Southern Swing' %}
+                    <li>8-hour shifts rotating through days, evenings, nights</li>
+                    <li>4-week cycle</li>
+                    <li>Forward rotation (day → evening → night)</li>
+                {% else %}
+                    <li>{{ pattern_cycle_days }}-day cycle</li>
+                    <li>24/7 coverage maintained</li>
+                {% endif %}
+            </ul>
+        </div>
+
+        <!-- Legend -->
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-box shift-day"></div>
+                <span>Day Shift</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-box shift-night"></div>
+                <span>Night Shift</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-box shift-evening"></div>
+                <span>Evening Shift</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-box shift-off"></div>
+                <span>Off</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-box today-marker" style="background: white;"></div>
+                <span>Today</span>
+            </div>
+        </div>
+
+        <!-- Rotation Pattern Grid -->
+        <h4 class="mt-4 mb-3">Full Rotation Pattern</h4>
+        <div class="rotation-grid" id="rotationGrid">
+            <!-- Header row with dates -->
+            <div class="rotation-header">Crew</div>
+            {% for date in dates %}
+                <div class="rotation-header {% if date.weekday() in [5, 6] %}weekend-day{% endif %} {% if date == today %}today-marker{% endif %}">
+                    <div class="small">{{ date.strftime('%-m/%-d') }}</div>
+                    <div class="small">{{ date.strftime('%a') }}</div>
+                </div>
+            {% endfor %}
+            
+            <!-- Crew rows -->
+            {% for crew in ['A', 'B', 'C', 'D'] %}
+                <div class="crew-label">Crew {{ crew }}</div>
+                {% for date in dates %}
+                    {% set key = (crew, date.strftime('%Y-%m-%d')) %}
+                    {% set schedule_info = pattern_grid.get(key, {'shift': 'off', 'count': 0}) %}
+                    <div class="shift-cell shift-{{ schedule_info.shift }} {% if date.weekday() in [5, 6] %}weekend-day{% endif %} {% if date == today %}today-marker{% endif %}"
+                         data-crew="{{ crew }}" 
+                         data-date="{{ date.strftime('%Y-%m-%d') }}"
+                         data-shift="{{ schedule_info.shift }}"
+                         data-count="{{ schedule_info.count }}"
+                         title="Crew {{ crew }} - {{ date.strftime('%B %d') }} - {{ schedule_info.shift|title }} {% if schedule_info.count > 0 %}({{ schedule_info.count }} employees){% endif %}">
+                        {% if schedule_info.shift == 'day' %}
+                            <i class="bi bi-sun-fill"></i>
+                        {% elif schedule_info.shift == 'night' %}
+                            <i class="bi bi-moon-stars-fill"></i>
+                        {% elif schedule_info.shift == 'evening' %}
+                            <i class="bi bi-sunset-fill"></i>
+                        {% else %}
+                            <i class="bi bi-house"></i>
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            {% endfor %}
+        </div>
+
+        <!-- Coverage Analysis -->
+        <h4 class="mt-5 mb-3">Daily Coverage Analysis</h4>
+        <div class="row">
+            <div class="col-lg-8">
+                <div class="coverage-chart">
+                    {% for date in dates[:7] %}
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between mb-1">
+                                <strong>{{ date.strftime('%A, %B %d') }}</strong>
+                                <span class="text-muted">Total Coverage</span>
+                            </div>
+                            <div class="coverage-bar">
+                                {% set day_coverage = coverage_by_date.get(date.strftime('%Y-%m-%d'), {}) %}
+                                {% set total = day_coverage.get('day', 0) + day_coverage.get('evening', 0) + day_coverage.get('night', 0) %}
+                                
+                                {% if day_coverage.get('day', 0) > 0 %}
+                                    <div class="coverage-segment shift-day" 
+                                         style="width: {{ (day_coverage.get('day', 0) / (total or 1)) * 100 }}%"
+                                         title="Day: {{ day_coverage.get('day', 0) }} employees">
+                                        {{ day_coverage.get('day', 0) }}
+                                    </div>
+                                {% endif %}
+                                
+                                {% if day_coverage.get('evening', 0) > 0 %}
+                                    <div class="coverage-segment shift-evening" 
+                                         style="width: {{ (day_coverage.get('evening', 0) / (total or 1)) * 100 }}%"
+                                         title="Evening: {{ day_coverage.get('evening', 0) }} employees">
+                                        {{ day_coverage.get('evening', 0) }}
+                                    </div>
+                                {% endif %}
+                                
+                                {% if day_coverage.get('night', 0) > 0 %}
+                                    <div class="coverage-segment shift-night" 
+                                         style="width: {{ (day_coverage.get('night', 0) / (total or 1)) * 100 }}%"
+                                         title="Night: {{ day_coverage.get('night', 0) }} employees">
+                                        {{ day_coverage.get('night', 0) }}
+                                    </div>
+                                {% endif %}
+                                
+                                {% if total == 0 %}
+                                    <div class="coverage-segment bg-secondary" style="width: 100%">
+                                        No Coverage
+                                    </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+            
+            <div class="col-lg-4">
+                <div class="stats-card">
+                    <h5 class="mb-3">Pattern Statistics</h5>
+                    <div class="stat-item">
+                        <span>Cycle Length:</span>
+                        <strong>{{ pattern_stats.cycle_days }} days</strong>
+                    </div>
+                    <div class="stat-item">
+                        <span>Crews Working Now:</span>
+                        <strong>{{ pattern_stats.crews_working_now }}/4</strong>
+                    </div>
+                    <div class="stat-item">
+                        <span>Average Weekly Hours:</span>
+                        <strong>{{ pattern_stats.avg_weekly_hours }} hrs</strong>
+                    </div>
+                    <div class="stat-item">
+                        <span>Days Off per Cycle:</span>
+                        <strong>{{ pattern_stats.days_off_per_cycle }}</strong>
+                    </div>
+                    <div class="stat-item">
+                        <span>Shift Type:</span>
+                        <strong>{{ pattern_stats.shift_type }}</strong>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Navigation -->
+        <div class="d-flex justify-content-between align-items-center mt-4 mb-5">
+            <a href="{{ url_for('view_schedules', crew=selected_crew, start_date=prev_start, end_date=prev_end, pattern=pattern_name) }}" 
+               class="btn btn-outline-primary">
+                <i class="bi bi-chevron-left"></i> Previous Cycle
+            </a>
+            
+            <div class="text-center">
+                <p class="mb-0 text-muted">Viewing {{ start_date }} to {{ end_date }}</p>
+            </div>
+            
+            <a href="{{ url_for('view_schedules', crew=selected_crew, start_date=next_start, end_date=next_end, pattern=pattern_name) }}" 
+               class="btn btn-outline-primary">
+                Next Cycle <i class="bi bi-chevron-right"></i>
+            </a>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Add tooltips to shift cells
+        document.querySelectorAll('.shift-cell').forEach(cell => {
+            cell.addEventListener('click', function() {
+                const crew = this.dataset.crew;
+                const date = this.dataset.date;
+                const shift = this.dataset.shift;
+                const count = this.dataset.count;
+                
+                if (shift !== 'off' && count > 0) {
+                    // Could open a modal showing employees working this shift
+                    console.log(`Crew ${crew} on ${date}: ${count} employees on ${shift} shift`);
+                }
+            });
+        });
+
+        // Highlight pattern repeats
+        function highlightPatternRepeats() {
+            const grid = document.getElementById('rotationGrid');
+            const cycleDays = {{ pattern_stats.cycle_days }};
+            
+            // Add subtle background shading to show pattern cycles
+            const cells = grid.querySelectorAll('.shift-cell');
+            cells.forEach((cell, index) => {
+                const dayInCycle = (index % 14) % cycleDays;
+                if (Math.floor((index % 14) / cycleDays) % 2 === 0) {
+                    cell.style.opacity = '1';
+                } else {
+                    cell.style.opacity = '0.85';
+                }
+            });
+        }
+
+        // Initialize on load
+        document.addEventListener('DOMContentLoaded', function() {
+            highlightPatternRepeats();
+        });
+    </script>
+</body>
+</html>
