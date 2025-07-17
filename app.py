@@ -1537,27 +1537,29 @@ def create_schedule():
     week_end = week_start + timedelta(days=6)
     
     employees_near_overtime = []
-    for emp in employees:
+    ffor emp in employees:
         current_hours = db.session.query(func.sum(Schedule.hours)).filter(
             Schedule.employee_id == emp.id,
             Schedule.date >= week_start,
             Schedule.date <= week_end
         ).scalar() or 0
         
-        if current_hours >= 35:  # Near overtime thre
-    """Create standard (non-rotation) schedules"""
-    if shift_pattern == 'standard':
-        # Standard 9-5 schedule, Monday-Friday
-        shift_type = 'day'
-        start_hour = 9
-        end_hour = 17
-        work_days = [0, 1, 2, 3, 4]  # Monday-Friday
-    elif shift_pattern == 'retail':
-        # Retail schedule - varies by employee
-        shift_type = 'day'
-        start_hour = 8
-        end_hour = 16
-        work_days = [0, 1, 2, 3, 4, 5, 6]  # All days
+        if current_hours >= 35:  # Near overtime threshold
+            emp.current_hours = current_hours
+            employees_near_overtime.append(emp)
+    
+    return render_template('schedule_input.html',
+                         employees=employees,
+                         positions=positions,
+                         employees_by_crew=employees_by_crew,
+                         employees_near_overtime=employees_near_overtime)
+
+def get_crews():
+    """Get employees organized by crew"""
+    crews = {'A': [], 'B': [], 'C': [], 'D': []}
+    
+    for crew in crews:
+        crews[crew] = Employee.query.filter_by(crew=crew, is_supervisor=False).all()
     elif shift_pattern == '2_shift':
         # 2-shift pattern
         shift_type = 'day'  # Will alternate
