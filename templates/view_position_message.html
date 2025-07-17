@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+
+{% block title %}{{ message.subject }} - Position Board{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-md-8 offset-md-2">
+            <!-- Back Button -->
+            <a href="{{ url_for('position_messages') }}" class="btn btn-secondary mb-3">
+                <i class="bi bi-arrow-left"></i> Back to Position Board
+            </a>
+
+            <!-- Main Message -->
+            <div class="card {% if message.pinned %}border-warning{% endif %}">
+                <div class="card-header {% if message.pinned %}bg-warning text-dark{% else %}bg-info text-white{% endif %}">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">
+                            {% if message.pinned %}<i class="bi bi-pin-angle-fill"></i>{% endif %}
+                            {{ message.subject }}
+                        </h5>
+                        {% if message.expires_at %}
+                        <small>
+                            <i class="bi bi-clock"></i> Expires: {{ message.expires_at.strftime('%m/%d/%Y') }}
+                        </small>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="card-body">
+                    <!-- Message Details -->
+                    <div class="message-header mb-3 pb-3 border-bottom">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <strong>From:</strong> {{ message.sender.name }}<br>
+                                <strong>Posted:</strong> {{ message.sent_at.strftime('%m/%d/%Y %I:%M %p') }}
+                            </div>
+                            <div class="col-md-6 text-md-end">
+                                {% if message.category %}
+                                    <span class="badge bg-secondary">{{ message.category|title }}</span>
+                                {% endif %}
+                                {% if message.target_shifts != 'all' %}
+                                    <span class="badge bg-primary">
+                                        <i class="bi bi-clock"></i> {{ message.target_shifts|replace(',', ', ')|title }} Shifts
+                                    </span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Message Content -->
+                    <div class="message-content mb-4">
+                        {{ message.message|nl2br|safe }}
+                    </div>
+
+                    <!-- Replies Section -->
+                    {% if replies %}
+                    <div class="replies-section">
+                        <h6 class="mb-3">
+                            <i class="bi bi-chat-left-dots"></i> Replies ({{ replies|length }})
+                        </h6>
+                        
+                        {% for reply in replies %}
+                        <div class="reply-item mb-3 ms-4 p-3 bg-light border-start border-3 rounded">
+                            <div class="d-flex justify-content-between mb-2">
+                                <strong>{{ reply.sender.name }}</strong>
+                                <small class="text-muted">
+                                    {{ reply.sent_at.strftime('%m/%d/%Y %I:%M %p') }}
+                                </small>
+                            </div>
+                            <div class="reply-content">
+                                {{ reply.message|nl2br|safe }}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+
+                    <!-- Reply Form -->
+                    <div class="reply-form mt-4 p-3 bg-light rounded">
+                        <h6 class="mb-3">Add a Reply</h6>
+                        <form method="POST" action="{{ url_for('reply_position_message', message_id=message.id) }}">
+                            <div class="mb-3">
+                                <textarea class="form-control" name="reply" rows="3" 
+                                          placeholder="Share your thoughts or add information..." required></textarea>
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center">
+                                <small class="text-muted">
+                                    <i class="bi bi-info-circle"></i> 
+                                    This reply will be visible to all {{ current_user.position.name }} colleagues
+                                </small>
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="bi bi-send"></i> Post Reply
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Message Actions -->
+            <div class="mt-3 text-center">
+                {% if current_user.is_supervisor and not message.pinned %}
+                <button class="btn btn-outline-warning" onclick="pinMessage({{ message.id }})">
+                    <i class="bi bi-pin"></i> Pin Message
+                </button>
+                {% endif %}
+                {% if message.sender_id == current_user.id %}
+                <button class="btn btn-outline-danger" onclick="deleteMessage({{ message.id }})">
+                    <i class="bi bi-trash"></i> Delete
+                </button>
+                {% endif %}
+                <button class="btn btn-outline-secondary" onclick="printMessage()">
+                    <i class="bi bi-printer"></i> Print
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function pinMessage(messageId) {
+    if (confirm('Pin this message to the top of the position board?')) {
+        // In a real app, this would make an AJAX call
+        alert('Message pinned!');
+        location.reload();
+    }
+}
+
+function deleteMessage(messageId) {
+    if (confirm('Are you sure you want to delete this message? This cannot be undone.')) {
+        // In a real app, this would make an AJAX call
+        alert('Message deleted!');
+        window.location.href = "{{ url_for('position_messages') }}";
+    }
+}
+
+function printMessage() {
+    window.print();
+}
+
+// Mark message as read when viewing
+document.addEventListener('DOMContentLoaded', function() {
+    // This would typically make an AJAX call to mark the message as read
+    console.log('Marking message as read...');
+});
+</script>
+
+<style>
+@media print {
+    .btn, .reply-form, nav {
+        display: none !important;
+    }
+}
+</style>
+{% endblock %}
