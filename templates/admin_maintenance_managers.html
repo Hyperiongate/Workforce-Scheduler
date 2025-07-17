@@ -1,0 +1,213 @@
+{% extends "base.html" %}
+
+{% block title %}Manage Maintenance Managers - Workforce Scheduler{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <h2>Maintenance Manager Administration</h2>
+            <p class="text-muted">Designate employees who can manage maintenance issues</p>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Current Maintenance Managers -->
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">Current Maintenance Managers</h5>
+                </div>
+                <div class="card-body">
+                    {% if managers %}
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Role</th>
+                                        <th>Permissions</th>
+                                        <th>Added</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for manager in managers %}
+                                    <tr {% if manager.is_primary %}class="table-warning"{% endif %}>
+                                        <td>
+                                            <strong>{{ manager.employee.name }}</strong><br>
+                                            <small class="text-muted">{{ manager.employee.email }}</small>
+                                        </td>
+                                        <td>
+                                            {% if manager.is_primary %}
+                                                <span class="badge bg-warning text-dark">
+                                                    <i class="bi bi-star-fill"></i> Primary Manager
+                                                </span>
+                                            {% else %}
+                                                <span class="badge bg-secondary">Manager</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if manager.can_assign %}
+                                                <span class="badge bg-success">Can Assign</span>
+                                            {% else %}
+                                                <span class="badge bg-secondary">View Only</span>
+                                            {% endif %}
+                                            {% if manager.notification_email %}
+                                                <br><small><i class="bi bi-envelope"></i> {{ manager.notification_email }}</small>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <small>{{ manager.created_at.strftime('%m/%d/%Y') if manager.created_at else 'N/A' }}</small>
+                                        </td>
+                                        <td>
+                                            <form method="POST" action="{{ url_for('remove_maintenance_manager', manager_id=manager.id) }}" 
+                                                  style="display: inline;" 
+                                                  onsubmit="return confirm('Remove {{ manager.employee.name }} as a maintenance manager?');">
+                                                <button type="submit" class="btn btn-sm btn-danger">
+                                                    <i class="bi bi-trash"></i> Remove
+                                                </button>
+                                            </form>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="alert alert-info">
+                            <i class="bi bi-info-circle"></i> No maintenance managers have been designated yet.
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Manager Statistics -->
+            <div class="card mt-4">
+                <div class="card-header">
+                    <h5 class="mb-0">Maintenance Statistics</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row text-center">
+                        <div class="col-md-3">
+                            <h3 class="text-danger">{{ managers|length }}</h3>
+                            <p class="text-muted mb-0">Total Managers</p>
+                        </div>
+                        <div class="col-md-3">
+                            <h3 class="text-warning">{{ managers|selectattr('is_primary')|list|length }}</h3>
+                            <p class="text-muted mb-0">Primary Managers</p>
+                        </div>
+                        <div class="col-md-3">
+                            <h3 class="text-success">{{ managers|selectattr('can_assign')|list|length }}</h3>
+                            <p class="text-muted mb-0">Can Assign Issues</p>
+                        </div>
+                        <div class="col-md-3">
+                            <h3 class="text-info">24/7</h3>
+                            <p class="text-muted mb-0">Coverage Goal</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Add New Manager -->
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0">Add Maintenance Manager</h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ url_for('add_maintenance_manager') }}">
+                        <div class="mb-3">
+                            <label for="employee_id" class="form-label">Select Employee</label>
+                            <select class="form-select" id="employee_id" name="employee_id" required>
+                                <option value="">Choose an employee...</option>
+                                {% for employee in potential_managers %}
+                                    <option value="{{ employee.id }}">
+                                        {{ employee.name }} 
+                                        {% if employee.position %}({{ employee.position.name }}){% endif %}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="is_primary" name="is_primary">
+                                <label class="form-check-label" for="is_primary">
+                                    <strong>Primary Manager</strong><br>
+                                    <small class="text-muted">Primary managers receive priority notifications</small>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="can_assign" name="can_assign" checked>
+                                <label class="form-check-label" for="can_assign">
+                                    <strong>Can Assign Issues</strong><br>
+                                    <small class="text-muted">Allow this manager to assign issues to others</small>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-success">
+                                <i class="bi bi-person-plus"></i> Add Manager
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Guidelines -->
+            <div class="card mt-4">
+                <div class="card-header">
+                    <h6 class="mb-0">Manager Guidelines</h6>
+                </div>
+                <div class="card-body">
+                    <small>
+                        <ul class="mb-0">
+                            <li>Designate at least one manager per shift for 24/7 coverage</li>
+                            <li>Primary managers receive critical issue alerts first</li>
+                            <li>Managers can view all maintenance issues</li>
+                            <li>Only managers with "Can Assign" permission can delegate issues</li>
+                            <li>Consider adding managers from facilities, engineering, and IT departments</li>
+                        </ul>
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Back to Dashboard -->
+    <div class="mt-4">
+        <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">
+            <i class="bi bi-arrow-left"></i> Back to Dashboard
+        </a>
+        <a href="{{ url_for('maintenance_issues') }}" class="btn btn-info">
+            <i class="bi bi-tools"></i> View Maintenance Issues
+        </a>
+    </div>
+</div>
+
+<script>
+// Warn about primary manager changes
+document.getElementById('is_primary').addEventListener('change', function() {
+    if (this.checked) {
+        {% if managers|selectattr('is_primary')|list|length > 0 %}
+        alert('Note: Setting this employee as primary will remove primary status from other managers.');
+        {% endif %}
+    }
+});
+
+// Validate form before submission
+document.querySelector('form').addEventListener('submit', function(e) {
+    const employeeSelect = document.getElementById('employee_id');
+    if (!employeeSelect.value) {
+        e.preventDefault();
+        alert('Please select an employee to designate as a maintenance manager.');
+    }
+});
+</script>
+{% endblock %}
