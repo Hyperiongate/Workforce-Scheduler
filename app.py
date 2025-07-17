@@ -1669,6 +1669,18 @@ def create_dupont_schedule(start_date, end_date):
     """Create DuPont schedule (complex 4-week cycle with 7 consecutive days off)"""
     crews = get_crews()
     if not crews:
+        def create_dupont_schedule(start_date, end_date):
+    """Create DuPont schedule (complex 4-week cycle with 7 consecutive days off)"""
+    crews = get_crews()
+    if not crews:
+        return redirect(url_for('create_schedule'))
+    
+    # ADD THESE TWO LINES HERE
+    flash(f'DEBUG: Creating DuPont schedule from {start_date} to {end_date}', 'info')
+    flash(f'DEBUG: Found crews - A: {len(crews["A"])}, B: {len(crews["B"])}, C: {len(crews["C"])}, D: {len(crews["D"])} employees', 'warning')
+    
+    # DuPont pattern - 4 week cycle (28 days)
+    # (rest of the function continues...)
         return redirect(url_for('create_schedule'))
     
     # DuPont pattern - 4 week cycle (28 days)
