@@ -2034,7 +2034,308 @@ def create_alternating_fixed_schedule(start_date, end_date, form_data):
     return create_pattern_schedule(start_date, end_date, crews, pattern, shift_assignments, 14)
 
 # Helper functions for pattern-based schedule creation
+# ==================== SCHEDULE WIZARD ROUTES ====================
 
+@app.route('/schedule/select')
+@login_required
+def schedule_select():
+    """Schedule pattern selection page"""
+    if not current_user.is_supervisor:
+        flash('Access denied. Supervisors only.', 'danger')
+        return redirect(url_for('employee_dashboard'))
+    
+    return render_template('schedule_selection.html')
+
+@app.route('/schedule/wizard/<pattern>')
+@login_required
+def schedule_wizard(pattern):
+    """Pattern-specific schedule creation wizard"""
+    if not current_user.is_supervisor:
+        flash('Access denied. Supervisors only.', 'danger')
+        return redirect(url_for('employee_dashboard'))
+    
+    # Validate pattern
+    valid_patterns = ['pitman', 'southern_swing', 'fixed_fixed', 'dupont', 
+                      'five_and_two', 'four_on_four_off', 'three_on_three_off', 
+                      'alternating_fixed']
+    
+    if pattern not in valid_patterns:
+        flash('Invalid schedule pattern selected.', 'danger')
+        return redirect(url_for('schedule_select'))
+    
+    # Get data for wizard
+    employees = Employee.query.filter_by(is_supervisor=False).order_by(Employee.name).all()
+    positions = Position.query.order_by(Position.name).all()
+    
+    # Group employees by current crew
+    employees_by_crew = {}
+    unassigned_employees = []
+    
+    for emp in employees:
+        if emp.crew:
+            if emp.crew not in employees_by_crew:
+                employees_by_crew[emp.crew] = []
+            employees_by_crew[emp.crew].append(emp)
+        else:
+            unassigned_employees.append(emp)
+    
+    # Get crew statistics
+    crew_stats = {}
+    for crew in ['A', 'B', 'C', 'D']:
+        crew_stats[crew] = {
+            'count': len(employees_by_crew.get(crew, [])),
+            'positions': {}
+        }
+        # Count positions in each crew
+        for emp in employees_by_crew.get(crew, []):
+            if emp.position:
+                pos_name = emp.position.name
+                crew_stats[crew]['positions'][pos_name] = crew_stats[crew]['positions'].get(pos_name, 0) + 1
+    
+    return render_template('schedule_wizard.html',
+                         pattern=pattern,
+                         employees=employees,
+                         positions=positions,
+                         employees_by_crew=employees_by_crew,
+                         unassigned_employees=unassigned_employees,
+                         crew_stats=crew_stats)
+
+@app.route('/export-crew-template')
+@login_required
+def export_crew_template():
+    """Download Excel template for crew assignments"""
+    if not current_user.is_supervisor:
+        flash('Access denied. Supervisors only.', 'danger')
+        return redirect(url_for('employee_dashboard'))
+    
+    # Get all employees
+    employees = Employee.query.filter_by(is_supervisor=False).order_by(Employee.name).all()
+    
+    # Create DataFrame
+    data = []
+    for emp in employees:
+        data.append({
+            'Employee ID': emp.id,
+            'Name': emp.name,
+            'Current Position': emp.position.name if emp.position else '',
+            'Current Crew': emp.crew or '',
+            'New Crew Assignment': emp.crew or '',  # Pre-fill with current crew
+            'Notes': ''
+        })
+    
+    df = pd.DataFrame(data)
+    
+    # Create Excel file
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        # Write main data
+        df.to_excel(writer, sheet_name='Crew Assignments', index=False)
+        
+        # Add instructions sheet
+        instructions_data = {
+            'Instructions': [
+                'Assign each employee to a crew (A, B, C, or D)',
+                'Leave "New Crew Assignment" blank to keep current crew',
+                'Use Notes column for any special instructions',
+                'Save and upload this file when complete',
+                '',
+                'IMPORTANT:',
+                '- Each crew should have similar numbers of employees',
+                '- Balance skills and positions across crews',
+                '- Consider employee preferences if known'
+            ]
+        }
+        instructions_df = pd.DataFrame(instructions_data)
+        instructions_df.to_excel(writer, sheet_name='Instructions', index=False)
+        
+        # Get the workbook and format
+        workbook = writer.book
+        worksheet = writer.sheets['Crew Assignments']
+        
+        # Auto-adjust column widths
+        for column in df:
+            column_length = max(df[column].astype(str).map(len).max(), len(column))
+            col_idx = df.columns.get_loc(column)
+            worksheet.column_dimensions[chr(65 + col_idx)].width = min(column_length + 2, 50)
+    
+    output.seek(0)
+    
+    return send_file(
+        output,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True,
+        download_name=f'crew_assignments_{date.today().strftime("%Y%m%d")}.xlsx'
+    )
+
+@app.route('/import-crew-roster', methods=['POST'])
+@login_required
+def import_crew_roster():
+    """Upload completed crew assignments from Excel"""
+    if not current_user.is_supervisor:
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    
+    if 'file' not in request.files:
+        return jsonify({'success': False, 'error': 'No file uploaded'})
+    
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'success': False, 'error': 'No file selected'})
+    
+    if not allowed_file(file.filename):
+        return jsonify({'success': False, 'error': 'Invalid file type. Please upload an Excel file.'})
+    
+    try:
+        # Read Excel file
+        df = pd.read_excel(file, sheet_name='Crew Assignments')
+        
+        # Validate columns
+        required_columns = ['Employee ID', 'New Crew Assignment']
+        if not all(col in df.columns for col in required_columns):
+            return jsonify({'success': False, 'error': 'Invalid file format. Missing required columns.'})
+        
+        # Process assignments
+        updated_count = 0
+        errors = []
+        crew_counts = {'A': 0, 'B': 0, 'C': 0, 'D': 0}
+        
+        for idx, row in df.iterrows():
+            try:
+                emp_id = int(row['Employee ID'])
+                new_crew = str(row['New Crew Assignment']).strip().upper()
+                
+                # Skip if no new assignment
+                if pd.isna(new_crew) or new_crew == '':
+                    continue
+                
+                # Validate crew
+                if new_crew not in ['A', 'B', 'C', 'D']:
+                    errors.append(f"Row {idx+2}: Invalid crew '{new_crew}'. Must be A, B, C, or D.")
+                    continue
+                
+                # Update employee
+                employee = Employee.query.get(emp_id)
+                if not employee:
+                    errors.append(f"Row {idx+2}: Employee ID {emp_id} not found.")
+                    continue
+                
+                employee.crew = new_crew
+                crew_counts[new_crew] += 1
+                updated_count += 1
+                
+            except Exception as e:
+                errors.append(f"Row {idx+2}: {str(e)}")
+        
+        # Commit changes
+        db.session.commit()
+        
+        # Prepare response
+        response = {
+            'success': True,
+            'updated': updated_count,
+            'crew_counts': crew_counts,
+            'message': f'Successfully updated {updated_count} crew assignments.'
+        }
+        
+        if errors:
+            response['warnings'] = errors[:5]  # Limit to first 5 errors
+            if len(errors) > 5:
+                response['warnings'].append(f'... and {len(errors) - 5} more errors')
+        
+        return jsonify(response)
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': f'Error processing file: {str(e)}'})
+
+@app.route('/api/crew-status')
+@login_required
+def get_crew_status():
+    """Get current crew assignments and statistics"""
+    if not current_user.is_supervisor:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    crews = {'A': [], 'B': [], 'C': [], 'D': [], 'Unassigned': []}
+    
+    employees = Employee.query.filter_by(is_supervisor=False).all()
+    
+    for emp in employees:
+        crew_key = emp.crew if emp.crew else 'Unassigned'
+        emp_data = {
+            'id': emp.id,
+            'name': emp.name,
+            'position': emp.position.name if emp.position else 'No position',
+            'skills': [s.name for s in emp.skills]
+        }
+        crews[crew_key].append(emp_data)
+    
+    # Calculate statistics
+    stats = {}
+    for crew, members in crews.items():
+        if crew != 'Unassigned':
+            stats[crew] = {
+                'count': len(members),
+                'positions': {},
+                'skills': {}
+            }
+            for member in members:
+                # Count positions
+                pos = member['position']
+                stats[crew]['positions'][pos] = stats[crew]['positions'].get(pos, 0) + 1
+                # Count skills
+                for skill in member['skills']:
+                    stats[crew]['skills'][skill] = stats[crew]['skills'].get(skill, 0) + 1
+    
+    return jsonify({
+        'crews': crews,
+        'stats': stats,
+        'total_employees': len(employees),
+        'unassigned_count': len(crews['Unassigned'])
+    })
+
+@app.route('/schedule/create-pitman', methods=['POST'])
+@login_required
+def create_pitman_from_wizard():
+    """Create Pitman schedule from wizard data"""
+    if not current_user.is_supervisor:
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    
+    try:
+        # Get form data
+        data = request.get_json()
+        
+        start_date = datetime.strptime(data['start_date'], '%Y-%m-%d')
+        end_date = datetime.strptime(data['end_date'], '%Y-%m-%d')
+        variation = data['variation']
+        
+        # Validate crews are assigned
+        crews = get_crews()
+        if not crews:
+            return jsonify({'success': False, 'error': 'Please assign employees to crews first.'})
+        
+        # Check crew balance
+        crew_sizes = [len(crews[c]) for c in ['A', 'B', 'C', 'D']]
+        if max(crew_sizes) - min(crew_sizes) > 2:
+            return jsonify({
+                'success': False, 
+                'error': 'Crew sizes are unbalanced. Please redistribute employees more evenly.'
+            })
+        
+        # Create the schedule using existing function
+        # This will handle the redirect internally
+        result = create_pitman_schedule(start_date, end_date, {'pitman_variation': variation})
+        
+        # If we get here without redirect, it was successful
+        return jsonify({
+            'success': True,
+            'message': 'Schedule created successfully!',
+            'redirect': url_for('view_schedules', 
+                              start_date=start_date.strftime('%Y-%m-%d'),
+                              end_date=end_date.strftime('%Y-%m-%d'))
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)})
 def create_pattern_schedule(start_date, end_date, crews, pattern, shift_assignments, cycle_days):
     """Generic pattern-based schedule creator for fixed shifts"""
     current_date = start_date
