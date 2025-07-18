@@ -3,247 +3,198 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Create Schedule - Select Type</title>
-    
-    <!-- Bootstrap CSS -->
+    <title>Schedule Management</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
-    
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
     <style>
-        body {
-            background-color: #f8f9fa;
+        .action-card {
+            transition: transform 0.2s;
+            height: 100%;
         }
-        
-        .schedule-card {
-            transition: all 0.3s;
-        }
-
-        .schedule-card:not(.disabled):hover {
+        .action-card:hover {
             transform: translateY(-5px);
-            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
         }
-
-        .schedule-card.disabled {
-            opacity: 0.7;
+        .icon-large {
+            font-size: 3rem;
+            margin-bottom: 1rem;
         }
-
-        .schedule-card .card-header {
-            position: relative;
-        }
-
-        .schedule-card .badge {
-            position: absolute;
-            top: 10px;
-            right: 10px;
+        .stats-card {
+            background-color: #f8f9fa;
+            border-left: 4px solid #0d6efd;
         }
     </style>
 </head>
 <body>
-
-<div class="container mt-4">
-    <div class="row mb-4">
-        <div class="col-md-12">
-            <h2>Create New Schedule</h2>
-            <p class="lead">Choose a schedule pattern for your 24/7 operation</p>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">
+                <i class="bi bi-calendar3"></i> Workforce Scheduler
+            </a>
+            <div class="navbar-nav ms-auto">
+                <a class="nav-link" href="/dashboard">
+                    <i class="bi bi-speedometer2"></i> Dashboard
+                </a>
+                <a class="nav-link" href="/logout">
+                    <i class="bi bi-box-arrow-right"></i> Logout
+                </a>
+            </div>
         </div>
+    </nav>
+
+    <div class="container">
+        <div class="row mb-4">
+            <div class="col-12">
+                <h1 class="h2 mb-3">
+                    <i class="bi bi-calendar-week"></i> Schedule Management
+                </h1>
+                <p class="text-muted">Create new schedules or view existing ones</p>
+            </div>
+        </div>
+
+        <!-- Quick Stats -->
+        <div class="row mb-5">
+            <div class="col-md-3">
+                <div class="card stats-card">
+                    <div class="card-body">
+                        <h6 class="text-muted">Active Schedules</h6>
+                        <h3>{{ active_schedules|default(4) }}</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stats-card">
+                    <div class="card-body">
+                        <h6 class="text-muted">Total Employees</h6>
+                        <h3>{{ total_employees|default(40) }}</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stats-card">
+                    <div class="card-body">
+                        <h6 class="text-muted">Coverage Rate</h6>
+                        <h3>{{ coverage_rate|default(98) }}%</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stats-card">
+                    <div class="card-body">
+                        <h6 class="text-muted">Next Rotation</h6>
+                        <h3>{{ next_rotation|default("Sun") }}</h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Actions -->
+        <div class="row mb-5">
+            <div class="col-md-6 mb-4">
+                <div class="card action-card border-primary">
+                    <div class="card-body text-center p-5">
+                        <i class="bi bi-plus-circle text-primary icon-large"></i>
+                        <h4 class="card-title">Create New Schedule</h4>
+                        <p class="card-text mb-4">Use the schedule wizard to create a new rotation schedule for your crews</p>
+                        <a href="/schedule/wizard" class="btn btn-primary btn-lg">
+                            <i class="bi bi-magic"></i> Start Schedule Wizard
+                        </a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-6 mb-4">
+                <div class="card action-card">
+                    <div class="card-body text-center p-5">
+                        <i class="bi bi-calendar-check text-success icon-large"></i>
+                        <h4 class="card-title">View Existing Schedules</h4>
+                        <p class="card-text mb-4">Review and manage your current crew schedules</p>
+                        <a href="/schedule/view" class="btn btn-success btn-lg">
+                            <i class="bi bi-eye"></i> View Schedules
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Additional Options -->
+        <div class="row">
+            <div class="col-12">
+                <h3 class="h5 mb-3">Quick Links</h3>
+            </div>
+            <div class="col-md-4 mb-3">
+                <div class="card">
+                    <div class="card-body">
+                        <h6 class="card-title">
+                            <i class="bi bi-people text-info"></i> Crew Management
+                        </h6>
+                        <p class="card-text small">View and manage crew assignments</p>
+                        <a href="/crews" class="btn btn-sm btn-outline-info">View Crews</a>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 mb-3">
+                <div class="card">
+                    <div class="card-body">
+                        <h6 class="card-title">
+                            <i class="bi bi-calendar-x text-warning"></i> Time Off Requests
+                        </h6>
+                        <p class="card-text small">Review pending time off requests</p>
+                        <a href="/supervisor/time-off-requests" class="btn btn-sm btn-outline-warning">Review Requests</a>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 mb-3">
+                <div class="card">
+                    <div class="card-body">
+                        <h6 class="card-title">
+                            <i class="bi bi-graph-up text-danger"></i> Schedule Analytics
+                        </h6>
+                        <p class="card-text small">View overtime and coverage reports</p>
+                        <a href="/supervisor/overtime-distribution" class="btn btn-sm btn-outline-danger">View Analytics</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Schedules -->
+        {% if recent_schedules %}
+        <div class="row mt-5">
+            <div class="col-12">
+                <h3 class="h5 mb-3">Recent Schedules</h3>
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Schedule Name</th>
+                                <th>Pattern</th>
+                                <th>Start Date</th>
+                                <th>Crews</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for schedule in recent_schedules %}
+                            <tr>
+                                <td>{{ schedule.name }}</td>
+                                <td>{{ schedule.pattern }}</td>
+                                <td>{{ schedule.start_date.strftime('%b %d, %Y') }}</td>
+                                <td>{{ schedule.crews|join(', ') }}</td>
+                                <td>
+                                    <a href="/schedule/view?id={{ schedule.id }}" class="btn btn-sm btn-outline-primary">
+                                        <i class="bi bi-eye"></i> View
+                                    </a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% endif %}
     </div>
 
-    <!-- Schedule Pattern Cards -->
-    <div class="row">
-        <!-- Pitman Schedule -->
-        <div class="col-md-6 col-lg-4 mb-4">
-            <div class="card h-100 schedule-card">
-                <div class="card-header bg-primary text-white">
-                    <h5 class="mb-0">Pitman (2-2-3)</h5>
-                    <span class="badge bg-success">Recommended</span>
-                </div>
-                <div class="card-body">
-                    <h6>Pattern Details:</h6>
-                    <ul class="small">
-                        <li>Work 2 days, off 2, work 3 days</li>
-                        <li>14-day cycle per crew</li>
-                        <li>Averages 42 hours/week</li>
-                        <li>Every other weekend off</li>
-                    </ul>
-                    
-                    <h6>Best For:</h6>
-                    <p class="small">Operations needing consistent coverage with good work-life balance</p>
-                    
-                    <h6>Shift Options:</h6>
-                    <ul class="small">
-                        <li>Fixed shifts (no rotation)</li>
-                        <li>Rotating (weekly, bi-weekly, monthly)</li>
-                    </ul>
-                </div>
-                <div class="card-footer">
-                    <a href="{{ url_for('schedule_wizard', pattern='pitman') }}" class="btn btn-primary w-100">
-                        <i class="bi bi-arrow-right-circle"></i> Create Pitman Schedule
-                    </a>
-                </div>
-            </div>
-        </div>
-
-        <!-- DuPont Schedule -->
-        <div class="col-md-6 col-lg-4 mb-4">
-            <div class="card h-100 schedule-card disabled">
-                <div class="card-header bg-secondary text-white">
-                    <h5 class="mb-0">DuPont</h5>
-                    <span class="badge bg-warning">Coming Soon</span>
-                </div>
-                <div class="card-body text-muted">
-                    <h6>Pattern Details:</h6>
-                    <ul class="small">
-                        <li>4-week rotating cycle</li>
-                        <li>7 consecutive days off</li>
-                        <li>Mix of day and night shifts</li>
-                        <li>Built-in recovery time</li>
-                    </ul>
-                    
-                    <h6>Best For:</h6>
-                    <p class="small">Operations prioritizing long rest periods</p>
-                </div>
-                <div class="card-footer">
-                    <button class="btn btn-secondary w-100" disabled>
-                        <i class="bi bi-lock"></i> Not Available
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Southern Swing -->
-        <div class="col-md-6 col-lg-4 mb-4">
-            <div class="card h-100 schedule-card disabled">
-                <div class="card-header bg-secondary text-white">
-                    <h5 class="mb-0">Southern Swing</h5>
-                    <span class="badge bg-warning">Coming Soon</span>
-                </div>
-                <div class="card-body text-muted">
-                    <h6>Pattern Details:</h6>
-                    <ul class="small">
-                        <li>8-hour shifts</li>
-                        <li>Rotates through all 3 shifts</li>
-                        <li>4-week cycle</li>
-                        <li>Forward rotation</li>
-                    </ul>
-                    
-                    <h6>Best For:</h6>
-                    <p class="small">Traditional 8-hour shift operations</p>
-                </div>
-                <div class="card-footer">
-                    <button class="btn btn-secondary w-100" disabled>
-                        <i class="bi bi-lock"></i> Not Available
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <!-- 4-on-4-off -->
-        <div class="col-md-6 col-lg-4 mb-4">
-            <div class="card h-100 schedule-card disabled">
-                <div class="card-header bg-secondary text-white">
-                    <h5 class="mb-0">4-on-4-off</h5>
-                    <span class="badge bg-warning">Coming Soon</span>
-                </div>
-                <div class="card-body text-muted">
-                    <h6>Pattern Details:</h6>
-                    <ul class="small">
-                        <li>Work 4 days, off 4 days</li>
-                        <li>8-day cycle</li>
-                        <li>Predictable pattern</li>
-                        <li>Equal work/off time</li>
-                    </ul>
-                    
-                    <h6>Best For:</h6>
-                    <p class="small">Operations wanting simple, balanced schedules</p>
-                </div>
-                <div class="card-footer">
-                    <button class="btn btn-secondary w-100" disabled>
-                        <i class="bi bi-lock"></i> Not Available
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Custom Pattern -->
-        <div class="col-md-6 col-lg-4 mb-4">
-            <div class="card h-100 schedule-card disabled">
-                <div class="card-header bg-secondary text-white">
-                    <h5 class="mb-0">Custom Pattern</h5>
-                    <span class="badge bg-info">Advanced</span>
-                </div>
-                <div class="card-body text-muted">
-                    <h6>Create Your Own:</h6>
-                    <ul class="small">
-                        <li>Define custom rotation</li>
-                        <li>Set unique patterns per crew</li>
-                        <li>Mix shift lengths</li>
-                        <li>Full flexibility</li>
-                    </ul>
-                    
-                    <h6>Best For:</h6>
-                    <p class="small">Unique operational requirements</p>
-                </div>
-                <div class="card-footer">
-                    <button class="btn btn-secondary w-100" disabled>
-                        <i class="bi bi-lock"></i> Not Available
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Quick Schedule -->
-        <div class="col-md-6 col-lg-4 mb-4">
-            <div class="card h-100 schedule-card">
-                <div class="card-header bg-info text-white">
-                    <h5 class="mb-0">Quick Schedule</h5>
-                    <span class="badge bg-light text-dark">Simple</span>
-                </div>
-                <div class="card-body">
-                    <h6>For Basic Needs:</h6>
-                    <ul class="small">
-                        <li>Standard day shifts only</li>
-                        <li>Monday-Friday coverage</li>
-                        <li>No rotation</li>
-                        <li>Single crew assignment</li>
-                    </ul>
-                    
-                    <h6>Best For:</h6>
-                    <p class="small">Non-24/7 operations or testing</p>
-                </div>
-                <div class="card-footer">
-                    <a href="{{ url_for('create_schedule') }}" class="btn btn-info w-100">
-                        <i class="bi bi-lightning"></i> Quick Create
-                    </a>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Information Section -->
-    <div class="row mt-4">
-        <div class="col-md-12">
-            <div class="alert alert-info">
-                <h5><i class="bi bi-info-circle"></i> Before You Begin</h5>
-                <ul class="mb-0">
-                    <li>Ensure all employees are assigned to crews (A, B, C, D) - <a href="{{ url_for('view_crews') }}" class="alert-link">View Crews</a></li>
-                    <li>Have your position requirements ready</li>
-                    <li>Know your desired shift start times</li>
-                    <li>Schedules will respect approved time-off requests</li>
-                </ul>
-            </div>
-        </div>
-    </div>
-
-    <!-- Back Button -->
-    <div class="mt-3">
-        <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">
-            <i class="bi bi-arrow-left"></i> Back to Dashboard
-        </a>
-    </div>
-</div>
-
-<!-- Bootstrap Bundle with Popper -->
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
