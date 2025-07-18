@@ -73,6 +73,105 @@ class Employee(UserMixin, db.Model):
         required_skills = set(skill.id for skill in position.required_skills)
         employee_skills = set(skill.id for skill in self.skills)
         return required_skills.issubset(employee_skills)
+        # ==================== OVERTIME PROPERTIES ====================
+    # Add these new properties to the Employee class
+    
+    @property
+    def current_week_overtime(self):
+        """Get current week's overtime hours"""
+        from datetime import date, timedelta
+        today = date.today()
+        week_start = today - timedelta(days=today.weekday())
+        
+        ot_record = OvertimeHistory.query.filter_by(
+            employee_id=self.id,
+            week_start_date=week_start
+        ).first()
+        
+        return ot_record.overtime_hours if ot_record else 0
+    
+    @property
+    def last_13_weeks_overtime(self):
+        """Get total overtime for last 13 weeks"""
+        from datetime import date, timedelta
+        end_date = date.today()
+        start_date = end_date - timedelta(weeks=13)
+        
+        total = db.session.query(func.sum(OvertimeHistory.overtime_hours)).filter(
+            OvertimeHistory.employee_id == self.id,
+            OvertimeHistory.week_start_date >= start_date,
+            OvertimeHistory.week_start_date <= end_date
+        ).scalar()
+        
+        return total or 0
+    
+    @property
+    def average_weekly_overtime(self):
+        """Get average weekly overtime for last 13 weeks"""
+        total = self.last_13_weeks_overtime
+        return round(total / 13, 2) if total else 0
+    
+    @property
+    def overtime_trend(self):
+        """Get overtime trend (increasing, decreasing, stable)"""
+        from datetime import date, timedelta
+        
+        # Get last 4 weeks
+        recent_4_weeks = []
+        for i in range(4):
+            week_start = date.today() - timedelta(weeks=i, days=date.today().weekday())
+            ot_record = OvertimeHistory.query.filter_by(
+                employee_id=self.id,
+                week_start_date=week_start
+            ).first()
+            recent_4_weeks.append(ot_record.overtime_hours if ot_record else 0)
+        
+        # Calculate trend
+        if len(recent_4_weeks) < 2:
+            return 'stable'
+        
+        # Compare recent average to older average
+        recent_avg = sum(recent_4_weeks[:2]) / 2
+        older_avg = sum(recent_4_weeks[2:]) / 2
+        
+        if recent_avg > older_avg * 1.2:
+            return 'increasing'
+        elif recent_avg < older_avg * 0.8:
+            return 'decreasing'
+        else:
+            return 'stable'
+    
+    def get_overtime_for_week(self, week_start_date):
+        """Get overtime hours for a specific week"""
+        ot_record = OvertimeHistory.query.filter_by(
+            employee_id=self.id,
+            week_start_date=week_start_date
+        ).first()
+        return ot_record.overtime_hours if ot_record else 0
+    
+    def update_overtime_hours(self, week_start_date, regular_hours, overtime_hours):
+        """Update or create overtime record for a specific week"""
+        ot_record = OvertimeHistory.query.filter_by(
+            employee_id=self.id,
+            week_start_date=week_start_date
+        ).first()
+        
+        if ot_record:
+            ot_record.regular_hours = regular_hours
+            ot_record.overtime_hours = overtime_hours
+            ot_record.total_hours = regular_hours + overtime_hours
+        else:
+            ot_record = OvertimeHistory(
+                employee_id=self.id,
+                week_start_date=week_start_date,
+                regular_hours=regular_hours,
+                overtime_hours=overtime_hours,
+                total_hours=regular_hours + overtime_hours
+            )
+            db.session.add(ot_record)
+        
+        db.session.commit()
+        return ot_record
 
 class Position(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -745,3 +844,35 @@ class MaintenanceManager(db.Model):
     
     # Relationships
     employee = db.relationship('Employee', backref=db.backref('maintenance_manager_role', uselist=False))
+    # ==================== OVERTIME TRACKING ====================
+
+class OvertimeHistory(db.Model):
+    """Track weekly overtime hours for employees"""
+    __tablename__ = 'overtime_history'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    employee_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=False)
+    week_start_date = db.Column(db.Date, nullable=False)
+    regular_hours = db.Column(db.Float, default=0)
+    overtime_hours = db.Column(db.Float, default=0)
+    total_hours = db.Column(db.Float, default=0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    employee = db.relationship('Employee', backref='overtime_history')
+    
+    # Unique constraint to prevent duplicate entries
+    __table_args__ = (
+        db.UniqueConstraint('employee_id', 'week_start_date', name='_employee_week_uc'),
+    )
+
+class SkillRequirement(db.Model):
+    """Define skill requirements for different shift types"""
+    __tablename__ = 'skill_requirements'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    skill_id = db.Column(db.Integer, db.ForeignKey('skill.id'), nullable=False)
+    shift_type = db.Column(db.String(50), nullable=False)  # day, evening, night
+    minimum_required = db.Column(db.Integer, default=1)
+    position_id =
