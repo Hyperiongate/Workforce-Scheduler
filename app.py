@@ -3871,7 +3871,39 @@ def populate_crews():
         <p>Make sure you've run <a href="/init-db">/init-db</a> first to create positions and skills.</p>
         <p><a href="/dashboard" class="btn btn-secondary">Return to Dashboard</a></p>
         '''
-
+@app.route('/crews')
+@login_required
+def view_crews():
+    """View all crews and their members"""
+    # Get all employees grouped by crew
+    crews = {}
+    employees = Employee.query.filter(Employee.crew != None).order_by(Employee.crew, Employee.name).all()
+    
+    for employee in employees:
+        if employee.crew not in crews:
+            crews[employee.crew] = []
+        crews[employee.crew].append(employee)
+    
+    # Get supervisor for each crew
+    crew_supervisors = {}
+    for crew in crews:
+        supervisor = Employee.query.filter_by(crew=crew, is_supervisor=True).first()
+        crew_supervisors[crew] = supervisor
+    
+    # Get statistics for each crew
+    crew_stats = {}
+    for crew, members in crews.items():
+        crew_stats[crew] = {
+            'total': len(members),
+            'supervisors': len([e for e in members if e.is_supervisor]),
+            'operators': len([e for e in members if not e.is_supervisor]),
+            'positions': len(set([e.position.name for e in members if e.position]))
+        }
+    
+    return render_template('view_crews.html', 
+                         crews=crews, 
+                         crew_supervisors=crew_supervisors,
+                         crew_stats=crew_stats)
 # ==================== ADDITIONAL DATABASE ROUTES ====================
 
 @app.route('/add-communication-tables')
