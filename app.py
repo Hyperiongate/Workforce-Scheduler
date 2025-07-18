@@ -1,4 +1,4 @@
-from flask import Flask, render_template
+from flask import Flask, render_template, request
 from flask_login import LoginManager
 from models import db, Employee
 import os
@@ -48,7 +48,7 @@ app.register_blueprint(schedule_bp)
 app.register_blueprint(supervisor_bp)
 app.register_blueprint(employee_bp)
 
-# Database initialization routes (keep these in main app.py for now)
+# Database initialization routes
 @app.route('/init-db')
 def init_db():
     """Initialize database with all tables"""
@@ -104,6 +104,122 @@ def init_db():
         </ul>
         <p><a href="/login">Go to login</a></p>
         '''
+
+@app.route('/add-overtime-tables')
+def add_overtime_tables():
+    """Add the new overtime and skill tracking tables"""
+    if request.args.get('confirm') != 'yes':
+        return '''
+        <h2>Add Overtime and Skill Tracking Tables</h2>
+        <p>This will add the following new tables to your database:</p>
+        <ul>
+            <li><strong>OvertimeHistory</strong> - Track weekly overtime hours for each employee</li>
+            <li><strong>SkillRequirement</strong> - Define skill requirements for shifts</li>
+            <li><strong>EmployeeSkill</strong> - Track employee skill certifications</li>
+            <li><strong>FileUpload</strong> - Track uploaded Excel files</li>
+        </ul>
+        <p><a href="/add-overtime-tables?confirm=yes" class="btn btn-primary">Click here to add tables</a></p>
+        '''
+    
+    try:
+        db.create_all()
+        return '''
+        <h2>✅ Success!</h2>
+        <p>Overtime and skill tracking tables have been added to the database.</p>
+        <p>You can now:</p>
+        <ul>
+            <li>Upload Excel files with overtime data</li>
+            <li>Track 13-week overtime history</li>
+            <li>Manage employee skill certifications</li>
+            <li>Define skill requirements for different shifts</li>
+        </ul>
+        <p><a href="/dashboard">Return to Dashboard</a></p>
+        '''
+    except Exception as e:
+        return f'<h2>❌ Error</h2><p>Failed to add tables: {str(e)}</p>'
+
+@app.route('/populate-crews')
+def populate_crews():
+    """Quick link to populate demo data"""
+    if request.args.get('confirm') != 'yes':
+        return '''
+        <h2>🏗️ Populate 4 Crews for Testing</h2>
+        <p>This will create <strong>40 employees</strong> (10 per crew) with:</p>
+        <ul>
+            <li><strong>Crew A:</strong> 10 employees (Day shift preference)</li>
+            <li><strong>Crew B:</strong> 10 employees (Day shift preference)</li>
+            <li><strong>Crew C:</strong> 10 employees (Night shift preference)</li>
+            <li><strong>Crew D:</strong> 10 employees (Night shift preference)</li>
+        </ul>
+        <p><strong>All passwords:</strong> password123</p>
+        <p><a href="/populate-crews?confirm=yes" onclick="return confirm('Create 40 test employees?')">Yes, Populate Crews</a></p>
+        <p><a href="/dashboard">Cancel</a></p>
+        '''
+    
+    try:
+        # Create test employees
+        from models import Position, Skill
+        positions = Position.query.all()
+        skills = Skill.query.all()
+        
+        if not positions:
+            return '<h2>Error</h2><p>Please run /init-db first to create positions.</p>'
+        
+        crew_names = {
+            'A': ['Alice Anderson', 'Adam Martinez', 'Angela Brown', 'Andrew Wilson'],
+            'B': ['Barbara Bennett', 'Brian Clark', 'Betty Rodriguez', 'Benjamin Lewis'],
+            'C': ['Carol Campbell', 'Charles Parker', 'Christine Evans', 'Christopher Turner'],
+            'D': ['Diana Davidson', 'David Foster', 'Deborah Murphy', 'Daniel Rivera']
+        }
+        
+        created = 0
+        for crew, names in crew_names.items():
+            for i, name in enumerate(names):
+                email = name.lower().replace(' ', '.') + '@company.com'
+                existing = Employee.query.filter_by(email=email).first()
+                if not existing:
+                    emp = Employee(
+                        name=name,
+                        email=email,
+                        phone=f'555-{crew}{str(i).zfill(3)}',
+                        is_supervisor=(i == 0),  # First in each crew is supervisor
+                        crew=crew,
+                        position_id=positions[i % len(positions)].id,
+                        vacation_days=10,
+                        sick_days=5,
+                        personal_days=3
+                    )
+                    emp.set_password('password123')
+                    db.session.add(emp)
+                    created += 1
+        
+        db.session.commit()
+        return f'''
+        <h2>✅ Success!</h2>
+        <p>Created {created} employees across 4 crews.</p>
+        <p><a href="/dashboard">Go to Dashboard</a></p>
+        '''
+    except Exception as e:
+        db.session.rollback()
+        return f'<h2>Error</h2><p>{str(e)}</p>'
+
+@app.route('/debug-routes')
+def debug_routes():
+    """Show all registered routes for debugging"""
+    routes = []
+    for rule in app.url_map.iter_rules():
+        routes.append({
+            'endpoint': rule.endpoint,
+            'methods': list(rule.methods),
+            'path': str(rule)
+        })
+    
+    output = '<h2>Registered Routes</h2><ul>'
+    for route in sorted(routes, key=lambda x: x['path']):
+        output += f"<li><strong>{route['path']}</strong> - {route['endpoint']} ({', '.join(route['methods'])})</li>"
+    output += '</ul><p><a href="/dashboard">Back to Dashboard</a></p>'
+    
+    return output
 
 # Error handlers
 @app.errorhandler(404)
