@@ -278,7 +278,7 @@ def logout():
 @app.route('/dashboard')
 @login_required
 def dashboard():
-    if current_user.role != 'supervisor':
+    if not current_user.is_supervisor:
         flash('Access denied. Supervisors only.')
         return redirect(url_for('employee_dashboard'))
     
@@ -362,7 +362,7 @@ def dashboard():
     pending_requests = pending_time_off + pending_swaps + pending_suggestions
     
     # Get other supervisors for quick message
-    supervisors = Employee.query.filter_by(role='supervisor').all()
+    supervisors = Employee.query.filter_by(is_supervisor=True).all()
     
     # Get positions for announcements
     positions = Position.query.all()
