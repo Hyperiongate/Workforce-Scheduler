@@ -22,14 +22,14 @@
         
         .header-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
             gap: 1rem;
             margin-top: 1.5rem;
         }
         
         .header-item {
             background: white;
-            padding: 1rem;
+            padding: 1.25rem;
             border-radius: 0.375rem;
             border: 1px solid #dee2e6;
             text-decoration: none;
@@ -52,112 +52,57 @@
             color: #0d6efd;
         }
         
-        .main-content {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 2rem;
-            margin-bottom: 2rem;
-        }
-        
-        .info-card {
-            background: white;
-            border: 1px solid #dee2e6;
-            border-radius: 0.5rem;
-            padding: 2rem;
-            text-align: center;
-        }
-        
-        .info-card h2 {
-            font-size: 3rem;
-            color: #0d6efd;
-            margin-bottom: 0.5rem;
-        }
-        
-        .info-card p {
-            color: #6c757d;
-            margin: 0;
-            font-size: 1.1rem;
-        }
-        
-        .schedule-section {
-            background: white;
-            border: 1px solid #dee2e6;
-            border-radius: 0.5rem;
-            padding: 2rem;
-            margin-bottom: 2rem;
-        }
-        
-        .schedule-section h3 {
-            margin-bottom: 1.5rem;
-            color: #212529;
-        }
-        
-        .bottom-section {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 2rem;
-        }
-        
-        .bottom-card {
-            background: white;
-            border: 1px solid #dee2e6;
-            border-radius: 0.5rem;
-            padding: 1.5rem;
-        }
-        
-        .bottom-card h4 {
-            margin-bottom: 1rem;
-            color: #212529;
-            font-size: 1.25rem;
-        }
-        
-        .action-list {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-        }
-        
-        .action-list li {
-            margin-bottom: 0.5rem;
-        }
-        
-        .action-list a {
-            display: block;
-            padding: 0.75rem 1rem;
-            background: #f8f9fa;
-            border-radius: 0.375rem;
-            text-decoration: none;
-            color: #212529;
-            transition: all 0.2s;
-        }
-        
-        .action-list a:hover {
-            background: #e9ecef;
-            color: #0d6efd;
-        }
-        
-        .quick-message-form {
-            margin-top: 1rem;
-        }
-        
-        .status-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 0.5rem 0;
-            border-bottom: 1px solid #e9ecef;
-        }
-        
-        .status-item:last-child {
-            border-bottom: none;
-        }
-        
-        .badge-count {
+        .header-item .badge-count {
+            margin-left: auto;
             background: #dc3545;
             color: white;
             padding: 0.25rem 0.5rem;
             border-radius: 0.25rem;
             font-size: 0.875rem;
+        }
+        
+        .header-item .count-number {
+            margin-left: auto;
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #0d6efd;
+        }
+        
+        .quick-message-section {
+            background: white;
+            border: 1px solid #dee2e6;
+            border-radius: 0.5rem;
+            padding: 2rem;
+            margin-bottom: 2rem;
+        }
+        
+        .quick-message-section h3 {
+            margin-bottom: 1.5rem;
+            color: #212529;
+        }
+        
+        .status-section {
+            background: white;
+            border: 1px solid #dee2e6;
+            border-radius: 0.5rem;
+            padding: 2rem;
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+        }
+        
+        .status-item {
+            text-align: center;
+        }
+        
+        .status-item h4 {
+            color: #0d6efd;
+            margin-bottom: 0.5rem;
+        }
+        
+        .status-item p {
+            color: #6c757d;
+            margin: 0;
         }
     </style>
 </head>
@@ -200,10 +145,36 @@
 
         <h1 class="mb-4">Supervisor Dashboard</h1>
 
-        <!-- Header Section -->
+        <!-- Header Section - Quick Access -->
         <div class="header-section">
             <h2>Quick Access</h2>
             <div class="header-grid">
+                <!-- Coverage Gaps -->
+                <a href="/supervisor/coverage-needs" class="header-item">
+                    <i class="bi bi-exclamation-triangle-fill"></i>
+                    <span>Coverage Gaps</span>
+                    <span class="count-number">{{ coverage_gaps|default(0) }}</span>
+                </a>
+                
+                <!-- Pending Requests -->
+                <a href="/supervisor/time-off-requests" class="header-item">
+                    <i class="bi bi-clock-fill"></i>
+                    <span>Pending Requests</span>
+                    <span class="count-number">{{ pending_requests }}</span>
+                </a>
+                
+                <!-- View Schedule -->
+                <a href="/schedule/view" class="header-item">
+                    <i class="bi bi-calendar-week"></i>
+                    <span>View Schedule</span>
+                </a>
+                
+                <!-- Create Schedule -->
+                <a href="/schedule/create" class="header-item">
+                    <i class="bi bi-calendar-plus"></i>
+                    <span>Create Schedule</span>
+                </a>
+                
                 <!-- Employees -->
                 <a href="/dashboard" class="header-item">
                     <i class="bi bi-people-fill"></i>
@@ -228,31 +199,28 @@
                     <span>Update Overtime Worked</span>
                 </a>
                 
-                <!-- Requests -->
-                <a href="/supervisor/time-off-requests" class="header-item">
-                    <i class="bi bi-inbox"></i>
-                    <span>Requests</span>
-                    {% if pending_requests > 0 %}
-                    <span class="badge-count">{{ pending_requests }}</span>
-                    {% endif %}
+                <!-- Import Employees -->
+                <a href="/import-employees" class="header-item">
+                    <i class="bi bi-upload"></i>
+                    <span>Import Employees</span>
                 </a>
                 
                 <!-- Time Off Requests -->
                 <a href="/supervisor/time-off-requests" class="header-item">
                     <i class="bi bi-calendar-x"></i>
                     <span>Time Off Requests</span>
+                    {% if pending_time_off > 0 %}
+                    <span class="badge-count">{{ pending_time_off }}</span>
+                    {% endif %}
                 </a>
                 
                 <!-- Swap Requests -->
                 <a href="/supervisor/swap-requests" class="header-item">
                     <i class="bi bi-arrow-left-right"></i>
                     <span>Swap Requests</span>
-                </a>
-                
-                <!-- Communications -->
-                <a href="/supervisor/messages" class="header-item">
-                    <i class="bi bi-chat-dots"></i>
-                    <span>Communications</span>
+                    {% if pending_swaps > 0 %}
+                    <span class="badge-count">{{ pending_swaps }}</span>
+                    {% endif %}
                 </a>
                 
                 <!-- Supervisor Messages -->
@@ -277,6 +245,9 @@
                 <a href="/supervisor/suggestions" class="header-item">
                     <i class="bi bi-lightbulb"></i>
                     <span>Employee Suggestions</span>
+                    {% if pending_suggestions > 0 %}
+                    <span class="badge-count">{{ pending_suggestions }}</span>
+                    {% endif %}
                 </a>
                 
                 <!-- Vacation Calendar -->
@@ -295,117 +266,57 @@
                 <a href="/shift-marketplace" class="header-item">
                     <i class="bi bi-shop"></i>
                     <span>Shift Swap Marketplace</span>
+                    {% if active_trades > 0 %}
+                    <span class="badge-count">{{ active_trades }}</span>
+                    {% endif %}
                 </a>
             </div>
         </div>
 
-        <!-- Main Content -->
-        <div class="main-content">
-            <!-- Coverage Gaps -->
-            <div class="info-card">
-                <h2>{{ coverage_gaps|default(0) }}</h2>
-                <p>Coverage Gaps</p>
-                <a href="/supervisor/coverage-needs" class="btn btn-primary mt-3">View Details</a>
-            </div>
-            
-            <!-- Pending Requests -->
-            <div class="info-card">
-                <h2>{{ pending_requests }}</h2>
-                <p>Pending Requests</p>
-                <a href="/supervisor/time-off-requests" class="btn btn-warning mt-3">Review Now</a>
-            </div>
-        </div>
-
-        <!-- Schedule Section -->
-        <div class="schedule-section">
-            <div class="d-flex justify-content-between align-items-center mb-3">
-                <h3>Today's Schedule</h3>
-                <a href="/schedule/view" class="btn btn-outline-primary">View Full Schedule</a>
-            </div>
-            {% if todays_shifts %}
-                <div class="table-responsive">
-                    <table class="table">
-                        <thead>
-                            <tr>
-                                <th>Position</th>
-                                <th>Employee</th>
-                                <th>Time</th>
-                                <th>Crew</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for shift in todays_shifts[:8] %}
-                            <tr>
-                                <td>{{ shift.position_name }}</td>
-                                <td>{{ shift.employee_name }}</td>
-                                <td>{{ shift.start_time }} - {{ shift.end_time }}</td>
-                                <td>Crew {{ shift.crew|default('-') }}</td>
-                            </tr>
+        <!-- Quick Message Section -->
+        <div class="quick-message-section">
+            <h3>Quick Message to Supervisor</h3>
+            <form action="/quick/supervisor-message" method="POST">
+                <div class="row">
+                    <div class="col-md-4">
+                        <select name="recipient_id" class="form-select" required>
+                            <option value="">Select Supervisor...</option>
+                            {% for supervisor in supervisors %}
+                                {% if supervisor.id != current_user.id %}
+                                <option value="{{ supervisor.id }}">{{ supervisor.name }}</option>
+                                {% endif %}
                             {% endfor %}
-                        </tbody>
-                    </table>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <input type="text" name="message" class="form-control" placeholder="Type your message..." required>
+                    </div>
+                    <div class="col-md-2">
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class="bi bi-send"></i> Send
+                        </button>
+                    </div>
                 </div>
-            {% else %}
-                <p class="text-muted text-center">No shifts scheduled for today</p>
-            {% endif %}
+            </form>
         </div>
 
-        <!-- Bottom Section -->
-        <div class="bottom-section">
-            <!-- Schedule Management -->
-            <div class="bottom-card">
-                <h4>Schedule Management</h4>
-                <ul class="action-list">
-                    <li><a href="/schedule/create"><i class="bi bi-plus-circle"></i> Create a Schedule</a></li>
-                    <li><a href="/import-employees"><i class="bi bi-upload"></i> Import Employees</a></li>
-                </ul>
+        <!-- System Status Bar -->
+        <div class="status-section">
+            <div class="status-item">
+                <h4>{{ total_employees }}</h4>
+                <p>Total Employees</p>
             </div>
-
-            <!-- Communications -->
-            <div class="bottom-card">
-                <h4>Communications</h4>
-                <ul class="action-list">
-                    <li><a href="/supervisor/messages"><i class="bi bi-envelope"></i> Supervisor Messages</a></li>
-                    <li><a href="/maintenance/issues"><i class="bi bi-tools"></i> Maintenance Issues</a></li>
-                </ul>
-                
-                <h5 class="mt-3">Quick Message</h5>
-                <form action="/quick/supervisor-message" method="POST" class="quick-message-form">
-                    <select name="recipient_id" class="form-select form-select-sm mb-2" required>
-                        <option value="">Select Supervisor...</option>
-                        {% for supervisor in supervisors %}
-                            {% if supervisor.id != current_user.id %}
-                            <option value="{{ supervisor.id }}">{{ supervisor.name }}</option>
-                            {% endif %}
-                        {% endfor %}
-                    </select>
-                    <textarea name="message" class="form-control form-control-sm mb-2" rows="2" placeholder="Message..." required></textarea>
-                    <button type="submit" class="btn btn-primary btn-sm w-100">Send</button>
-                </form>
+            <div class="status-item">
+                <h4>{{ on_duty_now|default(0) }}</h4>
+                <p>On Duty Now</p>
             </div>
-
-            <!-- System Status -->
-            <div class="bottom-card">
-                <h4>System Status</h4>
-                <div class="status-item">
-                    <span>Database</span>
-                    <span class="badge bg-success">Healthy</span>
-                </div>
-                <div class="status-item">
-                    <span>Active Users</span>
-                    <span>{{ active_users|default(1) }}</span>
-                </div>
-                <div class="status-item">
-                    <span>Last Sync</span>
-                    <span>{{ last_sync|default('Just now') }}</span>
-                </div>
-                
-                <h5 class="mt-3">Shift Marketplace</h5>
-                <div class="text-center mt-2">
-                    <h3 class="text-primary mb-0">{{ active_trades|default(0) }}</h3>
-                    <p class="text-muted small">Active Trades</p>
-                    <a href="/shift-marketplace" class="btn btn-outline-primary btn-sm">View Marketplace</a>
-                </div>
+            <div class="status-item">
+                <h4 class="text-success">Active</h4>
+                <p>System Status</p>
+            </div>
+            <div class="status-item">
+                <h4>{{ active_users|default(1) }}</h4>
+                <p>Active Users</p>
             </div>
         </div>
     </div>
