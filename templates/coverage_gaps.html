@@ -1,251 +1,427 @@
-{% extends "base.html" %}
-
-{% block title %}Coverage Gaps - Workforce Scheduler{% endblock %}
-
-{% block content %}
-<div class="container-fluid mt-4">
-    <div class="row mb-4">
-        <div class="col-md-12">
-            <h2>Coverage Gaps Analysis</h2>
-            <p class="text-muted">Identify and address staffing shortfalls</p>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Coverage Gaps - Workforce Scheduler</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
+    <style>
+        body {
+            background-color: #f5f7fa;
+        }
+        
+        .page-header {
+            background: white;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            border-bottom: 3px solid #f093fb;
+        }
+        
+        .gap-card {
+            background: white;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+            border-left: 4px solid;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            transition: all 0.3s ease;
+        }
+        
+        .gap-card:hover {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            transform: translateY(-2px);
+        }
+        
+        .gap-card.critical { border-left-color: #dc3545; }
+        .gap-card.warning { border-left-color: #ffc107; }
+        .gap-card.upcoming { border-left-color: #17a2b8; }
+        
+        .severity-badge {
+            padding: 0.35rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.875rem;
+            font-weight: 600;
+        }
+        
+        .badge-critical { background: #f8d7da; color: #721c24; }
+        .badge-warning { background: #fff3cd; color: #856404; }
+        .badge-upcoming { background: #d1ecf1; color: #0c5460; }
+        
+        .position-info {
+            display: flex;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        
+        .position-icon {
+            width: 50px;
+            height: 50px;
+            border-radius: 8px;
+            background: #f093fb;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            margin-right: 1rem;
+        }
+        
+        .coverage-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem;
+            margin: 1rem 0;
+        }
+        
+        .stat-box {
+            background: #f8f9fa;
+            padding: 1rem;
+            border-radius: 4px;
+            text-align: center;
+        }
+        
+        .stat-number {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #f093fb;
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+        
+        .summary-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        
+        .summary-card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            text-align: center;
+            border: 2px solid;
+            transition: all 0.3s ease;
+        }
+        
+        .summary-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        
+        .summary-card.critical { border-color: #dc3545; }
+        .summary-card.warning { border-color: #ffc107; }
+        .summary-card.upcoming { border-color: #17a2b8; }
+        .summary-card.covered { border-color: #28a745; }
+        
+        .calendar-view {
+            background: white;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 2rem;
+        }
+        
+        .day-column {
+            border-right: 1px solid #e9ecef;
+            padding: 0.5rem;
+            min-height: 100px;
+        }
+        
+        .day-column:last-child {
+            border-right: none;
+        }
+        
+        .shift-block {
+            background: #f8d7da;
+            border-radius: 4px;
+            padding: 0.25rem 0.5rem;
+            margin-bottom: 0.25rem;
+            font-size: 0.75rem;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/dashboard">
+                <i class="bi bi-calendar-week"></i> Workforce Scheduler
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/dashboard">Dashboard</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/supervisor/coverage-needs">Coverage Gaps</a>
+                    </li>
+                </ul>
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown">
+                            <i class="bi bi-person-circle"></i> {{ current_user.name }}
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><a class="dropdown-item" href="/logout">Logout</a></li>
+                        </ul>
+                    </li>
+                </ul>
+            </div>
         </div>
-    </div>
+    </nav>
 
-    <!-- Filter Controls -->
-    <div class="card mb-4">
-        <div class="card-body">
-            <form method="GET" action="{{ url_for('coverage_gaps') }}" class="row g-3">
-                <div class="col-md-3">
-                    <label for="crew" class="form-label">Crew</label>
-                    <select class="form-select" id="crew" name="crew">
-                        <option value="ALL" {% if selected_crew == 'ALL' %}selected{% endif %}>All Crews</option>
-                        <option value="A" {% if selected_crew == 'A' %}selected{% endif %}>Crew A</option>
-                        <option value="B" {% if selected_crew == 'B' %}selected{% endif %}>Crew B</option>
-                        <option value="C" {% if selected_crew == 'C' %}selected{% endif %}>Crew C</option>
-                        <option value="D" {% if selected_crew == 'D' %}selected{% endif %}>Crew D</option>
-                    </select>
+    <div class="page-header">
+        <div class="container-fluid">
+            <div class="row align-items-center">
+                <div class="col">
+                    <h1><i class="bi bi-exclamation-triangle-fill" style="color: #f093fb;"></i> Coverage Gaps</h1>
+                    <p class="text-muted mb-0">Monitor and fill unfilled positions across all shifts</p>
                 </div>
-                <div class="col-md-3">
-                    <label for="days_ahead" class="form-label">Days Ahead</label>
-                    <select class="form-select" id="days_ahead" name="days_ahead">
-                        <option value="7" {% if days_ahead == 7 %}selected{% endif %}>Next 7 days</option>
-                        <option value="14" {% if days_ahead == 14 %}selected{% endif %}>Next 14 days</option>
-                        <option value="30" {% if days_ahead == 30 %}selected{% endif %}>Next 30 days</option>
-                    </select>
-                </div>
-                <div class="col-md-3">
-                    <label for="shift_type" class="form-label">Shift Type</label>
-                    <select class="form-select" id="shift_type" name="shift_type">
-                        <option value="">All Shifts</option>
-                        <option value="day" {% if shift_type == 'day' %}selected{% endif %}>Day</option>
-                        <option value="evening" {% if shift_type == 'evening' %}selected{% endif %}>Evening</option>
-                        <option value="night" {% if shift_type == 'night' %}selected{% endif %}>Night</option>
-                    </select>
-                </div>
-                <div class="col-md-3">
-                    <label class="form-label">&nbsp;</label>
-                    <button type="submit" class="btn btn-primary w-100">Apply Filters</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- Summary Statistics -->
-    <div class="row mb-4">
-        <div class="col-md-3">
-            <div class="card text-center">
-                <div class="card-body">
-                    <h5 class="card-title">Total Gaps</h5>
-                    <h2 class="text-danger">{{ coverage_gaps|length }}</h2>
+                <div class="col-auto">
+                    <button class="btn btn-primary">
+                        <i class="bi bi-arrow-clockwise"></i> Refresh
+                    </button>
                 </div>
             </div>
         </div>
-        <div class="col-md-3">
-            <div class="card text-center">
-                <div class="card-body">
-                    <h5 class="card-title">Critical (Today)</h5>
-                    <h2 class="text-danger">
-                        {{ coverage_gaps|selectattr('date', 'equalto', today)|list|length }}
-                    </h2>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card text-center">
-                <div class="card-body">
-                    <h5 class="card-title">This Week</h5>
-                    <h2 class="text-warning">
-                        {{ coverage_gaps|selectattr('date', 'le', week_end)|list|length }}
-                    </h2>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card text-center">
-                <div class="card-body">
-                    <h5 class="card-title">Total Positions Needed</h5>
-                    <h2 class="text-info">
-                        {{ coverage_gaps|sum(attribute='gap') }}
-                    </h2>
-                </div>
-            </div>
-        </div>
     </div>
 
-    <!-- Coverage Gaps Table -->
-    <div class="card">
-        <div class="card-header">
-            <h5 class="mb-0">Coverage Gaps Detail</h5>
-        </div>
-        <div class="card-body">
-            {% if coverage_gaps %}
-                <div class="table-responsive">
-                    <table class="table table-hover">
-                        <thead>
-                            <tr>
-                                <th>Date</th>
-                                <th>Day</th>
-                                <th>Shift</th>
-                                <th>Crew</th>
-                                <th>Scheduled</th>
-                                <th>Required</th>
-                                <th>Gap</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for gap in coverage_gaps %}
-                            <tr class="{% if gap.date == today %}table-danger{% elif gap.gap >= 2 %}table-warning{% endif %}">
-                                <td>{{ gap.date.strftime('%m/%d/%Y') }}</td>
-                                <td>{{ gap.date.strftime('%A') }}</td>
-                                <td>
-                                    <span class="badge bg-{% if gap.shift_type == 'day' %}warning{% elif gap.shift_type == 'evening' %}info{% else %}dark{% endif %}">
-                                        {{ gap.shift_type|title }}
-                                    </span>
-                                </td>
-                                <td>{{ gap.crew if gap.crew != 'ALL' else 'All' }}</td>
-                                <td>{{ gap.scheduled }}</td>
-                                <td>{{ gap.required }}</td>
-                                <td>
-                                    <span class="badge bg-danger">-{{ gap.gap }}</span>
-                                </td>
-                                <td>
-                                    <div class="btn-group btn-group-sm" role="group">
-                                        <a href="{{ url_for('fill_gap', date=gap.date, shift_type=gap.shift_type, crew=gap.crew) }}" 
-                                           class="btn btn-primary btn-sm">
-                                            <i class="bi bi-person-plus"></i> Fill Gap
-                                        </a>
-                                        <button type="button" class="btn btn-secondary btn-sm" 
-                                                onclick="showCoverageOptions('{{ gap.date }}', '{{ gap.shift_type }}', '{{ gap.crew }}')">
-                                            <i class="bi bi-broadcast"></i> Push
-                                        </button>
-                                    </div>
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-
-                <!-- Pagination if needed -->
-                {% if coverage_gaps|length > 20 %}
-                <nav aria-label="Page navigation">
-                    <ul class="pagination justify-content-center">
-                        <li class="page-item disabled"><a class="page-link" href="#">Previous</a></li>
-                        <li class="page-item active"><a class="page-link" href="#">1</a></li>
-                        <li class="page-item"><a class="page-link" href="#">2</a></li>
-                        <li class="page-item"><a class="page-link" href="#">3</a></li>
-                        <li class="page-item"><a class="page-link" href="#">Next</a></li>
-                    </ul>
-                </nav>
-                {% endif %}
-            {% else %}
-                <div class="alert alert-success text-center">
-                    <i class="bi bi-check-circle-fill"></i>
-                    <h5>No Coverage Gaps!</h5>
-                    <p>All shifts are adequately staffed for the selected period.</p>
-                </div>
-            {% endif %}
-        </div>
-    </div>
-
-    <!-- Quick Actions -->
-    <div class="mt-4">
-        <a href="{{ url_for('coverage_needs') }}" class="btn btn-secondary">
-            <i class="bi bi-list-check"></i> View All Coverage Needs
-        </a>
-        <a href="{{ url_for('overtime_distribution') }}" class="btn btn-info">
-            <i class="bi bi-clock-history"></i> Overtime Distribution
-        </a>
-        <a href="{{ url_for('casual_workers') }}" class="btn btn-warning">
-            <i class="bi bi-person-badge"></i> Casual Workers
-        </a>
-    </div>
-</div>
-
-<!-- Coverage Push Modal -->
-<div class="modal fade" id="coveragePushModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Push Coverage Request</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+    <div class="container-fluid">
+        <!-- Summary Cards -->
+        <div class="summary-cards">
+            <div class="summary-card critical">
+                <h2 style="color: #dc3545;">2</h2>
+                <p class="mb-0">Critical Gaps<br><small>Next 24 hours</small></p>
             </div>
-            <div class="modal-body">
-                <form id="coveragePushForm">
-                    <div class="mb-3">
-                        <label class="form-label">Push To:</label>
-                        <div class="form-check">
-                            <input class="form-check-input" type="radio" name="push_to" id="push_my_crew" value="my_crew" checked>
-                            <label class="form-check-label" for="push_my_crew">
-                                My Crew Only
-                            </label>
-                        </div>
-                        <div class="form-check">
-                            <input class="form-check-input" type="radio" name="push_to" id="push_off_crews" value="off_crews">
-                            <label class="form-check-label" for="push_off_crews">
-                                Off-Duty Crews
-                            </label>
-                        </div>
-                        <div class="form-check">
-                            <input class="form-check-input" type="radio" name="push_to" id="push_all" value="all">
-                            <label class="form-check-label" for="push_all">
-                                All Available Employees
-                            </label>
-                        </div>
+            <div class="summary-card warning">
+                <h2 style="color: #ffc107;">5</h2>
+                <p class="mb-0">Warning<br><small>Next 3 days</small></p>
+            </div>
+            <div class="summary-card upcoming">
+                <h2 style="color: #17a2b8;">8</h2>
+                <p class="mb-0">Upcoming<br><small>Next 7 days</small></p>
+            </div>
+            <div class="summary-card covered">
+                <h2 style="color: #28a745;">127</h2>
+                <p class="mb-0">Positions Filled<br><small>Next 7 days</small></p>
+            </div>
+        </div>
+
+        <!-- Critical Gaps -->
+        <h3 class="mb-3"><i class="bi bi-exclamation-circle text-danger"></i> Critical Gaps - Next 24 Hours</h3>
+        
+        <!-- Gap 1 -->
+        <div class="gap-card critical">
+            <div class="position-info">
+                <div class="position-icon" style="background: #dc3545;">
+                    <i class="bi bi-tools"></i>
+                </div>
+                <div class="flex-grow-1">
+                    <h5 class="mb-0">Lead Technician - Night Shift</h5>
+                    <p class="text-muted mb-0">Tonight (July 18) - 11:00 PM to 7:00 AM</p>
+                </div>
+                <span class="severity-badge badge-critical">CRITICAL</span>
+            </div>
+            
+            <div class="coverage-stats">
+                <div class="stat-box">
+                    <div class="stat-number">0/1</div>
+                    <small>Position Filled</small>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-number">8 hrs</div>
+                    <small>Until Shift</small>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-number">3</div>
+                    <small>Available Staff</small>
+                </div>
+            </div>
+            
+            <p class="mb-2"><strong>Reason:</strong> Mike Thompson called in sick - confirmed COVID positive</p>
+            
+            <div class="action-buttons">
+                <button class="btn btn-danger">
+                    <i class="bi bi-broadcast"></i> Send Urgent Coverage Request
+                </button>
+                <button class="btn btn-warning">
+                    <i class="bi bi-telephone"></i> Call Available Staff
+                </button>
+                <button class="btn btn-primary">
+                    <i class="bi bi-person-plus"></i> Assign Overtime
+                </button>
+                <button class="btn btn-secondary">
+                    <i class="bi bi-list"></i> View Available Staff
+                </button>
+            </div>
+        </div>
+
+        <!-- Gap 2 -->
+        <div class="gap-card critical">
+            <div class="position-info">
+                <div class="position-icon" style="background: #dc3545;">
+                    <i class="bi bi-person-badge"></i>
+                </div>
+                <div class="flex-grow-1">
+                    <h5 class="mb-0">Supervisor - Morning Shift</h5>
+                    <p class="text-muted mb-0">Tomorrow (July 19) - 7:00 AM to 3:00 PM</p>
+                </div>
+                <span class="severity-badge badge-critical">CRITICAL</span>
+            </div>
+            
+            <div class="coverage-stats">
+                <div class="stat-box">
+                    <div class="stat-number">0/1</div>
+                    <small>Position Filled</small>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-number">14 hrs</div>
+                    <small>Until Shift</small>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-number">2</div>
+                    <small>Qualified Staff</small>
+                </div>
+            </div>
+            
+            <p class="mb-2"><strong>Reason:</strong> Emergency family leave approved for Janet Williams</p>
+            
+            <div class="action-buttons">
+                <button class="btn btn-danger">
+                    <i class="bi bi-broadcast"></i> Send Urgent Coverage Request
+                </button>
+                <button class="btn btn-primary">
+                    <i class="bi bi-arrow-up-circle"></i> Promote Temporary Supervisor
+                </button>
+                <button class="btn btn-secondary">
+                    <i class="bi bi-people"></i> Check Other Crews
+                </button>
+            </div>
+        </div>
+
+        <!-- Warning Gaps -->
+        <h3 class="mb-3 mt-5"><i class="bi bi-exclamation-triangle text-warning"></i> Warning - Next 3 Days</h3>
+        
+        <!-- Gap 3 -->
+        <div class="gap-card warning">
+            <div class="position-info">
+                <div class="position-icon" style="background: #ffc107;">
+                    <i class="bi bi-gear"></i>
+                </div>
+                <div class="flex-grow-1">
+                    <h5 class="mb-0">Machine Operator - Afternoon Shift</h5>
+                    <p class="text-muted mb-0">July 20, 2025 - 3:00 PM to 11:00 PM</p>
+                </div>
+                <span class="severity-badge badge-warning">WARNING</span>
+            </div>
+            
+            <div class="coverage-stats">
+                <div class="stat-box">
+                    <div class="stat-number">2/3</div>
+                    <small>Positions Filled</small>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-number">2 days</div>
+                    <small>Until Shift</small>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-number">5</div>
+                    <small>Available Staff</small>
+                </div>
+            </div>
+            
+            <p class="mb-2"><strong>Reason:</strong> Approved vacation for regular operator</p>
+            
+            <div class="action-buttons">
+                <button class="btn btn-warning">
+                    <i class="bi bi-send"></i> Send Coverage Request
+                </button>
+                <button class="btn btn-primary">
+                    <i class="bi bi-calendar-plus"></i> Schedule Overtime
+                </button>
+                <button class="btn btn-info">
+                    <i class="bi bi-person-check"></i> Use Casual Worker
+                </button>
+            </div>
+        </div>
+
+        <!-- Calendar View -->
+        <h3 class="mb-3 mt-5"><i class="bi bi-calendar-week"></i> 7-Day Coverage Overview</h3>
+        <div class="calendar-view">
+            <div class="row">
+                <div class="col day-column">
+                    <strong>Today</strong><br>
+                    <small>Jul 18</small>
+                    <div class="shift-block">
+                        Night: Lead Tech
                     </div>
-                    <div class="mb-3">
-                        <label for="push_message" class="form-label">Message (Optional)</label>
-                        <textarea class="form-control" id="push_message" name="message" rows="3"
-                                  placeholder="Add any special instructions..."></textarea>
+                </div>
+                <div class="col day-column">
+                    <strong>Tomorrow</strong><br>
+                    <small>Jul 19</small>
+                    <div class="shift-block">
+                        Morning: Supervisor
                     </div>
-                </form>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary" onclick="sendCoveragePush()">Send Push</button>
+                </div>
+                <div class="col day-column">
+                    <strong>Sat</strong><br>
+                    <small>Jul 20</small>
+                    <div class="shift-block" style="background: #fff3cd;">
+                        Afternoon: Operator
+                    </div>
+                </div>
+                <div class="col day-column">
+                    <strong>Sun</strong><br>
+                    <small>Jul 21</small>
+                    <div class="text-success">
+                        <i class="bi bi-check-circle"></i> Fully Staffed
+                    </div>
+                </div>
+                <div class="col day-column">
+                    <strong>Mon</strong><br>
+                    <small>Jul 22</small>
+                    <div class="shift-block" style="background: #d1ecf1;">
+                        Morning: Technician
+                    </div>
+                </div>
+                <div class="col day-column">
+                    <strong>Tue</strong><br>
+                    <small>Jul 23</small>
+                    <div class="text-success">
+                        <i class="bi bi-check-circle"></i> Fully Staffed
+                    </div>
+                </div>
+                <div class="col day-column">
+                    <strong>Wed</strong><br>
+                    <small>Jul 24</small>
+                    <div class="shift-block" style="background: #d1ecf1;">
+                        Night: Operator
+                    </div>
+                </div>
             </div>
         </div>
+
+        <!-- Quick Actions -->
+        <div class="mt-4">
+            <button class="btn btn-lg btn-primary me-2">
+                <i class="bi bi-broadcast"></i> Send All Coverage Requests
+            </button>
+            <button class="btn btn-lg btn-secondary me-2">
+                <i class="bi bi-file-earmark-text"></i> Generate Coverage Report
+            </button>
+            <button class="btn btn-lg btn-info">
+                <i class="bi bi-bell"></i> Set Coverage Alerts
+            </button>
+        </div>
     </div>
-</div>
 
-<script>
-let currentGap = {};
-
-function showCoverageOptions(date, shiftType, crew) {
-    currentGap = { date, shiftType, crew };
-    new bootstrap.Modal(document.getElementById('coveragePushModal')).show();
-}
-
-function sendCoveragePush() {
-    // This would typically send an AJAX request to push the coverage request
-    alert(`Pushing coverage request for ${currentGap.date} ${currentGap.shiftType} shift to selected employees...`);
-    bootstrap.Modal.getInstance(document.getElementById('coveragePushModal')).hide();
-}
-
-// Auto-refresh every 5 minutes
-setTimeout(() => {
-    location.reload();
-}, 300000);
-</script>
-{% endblock %}
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
