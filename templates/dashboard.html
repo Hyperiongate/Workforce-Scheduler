@@ -12,7 +12,7 @@
         }
         
         .dashboard-container {
-            max-width: 1600px;
+            max-width: 1400px;
             margin: 0 auto;
             padding: 2rem;
         }
@@ -25,35 +25,30 @@
             text-align: center;
         }
         
-        .quick-access-grid {
+        .dashboard-columns {
             display: grid;
-            grid-template-columns: repeat(6, 1fr);
-            gap: 1rem;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 2rem;
             margin-top: 2rem;
         }
         
-        @media (max-width: 1400px) {
-            .quick-access-grid {
-                grid-template-columns: repeat(4, 1fr);
-            }
-        }
-        
         @media (max-width: 992px) {
-            .quick-access-grid {
-                grid-template-columns: repeat(3, 1fr);
+            .dashboard-columns {
+                grid-template-columns: 1fr;
+                gap: 1rem;
             }
         }
         
-        @media (max-width: 768px) {
-            .quick-access-grid {
-                grid-template-columns: repeat(2, 1fr);
-            }
+        .column {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
         }
         
         .access-card {
             background: white;
             border-radius: 10px;
-            padding: 1.25rem;
+            padding: 1.5rem;
             text-decoration: none;
             color: white;
             transition: all 0.3s ease;
@@ -61,10 +56,8 @@
             position: relative;
             overflow: hidden;
             display: flex;
-            flex-direction: column;
             align-items: center;
-            text-align: center;
-            min-height: 140px;
+            min-height: 90px;
         }
         
         .access-card:hover {
@@ -76,21 +69,31 @@
         
         .access-card i {
             font-size: 2rem;
-            margin-bottom: 0.75rem;
+            margin-right: 1rem;
             opacity: 0.95;
+        }
+        
+        .access-card-content {
+            flex-grow: 1;
         }
         
         .access-card h3 {
             margin: 0;
-            font-size: 0.95rem;
+            font-size: 1.1rem;
             font-weight: 600;
             line-height: 1.2;
         }
         
+        .access-card p {
+            margin: 0.25rem 0 0 0;
+            font-size: 0.85rem;
+            opacity: 0.9;
+        }
+        
         .access-card-number {
-            font-size: 1.75rem;
+            font-size: 2rem;
             font-weight: 700;
-            margin-top: 0.5rem;
+            margin-left: auto;
         }
         
         .badge-alert {
@@ -113,38 +116,41 @@
             100% { transform: scale(1); }
         }
         
-        /* Color themes - 18 different gradient combinations */
-        .card-1 { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
-        .card-2 { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
-        .card-3 { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); }
-        .card-4 { background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); }
-        .card-5 { background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); }
-        .card-6 { background: linear-gradient(135deg, #30cfd0 0%, #330867 100%); }
-        .card-7 { background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); color: #2c3e50; }
-        .card-7 i { color: #2c3e50; }
-        .card-8 { background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%); }
-        .card-9 { background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%); }
-        .card-10 { background: linear-gradient(135deg, #ff6e7f 0%, #bfe9ff 100%); }
-        .card-11 { background: linear-gradient(135deg, #e0c3fc 0%, #8ec5fc 100%); }
-        .card-12 { background: linear-gradient(135deg, #f77062 0%, #fe5196 100%); }
-        .card-13 { background: linear-gradient(135deg, #17ead9 0%, #6078ea 100%); }
-        .card-14 { background: linear-gradient(135deg, #622774 0%, #c53364 100%); }
-        .card-15 { background: linear-gradient(135deg, #7F00FF 0%, #E100FF 100%); }
-        .card-16 { background: linear-gradient(135deg, #FBD786 0%, #f7797d 100%); }
-        .card-17 { background: linear-gradient(135deg, #4158D0 0%, #C850C0 46%, #FFCC70 100%); }
-        .card-18 { background: linear-gradient(135deg, #00b09b 0%, #96c93d 100%); }
+        /* Column 1 Colors - Requests & Info */
+        .card-timeoff { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        .card-swap { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
+        .card-coverage { background: linear-gradient(135deg, #ff6e7f 0%, #bfe9ff 100%); }
+        .card-employees { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); }
+        .card-vacation { background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); }
+        .card-casual { background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); color: #2c3e50; }
+        .card-casual i { color: #2c3e50; }
+        .card-casual:hover { color: #2c3e50; }
+        .card-marketplace { background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); }
         
-        /* Ensure all text is readable */
-        .card-7:hover { color: #2c3e50; }
+        /* Column 2 Colors - Schedule & Management */
+        .card-view-schedule { background: linear-gradient(135deg, #30cfd0 0%, #330867 100%); }
+        .card-create-schedule { background: linear-gradient(135deg, #00b09b 0%, #96c93d 100%); }
+        .card-adjust-coverage { background: linear-gradient(135deg, #e0c3fc 0%, #8ec5fc 100%); }
+        .card-overtime { background: linear-gradient(135deg, #f77062 0%, #fe5196 100%); }
+        
+        /* Column 3 Colors - Communications */
+        .card-maintenance { background: linear-gradient(135deg, #622774 0%, #c53364 100%); }
+        .card-employee-msg { background: linear-gradient(135deg, #17ead9 0%, #6078ea 100%); }
+        .card-supervisor-msg { background: linear-gradient(135deg, #FBD786 0%, #f7797d 100%); }
         
         /* Special styling for metric cards */
-        .metric-card .access-card-number {
-            font-size: 2.25rem;
-            margin-top: 0.25rem;
+        .metric-card {
+            font-weight: bold;
         }
         
-        .metric-card h3 {
+        .column-header {
+            color: #495057;
             font-size: 0.9rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.5rem;
+            padding-left: 0.5rem;
         }
     </style>
 </head>
@@ -187,132 +193,158 @@
 
         <h1 class="dashboard-title">Supervisor Dashboard</h1>
 
-        <!-- Quick Access Grid - 3 rows of 6 cards -->
-        <div class="quick-access-grid">
-            <!-- Row 1 -->
-            <!-- Coverage Gaps -->
-            <a href="/supervisor/coverage-needs" class="access-card card-2 metric-card">
-                <i class="bi bi-exclamation-triangle-fill"></i>
-                <h3>Coverage Gaps</h3>
-                <div class="access-card-number">{{ coverage_gaps|default(0) }}</div>
-            </a>
-            
-            <!-- Pending Requests -->
-            <a href="/supervisor/time-off-requests" class="access-card card-5 metric-card">
-                <i class="bi bi-clock-fill"></i>
-                <h3>Pending Requests</h3>
-                <div class="access-card-number">{{ pending_requests }}</div>
-            </a>
-            
-            <!-- View Schedule -->
-            <a href="/schedule/view" class="access-card card-1">
-                <i class="bi bi-calendar-week"></i>
-                <h3>View Schedule</h3>
-            </a>
-            
-            <!-- Create Schedule -->
-            <a href="/schedule/create" class="access-card card-4">
-                <i class="bi bi-calendar-plus"></i>
-                <h3>Create Schedule</h3>
-            </a>
-            
-            <!-- Employees -->
-            <a href="/dashboard" class="access-card card-3">
-                <i class="bi bi-people-fill"></i>
-                <h3>Employees</h3>
-            </a>
-            
-            <!-- View Crews -->
-            <a href="/schedule/view" class="access-card card-6">
-                <i class="bi bi-people"></i>
-                <h3>View Crews</h3>
-            </a>
-            
-            <!-- Row 2 -->
-            <!-- Adjust Coverage -->
-            <a href="/supervisor/coverage-needs" class="access-card card-7">
-                <i class="bi bi-shield-check"></i>
-                <h3>Adjust Coverage</h3>
-            </a>
-            
-            <!-- Overtime Management -->
-            <a href="/supervisor/overtime-distribution" class="access-card card-12">
-                <i class="bi bi-clock-history"></i>
-                <h3>Overtime Management</h3>
-            </a>
-            
-            <!-- Import Employees -->
-            <a href="/import-employees" class="access-card card-11">
-                <i class="bi bi-upload"></i>
-                <h3>Import Employees</h3>
-            </a>
-            
-            <!-- Time Off Requests -->
-            <a href="/supervisor/time-off-requests" class="access-card card-8">
-                <i class="bi bi-calendar-x"></i>
-                <h3>Time Off Requests</h3>
-                {% if pending_time_off > 0 %}
-                <span class="badge-alert">{{ pending_time_off }}</span>
-                {% endif %}
-            </a>
-            
-            <!-- Swap Requests -->
-            <a href="/supervisor/swap-requests" class="access-card card-9">
-                <i class="bi bi-arrow-left-right"></i>
-                <h3>Swap Requests</h3>
-                {% if pending_swaps > 0 %}
-                <span class="badge-alert">{{ pending_swaps }}</span>
-                {% endif %}
-            </a>
-            
-            <!-- Supervisor Messages -->
-            <a href="/supervisor/messages" class="access-card card-10">
-                <i class="bi bi-envelope"></i>
-                <h3>Supervisor Messages</h3>
-            </a>
-            
-            <!-- Row 3 -->
-            <!-- Employee Messages -->
-            <a href="/position/messages" class="access-card card-13">
-                <i class="bi bi-chat"></i>
-                <h3>Employee Messages</h3>
-            </a>
-            
-            <!-- Maintenance Issues -->
-            <a href="/maintenance/issues" class="access-card card-14">
-                <i class="bi bi-tools"></i>
-                <h3>Maintenance Issues</h3>
-            </a>
-            
-            <!-- Employee Suggestions -->
-            <a href="/supervisor/suggestions" class="access-card card-15">
-                <i class="bi bi-lightbulb"></i>
-                <h3>Employee Suggestions</h3>
-                {% if pending_suggestions > 0 %}
-                <span class="badge-alert">{{ pending_suggestions }}</span>
-                {% endif %}
-            </a>
-            
-            <!-- Vacation Calendar -->
-            <a href="/vacation-calendar" class="access-card card-16">
-                <i class="bi bi-calendar-event"></i>
-                <h3>Vacation Calendar</h3>
-            </a>
-            
-            <!-- Casual Workers -->
-            <a href="/casual-workers" class="access-card card-17">
-                <i class="bi bi-person-badge"></i>
-                <h3>Casual Workers</h3>
-            </a>
-            
-            <!-- Shift Marketplace -->
-            <a href="/shift-marketplace" class="access-card card-18">
-                <i class="bi bi-shop"></i>
-                <h3>Shift Marketplace</h3>
-                {% if active_trades > 0 %}
-                <span class="badge-alert">{{ active_trades }}</span>
-                {% endif %}
-            </a>
+        <!-- Three Column Layout -->
+        <div class="dashboard-columns">
+            <!-- Column 1: Requests & Information -->
+            <div class="column">
+                <div class="column-header">Requests & Information</div>
+                
+                <!-- Time Off Requests -->
+                <a href="/supervisor/time-off-requests" class="access-card card-timeoff">
+                    <i class="bi bi-calendar-x"></i>
+                    <div class="access-card-content">
+                        <h3>Time Off Requests</h3>
+                        <p>Review vacation & sick leave</p>
+                    </div>
+                    {% if pending_time_off > 0 %}
+                    <div class="access-card-number">{{ pending_time_off }}</div>
+                    {% endif %}
+                </a>
+                
+                <!-- Swap Requests -->
+                <a href="/supervisor/swap-requests" class="access-card card-swap">
+                    <i class="bi bi-arrow-left-right"></i>
+                    <div class="access-card-content">
+                        <h3>Swap Requests</h3>
+                        <p>Approve shift trades</p>
+                    </div>
+                    {% if pending_swaps > 0 %}
+                    <div class="access-card-number">{{ pending_swaps }}</div>
+                    {% endif %}
+                </a>
+                
+                <!-- Coverage Gaps -->
+                <a href="/supervisor/coverage-needs" class="access-card card-coverage metric-card">
+                    <i class="bi bi-exclamation-triangle-fill"></i>
+                    <div class="access-card-content">
+                        <h3>Coverage Gaps</h3>
+                        <p>Unfilled positions</p>
+                    </div>
+                    <div class="access-card-number">{{ coverage_gaps|default(0) }}</div>
+                </a>
+                
+                <!-- View Employees and Crews -->
+                <a href="/dashboard" class="access-card card-employees">
+                    <i class="bi bi-people-fill"></i>
+                    <div class="access-card-content">
+                        <h3>View Employees & Crews</h3>
+                        <p>{{ total_employees }} total staff</p>
+                    </div>
+                </a>
+                
+                <!-- Vacation Calendar -->
+                <a href="/vacation-calendar" class="access-card card-vacation">
+                    <i class="bi bi-calendar-event"></i>
+                    <div class="access-card-content">
+                        <h3>Vacation Calendar</h3>
+                        <p>Team time off overview</p>
+                    </div>
+                </a>
+                
+                <!-- Casual Workers -->
+                <a href="/casual-workers" class="access-card card-casual">
+                    <i class="bi bi-person-badge"></i>
+                    <div class="access-card-content">
+                        <h3>Casual Workers</h3>
+                        <p>Temporary staff pool</p>
+                    </div>
+                </a>
+                
+                <!-- Shift Marketplace -->
+                <a href="/shift-marketplace" class="access-card card-marketplace">
+                    <i class="bi bi-shop"></i>
+                    <div class="access-card-content">
+                        <h3>Shift Marketplace</h3>
+                        <p>Employee trading</p>
+                    </div>
+                    {% if active_trades > 0 %}
+                    <span class="badge-alert">{{ active_trades }} active</span>
+                    {% endif %}
+                </a>
+            </div>
+
+            <!-- Column 2: Schedule & Management -->
+            <div class="column">
+                <div class="column-header">Schedule & Management</div>
+                
+                <!-- View Schedule -->
+                <a href="/schedule/view" class="access-card card-view-schedule">
+                    <i class="bi bi-calendar-week"></i>
+                    <div class="access-card-content">
+                        <h3>View Schedule</h3>
+                        <p>Current shifts & rotations</p>
+                    </div>
+                </a>
+                
+                <!-- Create Schedule -->
+                <a href="/schedule/create" class="access-card card-create-schedule">
+                    <i class="bi bi-calendar-plus"></i>
+                    <div class="access-card-content">
+                        <h3>Create Schedule</h3>
+                        <p>Build new shift patterns</p>
+                    </div>
+                </a>
+                
+                <!-- Adjust Coverage Needs -->
+                <a href="/supervisor/coverage-needs" class="access-card card-adjust-coverage">
+                    <i class="bi bi-shield-check"></i>
+                    <div class="access-card-content">
+                        <h3>Adjust Coverage Needs</h3>
+                        <p>Modify staffing requirements</p>
+                    </div>
+                </a>
+                
+                <!-- Overtime Management -->
+                <a href="/supervisor/overtime-distribution" class="access-card card-overtime">
+                    <i class="bi bi-clock-history"></i>
+                    <div class="access-card-content">
+                        <h3>Overtime Management</h3>
+                        <p>Track & distribute fairly</p>
+                    </div>
+                </a>
+            </div>
+
+            <!-- Column 3: Communications -->
+            <div class="column">
+                <div class="column-header">Communications</div>
+                
+                <!-- Maintenance Issues -->
+                <a href="/maintenance/issues" class="access-card card-maintenance">
+                    <i class="bi bi-tools"></i>
+                    <div class="access-card-content">
+                        <h3>Maintenance Issues</h3>
+                        <p>Equipment & facility reports</p>
+                    </div>
+                </a>
+                
+                <!-- Employee Messages -->
+                <a href="/position/messages" class="access-card card-employee-msg">
+                    <i class="bi bi-chat-dots"></i>
+                    <div class="access-card-content">
+                        <h3>Employee Messages</h3>
+                        <p>Position-based communications</p>
+                    </div>
+                </a>
+                
+                <!-- Supervisor Messages -->
+                <a href="/supervisor/messages" class="access-card card-supervisor-msg">
+                    <i class="bi bi-envelope-fill"></i>
+                    <div class="access-card-content">
+                        <h3>Supervisor Messages</h3>
+                        <p>Supervisor to supervisor</p>
+                    </div>
+                </a>
+            </div>
         </div>
     </div>
 
