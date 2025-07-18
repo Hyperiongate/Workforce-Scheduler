@@ -5,331 +5,427 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Casual Workers - Workforce Scheduler</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
+    <style>
+        body {
+            background-color: #f5f7fa;
+        }
+        
+        .page-header {
+            background: white;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            border-bottom: 3px solid #ddd6f3;
+        }
+        
+        .worker-card {
+            background: white;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+            border: 1px solid #e9ecef;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            transition: all 0.3s ease;
+        }
+        
+        .worker-card:hover {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            transform: translateY(-2px);
+            border-color: #ddd6f3;
+        }
+        
+        .worker-avatar {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: #ddd6f3;
+            color: #764ba2;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            font-weight: bold;
+        }
+        
+        .availability-badge {
+            padding: 0.35rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.875rem;
+            font-weight: 600;
+        }
+        
+        .badge-available { background: #d4edda; color: #155724; }
+        .badge-working { background: #cce5ff; color: #004085; }
+        .badge-unavailable { background: #f8d7da; color: #721c24; }
+        
+        .skill-tag {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            background: #e9ecef;
+            border-radius: 4px;
+            font-size: 0.875rem;
+            margin-right: 0.25rem;
+            margin-bottom: 0.25rem;
+        }
+        
+        .rating {
+            color: #ffc107;
+        }
+        
+        .stats-section {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        
+        .stat-card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            text-align: center;
+            border: 2px solid #ddd6f3;
+        }
+        
+        .stat-number {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #764ba2;
+        }
+        
+        .filter-section {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            margin-bottom: 2rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        
+        .worker-info {
+            flex-grow: 1;
+        }
+        
+        .worker-meta {
+            display: flex;
+            gap: 2rem;
+            margin-top: 0.5rem;
+            font-size: 0.875rem;
+            color: #6c757d;
+        }
+        
+        .action-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        
+        .history-item {
+            padding: 0.75rem;
+            border-bottom: 1px solid #e9ecef;
+            font-size: 0.875rem;
+        }
+        
+        .history-item:last-child {
+            border-bottom: none;
+        }
+        
+        .new-worker-btn {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+    </style>
 </head>
 <body>
-    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
         <div class="container-fluid">
-            <a class="navbar-brand" href="/">Workforce Scheduler</a>
+            <a class="navbar-brand" href="/dashboard">
+                <i class="bi bi-calendar-week"></i> Workforce Scheduler
+            </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto">
+                <ul class="navbar-nav">
                     <li class="nav-item">
                         <a class="nav-link" href="/dashboard">Dashboard</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="/schedule">Full Schedule</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/employees">Employees</a>
-                    </li>
-                    <li class="nav-item">
                         <a class="nav-link active" href="/casual-workers">Casual Workers</a>
+                    </li>
+                </ul>
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown">
+                            <i class="bi bi-person-circle"></i> {{ current_user.name }}
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><a class="dropdown-item" href="/logout">Logout</a></li>
+                        </ul>
                     </li>
                 </ul>
             </div>
         </div>
     </nav>
 
-    <div class="container-fluid mt-4">
-        <div class="row">
-            <div class="col-12">
-                <div class="d-flex justify-content-between align-items-center mb-4">
-                    <h2><i class="bi bi-people-fill"></i> Casual Worker Pool</h2>
-                    <div>
-                        <a href="/register-casual" class="btn btn-success" target="_blank">
-                            <i class="bi bi-person-plus"></i> Share Registration Link
-                        </a>
-                        <button class="btn btn-primary" onclick="window.print()">
-                            <i class="bi bi-printer"></i> Print List
-                        </button>
+    <div class="page-header">
+        <div class="container-fluid">
+            <div class="row align-items-center">
+                <div class="col">
+                    <h1><i class="bi bi-person-badge" style="color: #ddd6f3;"></i> Casual Workers</h1>
+                    <p class="text-muted mb-0">Manage temporary staff pool for coverage needs</p>
+                </div>
+                <div class="col-auto">
+                    <button class="btn btn-primary">
+                        <i class="bi bi-person-plus"></i> Register New Worker
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container-fluid">
+        <!-- Statistics -->
+        <div class="stats-section">
+            <div class="stat-card">
+                <div class="stat-number">24</div>
+                <p class="mb-0">Total Casual Workers</p>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">8</div>
+                <p class="mb-0">Available Today</p>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">3</div>
+                <p class="mb-0">Currently Working</p>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">4.6</div>
+                <p class="mb-0">Average Rating</p>
+            </div>
+        </div>
+
+        <!-- Filter Section -->
+        <div class="filter-section">
+            <div class="row align-items-end">
+                <div class="col-md-3">
+                    <label class="form-label">Availability</label>
+                    <select class="form-select">
+                        <option value="">All Workers</option>
+                        <option value="available">Available Now</option>
+                        <option value="working">Currently Working</option>
+                        <option value="unavailable">Not Available</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Skills</label>
+                    <select class="form-select">
+                        <option value="">All Skills</option>
+                        <option value="operator">Machine Operator</option>
+                        <option value="technician">Technician</option>
+                        <option value="general">General Labor</option>
+                        <option value="supervisor">Supervisor Qualified</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Minimum Rating</label>
+                    <select class="form-select">
+                        <option value="">Any Rating</option>
+                        <option value="5">5 Stars Only</option>
+                        <option value="4">4+ Stars</option>
+                        <option value="3">3+ Stars</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <button class="btn btn-primary w-100">
+                        <i class="bi bi-funnel"></i> Apply Filters
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Available Workers -->
+        <h3 class="mb-3">Available Workers (8)</h3>
+        
+        <!-- Worker 1 -->
+        <div class="worker-card">
+            <div class="d-flex gap-3">
+                <div class="worker-avatar">JR</div>
+                <div class="worker-info">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <h5 class="mb-1">James Rodriguez</h5>
+                            <div class="rating mb-2">
+                                <i class="bi bi-star-fill"></i>
+                                <i class="bi bi-star-fill"></i>
+                                <i class="bi bi-star-fill"></i>
+                                <i class="bi bi-star-fill"></i>
+                                <i class="bi bi-star-fill"></i>
+                                <span class="text-muted ms-1">(5.0 - 12 assignments)</span>
+                            </div>
+                            <div class="mb-2">
+                                <span class="skill-tag">Machine Operator</span>
+                                <span class="skill-tag">Forklift Certified</span>
+                                <span class="skill-tag">Night Shift</span>
+                            </div>
+                            <div class="worker-meta">
+                                <span><i class="bi bi-telephone"></i> (555) 123-4567</span>
+                                <span><i class="bi bi-geo-alt"></i> 5 miles away</span>
+                                <span><i class="bi bi-clock"></i> Last worked: 3 days ago</span>
+                            </div>
+                        </div>
+                        <span class="availability-badge badge-available">Available Now</span>
                     </div>
                 </div>
+                <div class="action-buttons">
+                    <button class="btn btn-success btn-sm">
+                        <i class="bi bi-telephone"></i> Call Now
+                    </button>
+                    <button class="btn btn-primary btn-sm">
+                        <i class="bi bi-calendar-plus"></i> Assign Shift
+                    </button>
+                    <button class="btn btn-outline-secondary btn-sm">
+                        <i class="bi bi-clock-history"></i> View History
+                    </button>
+                </div>
+            </div>
+        </div>
 
-                <!-- Stats Cards -->
-                <div class="row mb-4">
-                    <div class="col-md-3">
-                        <div class="card bg-primary text-white">
-                            <div class="card-body">
-                                <h5 class="card-title">Total Workers</h5>
-                                <h2 class="display-4">{{ workers|length }}</h2>
-                                <p class="mb-0">Registered</p>
+        <!-- Worker 2 -->
+        <div class="worker-card">
+            <div class="d-flex gap-3">
+                <div class="worker-avatar" style="background: #e91e63; color: white;">MP</div>
+                <div class="worker-info">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <h5 class="mb-1">Maria Perez</h5>
+                            <div class="rating mb-2">
+                                <i class="bi bi-star-fill"></i>
+                                <i class="bi bi-star-fill"></i>
+                                <i class="bi bi-star-fill"></i>
+                                <i class="bi bi-star-fill"></i>
+                                <i class="bi bi-star-half"></i>
+                                <span class="text-muted ms-1">(4.8 - 28 assignments)</span>
+                            </div>
+                            <div class="mb-2">
+                                <span class="skill-tag">Technician</span>
+                                <span class="skill-tag">Quality Control</span>
+                                <span class="skill-tag">All Shifts</span>
+                            </div>
+                            <div class="worker-meta">
+                                <span><i class="bi bi-telephone"></i> (555) 234-5678</span>
+                                <span><i class="bi bi-geo-alt"></i> 8 miles away</span>
+                                <span><i class="bi bi-clock"></i> Last worked: 1 week ago</span>
                             </div>
                         </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="card bg-success text-white">
-                            <div class="card-body">
-                                <h5 class="card-title">Available Now</h5>
-                                <h2 class="display-4">{{ workers|selectattr('status', 'equalto', 'available')|list|length }}</h2>
-                                <p class="mb-0">Ready to Work</p>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="card bg-warning text-white">
-                            <div class="card-body">
-                                <h5 class="card-title">Currently Working</h5>
-                                <h2 class="display-4">{{ workers|selectattr('status', 'equalto', 'working')|list|length }}</h2>
-                                <p class="mb-0">On Assignment</p>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="card bg-info text-white">
-                            <div class="card-body">
-                                <h5 class="card-title">Quick Response</h5>
-                                <h2 class="display-4">{{ workers|selectattr('availability', 'string', 'short_notice')|list|length }}</h2>
-                                <p class="mb-0">Same Day Available</p>
-                            </div>
-                        </div>
+                        <span class="availability-badge badge-available">Available Now</span>
                     </div>
                 </div>
+                <div class="action-buttons">
+                    <button class="btn btn-success btn-sm">
+                        <i class="bi bi-telephone"></i> Call Now
+                    </button>
+                    <button class="btn btn-primary btn-sm">
+                        <i class="bi bi-calendar-plus"></i> Assign Shift
+                    </button>
+                    <button class="btn btn-outline-secondary btn-sm">
+                        <i class="bi bi-clock-history"></i> View History
+                    </button>
+                </div>
+            </div>
+        </div>
 
-                <!-- Filters -->
-                <div class="card mb-4">
-                    <div class="card-body">
-                        <div class="row">
-                            <div class="col-md-4">
-                                <label class="form-label">Filter by Status:</label>
-                                <select class="form-select" id="statusFilter">
-                                    <option value="">All Workers</option>
-                                    <option value="available">Available</option>
-                                    <option value="working">Currently Working</option>
-                                    <option value="unavailable">Unavailable</option>
-                                </select>
+        <!-- Currently Working -->
+        <h3 class="mb-3 mt-4">Currently Working (3)</h3>
+        
+        <!-- Worker 3 -->
+        <div class="worker-card">
+            <div class="d-flex gap-3">
+                <div class="worker-avatar" style="background: #009688; color: white;">TC</div>
+                <div class="worker-info">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <h5 class="mb-1">Thomas Chen</h5>
+                            <div class="rating mb-2">
+                                <i class="bi bi-star-fill"></i>
+                                <i class="bi bi-star-fill"></i>
+                                <i class="bi bi-star-fill"></i>
+                                <i class="bi bi-star-fill"></i>
+                                <i class="bi bi-star"></i>
+                                <span class="text-muted ms-1">(4.2 - 8 assignments)</span>
                             </div>
-                            <div class="col-md-4">
-                                <label class="form-label">Filter by Skills:</label>
-                                <input type="text" class="form-control" id="skillsFilter" placeholder="e.g., forklift, customer service">
+                            <div class="mb-2">
+                                <span class="skill-tag">Machine Operator</span>
+                                <span class="skill-tag">General Labor</span>
                             </div>
-                            <div class="col-md-4">
-                                <label class="form-label">Search by Name:</label>
-                                <input type="text" class="form-control" id="nameSearch" placeholder="Enter worker name">
+                            <div class="worker-meta">
+                                <span><i class="bi bi-building"></i> Working: Production Line 2</span>
+                                <span><i class="bi bi-clock"></i> Shift: 7:00 AM - 3:00 PM</span>
+                                <span><i class="bi bi-person"></i> Supervisor: John Doe</span>
                             </div>
                         </div>
+                        <span class="availability-badge badge-working">Currently Working</span>
                     </div>
                 </div>
+                <div class="action-buttons">
+                    <button class="btn btn-info btn-sm">
+                        <i class="bi bi-eye"></i> View Assignment
+                    </button>
+                    <button class="btn btn-outline-secondary btn-sm">
+                        <i class="bi bi-chat"></i> Contact Supervisor
+                    </button>
+                </div>
+            </div>
+        </div>
 
-                <!-- Workers Table -->
-                <div class="card">
-                    <div class="card-body">
-                        <div class="table-responsive">
-                            <table class="table table-hover" id="workersTable">
-                                <thead>
-                                    <tr>
-                                        <th>Name</th>
-                                        <th>Contact Info</th>
-                                        <th>Skills</th>
-                                        <th>Availability</th>
-                                        <th>Rating</th>
-                                        <th>Status</th>
-                                        <th>Last Worked</th>
-                                        <th>Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {% for worker in workers %}
-                                    <tr data-status="{{ worker.status }}" data-skills="{{ worker.skills|lower }}" data-name="{{ worker.name|lower }}">
-                                        <td>
-                                            <strong>{{ worker.name }}</strong>
-                                            {% if worker.availability and 'short_notice' in worker.availability %}
-                                                <span class="badge bg-success ms-2">
-                                                    <i class="bi bi-lightning"></i> Quick
-                                                </span>
-                                            {% endif %}
-                                        </td>
-                                        <td>
-                                            <small>
-                                                <i class="bi bi-envelope"></i> {{ worker.email }}<br>
-                                                <i class="bi bi-phone"></i> {{ worker.phone }}
-                                            </small>
-                                        </td>
-                                        <td>
-                                            {% if worker.skills %}
-                                                <span data-bs-toggle="tooltip" title="{{ worker.skills }}">
-                                                    {{ worker.skills[:100] }}{% if worker.skills|length > 100 %}...{% endif %}
-                                                </span>
-                                            {% else %}
-                                                <span class="text-muted">General labor</span>
-                                            {% endif %}
-                                        </td>
-                                        <td>
-                                            {% if worker.availability %}
-                                                {% set avail = worker.availability|safe %}
-                                                {% if 'weekday_morning' in avail %}
-                                                    <span class="badge bg-light text-dark">Morning</span>
-                                                {% endif %}
-                                                {% if 'weekday_afternoon' in avail %}
-                                                    <span class="badge bg-light text-dark">Afternoon</span>
-                                                {% endif %}
-                                                {% if 'weekday_evening' in avail %}
-                                                    <span class="badge bg-light text-dark">Evening</span>
-                                                {% endif %}
-                                                {% if 'weekends' in avail %}
-                                                    <span class="badge bg-light text-dark">Weekends</span>
-                                                {% endif %}
-                                            {% endif %}
-                                        </td>
-                                        <td>
-                                            <div class="text-warning">
-                                                {% for i in range(worker.rating|int) %}<i class="bi bi-star-fill"></i>{% endfor %}
-                                                {% for i in range(5 - worker.rating|int) %}<i class="bi bi-star"></i>{% endfor %}
-                                                <small class="text-muted d-block">({{ worker.rating }})</small>
-                                            </div>
-                                        </td>
-                                        <td>
-                                            {% if worker.status == 'available' %}
-                                                <span class="badge bg-success">Available</span>
-                                            {% elif worker.status == 'working' %}
-                                                <span class="badge bg-warning">Working</span>
-                                            {% else %}
-                                                <span class="badge bg-secondary">Unavailable</span>
-                                            {% endif %}
-                                        </td>
-                                        <td>
-                                            {% if worker.last_worked %}
-                                                {{ worker.last_worked.strftime('%m/%d/%Y') }}
-                                            {% else %}
-                                                <span class="text-muted">Never</span>
-                                            {% endif %}
-                                        </td>
-                                        <td>
-                                            <div class="btn-group" role="group">
-                                                {% if worker.status == 'available' %}
-                                                    <button class="btn btn-sm btn-primary" 
-                                                            data-bs-toggle="modal" 
-                                                            data-bs-target="#assignModal"
-                                                            data-worker-id="{{ worker.id }}"
-                                                            data-worker-name="{{ worker.name }}">
-                                                        <i class="bi bi-calendar-plus"></i> Assign
-                                                    </button>
-                                                {% endif %}
-                                                <button class="btn btn-sm btn-info" 
-                                                        data-bs-toggle="modal" 
-                                                        data-bs-target="#detailsModal"
-                                                        data-worker-id="{{ worker.id }}">
-                                                    <i class="bi bi-eye"></i> Details
-                                                </button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                    {% endfor %}
-                                </tbody>
-                            </table>
+        <!-- Recent Activity -->
+        <div class="mt-5">
+            <h3 class="mb-3">Recent Activity</h3>
+            <div class="worker-card">
+                <div class="history-item">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <strong>James Rodriguez</strong> completed shift at Production Line 1
+                            <br><small class="text-muted">July 15, 2025 - Night Shift - Rating: 5/5</small>
                         </div>
+                        <span class="badge bg-success">Completed</span>
+                    </div>
+                </div>
+                <div class="history-item">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <strong>Maria Perez</strong> assigned to Quality Control
+                            <br><small class="text-muted">July 18, 2025 - Morning Shift - Starting tomorrow</small>
+                        </div>
+                        <span class="badge bg-primary">Scheduled</span>
+                    </div>
+                </div>
+                <div class="history-item">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <strong>New Registration:</strong> Alex Thompson
+                            <br><small class="text-muted">Skills: Technician, Forklift Operator - Pending verification</small>
+                        </div>
+                        <span class="badge bg-warning">Pending</span>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Assignment Modal (same as in dashboard) -->
-    <div class="modal fade" id="assignModal" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">
-                        <i class="bi bi-calendar-plus"></i> Assign Casual Work
-                    </h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <form method="POST" action="/request-casual">
-                    <div class="modal-body">
-                        <input type="hidden" id="worker_id" name="worker_id">
-                        <div class="alert alert-info">
-                            <i class="bi bi-person"></i> Assigning work to: <strong id="worker_name"></strong>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label for="date" class="form-label">Date</label>
-                            <input type="date" class="form-control" id="date" name="date" required>
-                        </div>
-                        
-                        <div class="row">
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label for="start_time" class="form-label">Start Time</label>
-                                    <input type="time" class="form-control" id="start_time" name="start_time" required>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label for="end_time" class="form-label">End Time</label>
-                                    <input type="time" class="form-control" id="end_time" name="end_time" required>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label for="position" class="form-label">Position/Task</label>
-                            <input type="text" class="form-control" id="position" name="position" 
-                                   placeholder="e.g., Warehouse Assistant, Event Staff" required>
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="submit" class="btn btn-primary">
-                            <i class="bi bi-send"></i> Send Work Request
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
+    <!-- Floating Action Button -->
+    <button class="btn btn-primary new-worker-btn">
+        <i class="bi bi-plus"></i>
+    </button>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        // Initialize tooltips
-        var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
-        var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
-            return new bootstrap.Tooltip(tooltipTriggerEl)
-        });
-
-        // Handle assignment modal
-        document.getElementById('assignModal').addEventListener('show.bs.modal', function (event) {
-            var button = event.relatedTarget;
-            var workerId = button.getAttribute('data-worker-id');
-            var workerName = button.getAttribute('data-worker-name');
-            
-            document.getElementById('worker_id').value = workerId;
-            document.getElementById('worker_name').textContent = workerName;
-            
-            // Set default date to today
-            document.getElementById('date').valueAsDate = new Date();
-        });
-
-        // Filter functionality
-        const statusFilter = document.getElementById('statusFilter');
-        const skillsFilter = document.getElementById('skillsFilter');
-        const nameSearch = document.getElementById('nameSearch');
-        const tableRows = document.querySelectorAll('#workersTable tbody tr');
-
-        function filterTable() {
-            const status = statusFilter.value;
-            const skills = skillsFilter.value.toLowerCase();
-            const name = nameSearch.value.toLowerCase();
-
-            tableRows.forEach(row => {
-                const rowStatus = row.getAttribute('data-status');
-                const rowSkills = row.getAttribute('data-skills');
-                const rowName = row.getAttribute('data-name');
-
-                let show = true;
-
-                if (status && rowStatus !== status) show = false;
-                if (skills && !rowSkills.includes(skills)) show = false;
-                if (name && !rowName.includes(name)) show = false;
-
-                row.style.display = show ? '' : 'none';
-            });
-        }
-
-        statusFilter.addEventListener('change', filterTable);
-        skillsFilter.addEventListener('input', filterTable);
-        nameSearch.addEventListener('input', filterTable);
-    </script>
 </body>
 </html>
