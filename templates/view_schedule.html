@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>View Schedule - Workforce Scheduler</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
+    <style>
+        body {
+            background-color: #f5f7fa;
+        }
+        
+        .page-header {
+            background: white;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            border-bottom: 3px solid #4facfe;
+        }
+        
+        .schedule-controls {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            margin-bottom: 2rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        
+        .schedule-container {
+            background: white;
+            border-radius: 8px;
+            padding: 1.5rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            overflow-x: auto;
+        }
+        
+        .schedule-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .schedule-table th,
+        .schedule-table td {
+            border: 2px solid #dee2e6;
+            padding: 0.75rem;
+            text-align: center;
+            min-width: 120px;
+        }
+        
+        .schedule-table th {
+            background: #f8f9fa;
+            font-weight: 600;
+        }
+        
+        .day-header {
+            background: #e7f5ff !important;
+            font-size: 0.9rem;
+        }
+        
+        .date-header {
+            background: #4facfe !important;
+            color: white;
+            font-weight: bold;
+        }
+        
+        .crew-cell {
+            font-weight: 600;
+            padding: 0.5rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .crew-cell:hover {
+            transform: scale(1.05);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .crew-a { 
+            background: #e3f2fd; 
+            color: #1565c0;
+            border: 1px solid #2196f3;
+        }
+        
+        .crew-b { 
+            background: #f3e5f5; 
+            color: #6a1b9a;
+            border: 1px solid #9c27b0;
+        }
+        
+        .crew-c { 
+            background: #e8f5e9; 
+            color: #2e7d32;
+            border: 1px solid #4caf50;
+        }
+        
+        .crew-d { 
+            background: #fff3e0; 
+            color: #e65100;
+            border: 1px solid #ff9800;
+        }
+        
+        .today-column {
+            background: #fffde7 !important;
+            position: relative;
+        }
+        
+        .today-indicator {
+            position: absolute;
+            top: -10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #ffc107;
+            color: #000;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: bold;
+        }
+        
+        .legend {
+            display: flex;
+            gap: 2rem;
+            margin-top: 1.5rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .legend-box {
+            width: 30px;
+            height: 30px;
+            border-radius: 4px;
+            border: 2px solid;
+        }
+        
+        .pattern-info {
+            background: #f8f9fa;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-top: 2rem;
+        }
+        
+        .crew-summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        
+        .crew-stat-card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            text-align: center;
+            border: 2px solid;
+        }
+        
+        .crew-stat-card.crew-a { border-color: #2196f3; }
+        .crew-stat-card.crew-b { border-color: #9c27b0; }
+        .crew-stat-card.crew-c { border-color: #4caf50; }
+        .crew-stat-card.crew-d { border-color: #ff9800; }
+        
+        .shift-details {
+            background: #f8f9fa;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-top: 2rem;
+        }
+        
+        .export-options {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            display: flex;
+            gap: 0.5rem;
+        }
+        
+        .btn-float {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/dashboard">
+                <i class="bi bi-calendar-week"></i> Workforce Scheduler
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/dashboard">Dashboard</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/schedule/view">View Schedule</a>
+                    </li>
+                </ul>
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown">
+                            <i class="bi bi-person-circle"></i> {{ current_user.name }}
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><a class="dropdown-item" href="/logout">Logout</a></li>
+                        </ul>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="page-header">
+        <div class="container-fluid">
+            <div class="row align-items-center">
+                <div class="col">
+                    <h1><i class="bi bi-calendar-week" style="color: #4facfe;"></i> View Schedule</h1>
+                    <p class="text-muted mb-0">Current shift rotations and crew assignments</p>
+                </div>
+                <div class="col-auto">
+                    <button class="btn btn-primary">
+                        <i class="bi bi-pencil"></i> Edit Schedule
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container-fluid">
+        <!-- Crew Summary -->
+        <div class="crew-summary">
+            <div class="crew-stat-card crew-a">
+                <h3 style="color: #1565c0;">Crew A</h3>
+                <p class="mb-0">12 Employees<br><small>Currently: Day Shift</small></p>
+            </div>
+            <div class="crew-stat-card crew-b">
+                <h3 style="color: #6a1b9a;">Crew B</h3>
+                <p class="mb-0">12 Employees<br><small>Currently: Night Shift</small></p>
+            </div>
+            <div class="crew-stat-card crew-c">
+                <h3 style="color: #2e7d32;">Crew C</h3>
+                <p class="mb-0">12 Employees<br><small>Currently: Off</small></p>
+            </div>
+            <div class="crew-stat-card crew-d">
+                <h3 style="color: #e65100;">Crew D</h3>
+                <p class="mb-0">12 Employees<br><small>Currently: Off</small></p>
+            </div>
+        </div>
+
+        <!-- Schedule Controls -->
+        <div class="schedule-controls">
+            <div class="row align-items-center">
+                <div class="col-md-4">
+                    <div class="d-flex align-items-center gap-3">
+                        <button class="btn btn-outline-primary">
+                            <i class="bi bi-chevron-left"></i>
+                        </button>
+                        <h4 class="mb-0">July 20 - August 16, 2025</h4>
+                        <button class="btn btn-outline-primary">
+                            <i class="bi bi-chevron-right"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="col-md-4 text-center">
+                    <span class="badge bg-info">4-Crew Rotation Pattern</span>
+                    <span class="badge bg-success ms-2">2 Days On, 2 Days Off</span>
+                </div>
+                <div class="col-md-4 text-end">
+                    <button class="btn btn-sm btn-outline-secondary">
+                        <i class="bi bi-grid-3x3"></i> Month View
+                    </button>
+                    <button class="btn btn-sm btn-primary ms-2">
+                        <i class="bi bi-list-ul"></i> 4-Week View
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Schedule Table -->
+        <div class="schedule-container">
+            <table class="schedule-table">
+                <thead>
+                    <tr>
+                        <th class="day-header">Sunday</th>
+                        <th class="day-header">Monday</th>
+                        <th class="day-header">Tuesday</th>
+                        <th class="day-header">Wednesday</th>
+                        <th class="day-header">Thursday</th>
+                        <th class="day-header">Friday</th>
+                        <th class="day-header">Saturday</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Week 1 -->
+                    <tr>
+                        <td class="date-header">20-Jul</td>
+                        <td class="date-header">21-Jul</td>
+                        <td class="date-header">22-Jul</td>
+                        <td class="date-header">23-Jul</td>
+                        <td class="date-header">24-Jul</td>
+                        <td class="date-header">25-Jul</td>
+                        <td class="date-header">26-Jul</td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <div class="crew-cell crew-b">Crew B</div>
+                            <div class="crew-cell crew-d mt-1">Crew D</div>
+                        </td>
+                        <td>
+                            <div class="crew-cell crew-a">Crew A</div>
+                            <div class="crew-cell crew-c mt-1">Crew C</div>
+                        </td>
+                        <td>
+                            <div class="crew-cell crew-a">Crew A</div>
+                            <div class="crew-cell crew-c mt-1">Crew C</div>
+                        </td>
+                        <td>
+                            <div class="crew-cell crew-b">Crew B</div>
+                            <div class="crew-cell crew-d mt-1">Crew D</div>
+                        </td>
+                        <td>
+                            <div class="crew-cell crew-b">Crew B</div>
+                            <div class="crew-cell crew-d mt-1">Crew D</div>
+                        </td>
+                        <td class="today-column">
+                            <span class="today-indicator">TODAY</span>
+                            <div class="crew-cell crew-a">Crew A</div>
+                            <div class="crew-cell crew-c mt-1">Crew C</div>
+                        </td>
+                        <td>
+                            <div class="crew-cell crew-a">Crew A</div>
+                            <div class="crew-cell crew-c mt-1">Crew C</div>
+                        </td>
+                    </tr>
+                    
+                    <!-- Week 2 -->
+                    <tr>
+                        <td class="date-header">27-Jul</td>
+                        <td class="date-header">28-Jul</td>
+                        <td class="date-header">29-Jul</td>
+                        <td class="date-header">30-Jul</td>
+                        <td class="date-header">31-Jul</td>
+                        <td class="date-header">1-Aug</td>
+                        <td class="date-header">2-Aug</td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <div class="crew-cell crew-a">Crew A</div>
+                            <div class="crew-cell crew-c mt-1">Crew C</div>
+                        </td>
+                        <td>
+                            <div class="crew-cell crew-b">Crew B</div>
+                            <div class="crew-cell crew-d mt-1">Crew D</div>
+                        </td>
+                        <td>
+                            <div class="crew-cell crew-b">Crew B</div>
+                            <div class="crew-cell crew-d mt-1">Crew D</div>
+                        </td>
+                        <td>
+                            <div class="crew-cell crew-a">Crew A</div>
+                            <div class="crew-cell crew-c mt-1">Crew C</div>
+                        </td>
+                        <td>
+                            <div class="crew-cell crew-a">Crew A</div>
+                            <div class="crew-cell crew-c mt-1">Crew C</div>
+                        </td>
+                        <td>
+                            <div class="crew-cell crew-b">Crew B</div>
+                            <div class="crew-cell crew-d mt-1">Crew D</div>
+                        </td>
+                        <td>
+                            <div class="crew-cell crew-b">Crew B</div>
+                            <div class="crew-cell crew-d mt-1">Crew D</div>
+                        </td>
+                    </tr>
+                    
+                    <!-- Week 3 -->
+                    <tr>
+                        <td class="date-header">3-Aug</td>
+                        <td class="date-header">4-Aug</td>
+                        <td class="date-header">5-Aug</td>
+                        <td class="date-header">6-Aug</td>
+                        <td class="date-header">7-Aug</td>
+                        <td class="date-header">8-Aug</td>
+                        <td class="date-header">9-Aug</td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <div class="crew-cell crew-b">Crew B</div>
+                            <div class="crew-cell crew-d mt-1">Crew D</div>
+                        </td>
+                        <td>
+                            <div class="crew-cell crew-a">Crew A</div>
+                            <div class="crew-cell crew-c mt-1">Crew C</div>
+                        </td>
+                        <td>
+                            <div class="crew-cell crew-a">Crew A</div>
+                            <div class="crew-cell crew-c mt-1">Crew C</div>
+                        </td>
+                        <td>
+                            <div class="crew-cell crew-b">Crew B</div>
+                            <div class="crew-cell crew-d mt-1">Crew D</div>
+                        </td>
+                        <td>
+                            <div class="crew-cell crew-b">Crew B</div>
+                            <div class="crew-cell crew-d mt-1">Crew D</div>
+                        </td>
+                        <td>
+                            <div class="crew-cell crew-a">Crew A</div>
+                            <div class="crew-cell crew-c mt-1">Crew C</div>
+                        </td>
+                        <td>
+                            <div class="crew-cell crew-a">Crew A</div>
+                            <div class="crew-cell crew-c mt-1">Crew C</div>
+                        </td>
+                    </tr>
+                    
+                    <!-- Week 4 -->
+                    <tr>
+                        <td class="date-header">10-Aug</td>
+                        <td class="date-header">11-Aug</td>
+                        <td class="date-header">12-Aug</td>
+                        <td class="date-header">13-Aug</td>
+                        <td class="date-header">14-Aug</td>
+                        <td class="date-header">15-Aug</td>
+                        <td class="date-header">16-Aug</td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <div class="crew-cell crew-a">Crew A</div>
+                            <div class="crew-cell crew-c mt-1">Crew C</div>
+                        </td>
+                        <td>
+                            <div class="crew-cell crew-b">Crew B</div>
+                            <div class="crew-cell crew-d mt-1">Crew D</div>
+                        </td>
+                        <td>
+                            <div class="crew-cell crew-b">Crew B</div>
+                            <div class="crew-cell crew-d mt-1">Crew D</div>
+                        </td>
+                        <td>
+                            <div class="crew-cell crew-a">Crew A</div>
+                            <div class="crew-cell crew-c mt-1">Crew C</div>
+                        </td>
+                        <td>
+                            <div class="crew-cell crew-a">Crew A</div>
+                            <div class="crew-cell crew-c mt-1">Crew C</div>
+                        </td>
+                        <td>
+                            <div class="crew-cell crew-b">Crew B</div>
+                            <div class="crew-cell crew-d mt-1">Crew D</div>
+                        </td>
+                        <td>
+                            <div class="crew-cell crew-b">Crew B</div>
+                            <div class="crew-cell crew-d mt-1">Crew D</div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Legend -->
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-box crew-a"></div>
+                <span><strong>Crew A</strong> - Day Shift (7:00 AM - 7:00 PM)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-box crew-b"></div>
+                <span><strong>Crew B</strong> - Night Shift (7:00 PM - 7:00 AM)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-box crew-c"></div>
+                <span><strong>Crew C</strong> - Day Shift (7:00 AM - 7:00 PM)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-box crew-d"></div>
+                <span><strong>Crew D</strong> - Night Shift (7:00 PM - 7:00 AM)</span>
+            </div>
+        </div>
+
+        <!-- Pattern Information -->
+        <div class="pattern-info">
+            <h5><i class="bi bi-info-circle"></i> Current Rotation Pattern</h5>
+            <p class="mb-0"><strong>Pattern:</strong> 2-2 Rotation (2 days on, 2 days off)</p>
+            <p class="mb-0"><strong>Cycle:</strong> 8-day cycle with balanced day/night distribution</p>
+            <p class="mb-0"><strong>Coverage:</strong> 2 crews working each day (1 day shift, 1 night shift)</p>
+        </div>
+
+        <!-- Shift Details -->
+        <div class="shift-details">
+            <h5>Shift Times</h5>
+            <div class="row">
+                <div class="col-md-6">
+                    <p><i class="bi bi-sun"></i> <strong>Day Shift:</strong> 7:00 AM - 7:00 PM (12 hours)</p>
+                    <p class="mb-0">Break Schedule: 30 min lunch, 2x 15 min breaks</p>
+                </div>
+                <div class="col-md-6">
+                    <p><i class="bi bi-moon"></i> <strong>Night Shift:</strong> 7:00 PM - 7:00 AM (12 hours)</p>
+                    <p class="mb-0">Break Schedule: 30 min dinner, 2x 15 min breaks</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Export Options -->
+    <div class="export-options">
+        <button class="btn btn-success btn-float" title="Export to Excel">
+            <i class="bi bi-file-earmark-excel"></i>
+        </button>
+        <button class="btn btn-primary btn-float" title="Print Schedule">
+            <i class="bi bi-printer"></i>
+        </button>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Crew cell click handler
+        document.querySelectorAll('.crew-cell').forEach(cell => {
+            cell.addEventListener('click', function() {
+                const crew = this.textContent;
+                alert(`Clicked ${crew} - Would show crew details and employees`);
+            });
+        });
+    </script>
+</body>
+</html>
