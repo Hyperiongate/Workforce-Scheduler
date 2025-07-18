@@ -47,30 +47,29 @@
         
         .access-card {
             background: white;
-            border-radius: 10px;
+            border-radius: 8px;
             padding: 1.5rem;
             text-decoration: none;
-            color: white;
+            color: #2c3e50;
             transition: all 0.3s ease;
-            border: none;
+            border: 3px solid;
             position: relative;
             overflow: hidden;
             display: flex;
             align-items: center;
-            min-height: 90px;
+            min-height: 85px;
         }
         
         .access-card:hover {
-            transform: translateY(-3px) scale(1.02);
-            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.1);
             text-decoration: none;
-            color: white;
+            color: #2c3e50;
         }
         
         .access-card i {
-            font-size: 2rem;
+            font-size: 1.75rem;
             margin-right: 1rem;
-            opacity: 0.95;
         }
         
         .access-card-content {
@@ -82,12 +81,13 @@
             font-size: 1.1rem;
             font-weight: 600;
             line-height: 1.2;
+            color: #2c3e50;
         }
         
         .access-card p {
             margin: 0.25rem 0 0 0;
             font-size: 0.85rem;
-            opacity: 0.9;
+            color: #6c757d;
         }
         
         .access-card-number {
@@ -100,13 +100,12 @@
             position: absolute;
             top: 0.5rem;
             right: 0.5rem;
-            background: rgba(255, 255, 255, 0.3);
+            background: #dc3545;
             color: white;
             padding: 0.25rem 0.5rem;
             border-radius: 15px;
             font-size: 0.75rem;
             font-weight: 600;
-            backdrop-filter: blur(10px);
             animation: pulse 2s infinite;
         }
         
@@ -116,39 +115,69 @@
             100% { transform: scale(1); }
         }
         
-        /* Column 1 Colors - Purple/Pink Theme (Requests & Info) */
-        .card-timeoff { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
-        .card-swap { background: linear-gradient(135deg, #764ba2 0%, #f093fb 100%); }
-        .card-coverage { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
-        .card-vacation { background: linear-gradient(135deg, #e0c3fc 0%, #8ec5fc 100%); }
-        .card-casual { background: linear-gradient(135deg, #ddd6f3 0%, #faaca8 100%); }
-        .card-marketplace { background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); }
+        /* Column 1 - Purple Theme (Employee Management) */
+        .card-timeoff { border-color: #667eea; }
+        .card-timeoff i { color: #667eea; }
+        .card-timeoff .access-card-number { color: #667eea; }
         
-        /* Column 2 Colors - Blue/Green Theme (Schedule & Management) */
-        .card-view-schedule { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); }
-        .card-create-schedule { background: linear-gradient(135deg, #00c9ff 0%, #92fe9d 100%); }
-        .card-adjust-coverage { background: linear-gradient(135deg, #00b09b 0%, #96c93d 100%); }
-        .card-overtime { background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); }
-        .card-employees { background: linear-gradient(135deg, #30cfd0 0%, #330867 100%); }
+        .card-swap { border-color: #764ba2; }
+        .card-swap i { color: #764ba2; }
+        .card-swap .access-card-number { color: #764ba2; }
         
-        /* Column 3 Colors - Orange/Red Theme (Communications) */
-        .card-maintenance { background: linear-gradient(135deg, #fc4a1a 0%, #f7b733 100%); }
-        .card-employee-msg { background: linear-gradient(135deg, #f7b733 0%, #fc4a1a 100%); }
-        .card-supervisor-msg { background: linear-gradient(135deg, #ff6e7f 0%, #bfe9ff 100%); }
+        .card-coverage { border-color: #f093fb; }
+        .card-coverage i { color: #f093fb; }
+        .card-coverage .access-card-number { color: #f093fb; }
         
-        /* Special styling for metric cards */
-        .metric-card {
-            font-weight: bold;
-        }
+        .card-vacation { border-color: #e0c3fc; }
+        .card-vacation i { color: #e0c3fc; }
+        
+        .card-casual { border-color: #ddd6f3; }
+        .card-casual i { color: #ddd6f3; }
+        
+        /* Column 2 - Blue/Green Theme (Structure Management) */
+        .card-view-schedule { border-color: #4facfe; }
+        .card-view-schedule i { color: #4facfe; }
+        
+        .card-create-schedule { border-color: #00c9ff; }
+        .card-create-schedule i { color: #00c9ff; }
+        
+        .card-adjust-coverage { border-color: #00b09b; }
+        .card-adjust-coverage i { color: #00b09b; }
+        
+        .card-overtime { border-color: #11998e; }
+        .card-overtime i { color: #11998e; }
+        
+        .card-employees { border-color: #30cfd0; }
+        .card-employees i { color: #30cfd0; }
+        
+        /* Column 3 - Orange/Red Theme (Communications) */
+        .card-maintenance { border-color: #fc4a1a; }
+        .card-maintenance i { color: #fc4a1a; }
+        
+        .card-employee-msg { border-color: #f7b733; }
+        .card-employee-msg i { color: #f7b733; }
+        
+        .card-supervisor-msg { border-color: #ff6e7f; }
+        .card-supervisor-msg i { color: #ff6e7f; }
+        
+        .card-suggestions { border-color: #ff9a56; }
+        .card-suggestions i { color: #ff9a56; }
+        .card-suggestions .access-card-number { color: #ff9a56; }
+        
+        .card-plantwide { border-color: #ff6361; }
+        .card-plantwide i { color: #ff6361; }
         
         .column-header {
-            color: #495057;
-            font-size: 0.9rem;
-            font-weight: 600;
+            color: #2c3e50;
+            font-size: 1.1rem;
+            font-weight: 700;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 0.5rem;
-            padding-left: 0.5rem;
+            letter-spacing: 1px;
+            margin-bottom: 1rem;
+            padding: 0.5rem;
+            text-align: center;
+            background: #e9ecef;
+            border-radius: 8px;
         }
     </style>
 </head>
@@ -193,9 +222,9 @@
 
         <!-- Three Column Layout -->
         <div class="dashboard-columns">
-            <!-- Column 1: Requests & Information -->
+            <!-- Column 1: Employee Management -->
             <div class="column">
-                <div class="column-header">Requests & Information</div>
+                <div class="column-header">Employee Management</div>
                 
                 <!-- Time Off Requests -->
                 <a href="/supervisor/time-off-requests" class="access-card card-timeoff">
@@ -222,7 +251,7 @@
                 </a>
                 
                 <!-- Coverage Gaps -->
-                <a href="/supervisor/coverage-needs" class="access-card card-coverage metric-card">
+                <a href="/supervisor/coverage-needs" class="access-card card-coverage">
                     <i class="bi bi-exclamation-triangle-fill"></i>
                     <div class="access-card-content">
                         <h3>Coverage Gaps</h3>
@@ -248,23 +277,11 @@
                         <p>Temporary staff pool</p>
                     </div>
                 </a>
-                
-                <!-- Shift Marketplace -->
-                <a href="/shift-marketplace" class="access-card card-marketplace">
-                    <i class="bi bi-shop"></i>
-                    <div class="access-card-content">
-                        <h3>Shift Marketplace</h3>
-                        <p>Employee trading</p>
-                    </div>
-                    {% if active_trades > 0 %}
-                    <span class="badge-alert">{{ active_trades }} active</span>
-                    {% endif %}
-                </a>
             </div>
 
-            <!-- Column 2: Schedule & Management -->
+            <!-- Column 2: Structure Management -->
             <div class="column">
-                <div class="column-header">Schedule & Management</div>
+                <div class="column-header">Structure Management</div>
                 
                 <!-- View Schedule -->
                 <a href="/schedule/view" class="access-card card-view-schedule">
@@ -340,6 +357,27 @@
                     <div class="access-card-content">
                         <h3>Supervisor Messages</h3>
                         <p>Supervisor to supervisor</p>
+                    </div>
+                </a>
+                
+                <!-- Employee Suggestions -->
+                <a href="/supervisor/suggestions" class="access-card card-suggestions">
+                    <i class="bi bi-lightbulb"></i>
+                    <div class="access-card-content">
+                        <h3>Employee Suggestions</h3>
+                        <p>Ideas & feedback</p>
+                    </div>
+                    {% if pending_suggestions > 0 %}
+                    <div class="access-card-number">{{ pending_suggestions }}</div>
+                    {% endif %}
+                </a>
+                
+                <!-- Plantwide Communications -->
+                <a href="/quick/position-broadcast" class="access-card card-plantwide">
+                    <i class="bi bi-megaphone"></i>
+                    <div class="access-card-content">
+                        <h3>Plantwide Communications</h3>
+                        <p>Broadcast announcements</p>
                     </div>
                 </a>
             </div>
