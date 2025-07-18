@@ -7,93 +7,157 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
     <style>
-        .dashboard-header {
-            background: #f8f9fa;
-            padding: 1.5rem 0;
-            margin-bottom: 2rem;
-            border-bottom: 2px solid #dee2e6;
+        .dashboard-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
         }
         
-        .nav-card {
-            height: 100%;
-            transition: all 0.3s ease;
-            border: 1px solid #dee2e6;
-        }
-        
-        .nav-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-            border-color: #0d6efd;
-        }
-        
-        .nav-card a {
-            text-decoration: none;
-            color: inherit;
-        }
-        
-        .nav-card .card-body {
-            display: flex;
-            align-items: center;
-            padding: 1.5rem;
-        }
-        
-        .nav-card i {
-            font-size: 2rem;
-            color: #0d6efd;
-            margin-right: 1rem;
-        }
-        
-        .stat-box {
-            text-align: center;
-            padding: 1.5rem;
-            background: #fff;
-            border-radius: 0.5rem;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-        }
-        
-        .stat-number {
-            font-size: 2.5rem;
-            font-weight: bold;
-            color: #212529;
-        }
-        
-        .stat-label {
-            color: #6c757d;
-            font-size: 0.9rem;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        
-        .section-divider {
-            margin: 3rem 0;
-            border-bottom: 2px solid #e9ecef;
-        }
-        
-        .quick-links {
+        .header-section {
             background: #f8f9fa;
             padding: 2rem;
             border-radius: 0.5rem;
-            margin-top: 2rem;
+            margin-bottom: 2rem;
         }
         
-        .quick-link-btn {
-            margin: 0.5rem;
-            min-width: 200px;
+        .header-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-top: 1.5rem;
         }
         
-        .schedule-preview {
-            background: #fff;
+        .header-item {
+            background: white;
+            padding: 1rem;
+            border-radius: 0.375rem;
+            border: 1px solid #dee2e6;
+            text-decoration: none;
+            color: #212529;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        
+        .header-item:hover {
+            border-color: #0d6efd;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            color: #0d6efd;
+        }
+        
+        .header-item i {
+            font-size: 1.25rem;
+            color: #0d6efd;
+        }
+        
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+        
+        .info-card {
+            background: white;
+            border: 1px solid #dee2e6;
+            border-radius: 0.5rem;
+            padding: 2rem;
+            text-align: center;
+        }
+        
+        .info-card h2 {
+            font-size: 3rem;
+            color: #0d6efd;
+            margin-bottom: 0.5rem;
+        }
+        
+        .info-card p {
+            color: #6c757d;
+            margin: 0;
+            font-size: 1.1rem;
+        }
+        
+        .schedule-section {
+            background: white;
+            border: 1px solid #dee2e6;
+            border-radius: 0.5rem;
+            padding: 2rem;
+            margin-bottom: 2rem;
+        }
+        
+        .schedule-section h3 {
+            margin-bottom: 1.5rem;
+            color: #212529;
+        }
+        
+        .bottom-section {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+        }
+        
+        .bottom-card {
+            background: white;
             border: 1px solid #dee2e6;
             border-radius: 0.5rem;
             padding: 1.5rem;
+        }
+        
+        .bottom-card h4 {
+            margin-bottom: 1rem;
+            color: #212529;
+            font-size: 1.25rem;
+        }
+        
+        .action-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        
+        .action-list li {
+            margin-bottom: 0.5rem;
+        }
+        
+        .action-list a {
+            display: block;
+            padding: 0.75rem 1rem;
+            background: #f8f9fa;
+            border-radius: 0.375rem;
+            text-decoration: none;
+            color: #212529;
+            transition: all 0.2s;
+        }
+        
+        .action-list a:hover {
+            background: #e9ecef;
+            color: #0d6efd;
+        }
+        
+        .quick-message-form {
             margin-top: 1rem;
         }
         
-        .gap-alert {
-            background: #fff3cd;
-            border-left: 4px solid #ffc107;
-            padding: 1rem;
-            margin-bottom: 0.5rem;
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        .status-item:last-child {
+            border-bottom: none;
+        }
+        
+        .badge-count {
+            background: #dc3545;
+            color: white;
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+            font-size: 0.875rem;
         }
     </style>
 </head>
@@ -121,14 +185,7 @@
         </div>
     </nav>
 
-    <!-- Dashboard Header -->
-    <div class="dashboard-header">
-        <div class="container-fluid">
-            <h1 class="mb-0">Supervisor Dashboard</h1>
-        </div>
-    </div>
-
-    <div class="container-fluid">
+    <div class="dashboard-container">
         <!-- Flash Messages -->
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
@@ -141,364 +198,180 @@
             {% endif %}
         {% endwith %}
 
-        <!-- Main Navigation Grid -->
-        <div class="row g-4">
-            <!-- Employees -->
-            <div class="col-md-4 col-lg-3">
-                <div class="card nav-card h-100">
-                    <a href="/dashboard">
-                        <div class="card-body">
-                            <i class="bi bi-people-fill"></i>
-                            <div>
-                                <h5 class="mb-1">Employees</h5>
-                                <small class="text-muted">View all employees</small>
-                            </div>
-                        </div>
-                    </a>
-                </div>
-            </div>
+        <h1 class="mb-4">Supervisor Dashboard</h1>
 
-            <!-- Import Employees -->
-            <div class="col-md-4 col-lg-3">
-                <div class="card nav-card h-100">
-                    <a href="/import-employees">
-                        <div class="card-body">
-                            <i class="bi bi-upload"></i>
-                            <div>
-                                <h5 class="mb-1">Import Employees</h5>
-                                <small class="text-muted">Upload from Excel</small>
-                            </div>
-                        </div>
-                    </a>
-                </div>
-            </div>
-
-            <!-- Download Excel Template -->
-            <div class="col-md-4 col-lg-3">
-                <div class="card nav-card h-100">
-                    <a href="/export-template">
-                        <div class="card-body">
-                            <i class="bi bi-download"></i>
-                            <div>
-                                <h5 class="mb-1">Download Excel Template</h5>
-                                <small class="text-muted">Employee import template</small>
-                            </div>
-                        </div>
-                    </a>
-                </div>
-            </div>
-
-            <!-- Coverage Needs -->
-            <div class="col-md-4 col-lg-3">
-                <div class="card nav-card h-100">
-                    <a href="/supervisor/coverage-needs">
-                        <div class="card-body">
-                            <i class="bi bi-shield-check"></i>
-                            <div>
-                                <h5 class="mb-1">Coverage Needs</h5>
-                                <small class="text-muted">View gaps & requests</small>
-                            </div>
-                        </div>
-                    </a>
-                </div>
-            </div>
-
-            <!-- Overtime Distribution -->
-            <div class="col-md-4 col-lg-3">
-                <div class="card nav-card h-100">
-                    <a href="/supervisor/overtime-distribution">
-                        <div class="card-body">
-                            <i class="bi bi-clock-history"></i>
-                            <div>
-                                <h5 class="mb-1">Overtime Distribution</h5>
-                                <small class="text-muted">Manage overtime fairly</small>
-                            </div>
-                        </div>
-                    </a>
-                </div>
-            </div>
-
-            <!-- Vacation Calendar -->
-            <div class="col-md-4 col-lg-3">
-                <div class="card nav-card h-100">
-                    <a href="/vacation-calendar">
-                        <div class="card-body">
-                            <i class="bi bi-calendar-event"></i>
-                            <div>
-                                <h5 class="mb-1">Vacation Calendar</h5>
-                                <small class="text-muted">Team time off view</small>
-                            </div>
-                        </div>
-                    </a>
-                </div>
-            </div>
-
-            <!-- Casual Workers -->
-            <div class="col-md-4 col-lg-3">
-                <div class="card nav-card h-100">
-                    <a href="/casual-workers">
-                        <div class="card-body">
-                            <i class="bi bi-person-badge"></i>
-                            <div>
-                                <h5 class="mb-1">Casual Workers</h5>
-                                <small class="text-muted">Manage temp staff</small>
-                            </div>
-                        </div>
-                    </a>
-                </div>
-            </div>
-
-            <!-- Shift Trade Marketplace -->
-            <div class="col-md-4 col-lg-3">
-                <div class="card nav-card h-100">
-                    <a href="/shift-marketplace">
-                        <div class="card-body">
-                            <i class="bi bi-shop"></i>
-                            <div>
-                                <h5 class="mb-1">Shift Trade Marketplace</h5>
-                                <small class="text-muted">Employee shift trading</small>
-                            </div>
-                        </div>
-                    </a>
-                </div>
+        <!-- Header Section -->
+        <div class="header-section">
+            <h2>Quick Access</h2>
+            <div class="header-grid">
+                <!-- Employees -->
+                <a href="/dashboard" class="header-item">
+                    <i class="bi bi-people-fill"></i>
+                    <span>Employees</span>
+                </a>
+                
+                <!-- View Crews -->
+                <a href="/schedule/view" class="header-item">
+                    <i class="bi bi-people"></i>
+                    <span>View Crews</span>
+                </a>
+                
+                <!-- Adjust Coverage Requirements -->
+                <a href="/supervisor/coverage-needs" class="header-item">
+                    <i class="bi bi-shield-check"></i>
+                    <span>Adjust Coverage Requirements</span>
+                </a>
+                
+                <!-- Update Overtime Worked -->
+                <a href="/supervisor/overtime-distribution" class="header-item">
+                    <i class="bi bi-clock-history"></i>
+                    <span>Update Overtime Worked</span>
+                </a>
+                
+                <!-- Requests -->
+                <a href="/supervisor/time-off-requests" class="header-item">
+                    <i class="bi bi-inbox"></i>
+                    <span>Requests</span>
+                    {% if pending_requests > 0 %}
+                    <span class="badge-count">{{ pending_requests }}</span>
+                    {% endif %}
+                </a>
+                
+                <!-- Time Off Requests -->
+                <a href="/supervisor/time-off-requests" class="header-item">
+                    <i class="bi bi-calendar-x"></i>
+                    <span>Time Off Requests</span>
+                </a>
+                
+                <!-- Swap Requests -->
+                <a href="/supervisor/swap-requests" class="header-item">
+                    <i class="bi bi-arrow-left-right"></i>
+                    <span>Swap Requests</span>
+                </a>
+                
+                <!-- Communications -->
+                <a href="/supervisor/messages" class="header-item">
+                    <i class="bi bi-chat-dots"></i>
+                    <span>Communications</span>
+                </a>
+                
+                <!-- Supervisor Messages -->
+                <a href="/supervisor/messages" class="header-item">
+                    <i class="bi bi-envelope"></i>
+                    <span>Supervisor Messages</span>
+                </a>
+                
+                <!-- Employee Messages -->
+                <a href="/position/messages" class="header-item">
+                    <i class="bi bi-chat"></i>
+                    <span>Employee Messages</span>
+                </a>
+                
+                <!-- Maintenance Issues -->
+                <a href="/maintenance/issues" class="header-item">
+                    <i class="bi bi-tools"></i>
+                    <span>Maintenance Issues</span>
+                </a>
+                
+                <!-- Employee Suggestions -->
+                <a href="/supervisor/suggestions" class="header-item">
+                    <i class="bi bi-lightbulb"></i>
+                    <span>Employee Suggestions</span>
+                </a>
+                
+                <!-- Vacation Calendar -->
+                <a href="/vacation-calendar" class="header-item">
+                    <i class="bi bi-calendar-event"></i>
+                    <span>Vacation Calendar</span>
+                </a>
+                
+                <!-- Casual Workers -->
+                <a href="/casual-workers" class="header-item">
+                    <i class="bi bi-person-badge"></i>
+                    <span>Casual Workers</span>
+                </a>
+                
+                <!-- Shift Swap Marketplace -->
+                <a href="/shift-marketplace" class="header-item">
+                    <i class="bi bi-shop"></i>
+                    <span>Shift Swap Marketplace</span>
+                </a>
             </div>
         </div>
 
-        <!-- Requests Section -->
-        <div class="section-divider"></div>
-        <h3 class="mb-4">Requests</h3>
-        <div class="row g-4">
-            <!-- Time Off Requests -->
-            <div class="col-md-4">
-                <div class="card nav-card h-100">
-                    <a href="/supervisor/time-off-requests">
-                        <div class="card-body">
-                            <i class="bi bi-calendar-x"></i>
-                            <div>
-                                <h5 class="mb-1">Time Off Requests</h5>
-                                <small class="text-muted">
-                                    {% if pending_time_off > 0 %}
-                                        <span class="badge bg-warning text-dark">{{ pending_time_off }} pending</span>
-                                    {% else %}
-                                        No pending requests
-                                    {% endif %}
-                                </small>
-                            </div>
-                        </div>
-                    </a>
-                </div>
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Coverage Gaps -->
+            <div class="info-card">
+                <h2>{{ coverage_gaps|default(0) }}</h2>
+                <p>Coverage Gaps</p>
+                <a href="/supervisor/coverage-needs" class="btn btn-primary mt-3">View Details</a>
             </div>
-
-            <!-- Swap Requests -->
-            <div class="col-md-4">
-                <div class="card nav-card h-100">
-                    <a href="/supervisor/swap-requests">
-                        <div class="card-body">
-                            <i class="bi bi-arrow-left-right"></i>
-                            <div>
-                                <h5 class="mb-1">Swap Requests</h5>
-                                <small class="text-muted">
-                                    {% if pending_swaps > 0 %}
-                                        <span class="badge bg-warning text-dark">{{ pending_swaps }} pending</span>
-                                    {% else %}
-                                        No pending swaps
-                                    {% endif %}
-                                </small>
-                            </div>
-                        </div>
-                    </a>
-                </div>
-            </div>
-
-            <!-- Employee Suggestions -->
-            <div class="col-md-4">
-                <div class="card nav-card h-100">
-                    <a href="/supervisor/suggestions">
-                        <div class="card-body">
-                            <i class="bi bi-lightbulb"></i>
-                            <div>
-                                <h5 class="mb-1">Employee Suggestions</h5>
-                                <small class="text-muted">
-                                    {% if pending_suggestions > 0 %}
-                                        <span class="badge bg-info text-white">{{ pending_suggestions }} new</span>
-                                    {% else %}
-                                        No new suggestions
-                                    {% endif %}
-                                </small>
-                            </div>
-                        </div>
-                    </a>
-                </div>
+            
+            <!-- Pending Requests -->
+            <div class="info-card">
+                <h2>{{ pending_requests }}</h2>
+                <p>Pending Requests</p>
+                <a href="/supervisor/time-off-requests" class="btn btn-warning mt-3">Review Now</a>
             </div>
         </div>
 
-        <!-- Communications Section -->
-        <div class="section-divider"></div>
-        <h3 class="mb-4">Communications</h3>
-        <div class="row g-4">
-            <!-- Supervisor Messages -->
-            <div class="col-md-4">
-                <div class="card nav-card h-100">
-                    <a href="/supervisor/messages">
-                        <div class="card-body">
-                            <i class="bi bi-envelope"></i>
-                            <div>
-                                <h5 class="mb-1">Supervisor Messages</h5>
-                                <small class="text-muted">Messages between supervisors</small>
-                            </div>
-                        </div>
-                    </a>
-                </div>
+        <!-- Schedule Section -->
+        <div class="schedule-section">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h3>Today's Schedule</h3>
+                <a href="/schedule/view" class="btn btn-outline-primary">View Full Schedule</a>
             </div>
-
-            <!-- Employee Messages -->
-            <div class="col-md-4">
-                <div class="card nav-card h-100">
-                    <a href="/position/messages">
-                        <div class="card-body">
-                            <i class="bi bi-chat-dots"></i>
-                            <div>
-                                <h5 class="mb-1">Employee Messages</h5>
-                                <small class="text-muted">Position-based messages</small>
-                            </div>
-                        </div>
-                    </a>
-                </div>
-            </div>
-
-            <!-- Maintenance Issues -->
-            <div class="col-md-4">
-                <div class="card nav-card h-100">
-                    <a href="/maintenance/issues">
-                        <div class="card-body">
-                            <i class="bi bi-tools"></i>
-                            <div>
-                                <h5 class="mb-1">Maintenance Issues</h5>
-                                <small class="text-muted">Reported issues</small>
-                            </div>
-                        </div>
-                    </a>
-                </div>
-            </div>
-        </div>
-
-        <!-- Statistics Row -->
-        <div class="section-divider"></div>
-        <div class="row g-4">
-            <div class="col-md-3">
-                <div class="stat-box">
-                    <div class="stat-number">{{ total_employees }}</div>
-                    <div class="stat-label">Total Employees</div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="stat-box">
-                    <div class="stat-number">{{ on_duty_now|default(0) }}</div>
-                    <div class="stat-label">On Duty Now</div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="stat-box">
-                    <div class="stat-number">{{ coverage_gaps|default(0) }}</div>
-                    <div class="stat-label">Coverage Gaps</div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="stat-box">
-                    <div class="stat-number">{{ pending_requests }}</div>
-                    <div class="stat-label">Pending Requests</div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Today's Schedule -->
-        <div class="section-divider"></div>
-        <div class="d-flex justify-content-between align-items-center mb-3">
-            <h3>Today's Schedule</h3>
-            <a href="/schedule/view" class="btn btn-outline-primary">View Full Schedule</a>
-        </div>
-        <div class="schedule-preview">
             {% if todays_shifts %}
                 <div class="table-responsive">
-                    <table class="table table-sm">
+                    <table class="table">
                         <thead>
                             <tr>
                                 <th>Position</th>
                                 <th>Employee</th>
                                 <th>Time</th>
+                                <th>Crew</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {% for shift in todays_shifts[:5] %}
+                            {% for shift in todays_shifts[:8] %}
                             <tr>
                                 <td>{{ shift.position_name }}</td>
                                 <td>{{ shift.employee_name }}</td>
                                 <td>{{ shift.start_time }} - {{ shift.end_time }}</td>
+                                <td>Crew {{ shift.crew|default('-') }}</td>
                             </tr>
                             {% endfor %}
                         </tbody>
                     </table>
-                    {% if todays_shifts|length > 5 %}
-                    <p class="text-muted text-center mb-0">... and {{ todays_shifts|length - 5 }} more shifts</p>
-                    {% endif %}
                 </div>
             {% else %}
-                <p class="text-muted text-center mb-0">No shifts scheduled for today</p>
+                <p class="text-muted text-center">No shifts scheduled for today</p>
             {% endif %}
         </div>
 
-        <!-- Upcoming Coverage Gaps -->
-        {% if upcoming_gaps %}
-        <div class="mt-4">
-            <h4>Upcoming Coverage Gaps</h4>
-            {% for gap in upcoming_gaps %}
-            <div class="gap-alert">
-                <strong>{{ gap.position }}</strong> - {{ gap.date }} ({{ gap.shift }} shift)
-                <a href="/supervisor/coverage-needs" class="btn btn-sm btn-warning float-end">Fill Gap</a>
+        <!-- Bottom Section -->
+        <div class="bottom-section">
+            <!-- Schedule Management -->
+            <div class="bottom-card">
+                <h4>Schedule Management</h4>
+                <ul class="action-list">
+                    <li><a href="/schedule/create"><i class="bi bi-plus-circle"></i> Create a Schedule</a></li>
+                    <li><a href="/import-employees"><i class="bi bi-upload"></i> Import Employees</a></li>
+                </ul>
             </div>
-            {% endfor %}
-        </div>
-        {% endif %}
 
-        <!-- Quick Actions -->
-        <div class="quick-links">
-            <h3 class="mb-4">Quick Actions</h3>
-            <div class="text-center">
-                <a href="/schedule/create" class="btn btn-primary quick-link-btn">
-                    <i class="bi bi-calendar-plus"></i> Schedule Creation Wizard
-                </a>
-                <a href="/schedule/create?advanced=true" class="btn btn-primary quick-link-btn">
-                    <i class="bi bi-gear"></i> Advanced Schedule Creation
-                </a>
-                <a href="/import-employees" class="btn btn-success quick-link-btn">
-                    <i class="bi bi-upload"></i> Import Employees
-                </a>
-                <a href="/supervisor/coverage-needs" class="btn btn-warning quick-link-btn">
-                    <i class="bi bi-shield"></i> Manage Coverage
-                </a>
-                <button class="btn btn-info quick-link-btn" onclick="alert('Send Announcements feature coming soon!')">
-                    <i class="bi bi-megaphone"></i> Send Announcements
-                </button>
-            </div>
-        </div>
-
-        <!-- Bottom Quick Links -->
-        <div class="row mt-5 mb-5">
-            <div class="col-md-4">
-                <h5>Communications</h5>
-                <div class="list-group">
-                    <a href="/supervisor/messages" class="list-group-item list-group-item-action">
-                        <i class="bi bi-envelope"></i> Supervisor Messages
-                    </a>
-                    <a href="/maintenance/issues" class="list-group-item list-group-item-action">
-                        <i class="bi bi-tools"></i> Maintenance Issues
-                    </a>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <h5>Quick Message</h5>
-                <form action="/quick/supervisor-message" method="POST" class="mt-3">
-                    <select name="recipient_id" class="form-select mb-2" required>
+            <!-- Communications -->
+            <div class="bottom-card">
+                <h4>Communications</h4>
+                <ul class="action-list">
+                    <li><a href="/supervisor/messages"><i class="bi bi-envelope"></i> Supervisor Messages</a></li>
+                    <li><a href="/maintenance/issues"><i class="bi bi-tools"></i> Maintenance Issues</a></li>
+                </ul>
+                
+                <h5 class="mt-3">Quick Message</h5>
+                <form action="/quick/supervisor-message" method="POST" class="quick-message-form">
+                    <select name="recipient_id" class="form-select form-select-sm mb-2" required>
                         <option value="">Select Supervisor...</option>
                         {% for supervisor in supervisors %}
                             {% if supervisor.id != current_user.id %}
@@ -506,25 +379,32 @@
                             {% endif %}
                         {% endfor %}
                     </select>
-                    <textarea name="message" class="form-control mb-2" rows="3" placeholder="Type your message..." required></textarea>
-                    <button type="submit" class="btn btn-primary w-100">Send Message</button>
+                    <textarea name="message" class="form-control form-control-sm mb-2" rows="2" placeholder="Message..." required></textarea>
+                    <button type="submit" class="btn btn-primary btn-sm w-100">Send</button>
                 </form>
             </div>
-            <div class="col-md-4">
-                <h5>System Status</h5>
-                <div class="list-group mt-3">
-                    <div class="list-group-item">
-                        <div class="d-flex justify-content-between">
-                            <span>Database</span>
-                            <span class="badge bg-success">Healthy</span>
-                        </div>
-                    </div>
-                    <a href="/shift-marketplace" class="list-group-item list-group-item-action">
-                        <div class="d-flex justify-content-between">
-                            <span><i class="bi bi-shop"></i> Shift Marketplace</span>
-                            <span class="badge bg-primary">{{ active_trades|default(0) }} active</span>
-                        </div>
-                    </a>
+
+            <!-- System Status -->
+            <div class="bottom-card">
+                <h4>System Status</h4>
+                <div class="status-item">
+                    <span>Database</span>
+                    <span class="badge bg-success">Healthy</span>
+                </div>
+                <div class="status-item">
+                    <span>Active Users</span>
+                    <span>{{ active_users|default(1) }}</span>
+                </div>
+                <div class="status-item">
+                    <span>Last Sync</span>
+                    <span>{{ last_sync|default('Just now') }}</span>
+                </div>
+                
+                <h5 class="mt-3">Shift Marketplace</h5>
+                <div class="text-center mt-2">
+                    <h3 class="text-primary mb-0">{{ active_trades|default(0) }}</h3>
+                    <p class="text-muted small">Active Trades</p>
+                    <a href="/shift-marketplace" class="btn btn-outline-primary btn-sm">View Marketplace</a>
                 </div>
             </div>
         </div>
