@@ -3,729 +3,730 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Create Pitman Schedule - Workforce Scheduler</title>
-    
-    <!-- Bootstrap CSS -->
+    <title>Schedule Creation Wizard</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
-    
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
     <style>
-        body {
-            background-color: #f8f9fa;
+        .wizard-header {
+            background-color: #343a40;
+            color: white;
+            padding: 2rem;
+            margin-bottom: 2rem;
         }
         
-        .step-item.active {
-            background-color: #e7f1ff;
-            border-left: 3px solid #0066cc;
+        .step-indicator {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 3rem;
+            position: relative;
         }
-
-        .step-item.completed .step-number {
-            background-color: #28a745 !important;
+        
+        .step-indicator::before {
+            content: '';
+            position: absolute;
+            top: 20px;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background-color: #dee2e6;
+            z-index: -1;
         }
-
-        .step-number {
-            width: 30px;
-            height: 30px;
+        
+        .step {
+            background-color: white;
+            padding: 0.5rem;
+            text-align: center;
+            flex: 1;
+        }
+        
+        .step-circle {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background-color: #dee2e6;
+            color: #6c757d;
             display: flex;
             align-items: center;
             justify-content: center;
+            margin: 0 auto 0.5rem;
+            font-weight: bold;
         }
-
-        .pattern-card {
-            transition: all 0.3s;
+        
+        .step.active .step-circle {
+            background-color: #0d6efd;
+            color: white;
+        }
+        
+        .step.completed .step-circle {
+            background-color: #198754;
+            color: white;
+        }
+        
+        .step-label {
+            font-size: 0.875rem;
+            color: #6c757d;
+        }
+        
+        .step.active .step-label {
+            color: #0d6efd;
+            font-weight: 500;
+        }
+        
+        .wizard-content {
+            min-height: 400px;
+        }
+        
+        .crew-card {
             cursor: pointer;
+            transition: all 0.3s;
+            margin-bottom: 1rem;
         }
-
-        .pattern-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        
+        .crew-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
         }
-
-        .pattern-card.selected {
-            border: 2px solid #0066cc;
+        
+        .crew-card.selected {
+            border-color: #0d6efd;
             background-color: #e7f1ff;
         }
         
-        .sticky-top {
-            position: -webkit-sticky;
-            position: sticky;
+        .pattern-card {
+            cursor: pointer;
+            transition: all 0.3s;
+            height: 100%;
+        }
+        
+        .pattern-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        
+        .pattern-card.selected {
+            border-color: #0d6efd;
+            background-color: #e7f1ff;
+        }
+        
+        .position-requirement {
+            background-color: #f8f9fa;
+            padding: 1rem;
+            border-radius: 0.25rem;
+            margin-bottom: 1rem;
+        }
+        
+        .loading-spinner {
+            display: none;
+            text-align: center;
+            padding: 3rem;
+        }
+        
+        .error-message {
+            display: none;
         }
     </style>
 </head>
 <body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">
+                <i class="bi bi-calendar3"></i> Workforce Scheduler
+            </a>
+            <div class="navbar-nav ms-auto">
+                <a class="nav-link" href="/dashboard">
+                    <i class="bi bi-arrow-left"></i> Back to Dashboard
+                </a>
+            </div>
+        </div>
+    </nav>
 
-<div class="container-fluid mt-4">
-    <div class="row">
-        <!-- Sidebar with Steps -->
-        <div class="col-md-3">
-            <div class="card sticky-top" style="top: 20px;">
-                <div class="card-header bg-primary text-white">
-                    <h5 class="mb-0">Schedule Creation Steps</h5>
-                </div>
-                <div class="card-body p-0">
-                    <div class="list-group list-group-flush">
-                        <a href="#" class="list-group-item list-group-item-action step-item active" data-step="1">
-                            <div class="d-flex align-items-center">
-                                <span class="step-number badge bg-primary rounded-circle me-2">1</span>
-                                <div>
-                                    <strong>Setup Crews</strong>
-                                    <small class="d-block text-muted">Ensure crews are populated</small>
-                                </div>
-                            </div>
-                        </a>
-                        <a href="#" class="list-group-item list-group-item-action step-item disabled" data-step="2">
-                            <div class="d-flex align-items-center">
-                                <span class="step-number badge bg-secondary rounded-circle me-2">2</span>
-                                <div>
-                                    <strong>Position Requirements</strong>
-                                    <small class="d-block text-muted">Set minimum coverage</small>
-                                </div>
-                            </div>
-                        </a>
-                        <a href="#" class="list-group-item list-group-item-action step-item disabled" data-step="3">
-                            <div class="d-flex align-items-center">
-                                <span class="step-number badge bg-secondary rounded-circle me-2">3</span>
-                                <div>
-                                    <strong>Choose Pattern</strong>
-                                    <small class="d-block text-muted">Select schedule type</small>
-                                </div>
-                            </div>
-                        </a>
-                        <a href="#" class="list-group-item list-group-item-action step-item disabled" data-step="4">
-                            <div class="d-flex align-items-center">
-                                <span class="step-number badge bg-secondary rounded-circle me-2">4</span>
-                                <div>
-                                    <strong>Configure Schedule</strong>
-                                    <small class="d-block text-muted">Set pattern details</small>
-                                </div>
-                            </div>
-                        </a>
-                        <a href="#" class="list-group-item list-group-item-action step-item disabled" data-step="5">
-                            <div class="d-flex align-items-center">
-                                <span class="step-number badge bg-secondary rounded-circle me-2">5</span>
-                                <div>
-                                    <strong>Review & Create</strong>
-                                    <small class="d-block text-muted">Finalize schedule</small>
-                                </div>
-                            </div>
-                        </a>
-                    </div>
-                </div>
-                <div class="card-footer">
-                    <a href="{{ url_for('schedule_select') }}" class="btn btn-secondary btn-sm w-100">
-                        <i class="bi bi-arrow-left"></i> Back to Pattern Selection
-                    </a>
-                </div>
+    <div class="wizard-header">
+        <div class="container">
+            <h1 class="h2 mb-0">
+                <i class="bi bi-magic"></i> Schedule Creation Wizard
+            </h1>
+            <p class="mb-0 mt-2">Create a new schedule for your crews</p>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- Step Indicator -->
+        <div class="step-indicator">
+            <div class="step active" id="step-1-indicator">
+                <div class="step-circle">1</div>
+                <div class="step-label">Setup Crews</div>
+            </div>
+            <div class="step" id="step-2-indicator">
+                <div class="step-circle">2</div>
+                <div class="step-label">Position Requirements</div>
+            </div>
+            <div class="step" id="step-3-indicator">
+                <div class="step-circle">3</div>
+                <div class="step-label">Choose Pattern</div>
+            </div>
+            <div class="step" id="step-4-indicator">
+                <div class="step-circle">4</div>
+                <div class="step-label">Configure Schedule</div>
+            </div>
+            <div class="step" id="step-5-indicator">
+                <div class="step-circle">5</div>
+                <div class="step-label">Review & Create</div>
             </div>
         </div>
 
-        <!-- Main Content Area -->
-        <div class="col-md-9">
+        <!-- Wizard Content -->
+        <div class="wizard-content">
             <!-- Step 1: Setup Crews -->
-            <div id="step1" class="step-content">
-                <div class="card">
-                    <div class="card-header">
-                        <h4>Step 1: Setup Your Crews</h4>
-                        <p class="mb-0 text-muted">Ensure all 4 crews (A, B, C, D) are properly staffed</p>
+            <div id="step-1" class="wizard-step">
+                <h3 class="mb-4">Step 1: Setup Your Crews</h3>
+                
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle"></i> Select which crews will be included in this schedule.
+                </div>
+
+                <div class="row mb-4">
+                    <div class="col-md-8">
+                        <div class="row" id="crewSelection">
+                            <div class="col-md-6">
+                                <div class="card crew-card" data-crew="A">
+                                    <div class="card-body">
+                                        <h5 class="card-title">
+                                            <i class="bi bi-people-fill"></i> Crew A
+                                        </h5>
+                                        <p class="card-text" id="crew-A-info">Loading...</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="card crew-card" data-crew="B">
+                                    <div class="card-body">
+                                        <h5 class="card-title">
+                                            <i class="bi bi-people-fill"></i> Crew B
+                                        </h5>
+                                        <p class="card-text" id="crew-B-info">Loading...</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="card crew-card" data-crew="C">
+                                    <div class="card-body">
+                                        <h5 class="card-title">
+                                            <i class="bi bi-people-fill"></i> Crew C
+                                        </h5>
+                                        <p class="card-text" id="crew-C-info">Loading...</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="card crew-card" data-crew="D">
+                                    <div class="card-body">
+                                        <h5 class="card-title">
+                                            <i class="bi bi-people-fill"></i> Crew D
+                                        </h5>
+                                        <p class="card-text" id="crew-D-info">Loading...</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    <div class="card-body">
-                        <!-- Current Crew Status -->
-                        <div class="alert alert-info mb-4">
-                            <h5>Current Crew Status</h5>
-                            <div class="row mt-3">
-                                {% for crew in ['A', 'B', 'C', 'D'] %}
-                                <div class="col-md-3 text-center">
-                                    <h6>Crew {{ crew }}</h6>
-                                    <h3 id="crew{{ crew }}Count">{{ crew_stats[crew]['count'] }}</h3>
-                                    <small class="text-muted">Employees</small>
-                                </div>
-                                {% endfor %}
-                            </div>
-                        </div>
-
-                        <!-- Options -->
-                        <div class="row">
-                            <div class="col-md-6">
-                                <div class="card h-100">
-                                    <div class="card-body text-center">
-                                        <i class="bi bi-people-fill display-4 text-primary"></i>
-                                        <h5 class="mt-3">View/Edit Existing Crews</h5>
-                                        <p>Review and adjust current crew assignments</p>
-                                        <button class="btn btn-primary" onclick="viewCrews()">
-                                            <i class="bi bi-eye"></i> View Crews
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="card h-100">
-                                    <div class="card-body text-center">
-                                        <i class="bi bi-file-earmark-arrow-down display-4 text-success"></i>
-                                        <h5 class="mt-3">Import Crew Roster</h5>
-                                        <p>Download template, fill it out, and upload</p>
-                                        <button class="btn btn-success" onclick="downloadCrewTemplate()">
-                                            <i class="bi bi-download"></i> Download Template
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Upload Section (Initially Hidden) -->
-                        <div id="uploadSection" class="mt-4" style="display: none;">
-                            <hr>
-                            <h5>Upload Completed Crew Roster</h5>
-                            <div class="alert alert-warning">
-                                <i class="bi bi-exclamation-triangle"></i> 
-                                Please ensure the Excel file has all 4 crews (A, B, C, D) properly filled out with employee assignments.
-                            </div>
-                            <form id="uploadCrewForm" enctype="multipart/form-data">
-                                <div class="mb-3">
-                                    <label for="crewFile" class="form-label">Select Crew Roster File</label>
-                                    <input type="file" class="form-control" id="crewFile" accept=".xlsx,.xls" required>
-                                </div>
-                                <button type="submit" class="btn btn-primary">
-                                    <i class="bi bi-upload"></i> Upload Crew Roster
+                    <div class="col-md-4">
+                        <div class="card bg-light">
+                            <div class="card-body">
+                                <h6 class="card-title">Quick Actions</h6>
+                                <button class="btn btn-sm btn-outline-primary w-100 mb-2" onclick="selectAllCrews()">
+                                    <i class="bi bi-check2-all"></i> Select All Crews
                                 </button>
-                            </form>
-                        </div>
-
-                        <!-- Next Button -->
-                        <div class="text-end mt-4">
-                            <button class="btn btn-primary" onclick="validateAndProceed(1)" id="step1Next" 
-                                    {% if not (crew_stats['A']['count'] > 0 and crew_stats['B']['count'] > 0 and crew_stats['C']['count'] > 0 and crew_stats['D']['count'] > 0) %}disabled{% endif %}>
-                                Next: Position Requirements <i class="bi bi-arrow-right"></i>
-                            </button>
+                                <a href="/crews" target="_blank" class="btn btn-sm btn-outline-secondary w-100">
+                                    <i class="bi bi-eye"></i> View Crew Details
+                                </a>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
 
             <!-- Step 2: Position Requirements -->
-            <div id="step2" class="step-content" style="display: none;">
-                <div class="card">
-                    <div class="card-header">
-                        <h4>Step 2: Set Position Requirements</h4>
-                        <p class="mb-0 text-muted">Specify minimum coverage needed for each position</p>
-                    </div>
-                    <div class="card-body">
-                        <div class="alert alert-info">
-                            <i class="bi bi-info-circle"></i> 
-                            Set the minimum number of employees required for each position during each shift.
-                        </div>
-
-                        <div id="positionRequirements">
-                            {% for position in positions %}
-                            <div class="position-requirement mb-3">
-                                <div class="row align-items-center">
-                                    <div class="col-md-6">
-                                        <h6>{{ position.name }}</h6>
-                                        <small class="text-muted">{{ position.employee_count }} employees in this position</small>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <div class="input-group">
-                                            <span class="input-group-text">Minimum Required</span>
-                                            <input type="number" class="form-control position-min" 
-                                                   data-position="{{ position.name }}" 
-                                                   value="{{ position.min_coverage or 1 }}" 
-                                                   min="1" 
-                                                   max="{{ position.employee_count }}">
-                                            <span class="input-group-text">per shift</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            {% endfor %}
-                        </div>
-
-                        <!-- Navigation -->
-                        <div class="d-flex justify-content-between mt-4">
-                            <button class="btn btn-secondary" onclick="goToStep(1)">
-                                <i class="bi bi-arrow-left"></i> Back
-                            </button>
-                            <button class="btn btn-primary" onclick="validateAndProceed(2)">
-                                Next: Choose Pattern <i class="bi bi-arrow-right"></i>
-                            </button>
-                        </div>
-                    </div>
+            <div id="step-2" class="wizard-step" style="display: none;">
+                <h3 class="mb-4">Step 2: Position Requirements</h3>
+                
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle"></i> Define minimum staffing requirements for each position per shift.
                 </div>
+
+                <div id="positionRequirements">
+                    <!-- Will be populated dynamically -->
+                </div>
+
+                <button class="btn btn-sm btn-outline-primary mt-3" onclick="addPositionRequirement()">
+                    <i class="bi bi-plus-circle"></i> Add Position
+                </button>
             </div>
 
             <!-- Step 3: Choose Pattern -->
-            <div id="step3" class="step-content" style="display: none;">
-                <div class="card">
-                    <div class="card-header">
-                        <h4>Step 3: Choose Schedule Pattern</h4>
-                        <p class="mb-0 text-muted">Select the rotation pattern for your 24/7 operation</p>
-                    </div>
-                    <div class="card-body">
-                        <div class="row">
-                            <!-- Pitman Schedule -->
-                            <div class="col-md-6 mb-3">
-                                <div class="card h-100 pattern-card" data-pattern="pitman">
-                                    <div class="card-body">
-                                        <h5 class="card-title">Pitman (2-2-3)</h5>
-                                        <p class="card-text">
-                                            <strong>Pattern:</strong> Work 2, off 2, work 3<br>
-                                            <strong>Cycle:</strong> 14 days<br>
-                                            <strong>Hours/Week:</strong> 42 average<br>
-                                            <strong>Pros:</strong> Every other weekend off
-                                        </p>
-                                        <button class="btn btn-primary select-pattern" data-pattern="pitman">
-                                            Select Pitman
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
+            <div id="step-3" class="wizard-step" style="display: none;">
+                <h3 class="mb-4">Step 3: Choose Schedule Pattern</h3>
+                
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle"></i> Select the rotation pattern for your crews.
+                </div>
 
-                            <!-- Other patterns would go here but are disabled for now -->
-                            <div class="col-md-6 mb-3">
-                                <div class="card h-100 disabled">
-                                    <div class="card-body text-muted">
-                                        <h5 class="card-title">DuPont</h5>
-                                        <p class="card-text">
-                                            <em>Coming soon...</em>
-                                        </p>
-                                        <button class="btn btn-secondary" disabled>
-                                            Not Available
-                                        </button>
-                                    </div>
-                                </div>
+                <div class="row" id="patternSelection">
+                    <div class="col-md-4 mb-3">
+                        <div class="card pattern-card" data-pattern="pitman">
+                            <div class="card-body">
+                                <h5 class="card-title">Pitman (2-2-3)</h5>
+                                <p class="card-text small">2 days on, 2 off, 3 on, 2 off, 2 on, 3 off</p>
+                                <ul class="small mb-0">
+                                    <li>14-day cycle</li>
+                                    <li>Every other weekend off</li>
+                                    <li>Average 42 hrs/week</li>
+                                </ul>
                             </div>
                         </div>
-
-                        <!-- Navigation -->
-                        <div class="d-flex justify-content-between mt-4">
-                            <button class="btn btn-secondary" onclick="goToStep(2)">
-                                <i class="bi bi-arrow-left"></i> Back
-                            </button>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <div class="card pattern-card" data-pattern="dupont">
+                            <div class="card-body">
+                                <h5 class="card-title">DuPont</h5>
+                                <p class="card-text small">4 nights, 3 off, 3 days, 1 off, 3 nights, 3 off, 4 days, 7 off</p>
+                                <ul class="small mb-0">
+                                    <li>28-day cycle</li>
+                                    <li>7 consecutive days off</li>
+                                    <li>Average 42 hrs/week</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <div class="card pattern-card" data-pattern="southern-swing">
+                            <div class="card-body">
+                                <h5 class="card-title">Southern Swing</h5>
+                                <p class="card-text small">7 days, 2 off, 7 swing, 2 off, 7 nights, 3 off</p>
+                                <ul class="small mb-0">
+                                    <li>28-day cycle</li>
+                                    <li>8-hour shifts</li>
+                                    <li>Rotating shift times</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <div class="card pattern-card" data-pattern="4-on-4-off">
+                            <div class="card-body">
+                                <h5 class="card-title">4-on-4-off</h5>
+                                <p class="card-text small">4 days on, 4 days off continuously</p>
+                                <ul class="small mb-0">
+                                    <li>8-day cycle</li>
+                                    <li>Simple pattern</li>
+                                    <li>Average 42 hrs/week</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <div class="card pattern-card" data-pattern="5-and-2">
+                            <div class="card-body">
+                                <h5 class="card-title">5 & 2 Schedule</h5>
+                                <p class="card-text small">5 days on, 2 days off, 5 days on, 3 days off</p>
+                                <ul class="small mb-0">
+                                    <li>15-day cycle</li>
+                                    <li>Mostly weekdays</li>
+                                    <li>Good work-life balance</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <div class="card pattern-card" data-pattern="fixed-fixed">
+                            <div class="card-body">
+                                <h5 class="card-title">Fixed Teams</h5>
+                                <p class="card-text small">Two teams: Mon-Thu and Fri-Sun</p>
+                                <ul class="small mb-0">
+                                    <li>Fixed schedule</li>
+                                    <li>No rotation</li>
+                                    <li>Predictable days off</li>
+                                </ul>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
 
             <!-- Step 4: Configure Schedule -->
-            <div id="step4" class="step-content" style="display: none;">
-                <div class="card">
-                    <div class="card-header">
-                        <h4>Step 4: Configure Pitman Schedule</h4>
-                        <p class="mb-0 text-muted">Set the specific parameters for your schedule</p>
-                    </div>
-                    <div class="card-body">
-                        <!-- Start Date and Times -->
-                        <div class="row mb-4">
-                            <div class="col-md-6">
-                                <label for="startDate" class="form-label">Schedule Start Date</label>
-                                <input type="date" class="form-control" id="startDate" required>
-                                <small class="text-muted">Pitman works best starting on a Sunday</small>
-                            </div>
-                            <div class="col-md-6">
-                                <label for="endDate" class="form-label">Schedule End Date</label>
-                                <input type="date" class="form-control" id="endDate" required>
-                                <small class="text-muted">Select the last day of the schedule period</small>
-                            </div>
-                        </div>
-
-                        <!-- Shift Times -->
-                        <h5 class="mb-3">Shift Times (12-hour shifts)</h5>
-                        <div class="row mb-4">
-                            <div class="col-md-6">
-                                <label for="dayShiftStart" class="form-label">Day Shift Start</label>
-                                <input type="time" class="form-control" id="dayShiftStart" value="07:00" required>
-                            </div>
-                            <div class="col-md-6">
-                                <label for="nightShiftStart" class="form-label">Night Shift Start</label>
-                                <input type="time" class="form-control" id="nightShiftStart" value="19:00" required>
-                            </div>
-                        </div>
-
-                        <!-- Rotation Type -->
-                        <h5 class="mb-3">Rotation Type</h5>
+            <div id="step-4" class="wizard-step" style="display: none;">
+                <h3 class="mb-4">Step 4: Configure Schedule</h3>
+                
+                <div class="row">
+                    <div class="col-md-6">
                         <div class="mb-3">
-                            <div class="form-check">
-                                <input class="form-check-input" type="radio" name="rotationType" id="fixedShifts" value="fixed" checked>
-                                <label class="form-check-label" for="fixedShifts">
-                                    <strong>Fixed Shifts</strong><br>
-                                    <small class="text-muted">Crews A & B always work days, Crews C & D always work nights</small>
-                                </label>
-                            </div>
-                            <div class="form-check mt-3">
-                                <input class="form-check-input" type="radio" name="rotationType" id="rapidShifts" value="rapid">
-                                <label class="form-check-label" for="rapidShifts">
-                                    <strong>Rapid Rotation</strong><br>
-                                    <small class="text-muted">Crews change shifts after every break period</small>
-                                </label>
-                            </div>
-                            <div class="form-check mt-3">
-                                <input class="form-check-input" type="radio" name="rotationType" id="2weekShifts" value="2_week">
-                                <label class="form-check-label" for="2weekShifts">
-                                    <strong>2-Week Rotation</strong><br>
-                                    <small class="text-muted">Crews work same shift for 2 weeks then rotate</small>
-                                </label>
-                            </div>
-                            <div class="form-check mt-3">
-                                <input class="form-check-input" type="radio" name="rotationType" id="4weekShifts" value="4_week">
-                                <label class="form-check-label" for="4weekShifts">
-                                    <strong>4-Week Rotation</strong><br>
-                                    <small class="text-muted">Crews work same shift for 4 weeks then rotate</small>
-                                </label>
+                            <label class="form-label">Schedule Name</label>
+                            <input type="text" class="form-control" id="scheduleName" placeholder="e.g., Q1 2025 Production Schedule">
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Start Date</label>
+                            <input type="date" class="form-control" id="startDate">
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">End Date (Optional)</label>
+                            <input type="date" class="form-control" id="endDate">
+                            <small class="text-muted">Leave blank for ongoing schedule</small>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">Shift Times</label>
+                            <div class="row">
+                                <div class="col-6">
+                                    <label class="form-label small">Day Shift</label>
+                                    <input type="time" class="form-control" id="dayShiftStart" value="07:00">
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label small">Night Shift</label>
+                                    <input type="time" class="form-control" id="nightShiftStart" value="19:00">
+                                </div>
                             </div>
                         </div>
-
-                        <!-- Navigation -->
-                        <div class="d-flex justify-content-between mt-4">
-                            <button class="btn btn-secondary" onclick="goToStep(3)">
-                                <i class="bi bi-arrow-left"></i> Back
-                            </button>
-                            <button class="btn btn-primary" onclick="validateAndProceed(4)">
-                                Next: Review Schedule <i class="bi bi-arrow-right"></i>
-                            </button>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Pattern Options</label>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="fairRotation" checked>
+                                <label class="form-check-label" for="fairRotation">
+                                    Ensure fair weekend distribution
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="avoidBackToBack" checked>
+                                <label class="form-check-label" for="avoidBackToBack">
+                                    Avoid back-to-back night/day shifts
+                                </label>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
 
             <!-- Step 5: Review & Create -->
-            <div id="step5" class="step-content" style="display: none;">
+            <div id="step-5" class="wizard-step" style="display: none;">
+                <h3 class="mb-4">Step 5: Review & Create</h3>
+                
                 <div class="card">
-                    <div class="card-header">
-                        <h4>Step 5: Review and Create Schedule</h4>
-                        <p class="mb-0 text-muted">Confirm your settings before creating the schedule</p>
-                    </div>
                     <div class="card-body">
-                        <div id="scheduleReview">
-                            <!-- This will be populated with a summary of all settings -->
-                        </div>
-
-                        <!-- Navigation -->
-                        <div class="d-flex justify-content-between mt-4">
-                            <button class="btn btn-secondary" onclick="goToStep(4)">
-                                <i class="bi bi-arrow-left"></i> Back
-                            </button>
-                            <button class="btn btn-success btn-lg" onclick="createSchedule()">
-                                <i class="bi bi-check-circle"></i> Create Schedule
-                            </button>
+                        <h5 class="card-title">Schedule Summary</h5>
+                        <div id="scheduleSummary">
+                            <!-- Will be populated dynamically -->
                         </div>
                     </div>
                 </div>
+
+                <div class="alert alert-warning mt-4">
+                    <i class="bi bi-exclamation-triangle"></i> 
+                    Please review all details carefully. Once created, schedules can be modified but not deleted.
+                </div>
             </div>
+        </div>
+
+        <!-- Navigation Buttons -->
+        <div class="d-flex justify-content-between mt-4 mb-5">
+            <button class="btn btn-secondary" id="prevBtn" onclick="previousStep()" style="display: none;">
+                <i class="bi bi-arrow-left"></i> Previous
+            </button>
+            <button class="btn btn-primary ms-auto" id="nextBtn" onclick="nextStep()">
+                Next <i class="bi bi-arrow-right"></i>
+            </button>
+            <button class="btn btn-success ms-auto" id="createBtn" onclick="createSchedule()" style="display: none;">
+                <i class="bi bi-check-circle"></i> Create Schedule
+            </button>
+        </div>
+
+        <!-- Loading Spinner -->
+        <div class="loading-spinner">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-2">Creating schedule...</p>
+        </div>
+
+        <!-- Error Message -->
+        <div class="alert alert-danger error-message" role="alert">
+            <i class="bi bi-exclamation-triangle"></i> 
+            <span id="errorText"></span>
         </div>
     </div>
-</div>
 
-<!-- Bootstrap Bundle with Popper -->
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-
-<script>
-// Global variables to store wizard state
-let wizardData = {
-    crews: {{ crew_stats | tojson }},
-    positions: {{ positions | length }},
-    pattern: '{{ pattern }}',
-    config: {},
-    currentStep: 1
-};
-
-// Initialize on page load
-document.addEventListener('DOMContentLoaded', function() {
-    checkCrewStatus();
-    
-    // Set default dates
-    const today = new Date();
-    const nextSunday = new Date(today);
-    nextSunday.setDate(today.getDate() + (7 - today.getDay()) % 7);
-    document.getElementById('startDate').value = nextSunday.toISOString().split('T')[0];
-    
-    // Set end date to 4 weeks later
-    const endDate = new Date(nextSunday);
-    endDate.setDate(endDate.getDate() + 27);
-    document.getElementById('endDate').value = endDate.toISOString().split('T')[0];
-});
-
-// Check current crew status
-function checkCrewStatus() {
-    fetch('/api/crew-status')
-        .then(response => response.json())
-        .then(data => {
-            wizardData.crews = data.stats;
-            updateCrewCounts();
-            checkStep1Completion();
-        })
-        .catch(() => {
-            // Use existing data
-            checkStep1Completion();
-        });
-}
-
-function updateCrewCounts() {
-    ['A', 'B', 'C', 'D'].forEach(crew => {
-        const count = wizardData.crews[crew]?.count || 0;
-        document.getElementById(`crew${crew}Count`).textContent = count;
-    });
-}
-
-function checkStep1Completion() {
-    const allCrewsHaveEmployees = ['A', 'B', 'C', 'D'].every(crew => 
-        wizardData.crews[crew] && wizardData.crews[crew].count > 0
-    );
-    
-    document.getElementById('step1Next').disabled = !allCrewsHaveEmployees;
-    
-    if (allCrewsHaveEmployees) {
-        enableStep(2);
-    }
-}
-
-// View existing crews
-function viewCrews() {
-    window.open('/schedule/view?crew=ALL', '_blank');
-}
-
-// Download crew template
-function downloadCrewTemplate() {
-    window.location.href = '/export-crew-template';
-    document.getElementById('uploadSection').style.display = 'block';
-}
-
-// Handle crew file upload
-document.getElementById('uploadCrewForm')?.addEventListener('submit', function(e) {
-    e.preventDefault();
-    
-    const fileInput = document.getElementById('crewFile');
-    const file = fileInput.files[0];
-    
-    if (!file) return;
-    
-    const formData = new FormData();
-    formData.append('file', file);
-    
-    // Show loading state
-    const submitBtn = e.target.querySelector('button[type="submit"]');
-    submitBtn.disabled = true;
-    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Uploading...';
-    
-    fetch('/import-crew-roster', {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            alert('Crew roster uploaded successfully!');
-            checkCrewStatus();
-        } else {
-            alert('Error uploading crew roster: ' + data.error);
-        }
-    })
-    .catch(error => {
-        alert('Error uploading file');
-    })
-    .finally(() => {
-        submitBtn.disabled = false;
-        submitBtn.innerHTML = '<i class="bi bi-upload"></i> Upload Crew Roster';
-    });
-});
-
-// Step navigation functions
-function goToStep(stepNumber) {
-    // Hide all steps
-    document.querySelectorAll('.step-content').forEach(content => {
-        content.style.display = 'none';
-    });
-    
-    // Show selected step
-    document.getElementById(`step${stepNumber}`).style.display = 'block';
-    
-    // Update sidebar
-    document.querySelectorAll('.step-item').forEach(item => {
-        item.classList.remove('active');
-        if (parseInt(item.dataset.step) === stepNumber) {
-            item.classList.add('active');
-        }
-    });
-    
-    wizardData.currentStep = stepNumber;
-}
-
-function enableStep(stepNumber) {
-    const stepItem = document.querySelector(`.step-item[data-step="${stepNumber}"]`);
-    stepItem.classList.remove('disabled');
-    stepItem.querySelector('.step-number').classList.remove('bg-secondary');
-    stepItem.querySelector('.step-number').classList.add('bg-primary');
-}
-
-function completeStep(stepNumber) {
-    const stepItem = document.querySelector(`.step-item[data-step="${stepNumber}"]`);
-    stepItem.classList.add('completed');
-}
-
-function validateAndProceed(currentStep) {
-    switch(currentStep) {
-        case 1:
-            completeStep(1);
-            goToStep(2);
-            break;
-        case 2:
-            savePositionRequirements();
-            completeStep(2);
-            enableStep(3);
-            goToStep(3);
-            break;
-        case 4:
-            saveConfiguration();
-            completeStep(4);
-            enableStep(5);
-            goToStep(5);
-            generateReview();
-            break;
-    }
-}
-
-// Step 2: Save position requirements
-function savePositionRequirements() {
-    wizardData.positions = {};
-    document.querySelectorAll('.position-min').forEach(input => {
-        const position = input.dataset.position;
-        wizardData.positions[position] = {
-            minimum: parseInt(input.value)
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Wizard state
+        let currentStep = 1;
+        const totalSteps = 5;
+        let wizardData = {
+            crews: [],
+            positions: [],
+            pattern: null,
+            scheduleName: '',
+            startDate: '',
+            endDate: '',
+            shiftTimes: {
+                day: '07:00',
+                night: '19:00'
+            },
+            options: {
+                fairRotation: true,
+                avoidBackToBack: true
+            }
         };
-    });
-}
 
-// Step 3: Pattern Selection
-document.querySelectorAll('.select-pattern').forEach(btn => {
-    btn.addEventListener('click', function() {
-        const pattern = this.dataset.pattern;
-        wizardData.pattern = pattern;
-        
-        // Update UI
-        document.querySelectorAll('.pattern-card').forEach(card => {
-            card.classList.remove('selected');
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            loadCrewInfo();
+            
+            // Set default start date to next Sunday
+            const today = new Date();
+            const nextSunday = new Date(today);
+            nextSunday.setDate(today.getDate() + (7 - today.getDay()) % 7);
+            document.getElementById('startDate').value = nextSunday.toISOString().split('T')[0];
         });
-        this.closest('.pattern-card').classList.add('selected');
-        
-        // Move to configuration
-        completeStep(3);
-        enableStep(4);
-        goToStep(4);
-    });
-});
 
-// Step 4: Save configuration
-function saveConfiguration() {
-    wizardData.config = {
-        start_date: document.getElementById('startDate').value,
-        end_date: document.getElementById('endDate').value,
-        dayShiftStart: document.getElementById('dayShiftStart').value,
-        nightShiftStart: document.getElementById('nightShiftStart').value,
-        variation: document.querySelector('input[name="rotationType"]:checked').value
-    };
-}
+        // Load crew information
+        function loadCrewInfo() {
+            // In real implementation, fetch from API
+            // For now, using placeholder data
+            const crews = {
+                'A': '10 members (1 supervisor, 9 operators)',
+                'B': '10 members (1 supervisor, 9 operators)',
+                'C': '10 members (1 supervisor, 9 operators)',
+                'D': '10 members (1 supervisor, 9 operators)'
+            };
+            
+            Object.entries(crews).forEach(([crew, info]) => {
+                document.getElementById(`crew-${crew}-info`).textContent = info;
+            });
+        }
 
-// Step 5: Generate review
-function generateReview() {
-    const reviewContainer = document.getElementById('scheduleReview');
-    
-    const totalEmployees = Object.values(wizardData.crews).reduce((sum, crew) => sum + (crew.count || 0), 0);
-    
-    reviewContainer.innerHTML = `
-        <div class="row">
-            <div class="col-md-6">
-                <h5>Schedule Summary</h5>
+        // Crew selection
+        document.querySelectorAll('.crew-card').forEach(card => {
+            card.addEventListener('click', function() {
+                this.classList.toggle('selected');
+                updateSelectedCrews();
+            });
+        });
+
+        function selectAllCrews() {
+            document.querySelectorAll('.crew-card').forEach(card => {
+                card.classList.add('selected');
+            });
+            updateSelectedCrews();
+        }
+
+        function updateSelectedCrews() {
+            wizardData.crews = [];
+            document.querySelectorAll('.crew-card.selected').forEach(card => {
+                wizardData.crews.push(card.dataset.crew);
+            });
+        }
+
+        // Pattern selection
+        document.querySelectorAll('.pattern-card').forEach(card => {
+            card.addEventListener('click', function() {
+                document.querySelectorAll('.pattern-card').forEach(c => c.classList.remove('selected'));
+                this.classList.add('selected');
+                wizardData.pattern = this.dataset.pattern;
+            });
+        });
+
+        // Position requirements
+        function loadPositionRequirements() {
+            const container = document.getElementById('positionRequirements');
+            container.innerHTML = '';
+            
+            // Default positions
+            const defaultPositions = ['Supervisor', 'Operator', 'Technician'];
+            
+            defaultPositions.forEach(position => {
+                addPositionRequirement(position);
+            });
+        }
+
+        function addPositionRequirement(positionName = '') {
+            const container = document.getElementById('positionRequirements');
+            const positionDiv = document.createElement('div');
+            positionDiv.className = 'position-requirement';
+            positionDiv.innerHTML = `
+                <div class="row">
+                    <div class="col-md-6">
+                        <label class="form-label">Position</label>
+                        <input type="text" class="form-control position-name" value="${positionName}" placeholder="e.g., Operator">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Min. per Shift</label>
+                        <input type="number" class="form-control position-min" value="1" min="0">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Max. per Shift</label>
+                        <input type="number" class="form-control position-max" value="5" min="1">
+                    </div>
+                </div>
+            `;
+            container.appendChild(positionDiv);
+        }
+
+        // Navigation
+        function nextStep() {
+            if (validateStep(currentStep)) {
+                document.getElementById(`step-${currentStep}`).style.display = 'none';
+                document.getElementById(`step-${currentStep}-indicator`).classList.remove('active');
+                document.getElementById(`step-${currentStep}-indicator`).classList.add('completed');
+                
+                currentStep++;
+                
+                document.getElementById(`step-${currentStep}`).style.display = 'block';
+                document.getElementById(`step-${currentStep}-indicator`).classList.add('active');
+                
+                updateNavButtons();
+                
+                // Load data for specific steps
+                if (currentStep === 2) {
+                    loadPositionRequirements();
+                } else if (currentStep === 5) {
+                    showSummary();
+                }
+            }
+        }
+
+        function previousStep() {
+            document.getElementById(`step-${currentStep}`).style.display = 'none';
+            document.getElementById(`step-${currentStep}-indicator`).classList.remove('active');
+            
+            currentStep--;
+            
+            document.getElementById(`step-${currentStep}`).style.display = 'block';
+            document.getElementById(`step-${currentStep}-indicator`).classList.add('active');
+            document.getElementById(`step-${currentStep}-indicator`).classList.remove('completed');
+            
+            updateNavButtons();
+        }
+
+        function updateNavButtons() {
+            document.getElementById('prevBtn').style.display = currentStep > 1 ? 'block' : 'none';
+            document.getElementById('nextBtn').style.display = currentStep < totalSteps ? 'block' : 'none';
+            document.getElementById('createBtn').style.display = currentStep === totalSteps ? 'block' : 'none';
+        }
+
+        function validateStep(step) {
+            switch(step) {
+                case 1:
+                    if (wizardData.crews.length === 0) {
+                        showError('Please select at least one crew');
+                        return false;
+                    }
+                    break;
+                case 2:
+                    // Collect position data
+                    wizardData.positions = [];
+                    document.querySelectorAll('.position-requirement').forEach(req => {
+                        const name = req.querySelector('.position-name').value;
+                        const min = req.querySelector('.position-min').value;
+                        const max = req.querySelector('.position-max').value;
+                        if (name) {
+                            wizardData.positions.push({ name, min, max });
+                        }
+                    });
+                    if (wizardData.positions.length === 0) {
+                        showError('Please define at least one position requirement');
+                        return false;
+                    }
+                    break;
+                case 3:
+                    if (!wizardData.pattern) {
+                        showError('Please select a schedule pattern');
+                        return false;
+                    }
+                    break;
+                case 4:
+                    wizardData.scheduleName = document.getElementById('scheduleName').value;
+                    wizardData.startDate = document.getElementById('startDate').value;
+                    wizardData.endDate = document.getElementById('endDate').value;
+                    wizardData.shiftTimes.day = document.getElementById('dayShiftStart').value;
+                    wizardData.shiftTimes.night = document.getElementById('nightShiftStart').value;
+                    wizardData.options.fairRotation = document.getElementById('fairRotation').checked;
+                    wizardData.options.avoidBackToBack = document.getElementById('avoidBackToBack').checked;
+                    
+                    if (!wizardData.scheduleName) {
+                        showError('Please enter a schedule name');
+                        return false;
+                    }
+                    if (!wizardData.startDate) {
+                        showError('Please select a start date');
+                        return false;
+                    }
+                    break;
+            }
+            return true;
+        }
+
+        function showSummary() {
+            const summary = document.getElementById('scheduleSummary');
+            const patternNames = {
+                'pitman': 'Pitman (2-2-3)',
+                'dupont': 'DuPont',
+                'southern-swing': 'Southern Swing',
+                '4-on-4-off': '4-on-4-off',
+                '5-and-2': '5 & 2 Schedule',
+                'fixed-fixed': 'Fixed Teams'
+            };
+            
+            summary.innerHTML = `
                 <dl class="row">
-                    <dt class="col-sm-5">Pattern:</dt>
-                    <dd class="col-sm-7">Pitman (2-2-3)</dd>
+                    <dt class="col-sm-3">Schedule Name:</dt>
+                    <dd class="col-sm-9">${wizardData.scheduleName}</dd>
                     
-                    <dt class="col-sm-5">Start Date:</dt>
-                    <dd class="col-sm-7">${new Date(wizardData.config.start_date).toLocaleDateString()}</dd>
+                    <dt class="col-sm-3">Pattern:</dt>
+                    <dd class="col-sm-9">${patternNames[wizardData.pattern]}</dd>
                     
-                    <dt class="col-sm-5">End Date:</dt>
-                    <dd class="col-sm-7">${new Date(wizardData.config.end_date).toLocaleDateString()}</dd>
+                    <dt class="col-sm-3">Crews:</dt>
+                    <dd class="col-sm-9">${wizardData.crews.join(', ')}</dd>
                     
-                    <dt class="col-sm-5">Shift Times:</dt>
-                    <dd class="col-sm-7">
-                        Day: ${wizardData.config.dayShiftStart} - ${wizardData.config.nightShiftStart}<br>
-                        Night: ${wizardData.config.nightShiftStart} - ${wizardData.config.dayShiftStart}
+                    <dt class="col-sm-3">Start Date:</dt>
+                    <dd class="col-sm-9">${new Date(wizardData.startDate).toLocaleDateString()}</dd>
+                    
+                    <dt class="col-sm-3">Shift Times:</dt>
+                    <dd class="col-sm-9">Day: ${wizardData.shiftTimes.day}, Night: ${wizardData.shiftTimes.night}</dd>
+                    
+                    <dt class="col-sm-3">Positions:</dt>
+                    <dd class="col-sm-9">
+                        <ul class="mb-0">
+                            ${wizardData.positions.map(p => `<li>${p.name}: ${p.min}-${p.max} per shift</li>`).join('')}
+                        </ul>
                     </dd>
-                    
-                    <dt class="col-sm-5">Rotation Type:</dt>
-                    <dd class="col-sm-7">${wizardData.config.variation}</dd>
                 </dl>
-            </div>
-            <div class="col-md-6">
-                <h5>Crew Summary</h5>
-                <dl class="row">
-                    <dt class="col-sm-5">Total Employees:</dt>
-                    <dd class="col-sm-7">${totalEmployees}</dd>
-                    
-                    ${Object.entries(wizardData.crews).map(([crew, data]) => `
-                        <dt class="col-sm-5">Crew ${crew}:</dt>
-                        <dd class="col-sm-7">${data.count || 0} employees</dd>
-                    `).join('')}
-                </dl>
-            </div>
-        </div>
-        
-        <div class="alert alert-warning mt-3">
-            <i class="bi bi-exclamation-triangle"></i> 
-            <strong>Important:</strong> Creating this schedule will replace any existing schedules for the selected date range.
-        </div>
-    `;
-}
-
-// Create schedule
-function createSchedule() {
-    if (!confirm('Are you ready to create this schedule? This will replace any existing schedules for the selected date range.')) {
-        return;
-    }
-    
-    const btn = event.target;
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Creating Schedule...';
-    
-    // Prepare data
-    const scheduleData = {
-        start_date: wizardData.config.start_date,
-        end_date: wizardData.config.end_date,
-        variation: wizardData.config.variation
-    };
-    
-    // Submit to server
-    fetch('/schedule/create-pitman', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(scheduleData)
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            alert('Schedule created successfully!');
-            window.location.href = data.redirect || `/schedule/view?start_date=${scheduleData.start_date}`;
-        } else {
-            alert('Error creating schedule: ' + data.error);
-            btn.disabled = false;
-            btn.innerHTML = '<i class="bi bi-check-circle"></i> Create Schedule';
+            `;
         }
-    })
-    .catch(error => {
-        alert('Error creating schedule. Please try again.');
-        btn.disabled = false;
-        btn.innerHTML = '<i class="bi bi-check-circle"></i> Create Schedule';
-    });
-}
 
-// Make step items clickable (only if not disabled)
-document.querySelectorAll('.step-item').forEach(item => {
-    item.addEventListener('click', function(e) {
-        e.preventDefault();
-        if (!this.classList.contains('disabled')) {
-            goToStep(parseInt(this.dataset.step));
+        function createSchedule() {
+            // Show loading
+            document.querySelector('.wizard-content').style.display = 'none';
+            document.querySelector('.loading-spinner').style.display = 'block';
+            document.getElementById('prevBtn').style.display = 'none';
+            document.getElementById('createBtn').style.display = 'none';
+            
+            // In real implementation, send data to server
+            // For now, simulate with timeout
+            setTimeout(() => {
+                // Redirect to schedule view
+                window.location.href = '/schedule/view';
+            }, 2000);
         }
-    });
-});
-</script>
 
+        function showError(message) {
+            document.getElementById('errorText').textContent = message;
+            document.querySelector('.error-message').style.display = 'block';
+            setTimeout(() => {
+                document.querySelector('.error-message').style.display = 'none';
+            }, 5000);
+        }
+    </script>
 </body>
 </html>
