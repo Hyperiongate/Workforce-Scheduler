@@ -273,106 +273,215 @@ def logout():
 
 # ==================== DASHBOARD ROUTES ====================
 
+# Replace the existing dashboard route in app.py with this updated version
+
 @app.route('/dashboard')
 @login_required
 def dashboard():
-    if not current_user.is_supervisor:
-        flash('Access denied. Supervisors only.', 'danger')
+    if current_user.role != 'supervisor':
+        flash('Access denied. Supervisors only.')
         return redirect(url_for('employee_dashboard'))
     
-    # Get selected crew from query params (default to supervisor's crew or 'ALL')
-    selected_crew = request.args.get('crew', current_user.crew or 'ALL')
+    # Get crew filter
+    selected_crew = request.args.get('crew', '')
     
-    # Build query filters based on selected crew
-    crew_filter = None
-    if selected_crew != 'ALL':
-        crew_filter = Employee.crew == selected_crew
+    # Base query for employees
+    employees_query = Employee.query
+    if selected_crew:
+        employees_query = employees_query.filter_by(crew=selected_crew)
     
-    # Get crew statistics
-    crew_stats = {}
+    employees = employees_query.all()
+    total_employees = len(employees)
     
-    # Total employees in crew
-    query = Employee.query
-    if crew_filter is not None:
-        query = query.filter(crew_filter)
-    crew_stats['total_employees'] = query.count()
+    # Calculate on duty now (employees currently working)
+    from datetime import datetime, time
+    current_time = datetime.now().time()
+    current_date = datetime.now().date()
     
-    # On duty now (based on current time and schedules)
-    now = datetime.now()
-    on_duty_query = Schedule.query.filter(
-        Schedule.date == date.today(),
-        Schedule.start_time <= now.time(),
-        Schedule.end_time >= now.time()
-    )
-    if crew_filter is not None:
-        on_duty_query = on_duty_query.join(Employee).filter(crew_filter)
-    crew_stats['on_duty'] = on_duty_query.count()
+    on_duty_now = 0
+    todays_shifts = []
     
-    # Current shift type
-    current_hour = now.hour
-    if 6 <= current_hour < 14:
-        crew_stats['current_shift'] = 'Day Shift'
-    elif 14 <= current_hour < 22:
-        crew_stats['current_shift'] = 'Evening Shift'
-    else:
-        crew_stats['current_shift'] = 'Night Shift'
+    # Get today's schedules
+    schedules = Schedule.query.filter(
+        Schedule.date == current_date
+    ).all()
     
-    # Pending requests
-    pending_requests_query = TimeOffRequest.query.filter_by(status='pending')
-    if crew_filter is not None:
-        # Explicitly specify the join condition
-        pending_requests_query = pending_requests_query.join(
-            Employee, TimeOffRequest.employee_id == Employee.id
-        ).filter(crew_filter)
-    crew_stats['pending_requests'] = pending_requests_query.count()
+    for schedule in schedules:
+        if selected_crew and schedule.employee.crew != selected_crew:
+            continue
+            
+        # Check if shift is currently active
+        if schedule.start_time <= current_time <= schedule.end_time:
+            on_duty_now += 1
+        
+        # Add to today's shifts
+        todays_shifts.append({
+            'position_name': schedule.position.name,
+            'employee_name': schedule.employee.name,
+            'start_time': schedule.start_time.strftime('%H:%M'),
+            'end_time': schedule.end_time.strftime('%H:%M')
+        })
     
-    # Coverage gaps in next 7 days
-    coverage_gaps = get_coverage_gaps(selected_crew, days_ahead=7)
-    crew_stats['coverage_gaps'] = len(coverage_gaps)
+    # Calculate coverage gaps (unfilled positions for next 7 days)
+    coverage_gaps = 0
+    upcoming_gaps = []
     
-    # Get pending items
-    pending_time_off_count = TimeOffRequest.query.filter_by(status='pending').count()
-    pending_swaps_count = ShiftSwapRequest.query.filter_by(status='pending').count()
+    for days_ahead in range(7):
+        check_date = current_date + timedelta(days=days_ahead)
+        
+        # Get all positions
+        positions = Position.query.all()
+        for position in positions:
+            # Check each shift type
+            for shift_name, shift_times in [
+                ('Morning', (time(7, 0), time(15, 0))),
+                ('Afternoon', (time(15, 0), time(23, 0))),
+                ('Night', (time(23, 0), time(7, 0)))
+            ]:
+                # Check if position is filled for this shift
+                scheduled = Schedule.query.filter(
+                    Schedule.date == check_date,
+                    Schedule.position_id == position.id,
+                    Schedule.start_time == shift_times[0]
+                ).first()
+                
+                if not scheduled:
+                    coverage_gaps += 1
+                    if len(upcoming_gaps) < 5:  # Only show first 5
+                        upcoming_gaps.append({
+                            'id': f"{position.id}_{check_date}_{shift_name}",
+                            'position': position.name,
+                            'date': check_date.strftime('%Y-%m-%d'),
+                            'shift': shift_name
+                        })
     
-    # Get recent requests for display
-    recent_time_off_requests = TimeOffRequest.query.filter_by(
-        status='pending'
-    ).order_by(TimeOffRequest.submitted_date.desc()).limit(3).all()
+    # Calculate pending requests
+    pending_time_off = TimeOffRequest.query.filter_by(status='pending').count()
+    pending_swaps = ShiftSwapRequest.query.filter_by(status='pending').count()
+    pending_suggestions = ScheduleSuggestion.query.filter_by(status='pending').count()
+    pending_requests = pending_time_off + pending_swaps + pending_suggestions
     
-    recent_swap_requests = ShiftSwapRequest.query.filter_by(
-        status='pending'
-    ).order_by(ShiftSwapRequest.created_at.desc()).limit(3).all()
+    # Get other supervisors for quick message
+    supervisors = Employee.query.filter_by(role='supervisor').all()
     
-    # Get today's schedule
-    todays_schedule = Schedule.query.filter(
-        Schedule.date == date.today()
-    )
-    if crew_filter is not None:
-        todays_schedule = todays_schedule.join(Employee).filter(crew_filter)
-    todays_schedule = todays_schedule.order_by(Schedule.start_time).all()
+    # Get positions for announcements
+    positions = Position.query.all()
     
-    # Get coverage needs
-    coverage_needs = CoverageRequest.query.filter_by(
-        status='open'
-    ).count()
+    # Get recent activities (last 10 actions)
+    recent_activities = []
     
-    # Get other supervisors for the quick message modal
-    other_supervisors = Employee.query.filter(
-        Employee.is_supervisor == True,
-        Employee.id != current_user.id
-    ).order_by(Employee.name).all()
+    # Add recent time off approvals
+    recent_time_offs = TimeOffRequest.query.filter(
+        TimeOffRequest.status.in_(['approved', 'denied'])
+    ).order_by(TimeOffRequest.id.desc()).limit(5).all()
+    
+    for req in recent_time_offs:
+        time_ago = calculate_time_ago(req.created_at)
+        recent_activities.append({
+            'description': f"{req.employee.name} - Time off {req.status}",
+            'time_ago': time_ago
+        })
+    
+    # Add recent swap requests
+    recent_swaps = ShiftSwapRequest.query.filter(
+        ShiftSwapRequest.status != 'pending'
+    ).order_by(ShiftSwapRequest.id.desc()).limit(5).all()
+    
+    for swap in recent_swaps:
+        time_ago = calculate_time_ago(swap.created_at)
+        recent_activities.append({
+            'description': f"Shift swap {swap.status} - {swap.requester.name}",
+            'time_ago': time_ago
+        })
+    
+    # Sort activities by recency (would need timestamp tracking for accurate sorting)
+    recent_activities = recent_activities[:10]
+    
+    # Count active users (simplified - count logins in last hour)
+    active_users = 1  # At least current user
+    
+    # Count active trades in marketplace
+    active_trades = ShiftTradePost.query.filter_by(status='active').count() if 'ShiftTradePost' in globals() else 0
     
     return render_template('dashboard.html',
-                         selected_crew=selected_crew,
-                         crew_stats=crew_stats,
-                         pending_time_off_count=pending_time_off_count,
-                         pending_swaps_count=pending_swaps_count,
-                         recent_time_off_requests=recent_time_off_requests,
-                         recent_swap_requests=recent_swap_requests,
-                         todays_schedule=todays_schedule,
-                         coverage_needs=coverage_needs,
-                         coverage_gaps=coverage_gaps[:3],  # Show first 3 gaps
-                         other_supervisors=other_supervisors)
+        employees=employees,
+        total_employees=total_employees,
+        selected_crew=selected_crew,
+        on_duty_now=on_duty_now,
+        coverage_gaps=coverage_gaps,
+        pending_requests=pending_requests,
+        pending_time_off=pending_time_off,
+        pending_swaps=pending_swaps,
+        pending_suggestions=pending_suggestions,
+        todays_shifts=todays_shifts,
+        upcoming_gaps=upcoming_gaps,
+        recent_activities=recent_activities,
+        supervisors=supervisors,
+        positions=positions,
+        active_users=active_users,
+        active_trades=active_trades,
+        last_sync='Just now'
+    )
+
+# Helper function to calculate time ago
+def calculate_time_ago(timestamp):
+    if not timestamp:
+        return "Unknown time"
+    
+    from datetime import datetime
+    now = datetime.now()
+    
+    # If timestamp is a date, convert to datetime
+    if hasattr(timestamp, 'date'):
+        time_diff = now - timestamp
+    else:
+        # Assume it's a date object, add time component
+        time_diff = now.date() - timestamp
+        return f"{time_diff.days} days ago" if time_diff.days > 0 else "Today"
+    
+    seconds = time_diff.total_seconds()
+    
+    if seconds < 60:
+        return "Just now"
+    elif seconds < 3600:
+        minutes = int(seconds / 60)
+        return f"{minutes} minute{'s' if minutes != 1 else ''} ago"
+    elif seconds < 86400:
+        hours = int(seconds / 3600)
+        return f"{hours} hour{'s' if hours != 1 else ''} ago"
+    else:
+        days = int(seconds / 86400)
+        return f"{days} day{'s' if days != 1 else ''} ago"
+
+# Helper function to calculate time ago
+def calculate_time_ago(timestamp):
+    if not timestamp:
+        return "Unknown time"
+    
+    from datetime import datetime
+    now = datetime.now()
+    
+    # If timestamp is a date, convert to datetime
+    if hasattr(timestamp, 'date'):
+        time_diff = now - timestamp
+    else:
+        # Assume it's a date object, add time component
+        time_diff = now.date() - timestamp
+        return f"{time_diff.days} days ago" if time_diff.days > 0 else "Today"
+    
+    seconds = time_diff.total_seconds()
+    
+    if seconds < 60:
+        return "Just now"
+    elif seconds < 3600:
+        minutes = int(seconds / 60)
+        return f"{minutes} minute{'s' if minutes != 1 else ''} ago"
+    elif seconds < 86400:
+        hours = int(seconds / 3600)
+        return f"{hours} hour{'s' if hours != 1 else ''} ago"
+    else:
+        days = int(seconds / 86400)
+        return f"{days} day{'s' if days != 1 else ''} ago"
 
 @app.route('/employee-dashboard')
 @login_required
