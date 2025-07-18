@@ -18,7 +18,7 @@
             border-bottom: 3px solid #00b09b;
         }
         
-        .position-card {
+        .skill-card {
             background: white;
             border-radius: 8px;
             padding: 1.5rem;
@@ -27,14 +27,14 @@
             border-left: 4px solid #00b09b;
         }
         
-        .position-header {
+        .skill-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
             margin-bottom: 1rem;
         }
         
-        .position-icon {
+        .skill-icon {
             width: 50px;
             height: 50px;
             border-radius: 8px;
@@ -44,6 +44,19 @@
             align-items: center;
             justify-content: center;
             font-size: 1.5rem;
+        }
+        
+        .current-qualified {
+            background: #e8f5e9;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            text-align: center;
+        }
+        
+        .qualified-number {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #00b09b;
         }
         
         .shift-requirements {
@@ -78,18 +91,14 @@
             text-align: center;
         }
         
-        .current-value {
-            color: #6c757d;
+        .coverage-status {
+            margin-top: 0.5rem;
             font-size: 0.875rem;
         }
         
-        .change-indicator {
-            font-size: 0.875rem;
-            margin-top: 0.25rem;
-        }
-        
-        .change-increase { color: #dc3545; }
-        .change-decrease { color: #28a745; }
+        .status-good { color: #28a745; }
+        .status-warning { color: #ffc107; }
+        .status-bad { color: #dc3545; }
         
         .summary-section {
             background: white;
@@ -99,91 +108,61 @@
             box-shadow: 0 2px 4px rgba(0,0,0,0.05);
         }
         
-        .impact-card {
-            background: #f8f9fa;
-            padding: 1.5rem;
-            border-radius: 8px;
-            margin-bottom: 1rem;
-        }
-        
-        .impact-header {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            margin-bottom: 1rem;
-        }
-        
-        .impact-good { color: #28a745; }
-        .impact-warning { color: #ffc107; }
-        .impact-bad { color: #dc3545; }
-        
-        .coverage-matrix {
-            overflow-x: auto;
-        }
-        
-        .matrix-table {
-            width: 100%;
-            font-size: 0.875rem;
-        }
-        
-        .matrix-table th,
-        .matrix-table td {
-            padding: 0.5rem;
-            text-align: center;
-            border: 1px solid #dee2e6;
-        }
-        
-        .matrix-table th {
-            background: #f8f9fa;
-            font-weight: 600;
-        }
-        
-        .coverage-cell {
-            font-weight: 600;
-        }
-        
-        .coverage-met { background: #d4edda; color: #155724; }
-        .coverage-short { background: #f8d7da; color: #721c24; }
-        .coverage-over { background: #fff3cd; color: #856404; }
-        
-        .template-section {
+        .upload-section {
             background: white;
             padding: 1.5rem;
             border-radius: 8px;
             margin-bottom: 2rem;
             box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            border: 2px dashed #00b09b;
+            text-align: center;
         }
         
-        .template-card {
-            border: 2px solid #e9ecef;
-            border-radius: 8px;
+        .employee-list {
+            background: #f8f9fa;
             padding: 1rem;
-            margin-bottom: 1rem;
-            cursor: pointer;
-            transition: all 0.3s ease;
+            border-radius: 4px;
+            margin-top: 1rem;
+            max-height: 200px;
+            overflow-y: auto;
         }
         
-        .template-card:hover {
-            border-color: #00b09b;
-            transform: translateY(-2px);
+        .employee-skill-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.5rem;
+            border-bottom: 1px solid #e9ecef;
         }
         
-        .special-requirements {
-            background: #e8f5e9;
-            padding: 1rem;
-            border-radius: 8px;
+        .employee-skill-item:last-child {
+            border-bottom: none;
+        }
+        
+        .crew-distribution {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 0.5rem;
             margin-top: 1rem;
         }
         
-        .requirement-tag {
-            display: inline-block;
-            padding: 0.25rem 0.5rem;
-            background: white;
-            border: 1px solid #00b09b;
+        .crew-box {
+            text-align: center;
+            padding: 0.5rem;
             border-radius: 4px;
-            font-size: 0.875rem;
-            margin-right: 0.5rem;
-            margin-bottom: 0.5rem;
+        }
+        
+        .crew-box.crew-a { background: #e3f2fd; color: #1565c0; }
+        .crew-box.crew-b { background: #f3e5f5; color: #6a1b9a; }
+        .crew-box.crew-c { background: #e8f5e9; color: #2e7d32; }
+        .crew-box.crew-d { background: #fff3e0; color: #e65100; }
+        
+        .impact-section {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            margin-top: 2rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
         }
         
         .save-indicator {
@@ -195,29 +174,6 @@
             border-radius: 8px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.15);
             display: none;
-        }
-        
-        .history-timeline {
-            position: relative;
-            padding-left: 2rem;
-        }
-        
-        .history-item {
-            position: relative;
-            padding-bottom: 1rem;
-            border-left: 2px solid #e9ecef;
-            padding-left: 1.5rem;
-        }
-        
-        .history-item::before {
-            content: '';
-            position: absolute;
-            left: -6px;
-            top: 0;
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            background: #00b09b;
         }
     </style>
 </head>
@@ -258,7 +214,7 @@
             <div class="row align-items-center">
                 <div class="col">
                     <h1><i class="bi bi-shield-check" style="color: #00b09b;"></i> Adjust Coverage Needs</h1>
-                    <p class="text-muted mb-0">Modify minimum staffing requirements by position and shift</p>
+                    <p class="text-muted mb-0">Set minimum skill requirements based on your uploaded crew data</p>
                 </div>
                 <div class="col-auto">
                     <button class="btn btn-success" onclick="saveChanges()">
@@ -270,80 +226,81 @@
     </div>
 
     <div class="container-fluid">
+        <!-- Upload Section -->
+        <div class="upload-section">
+            <i class="bi bi-cloud-upload" style="font-size: 3rem; color: #00b09b;"></i>
+            <h5 class="mt-3">Upload Crew Skills Data</h5>
+            <p class="text-muted">Upload your Excel file containing employee skills to configure coverage requirements</p>
+            <input type="file" class="form-control w-50 mx-auto" accept=".xlsx,.xls,.csv">
+            <small class="text-muted d-block mt-2">Last uploaded: crew_skills_july_2025.xlsx (July 18, 2025)</small>
+        </div>
+
         <!-- Summary Section -->
         <div class="summary-section">
-            <h4>Current Coverage Summary</h4>
+            <h4>Skills Summary from Uploaded Data</h4>
             <div class="row">
                 <div class="col-md-3">
                     <div class="text-center">
-                        <h2 style="color: #00b09b;">156</h2>
-                        <p class="mb-0">Total Positions/Shift</p>
+                        <h2 style="color: #00b09b;">48</h2>
+                        <p class="mb-0">Total Employees</p>
                     </div>
                 </div>
                 <div class="col-md-3">
                     <div class="text-center">
-                        <h2 style="color: #ffc107;">+8</h2>
-                        <p class="mb-0">Proposed Changes</p>
+                        <h2 style="color: #ffc107;">12</h2>
+                        <p class="mb-0">Unique Skills</p>
                     </div>
                 </div>
                 <div class="col-md-3">
                     <div class="text-center">
-                        <h2 style="color: #dc3545;">$45,600</h2>
-                        <p class="mb-0">Monthly Impact</p>
+                        <h2 style="color: #17a2b8;">156</h2>
+                        <p class="mb-0">Total Certifications</p>
                     </div>
                 </div>
                 <div class="col-md-3">
                     <div class="text-center">
-                        <h2 style="color: #28a745;">98%</h2>
-                        <p class="mb-0">Coverage Score</p>
+                        <h2 style="color: #28a745;">94%</h2>
+                        <p class="mb-0">Coverage Capability</p>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Quick Templates -->
-        <div class="template-section">
-            <h4>Quick Templates</h4>
-            <div class="row">
-                <div class="col-md-4">
-                    <div class="template-card">
-                        <h6>Minimum Coverage</h6>
-                        <small class="text-muted">Basic safety requirements only</small>
-                    </div>
-                </div>
-                <div class="col-md-4">
-                    <div class="template-card">
-                        <h6>Standard Coverage</h6>
-                        <small class="text-muted">Normal operations (current)</small>
-                    </div>
-                </div>
-                <div class="col-md-4">
-                    <div class="template-card">
-                        <h6>Peak Season</h6>
-                        <small class="text-muted">Increased production demands</small>
-                    </div>
-                </div>
-            </div>
-        </div>
+        <!-- Skills from Uploaded Data -->
+        <h4 class="mb-3">Configure Coverage by Skill</h4>
+        <p class="text-muted mb-4">Based on your uploaded crew data, configure minimum coverage for each skill:</p>
 
-        <!-- Position Requirements -->
-        <h4 class="mb-3">Position Requirements by Shift</h4>
-
-        <!-- Operators -->
-        <div class="position-card">
-            <div class="position-header">
+        <!-- Machine Operation -->
+        <div class="skill-card">
+            <div class="skill-header">
                 <div class="d-flex align-items-center gap-3">
-                    <div class="position-icon">
-                        <i class="bi bi-gear"></i>
+                    <div class="skill-icon">
+                        <i class="bi bi-gear-wide-connected"></i>
                     </div>
                     <div>
-                        <h5 class="mb-0">Machine Operators</h5>
-                        <small class="text-muted">Core production staff</small>
+                        <h5 class="mb-0">Machine Operation</h5>
+                        <small class="text-muted">Basic equipment operation</small>
                     </div>
                 </div>
-                <button class="btn btn-sm btn-outline-secondary">
-                    <i class="bi bi-clock-history"></i> View History
-                </button>
+                <div class="current-qualified">
+                    <div class="qualified-number">32</div>
+                    <small>Qualified Employees</small>
+                </div>
+            </div>
+            
+            <div class="crew-distribution">
+                <div class="crew-box crew-a">
+                    <strong>Crew A</strong><br>8 qualified
+                </div>
+                <div class="crew-box crew-b">
+                    <strong>Crew B</strong><br>9 qualified
+                </div>
+                <div class="crew-box crew-c">
+                    <strong>Crew C</strong><br>7 qualified
+                </div>
+                <div class="crew-box crew-d">
+                    <strong>Crew D</strong><br>8 qualified
+                </div>
             </div>
             
             <div class="shift-requirements">
@@ -351,23 +308,13 @@
                     <div class="shift-time">
                         <i class="bi bi-sun"></i> Day Shift
                     </div>
-                    <div class="current-value">Current: 8</div>
                     <div class="requirement-input">
                         <button class="btn btn-sm btn-outline-secondary" onclick="adjustValue(this, -1)">-</button>
-                        <input type="number" class="form-control form-control-sm" value="8" min="1" max="20">
+                        <input type="number" class="form-control form-control-sm" value="6" min="1" max="8">
                         <button class="btn btn-sm btn-outline-secondary" onclick="adjustValue(this, 1)">+</button>
                     </div>
-                </div>
-                
-                <div class="shift-box">
-                    <div class="shift-time">
-                        <i class="bi bi-sunset"></i> Evening Shift
-                    </div>
-                    <div class="current-value">Current: 6</div>
-                    <div class="requirement-input">
-                        <button class="btn btn-sm btn-outline-secondary" onclick="adjustValue(this, -1)">-</button>
-                        <input type="number" class="form-control form-control-sm" value="6" min="1" max="20">
-                        <button class="btn btn-sm btn-outline-secondary" onclick="adjustValue(this, 1)">+</button>
+                    <div class="coverage-status status-good">
+                        <i class="bi bi-check-circle"></i> Coverage met
                     </div>
                 </div>
                 
@@ -375,14 +322,13 @@
                     <div class="shift-time">
                         <i class="bi bi-moon"></i> Night Shift
                     </div>
-                    <div class="current-value">Current: 5</div>
                     <div class="requirement-input">
                         <button class="btn btn-sm btn-outline-secondary" onclick="adjustValue(this, -1)">-</button>
-                        <input type="number" class="form-control form-control-sm" value="6" min="1" max="20">
+                        <input type="number" class="form-control form-control-sm" value="5" min="1" max="8">
                         <button class="btn btn-sm btn-outline-secondary" onclick="adjustValue(this, 1)">+</button>
                     </div>
-                    <div class="change-indicator change-increase">
-                        <i class="bi bi-arrow-up"></i> +1 from current
+                    <div class="coverage-status status-good">
+                        <i class="bi bi-check-circle"></i> Coverage met
                     </div>
                 </div>
                 
@@ -390,100 +336,65 @@
                     <div class="shift-time">
                         <i class="bi bi-calendar-week"></i> Weekend
                     </div>
-                    <div class="current-value">Current: 4</div>
                     <div class="requirement-input">
                         <button class="btn btn-sm btn-outline-secondary" onclick="adjustValue(this, -1)">-</button>
-                        <input type="number" class="form-control form-control-sm" value="4" min="1" max="20">
+                        <input type="number" class="form-control form-control-sm" value="4" min="1" max="8">
                         <button class="btn btn-sm btn-outline-secondary" onclick="adjustValue(this, 1)">+</button>
+                    </div>
+                    <div class="coverage-status status-good">
+                        <i class="bi bi-check-circle"></i> Coverage met
                     </div>
                 </div>
             </div>
             
-            <div class="special-requirements">
-                <strong>Special Requirements:</strong>
-                <div class="mt-2">
-                    <span class="requirement-tag">Forklift Certified (2)</span>
-                    <span class="requirement-tag">Line Lead (1)</span>
-                    <span class="requirement-tag">Quality Checker (1)</span>
+            <div class="employee-list">
+                <h6>Qualified Employees:</h6>
+                <div class="employee-skill-item">
+                    <span>John Doe (EMP001)</span>
+                    <span class="badge bg-primary">Crew A</span>
                 </div>
+                <div class="employee-skill-item">
+                    <span>Sarah Miller (EMP002)</span>
+                    <span class="badge bg-primary">Crew B</span>
+                </div>
+                <div class="employee-skill-item">
+                    <span>Robert Johnson (EMP003)</span>
+                    <span class="badge bg-primary">Crew C</span>
+                </div>
+                <!-- More employees... -->
             </div>
         </div>
 
-        <!-- Technicians -->
-        <div class="position-card">
-            <div class="position-header">
+        <!-- Forklift Operation -->
+        <div class="skill-card">
+            <div class="skill-header">
                 <div class="d-flex align-items-center gap-3">
-                    <div class="position-icon" style="background: #ffc107;">
-                        <i class="bi bi-tools"></i>
+                    <div class="skill-icon" style="background: #ffc107;">
+                        <i class="bi bi-truck"></i>
                     </div>
                     <div>
-                        <h5 class="mb-0">Maintenance Technicians</h5>
-                        <small class="text-muted">Equipment maintenance and repair</small>
+                        <h5 class="mb-0">Forklift Operation</h5>
+                        <small class="text-muted">Certified forklift operators</small>
                     </div>
                 </div>
-                <button class="btn btn-sm btn-outline-secondary">
-                    <i class="bi bi-clock-history"></i> View History
-                </button>
-            </div>
-            
-            <div class="shift-requirements">
-                <div class="shift-box">
-                    <div class="shift-time">
-                        <i class="bi bi-sun"></i> Day Shift
-                    </div>
-                    <div class="current-value">Current: 3</div>
-                    <div class="requirement-input">
-                        <button class="btn btn-sm btn-outline-secondary" onclick="adjustValue(this, -1)">-</button>
-                        <input type="number" class="form-control form-control-sm" value="3" min="1" max="10">
-                        <button class="btn btn-sm btn-outline-secondary" onclick="adjustValue(this, 1)">+</button>
-                    </div>
-                </div>
-                
-                <div class="shift-box">
-                    <div class="shift-time">
-                        <i class="bi bi-moon"></i> Night Shift
-                    </div>
-                    <div class="current-value">Current: 2</div>
-                    <div class="requirement-input">
-                        <button class="btn btn-sm btn-outline-secondary" onclick="adjustValue(this, -1)">-</button>
-                        <input type="number" class="form-control form-control-sm" value="2" min="1" max="10">
-                        <button class="btn btn-sm btn-outline-secondary" onclick="adjustValue(this, 1)">+</button>
-                    </div>
-                </div>
-                
-                <div class="shift-box">
-                    <div class="shift-time">
-                        <i class="bi bi-telephone"></i> On-Call
-                    </div>
-                    <div class="current-value">Current: 1</div>
-                    <div class="requirement-input">
-                        <button class="btn btn-sm btn-outline-secondary" onclick="adjustValue(this, -1)">-</button>
-                        <input type="number" class="form-control form-control-sm" value="1" min="0" max="5">
-                        <button class="btn btn-sm btn-outline-secondary" onclick="adjustValue(this, 1)">+</button>
-                    </div>
+                <div class="current-qualified">
+                    <div class="qualified-number">18</div>
+                    <small>Qualified Employees</small>
                 </div>
             </div>
             
-            <div class="special-requirements">
-                <strong>Special Requirements:</strong>
-                <div class="mt-2">
-                    <span class="requirement-tag">Electrical License (1)</span>
-                    <span class="requirement-tag">HVAC Certified (1)</span>
+            <div class="crew-distribution">
+                <div class="crew-box crew-a">
+                    <strong>Crew A</strong><br>5 qualified
                 </div>
-            </div>
-        </div>
-
-        <!-- Supervisors -->
-        <div class="position-card">
-            <div class="position-header">
-                <div class="d-flex align-items-center gap-3">
-                    <div class="position-icon" style="background: #6f42c1;">
-                        <i class="bi bi-person-badge"></i>
-                    </div>
-                    <div>
-                        <h5 class="mb-0">Supervisors</h5>
-                        <small class="text-muted">Shift leadership</small>
-                    </div>
+                <div class="crew-box crew-b">
+                    <strong>Crew B</strong><br>4 qualified
+                </div>
+                <div class="crew-box crew-c">
+                    <strong>Crew C</strong><br>5 qualified
+                </div>
+                <div class="crew-box crew-d">
+                    <strong>Crew D</strong><br>4 qualified
                 </div>
             </div>
             
@@ -492,114 +403,116 @@
                     <div class="shift-time">
                         <i class="bi bi-sun"></i> Day Shift
                     </div>
-                    <div class="current-value">Current: 1</div>
                     <div class="requirement-input">
-                        <input type="number" class="form-control form-control-sm" value="1" min="1" max="3" readonly>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="adjustValue(this, -1)">-</button>
+                        <input type="number" class="form-control form-control-sm" value="3" min="1" max="5">
+                        <button class="btn btn-sm btn-outline-secondary" onclick="adjustValue(this, 1)">+</button>
                     </div>
-                    <small class="text-muted">Minimum 1 required</small>
+                    <div class="coverage-status status-warning">
+                        <i class="bi bi-exclamation-triangle"></i> Tight coverage
+                    </div>
                 </div>
                 
                 <div class="shift-box">
                     <div class="shift-time">
                         <i class="bi bi-moon"></i> Night Shift
                     </div>
-                    <div class="current-value">Current: 1</div>
                     <div class="requirement-input">
-                        <input type="number" class="form-control form-control-sm" value="1" min="1" max="3" readonly>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="adjustValue(this, -1)">-</button>
+                        <input type="number" class="form-control form-control-sm" value="2" min="1" max="4">
+                        <button class="btn btn-sm btn-outline-secondary" onclick="adjustValue(this, 1)">+</button>
                     </div>
-                    <small class="text-muted">Minimum 1 required</small>
+                    <div class="coverage-status status-good">
+                        <i class="bi bi-check-circle"></i> Coverage met
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Electrical Maintenance -->
+        <div class="skill-card">
+            <div class="skill-header">
+                <div class="d-flex align-items-center gap-3">
+                    <div class="skill-icon" style="background: #dc3545;">
+                        <i class="bi bi-lightning-charge"></i>
+                    </div>
+                    <div>
+                        <h5 class="mb-0">Electrical Maintenance</h5>
+                        <small class="text-muted">Licensed electricians</small>
+                    </div>
+                </div>
+                <div class="current-qualified">
+                    <div class="qualified-number">8</div>
+                    <small>Qualified Employees</small>
+                </div>
+            </div>
+            
+            <div class="crew-distribution">
+                <div class="crew-box crew-a">
+                    <strong>Crew A</strong><br>2 qualified
+                </div>
+                <div class="crew-box crew-b">
+                    <strong>Crew B</strong><br>2 qualified
+                </div>
+                <div class="crew-box crew-c">
+                    <strong>Crew C</strong><br>2 qualified
+                </div>
+                <div class="crew-box crew-d">
+                    <strong>Crew D</strong><br>2 qualified
+                </div>
+            </div>
+            
+            <div class="shift-requirements">
+                <div class="shift-box">
+                    <div class="shift-time">
+                        <i class="bi bi-sun"></i> Day Shift
+                    </div>
+                    <div class="requirement-input">
+                        <button class="btn btn-sm btn-outline-secondary" onclick="adjustValue(this, -1)">-</button>
+                        <input type="number" class="form-control form-control-sm" value="2" min="1" max="2">
+                        <button class="btn btn-sm btn-outline-secondary" onclick="adjustValue(this, 1)">+</button>
+                    </div>
+                    <div class="coverage-status status-bad">
+                        <i class="bi bi-x-circle"></i> At capacity
+                    </div>
+                </div>
+                
+                <div class="shift-box">
+                    <div class="shift-time">
+                        <i class="bi bi-moon"></i> Night Shift
+                    </div>
+                    <div class="requirement-input">
+                        <button class="btn btn-sm btn-outline-secondary" onclick="adjustValue(this, -1)">-</button>
+                        <input type="number" class="form-control form-control-sm" value="1" min="1" max="2">
+                        <button class="btn btn-sm btn-outline-secondary" onclick="adjustValue(this, 1)">+</button>
+                    </div>
+                    <div class="coverage-status status-warning">
+                        <i class="bi bi-exclamation-triangle"></i> Tight coverage
+                    </div>
                 </div>
             </div>
         </div>
 
         <!-- Impact Analysis -->
-        <h4 class="mt-4 mb-3">Impact Analysis</h4>
-        
-        <div class="row">
-            <div class="col-md-6">
-                <div class="impact-card">
-                    <div class="impact-header impact-bad">
-                        <i class="bi bi-exclamation-triangle-fill"></i>
-                        <h6 class="mb-0">Cost Impact</h6>
-                    </div>
+        <div class="impact-section">
+            <h5>Coverage Impact Analysis</h5>
+            <div class="row mt-3">
+                <div class="col-md-6">
+                    <h6 style="color: #dc3545;">Skills at Risk</h6>
                     <ul>
-                        <li>Additional monthly cost: <strong>$45,600</strong></li>
-                        <li>Overtime reduction: <strong>-$12,300</strong></li>
-                        <li>Net increase: <strong>$33,300/month</strong></li>
+                        <li><strong>Electrical Maintenance:</strong> No backup if someone calls in sick</li>
+                        <li><strong>Forklift Operation:</strong> Limited flexibility for day shift</li>
+                        <li><strong>HVAC Certified:</strong> Only 1 per crew</li>
                     </ul>
                 </div>
-            </div>
-            
-            <div class="col-md-6">
-                <div class="impact-card">
-                    <div class="impact-header impact-good">
-                        <i class="bi bi-check-circle-fill"></i>
-                        <h6 class="mb-0">Coverage Benefits</h6>
-                    </div>
+                <div class="col-md-6">
+                    <h6 style="color: #28a745;">Recommendations</h6>
                     <ul>
-                        <li>Eliminates single points of failure</li>
-                        <li>Reduces emergency callouts by 75%</li>
-                        <li>Improves safety compliance score</li>
+                        <li>Cross-train 2 more employees in electrical maintenance</li>
+                        <li>Add forklift certification to training plan</li>
+                        <li>Consider reducing day shift forklift requirement to 2</li>
                     </ul>
                 </div>
-            </div>
-        </div>
-
-        <!-- Coverage Matrix Preview -->
-        <h4 class="mt-4 mb-3">Weekly Coverage Preview</h4>
-        <div class="coverage-matrix">
-            <table class="matrix-table">
-                <thead>
-                    <tr>
-                        <th>Position</th>
-                        <th>Mon</th>
-                        <th>Tue</th>
-                        <th>Wed</th>
-                        <th>Thu</th>
-                        <th>Fri</th>
-                        <th>Sat</th>
-                        <th>Sun</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td><strong>Operators</strong></td>
-                        <td class="coverage-cell coverage-met">8/8</td>
-                        <td class="coverage-cell coverage-met">8/8</td>
-                        <td class="coverage-cell coverage-met">8/8</td>
-                        <td class="coverage-cell coverage-met">8/8</td>
-                        <td class="coverage-cell coverage-met">8/8</td>
-                        <td class="coverage-cell coverage-short">3/4</td>
-                        <td class="coverage-cell coverage-met">4/4</td>
-                    </tr>
-                    <tr>
-                        <td><strong>Technicians</strong></td>
-                        <td class="coverage-cell coverage-met">3/3</td>
-                        <td class="coverage-cell coverage-met">3/3</td>
-                        <td class="coverage-cell coverage-over">4/3</td>
-                        <td class="coverage-cell coverage-met">3/3</td>
-                        <td class="coverage-cell coverage-met">3/3</td>
-                        <td class="coverage-cell coverage-met">2/2</td>
-                        <td class="coverage-cell coverage-met">2/2</td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-
-        <!-- History -->
-        <h4 class="mt-4 mb-3">Recent Changes</h4>
-        <div class="history-timeline">
-            <div class="history-item">
-                <strong>July 15, 2025</strong> - John Doe
-                <p class="mb-0 text-muted">Increased night operators from 4 to 5 (safety compliance)</p>
-            </div>
-            <div class="history-item">
-                <strong>June 30, 2025</strong> - Sarah Smith
-                <p class="mb-0 text-muted">Added weekend technician requirement</p>
-            </div>
-            <div class="history-item">
-                <strong>June 1, 2025</strong> - Admin
-                <p class="mb-0 text-muted">Initial coverage requirements set</p>
             </div>
         </div>
     </div>
@@ -614,32 +527,30 @@
         function adjustValue(button, change) {
             const input = button.parentElement.querySelector('input');
             const newValue = parseInt(input.value) + change;
-            if (newValue >= parseInt(input.min) && newValue <= parseInt(input.max)) {
+            const max = parseInt(input.max);
+            const min = parseInt(input.min);
+            
+            if (newValue >= min && newValue <= max) {
                 input.value = newValue;
-                checkForChanges(input);
+                updateCoverageStatus(input);
             }
         }
 
-        function checkForChanges(input) {
+        function updateCoverageStatus(input) {
             const shiftBox = input.closest('.shift-box');
-            const currentValue = parseInt(shiftBox.querySelector('.current-value').textContent.match(/\d+/)[0]);
-            const newValue = parseInt(input.value);
+            const statusDiv = shiftBox.querySelector('.coverage-status');
+            const value = parseInt(input.value);
+            const max = parseInt(input.max);
             
-            let indicator = shiftBox.querySelector('.change-indicator');
-            if (!indicator) {
-                indicator = document.createElement('div');
-                indicator.className = 'change-indicator';
-                shiftBox.appendChild(indicator);
-            }
-            
-            if (newValue > currentValue) {
-                indicator.className = 'change-indicator change-increase';
-                indicator.innerHTML = `<i class="bi bi-arrow-up"></i> +${newValue - currentValue} from current`;
-            } else if (newValue < currentValue) {
-                indicator.className = 'change-indicator change-decrease';
-                indicator.innerHTML = `<i class="bi bi-arrow-down"></i> -${currentValue - newValue} from current`;
+            if (value === max) {
+                statusDiv.className = 'coverage-status status-bad';
+                statusDiv.innerHTML = '<i class="bi bi-x-circle"></i> At capacity';
+            } else if (value >= max - 1) {
+                statusDiv.className = 'coverage-status status-warning';
+                statusDiv.innerHTML = '<i class="bi bi-exclamation-triangle"></i> Tight coverage';
             } else {
-                indicator.remove();
+                statusDiv.className = 'coverage-status status-good';
+                statusDiv.innerHTML = '<i class="bi bi-check-circle"></i> Coverage met';
             }
         }
 
@@ -651,11 +562,12 @@
             }, 3000);
         }
 
-        // Input change listeners
-        document.querySelectorAll('input[type="number"]').forEach(input => {
-            input.addEventListener('change', function() {
-                checkForChanges(this);
-            });
+        // File upload handler
+        document.querySelector('input[type="file"]').addEventListener('change', function(e) {
+            if (e.target.files.length > 0) {
+                alert('File uploaded: ' + e.target.files[0].name + '\nProcessing crew skills data...');
+                // In real implementation, this would parse the Excel file and update the skills display
+            }
         });
     </script>
 </body>
