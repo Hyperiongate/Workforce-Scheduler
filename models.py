@@ -875,4 +875,4 @@ class SkillRequirement(db.Model):
     skill_id = db.Column(db.Integer, db.ForeignKey('skill.id'), nullable=False)
     shift_type = db.Column(db.String(50), nullable=False)  # day, evening, night
     minimum_required = db.Column(db.Integer, default=1)
-    position_id =
+    position_id = db.Column(db.Integer, db.ForeignKey('position.id'))
