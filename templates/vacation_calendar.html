@@ -73,30 +73,33 @@
         }
         
         .vacation-entry {
-            background: #e0c3fc;
-            color: #fff;
+            background: #e8d4f8;
+            color: #2c3e50;
             padding: 0.125rem 0.25rem;
             border-radius: 3px;
-            font-size: 0.75rem;
+            font-size: 0.7rem;
             margin-bottom: 0.125rem;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
             cursor: pointer;
+            border: 1px solid #d0a3fc;
         }
         
         .vacation-entry:hover {
-            background: #d0a3fc;
+            background: #dcc4f8;
         }
         
         .vacation-entry.sick {
-            background: #ffcdd2;
-            color: #721c24;
+            background: #ffe4e6;
+            color: #2c3e50;
+            border-color: #ffb3ba;
         }
         
         .vacation-entry.personal {
-            background: #fff3cd;
-            color: #856404;
+            background: #fff9e6;
+            color: #2c3e50;
+            border-color: #ffd966;
         }
         
         .crew-filter {
@@ -108,18 +111,22 @@
         .crew-badge {
             padding: 0.5rem 1rem;
             border-radius: 20px;
-            background: #e9ecef;
+            background: #f0e6ff;
+            color: #2c3e50;
             cursor: pointer;
             transition: all 0.3s ease;
+            border: 2px solid transparent;
         }
         
         .crew-badge.active {
-            background: #e0c3fc;
-            color: white;
+            background: #d0a3fc;
+            color: #2c3e50;
+            border-color: #b380e6;
         }
         
         .crew-badge:hover {
             transform: translateY(-2px);
+            border-color: #d0a3fc;
         }
         
         .stats-section {
@@ -212,26 +219,6 @@
     </div>
 
     <div class="container-fluid">
-        <!-- Statistics -->
-        <div class="stats-section">
-            <div class="stat-card">
-                <div class="stat-number">12</div>
-                <p class="mb-0">Employees on Leave<br><small>This Month</small></p>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number">3</div>
-                <p class="mb-0">On Leave Today<br><small>July 18</small></p>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number">28</div>
-                <p class="mb-0">Total Days Off<br><small>July 2025</small></p>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number">85%</div>
-                <p class="mb-0">Coverage Level<br><small>This Week</small></p>
-            </div>
-        </div>
-
         <!-- Calendar Controls -->
         <div class="calendar-controls">
             <div class="row align-items-center">
@@ -281,22 +268,22 @@
                         </td>
                         <td>
                             <div class="day-number">1</div>
-                            <div class="vacation-entry">J. Doe - Vacation</div>
+                            <div class="vacation-entry">J. Doe - Operator</div>
                         </td>
                         <td>
                             <div class="day-number">2</div>
-                            <div class="vacation-entry">J. Doe - Vacation</div>
+                            <div class="vacation-entry">J. Doe - Operator</div>
                         </td>
                         <td>
                             <div class="day-number">3</div>
-                            <div class="vacation-entry">J. Doe - Vacation</div>
+                            <div class="vacation-entry">J. Doe - Operator</div>
                         </td>
                         <td>
                             <div class="day-number">4</div>
                         </td>
                         <td>
                             <div class="day-number">5</div>
-                            <div class="vacation-entry sick">M. Smith - Sick</div>
+                            <div class="vacation-entry sick">M. Smith - Technician</div>
                         </td>
                         <td class="weekend">
                             <div class="day-number">6</div>
@@ -309,23 +296,23 @@
                         </td>
                         <td>
                             <div class="day-number">8</div>
-                            <div class="vacation-entry">S. Johnson - Vacation</div>
-                            <div class="vacation-entry personal">T. Brown - Personal</div>
+                            <div class="vacation-entry">S. Johnson - Supervisor</div>
+                            <div class="vacation-entry personal">T. Brown - Operator</div>
                         </td>
                         <td>
                             <div class="day-number">9</div>
-                            <div class="vacation-entry">S. Johnson - Vacation</div>
+                            <div class="vacation-entry">S. Johnson - Supervisor</div>
                         </td>
                         <td>
                             <div class="day-number">10</div>
-                            <div class="vacation-entry">S. Johnson - Vacation</div>
+                            <div class="vacation-entry">S. Johnson - Supervisor</div>
                         </td>
                         <td>
                             <div class="day-number">11</div>
                         </td>
                         <td>
                             <div class="day-number">12</div>
-                            <div class="vacation-entry">K. Davis - Vacation</div>
+                            <div class="vacation-entry">K. Davis - Lead Tech</div>
                         </td>
                         <td class="weekend">
                             <div class="day-number">13</div>
@@ -338,28 +325,28 @@
                         </td>
                         <td>
                             <div class="day-number">15</div>
-                            <div class="vacation-entry">E. Wilson - Vacation</div>
-                            <div class="vacation-entry">R. Martinez - Vacation</div>
+                            <div class="vacation-entry">E. Wilson - Operator</div>
+                            <div class="vacation-entry">R. Martinez - Technician</div>
                         </td>
                         <td>
                             <div class="day-number">16</div>
-                            <div class="vacation-entry">E. Wilson - Vacation</div>
-                            <div class="vacation-entry">R. Martinez - Vacation</div>
+                            <div class="vacation-entry">E. Wilson - Operator</div>
+                            <div class="vacation-entry">R. Martinez - Technician</div>
                         </td>
                         <td>
                             <div class="day-number">17</div>
-                            <div class="vacation-entry">E. Wilson - Vacation</div>
-                            <div class="vacation-entry">R. Martinez - Vacation</div>
+                            <div class="vacation-entry">E. Wilson - Operator</div>
+                            <div class="vacation-entry">R. Martinez - Technician</div>
                         </td>
                         <td class="today">
                             <div class="day-number">18</div>
-                            <div class="vacation-entry sick">L. Anderson - Sick</div>
-                            <div class="vacation-entry">P. Taylor - Vacation</div>
-                            <div class="vacation-entry personal">J. White - Personal</div>
+                            <div class="vacation-entry sick">L. Anderson - Supervisor</div>
+                            <div class="vacation-entry">P. Taylor - Lead Tech</div>
+                            <div class="vacation-entry personal">J. White - Operator</div>
                         </td>
                         <td>
                             <div class="day-number">19</div>
-                            <div class="vacation-entry">P. Taylor - Vacation</div>
+                            <div class="vacation-entry">P. Taylor - Lead Tech</div>
                         </td>
                         <td class="weekend">
                             <div class="day-number">20</div>
@@ -372,43 +359,43 @@
                         </td>
                         <td>
                             <div class="day-number">22</div>
-                            <div class="vacation-entry">D. Clark - Vacation</div>
+                            <div class="vacation-entry">D. Clark - Technician</div>
                         </td>
                         <td>
                             <div class="day-number">23</div>
-                            <div class="vacation-entry">D. Clark - Vacation</div>
-                            <div class="vacation-entry">H. Lewis - Vacation</div>
+                            <div class="vacation-entry">D. Clark - Technician</div>
+                            <div class="vacation-entry">H. Lewis - Operator</div>
                         </td>
                         <td>
                             <div class="day-number">24</div>
-                            <div class="vacation-entry">D. Clark - Vacation</div>
-                            <div class="vacation-entry">H. Lewis - Vacation</div>
-                            <div class="vacation-entry">N. Hall - Vacation</div>
+                            <div class="vacation-entry">D. Clark - Technician</div>
+                            <div class="vacation-entry">H. Lewis - Operator</div>
+                            <div class="vacation-entry">N. Hall - Supervisor</div>
                             <div class="more-indicator">+2 more</div>
                         </td>
                         <td>
                             <div class="day-number">25</div>
-                            <div class="vacation-entry">D. Clark - Vacation</div>
-                            <div class="vacation-entry">H. Lewis - Vacation</div>
-                            <div class="vacation-entry">N. Hall - Vacation</div>
-                            <div class="vacation-entry">J. Doe - Vacation</div>
+                            <div class="vacation-entry">D. Clark - Technician</div>
+                            <div class="vacation-entry">H. Lewis - Operator</div>
+                            <div class="vacation-entry">N. Hall - Supervisor</div>
+                            <div class="vacation-entry">J. Doe - Operator</div>
                         </td>
                         <td>
                             <div class="day-number">26</div>
-                            <div class="vacation-entry">J. Doe - Vacation</div>
-                            <div class="vacation-entry">H. Lewis - Vacation</div>
-                            <div class="vacation-entry">N. Hall - Vacation</div>
+                            <div class="vacation-entry">J. Doe - Operator</div>
+                            <div class="vacation-entry">H. Lewis - Operator</div>
+                            <div class="vacation-entry">N. Hall - Supervisor</div>
                         </td>
                         <td class="weekend">
                             <div class="day-number">27</div>
-                            <div class="vacation-entry">J. Doe - Vacation</div>
+                            <div class="vacation-entry">J. Doe - Operator</div>
                         </td>
                     </tr>
                     <!-- Week 5 -->
                     <tr>
                         <td class="weekend">
                             <div class="day-number">28</div>
-                            <div class="vacation-entry">J. Doe - Vacation</div>
+                            <div class="vacation-entry">J. Doe - Operator</div>
                         </td>
                         <td>
                             <div class="day-number">29</div>
@@ -418,7 +405,7 @@
                         </td>
                         <td>
                             <div class="day-number">31</div>
-                            <div class="vacation-entry">B. Young - Vacation</div>
+                            <div class="vacation-entry">B. Young - Lead Tech</div>
                         </td>
                         <td>
                             <div class="day-number">1</div>
