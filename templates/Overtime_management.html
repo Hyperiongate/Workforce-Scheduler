@@ -18,79 +18,18 @@
             border-bottom: 3px solid #11998e;
         }
         
-        .overtime-card {
+        .filters-section {
             background: white;
-            border-radius: 8px;
             padding: 1.5rem;
-            margin-bottom: 1rem;
+            border-radius: 8px;
+            margin-bottom: 2rem;
             box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-            border-left: 4px solid #11998e;
-            transition: all 0.3s ease;
-        }
-        
-        .overtime-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-        }
-        
-        .employee-overtime {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 1rem;
-            border-bottom: 1px solid #e9ecef;
-        }
-        
-        .employee-overtime:last-child {
-            border-bottom: none;
-        }
-        
-        .employee-info {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-        }
-        
-        .employee-avatar {
-            width: 50px;
-            height: 50px;
-            border-radius: 50%;
-            background: #11998e;
-            color: white;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: bold;
-        }
-        
-        .overtime-hours {
-            text-align: center;
-        }
-        
-        .hours-number {
-            font-size: 1.5rem;
-            font-weight: bold;
-            color: #11998e;
-        }
-        
-        .progress-bar-container {
-            width: 200px;
-            height: 20px;
-            background: #e9ecef;
-            border-radius: 10px;
-            overflow: hidden;
-        }
-        
-        .progress-bar-fill {
-            height: 100%;
-            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
-            transition: width 0.3s ease;
         }
         
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 1.5rem;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
             margin-bottom: 2rem;
         }
         
@@ -114,78 +53,137 @@
             color: #11998e;
         }
         
-        .filter-section {
+        .overtime-table-container {
             background: white;
-            padding: 1.5rem;
             border-radius: 8px;
-            margin-bottom: 2rem;
+            padding: 1.5rem;
             box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            overflow-x: auto;
         }
         
-        .overtime-alert {
-            background: #fff3cd;
-            border: 1px solid #ffeaa7;
-            border-radius: 4px;
+        .overtime-table {
+            width: 100%;
+            font-size: 0.9rem;
+        }
+        
+        .overtime-table th {
+            background: #f8f9fa;
+            font-weight: 600;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            cursor: pointer;
+            user-select: none;
+        }
+        
+        .overtime-table th:hover {
+            background: #e9ecef;
+        }
+        
+        .overtime-table th i {
+            margin-left: 0.5rem;
+            font-size: 0.75rem;
+        }
+        
+        .overtime-table td,
+        .overtime-table th {
             padding: 0.75rem;
-            margin-bottom: 1rem;
+            border-bottom: 1px solid #dee2e6;
         }
         
-        .assign-btn {
+        .week-column {
+            text-align: center;
+            min-width: 60px;
+        }
+        
+        .total-column {
+            font-weight: bold;
+            background: #f8f9fa;
+        }
+        
+        .employee-info {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .employee-avatar {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
             background: #11998e;
             color: white;
-            border: none;
-            padding: 0.5rem 1rem;
-            border-radius: 4px;
-            transition: all 0.3s ease;
-        }
-        
-        .assign-btn:hover {
-            background: #0d7a6c;
-            transform: translateY(-2px);
-        }
-        
-        .distribution-chart {
-            background: white;
-            padding: 1.5rem;
-            border-radius: 8px;
-            margin-bottom: 2rem;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-        }
-        
-        .chart-bar {
             display: flex;
             align-items: center;
-            margin-bottom: 1rem;
-        }
-        
-        .chart-label {
-            width: 150px;
-            font-weight: 500;
-        }
-        
-        .chart-bar-fill {
-            height: 30px;
-            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
-            border-radius: 4px;
-            display: flex;
-            align-items: center;
-            justify-content: flex-end;
-            padding-right: 0.5rem;
-            color: white;
+            justify-content: center;
+            font-size: 0.75rem;
             font-weight: bold;
         }
         
-        .fairness-indicator {
+        .overtime-high {
+            background: #f8d7da;
+            color: #721c24;
+            font-weight: bold;
+        }
+        
+        .overtime-medium {
+            background: #fff3cd;
+            color: #856404;
+        }
+        
+        .overtime-low {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .crew-badge {
             display: inline-block;
-            padding: 0.25rem 0.75rem;
-            border-radius: 20px;
-            font-size: 0.875rem;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
             font-weight: 600;
         }
         
-        .fairness-good { background: #d4edda; color: #155724; }
-        .fairness-warning { background: #fff3cd; color: #856404; }
-        .fairness-poor { background: #f8d7da; color: #721c24; }
+        .crew-a { background: #e3f2fd; color: #1565c0; }
+        .crew-b { background: #f3e5f5; color: #6a1b9a; }
+        .crew-c { background: #e8f5e9; color: #2e7d32; }
+        .crew-d { background: #fff3e0; color: #e65100; }
+        
+        .sort-controls {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+        
+        .week-header {
+            font-size: 0.75rem;
+            color: #6c757d;
+        }
+        
+        .export-section {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            margin-top: 2rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        
+        .alert-section {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 2rem;
+        }
+        
+        .pagination {
+            margin-top: 1rem;
+        }
+        
+        .search-highlight {
+            background: #ffeb3b;
+            padding: 0 2px;
+        }
     </style>
 </head>
 <body>
@@ -203,7 +201,7 @@
                         <a class="nav-link" href="/dashboard">Dashboard</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link active" href="/supervisor/overtime-distribution">Overtime Management</a>
+                        <a class="nav-link active" href="/overtime-management">Overtime Management</a>
                     </li>
                 </ul>
                 <ul class="navbar-nav ms-auto">
@@ -225,58 +223,54 @@
             <div class="row align-items-center">
                 <div class="col">
                     <h1><i class="bi bi-clock-history" style="color: #11998e;"></i> Overtime Management</h1>
-                    <p class="text-muted mb-0">Track and distribute overtime hours fairly across all employees</p>
+                    <p class="text-muted mb-0">13-Week Rolling Overtime Tracker</p>
                 </div>
                 <div class="col-auto">
-                    <span class="fairness-indicator fairness-good">Fair Distribution</span>
+                    <button class="btn btn-primary">
+                        <i class="bi bi-upload"></i> Import OT Data
+                    </button>
                 </div>
             </div>
         </div>
     </div>
 
     <div class="container-fluid">
+        <!-- Alert Section -->
+        <div class="alert-section">
+            <i class="bi bi-exclamation-triangle-fill"></i> <strong>Overtime Alerts:</strong>
+            3 employees are approaching 60-hour weekly limit. 5 employees exceed 200 hours in 13-week period.
+        </div>
+
         <!-- Statistics -->
         <div class="stats-grid">
             <div class="stat-card">
-                <div class="stat-number">487</div>
-                <p class="mb-0">Total OT Hours<br><small>This Month</small></p>
+                <div class="stat-number">2,847</div>
+                <p class="mb-0">Total OT Hours<br><small>13-Week Period</small></p>
             </div>
             <div class="stat-card">
-                <div class="stat-number">$24,350</div>
-                <p class="mb-0">OT Cost<br><small>This Month</small></p>
+                <div class="stat-number">$142,350</div>
+                <p class="mb-0">Total OT Cost<br><small>13-Week Period</small></p>
             </div>
             <div class="stat-card">
-                <div class="stat-number">12.2</div>
-                <p class="mb-0">Avg Hours/Employee<br><small>This Month</small></p>
+                <div class="stat-number">59.3</div>
+                <p class="mb-0">Avg Hours/Employee<br><small>13-Week Period</small></p>
             </div>
             <div class="stat-card">
-                <div class="stat-number">8</div>
-                <p class="mb-0">Available for OT<br><small>Today</small></p>
+                <div class="stat-number">48</div>
+                <p class="mb-0">Active Employees<br><small>With Overtime</small></p>
             </div>
         </div>
 
-        <!-- Overtime Alert -->
-        <div class="overtime-alert">
-            <i class="bi bi-exclamation-triangle-fill"></i> <strong>Coverage Gap Alert:</strong> 
-            Night shift tomorrow needs 2 operators. Consider assigning overtime to qualified staff.
-            <button class="btn btn-sm btn-warning float-end">View Gap</button>
-        </div>
-
-        <!-- Filter Section -->
-        <div class="filter-section">
+        <!-- Filters Section -->
+        <div class="filters-section">
             <div class="row align-items-end">
                 <div class="col-md-3">
-                    <label class="form-label">Time Period</label>
-                    <select class="form-select">
-                        <option value="week">This Week</option>
-                        <option value="month" selected>This Month</option>
-                        <option value="quarter">This Quarter</option>
-                        <option value="year">This Year</option>
-                    </select>
+                    <label class="form-label">Search Employee</label>
+                    <input type="text" class="form-control" placeholder="Name or ID..." id="searchInput">
                 </div>
-                <div class="col-md-3">
-                    <label class="form-label">Crew</label>
-                    <select class="form-select">
+                <div class="col-md-2">
+                    <label class="form-label">Crew Filter</label>
+                    <select class="form-select" id="crewFilter">
                         <option value="">All Crews</option>
                         <option value="A">Crew A</option>
                         <option value="B">Crew B</option>
@@ -284,202 +278,313 @@
                         <option value="D">Crew D</option>
                     </select>
                 </div>
-                <div class="col-md-3">
-                    <label class="form-label">Sort By</label>
+                <div class="col-md-2">
+                    <label class="form-label">Job Title</label>
+                    <select class="form-select" id="jobFilter">
+                        <option value="">All Positions</option>
+                        <option value="operator">Operator</option>
+                        <option value="technician">Technician</option>
+                        <option value="lead">Lead Tech</option>
+                        <option value="supervisor">Supervisor</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">OT Range</label>
                     <select class="form-select">
-                        <option value="hours-low">Lowest OT Hours First</option>
-                        <option value="hours-high">Highest OT Hours First</option>
-                        <option value="name">Name</option>
+                        <option value="">All Ranges</option>
+                        <option value="0-50">0-50 hours</option>
+                        <option value="50-100">50-100 hours</option>
+                        <option value="100-150">100-150 hours</option>
+                        <option value="150+">150+ hours</option>
                     </select>
                 </div>
                 <div class="col-md-3">
                     <button class="btn btn-primary w-100">
-                        <i class="bi bi-arrow-repeat"></i> Update View
+                        <i class="bi bi-funnel"></i> Apply Filters
                     </button>
                 </div>
             </div>
         </div>
 
-        <!-- Distribution Chart -->
-        <div class="distribution-chart">
-            <h4 class="mb-3">Overtime Distribution by Crew</h4>
-            <div class="chart-bar">
-                <div class="chart-label">Crew A</div>
-                <div style="flex: 1; margin: 0 1rem;">
-                    <div class="chart-bar-fill" style="width: 85%;">127 hrs</div>
-                </div>
-            </div>
-            <div class="chart-bar">
-                <div class="chart-label">Crew B</div>
-                <div style="flex: 1; margin: 0 1rem;">
-                    <div class="chart-bar-fill" style="width: 90%;">134 hrs</div>
-                </div>
-            </div>
-            <div class="chart-bar">
-                <div class="chart-label">Crew C</div>
-                <div style="flex: 1; margin: 0 1rem;">
-                    <div class="chart-bar-fill" style="width: 75%;">112 hrs</div>
-                </div>
-            </div>
-            <div class="chart-bar">
-                <div class="chart-label">Crew D</div>
-                <div style="flex: 1; margin: 0 1rem;">
-                    <div class="chart-bar-fill" style="width: 76%;">114 hrs</div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Employee Overtime List -->
-        <div class="overtime-card">
-            <h4 class="mb-3">Employee Overtime Hours - July 2025</h4>
+        <!-- Overtime Table -->
+        <div class="overtime-table-container">
+            <h4 class="mb-3">13-Week Overtime History (April 20 - July 18, 2025)</h4>
             
-            <!-- Low OT Employee (Good for assignment) -->
-            <div class="employee-overtime">
-                <div class="employee-info">
-                    <div class="employee-avatar">SJ</div>
-                    <div>
-                        <h6 class="mb-0">Sarah Johnson</h6>
-                        <small class="text-muted">Operator - Crew A</small>
-                    </div>
-                </div>
-                <div class="overtime-hours">
-                    <div class="hours-number">4</div>
-                    <small>OT Hours</small>
-                </div>
-                <div class="progress-bar-container">
-                    <div class="progress-bar-fill" style="width: 10%;"></div>
-                </div>
-                <div>
-                    <button class="assign-btn">
-                        <i class="bi bi-plus-circle"></i> Assign OT
-                    </button>
-                </div>
-            </div>
-
-            <!-- Low OT Employee -->
-            <div class="employee-overtime">
-                <div class="employee-info">
-                    <div class="employee-avatar" style="background: #2196f3;">MR</div>
-                    <div>
-                        <h6 class="mb-0">Mike Rodriguez</h6>
-                        <small class="text-muted">Technician - Crew B</small>
-                    </div>
-                </div>
-                <div class="overtime-hours">
-                    <div class="hours-number">6</div>
-                    <small>OT Hours</small>
-                </div>
-                <div class="progress-bar-container">
-                    <div class="progress-bar-fill" style="width: 15%;"></div>
-                </div>
-                <div>
-                    <button class="assign-btn">
-                        <i class="bi bi-plus-circle"></i> Assign OT
-                    </button>
-                </div>
-            </div>
-
-            <!-- Medium OT Employee -->
-            <div class="employee-overtime">
-                <div class="employee-info">
-                    <div class="employee-avatar" style="background: #9c27b0;">JD</div>
-                    <div>
-                        <h6 class="mb-0">John Doe</h6>
-                        <small class="text-muted">Operator - Crew A</small>
-                    </div>
-                </div>
-                <div class="overtime-hours">
-                    <div class="hours-number">12</div>
-                    <small>OT Hours</small>
-                </div>
-                <div class="progress-bar-container">
-                    <div class="progress-bar-fill" style="width: 30%;"></div>
-                </div>
-                <div>
-                    <button class="assign-btn">
-                        <i class="bi bi-plus-circle"></i> Assign OT
-                    </button>
-                </div>
-            </div>
-
-            <!-- High OT Employee -->
-            <div class="employee-overtime">
-                <div class="employee-info">
-                    <div class="employee-avatar" style="background: #ff9800;">TC</div>
-                    <div>
-                        <h6 class="mb-0">Tom Chen</h6>
-                        <small class="text-muted">Lead Technician - Crew C</small>
-                    </div>
-                </div>
-                <div class="overtime-hours">
-                    <div class="hours-number">28</div>
-                    <small>OT Hours</small>
-                </div>
-                <div class="progress-bar-container">
-                    <div class="progress-bar-fill" style="width: 70%; background: linear-gradient(135deg, #ffc107 0%, #ff9800 100%);"></div>
-                </div>
-                <div>
-                    <span class="text-warning"><i class="bi bi-exclamation-triangle"></i> High OT</span>
-                </div>
-            </div>
-
-            <!-- Very High OT Employee -->
-            <div class="employee-overtime">
-                <div class="employee-info">
-                    <div class="employee-avatar" style="background: #dc3545;">BW</div>
-                    <div>
-                        <h6 class="mb-0">Bob Wilson</h6>
-                        <small class="text-muted">Supervisor - Crew D</small>
-                    </div>
-                </div>
-                <div class="overtime-hours">
-                    <div class="hours-number">42</div>
-                    <small>OT Hours</small>
-                </div>
-                <div class="progress-bar-container">
-                    <div class="progress-bar-fill" style="width: 100%; background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);"></div>
-                </div>
-                <div>
-                    <span class="text-danger"><i class="bi bi-x-circle"></i> Max OT</span>
-                </div>
-            </div>
+            <table class="overtime-table" id="overtimeTable">
+                <thead>
+                    <tr>
+                        <th onclick="sortTable(0)">Employee <i class="bi bi-arrow-down-up"></i></th>
+                        <th onclick="sortTable(1)">ID</th>
+                        <th onclick="sortTable(2)">Crew <i class="bi bi-arrow-down-up"></i></th>
+                        <th onclick="sortTable(3)">Job Title <i class="bi bi-arrow-down-up"></i></th>
+                        <th onclick="sortTable(4)">Seniority <i class="bi bi-arrow-down-up"></i></th>
+                        <th class="week-column">Wk 1<br><small>4/20</small></th>
+                        <th class="week-column">Wk 2<br><small>4/27</small></th>
+                        <th class="week-column">Wk 3<br><small>5/4</small></th>
+                        <th class="week-column">Wk 4<br><small>5/11</small></th>
+                        <th class="week-column">Wk 5<br><small>5/18</small></th>
+                        <th class="week-column">Wk 6<br><small>5/25</small></th>
+                        <th class="week-column">Wk 7<br><small>6/1</small></th>
+                        <th class="week-column">Wk 8<br><small>6/8</small></th>
+                        <th class="week-column">Wk 9<br><small>6/15</small></th>
+                        <th class="week-column">Wk 10<br><small>6/22</small></th>
+                        <th class="week-column">Wk 11<br><small>6/29</small></th>
+                        <th class="week-column">Wk 12<br><small>7/6</small></th>
+                        <th class="week-column">Wk 13<br><small>7/13</small></th>
+                        <th class="total-column" onclick="sortTable(18)">Total <i class="bi bi-arrow-down-up"></i></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Employee 1 - High OT -->
+                    <tr>
+                        <td>
+                            <div class="employee-info">
+                                <div class="employee-avatar">JD</div>
+                                <span>John Doe</span>
+                            </div>
+                        </td>
+                        <td>EMP001</td>
+                        <td><span class="crew-badge crew-a">Crew A</span></td>
+                        <td>Lead Operator</td>
+                        <td>8 years</td>
+                        <td class="week-column">12</td>
+                        <td class="week-column">16</td>
+                        <td class="week-column">20</td>
+                        <td class="week-column overtime-high">24</td>
+                        <td class="week-column">18</td>
+                        <td class="week-column">14</td>
+                        <td class="week-column">16</td>
+                        <td class="week-column">20</td>
+                        <td class="week-column overtime-high">22</td>
+                        <td class="week-column">18</td>
+                        <td class="week-column">16</td>
+                        <td class="week-column">14</td>
+                        <td class="week-column">12</td>
+                        <td class="total-column overtime-high">222</td>
+                    </tr>
+                    
+                    <!-- Employee 2 - Medium OT -->
+                    <tr>
+                        <td>
+                            <div class="employee-info">
+                                <div class="employee-avatar" style="background: #e91e63;">SM</div>
+                                <span>Sarah Miller</span>
+                            </div>
+                        </td>
+                        <td>EMP002</td>
+                        <td><span class="crew-badge crew-b">Crew B</span></td>
+                        <td>Technician</td>
+                        <td>5 years</td>
+                        <td class="week-column">8</td>
+                        <td class="week-column">10</td>
+                        <td class="week-column">12</td>
+                        <td class="week-column">8</td>
+                        <td class="week-column">10</td>
+                        <td class="week-column">14</td>
+                        <td class="week-column">12</td>
+                        <td class="week-column">10</td>
+                        <td class="week-column">8</td>
+                        <td class="week-column">12</td>
+                        <td class="week-column">10</td>
+                        <td class="week-column">8</td>
+                        <td class="week-column">10</td>
+                        <td class="total-column overtime-medium">132</td>
+                    </tr>
+                    
+                    <!-- Employee 3 - Low OT -->
+                    <tr>
+                        <td>
+                            <div class="employee-info">
+                                <div class="employee-avatar" style="background: #4caf50;">RJ</div>
+                                <span>Robert Johnson</span>
+                            </div>
+                        </td>
+                        <td>EMP003</td>
+                        <td><span class="crew-badge crew-c">Crew C</span></td>
+                        <td>Operator</td>
+                        <td>2 years</td>
+                        <td class="week-column">4</td>
+                        <td class="week-column">6</td>
+                        <td class="week-column">4</td>
+                        <td class="week-column">8</td>
+                        <td class="week-column">6</td>
+                        <td class="week-column">4</td>
+                        <td class="week-column">6</td>
+                        <td class="week-column">8</td>
+                        <td class="week-column">4</td>
+                        <td class="week-column">6</td>
+                        <td class="week-column">4</td>
+                        <td class="week-column">6</td>
+                        <td class="week-column">8</td>
+                        <td class="total-column overtime-low">74</td>
+                    </tr>
+                    
+                    <!-- Employee 4 -->
+                    <tr>
+                        <td>
+                            <div class="employee-info">
+                                <div class="employee-avatar" style="background: #ff9800;">EW</div>
+                                <span>Emily Wilson</span>
+                            </div>
+                        </td>
+                        <td>EMP004</td>
+                        <td><span class="crew-badge crew-d">Crew D</span></td>
+                        <td>Supervisor</td>
+                        <td>10 years</td>
+                        <td class="week-column">10</td>
+                        <td class="week-column">12</td>
+                        <td class="week-column">14</td>
+                        <td class="week-column">16</td>
+                        <td class="week-column">12</td>
+                        <td class="week-column">10</td>
+                        <td class="week-column">14</td>
+                        <td class="week-column">16</td>
+                        <td class="week-column">18</td>
+                        <td class="week-column">14</td>
+                        <td class="week-column">12</td>
+                        <td class="week-column">10</td>
+                        <td class="week-column">8</td>
+                        <td class="total-column overtime-medium">166</td>
+                    </tr>
+                    
+                    <!-- Employee 5 -->
+                    <tr>
+                        <td>
+                            <div class="employee-info">
+                                <div class="employee-avatar" style="background: #9c27b0;">TC</div>
+                                <span>Tom Chen</span>
+                            </div>
+                        </td>
+                        <td>EMP005</td>
+                        <td><span class="crew-badge crew-a">Crew A</span></td>
+                        <td>Lead Technician</td>
+                        <td>15 years</td>
+                        <td class="week-column">6</td>
+                        <td class="week-column">8</td>
+                        <td class="week-column">10</td>
+                        <td class="week-column">12</td>
+                        <td class="week-column">8</td>
+                        <td class="week-column">6</td>
+                        <td class="week-column">8</td>
+                        <td class="week-column">10</td>
+                        <td class="week-column">12</td>
+                        <td class="week-column">10</td>
+                        <td class="week-column">8</td>
+                        <td class="week-column">6</td>
+                        <td class="week-column">4</td>
+                        <td class="total-column">108</td>
+                    </tr>
+                </tbody>
+            </table>
+            
+            <!-- Pagination -->
+            <nav>
+                <ul class="pagination justify-content-center">
+                    <li class="page-item disabled"><a class="page-link" href="#">Previous</a></li>
+                    <li class="page-item active"><a class="page-link" href="#">1</a></li>
+                    <li class="page-item"><a class="page-link" href="#">2</a></li>
+                    <li class="page-item"><a class="page-link" href="#">3</a></li>
+                    <li class="page-item"><a class="page-link" href="#">Next</a></li>
+                </ul>
+            </nav>
         </div>
 
-        <!-- Quick Actions -->
-        <div class="mt-4">
-            <h4>Quick Actions</h4>
-            <div class="row">
+        <!-- Export Section -->
+        <div class="export-section">
+            <h5>Export & Reports</h5>
+            <div class="row mt-3">
                 <div class="col-md-3">
-                    <button class="btn btn-primary w-100 mb-2">
-                        <i class="bi bi-calculator"></i> Auto-Distribute Next Week
+                    <button class="btn btn-success w-100">
+                        <i class="bi bi-file-earmark-excel"></i> Export to Excel
                     </button>
                 </div>
                 <div class="col-md-3">
-                    <button class="btn btn-success w-100 mb-2">
-                        <i class="bi bi-download"></i> Export OT Report
+                    <button class="btn btn-primary w-100">
+                        <i class="bi bi-file-earmark-pdf"></i> Generate PDF Report
                     </button>
                 </div>
                 <div class="col-md-3">
-                    <button class="btn btn-warning w-100 mb-2">
-                        <i class="bi bi-gear"></i> Set OT Limits
+                    <button class="btn btn-info w-100">
+                        <i class="bi bi-envelope"></i> Email Report
                     </button>
                 </div>
                 <div class="col-md-3">
-                    <button class="btn btn-info w-100 mb-2">
-                        <i class="bi bi-envelope"></i> Email OT Summary
+                    <button class="btn btn-secondary w-100">
+                        <i class="bi bi-printer"></i> Print
                     </button>
                 </div>
             </div>
-        </div>
-
-        <!-- Policy Reminder -->
-        <div class="alert alert-info mt-4">
-            <i class="bi bi-info-circle"></i> <strong>Overtime Policy:</strong> 
-            Maximum 60 hours per week per employee. Employees must have 8 hours rest between shifts. 
-            Double time applies after 12 hours in a day or 48 hours in a week.
         </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Sort table function
+        function sortTable(columnIndex) {
+            const table = document.getElementById('overtimeTable');
+            const tbody = table.querySelector('tbody');
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+            
+            // Toggle sort direction
+            const isAscending = table.querySelector('thead tr').children[columnIndex].classList.toggle('sort-asc');
+            
+            rows.sort((a, b) => {
+                let aValue, bValue;
+                
+                if (columnIndex === 0) { // Employee name
+                    aValue = a.cells[columnIndex].textContent.trim();
+                    bValue = b.cells[columnIndex].textContent.trim();
+                } else if (columnIndex === 4 || columnIndex >= 5) { // Numeric columns
+                    aValue = parseInt(a.cells[columnIndex].textContent) || 0;
+                    bValue = parseInt(b.cells[columnIndex].textContent) || 0;
+                } else {
+                    aValue = a.cells[columnIndex].textContent.trim();
+                    bValue = b.cells[columnIndex].textContent.trim();
+                }
+                
+                if (isAscending) {
+                    return aValue > bValue ? 1 : -1;
+                } else {
+                    return aValue < bValue ? 1 : -1;
+                }
+            });
+            
+            // Re-append sorted rows
+            rows.forEach(row => tbody.appendChild(row));
+        }
+
+        // Search function
+        document.getElementById('searchInput').addEventListener('input', function(e) {
+            const searchTerm = e.target.value.toLowerCase();
+            const rows = document.querySelectorAll('#overtimeTable tbody tr');
+            
+            rows.forEach(row => {
+                const name = row.cells[0].textContent.toLowerCase();
+                const id = row.cells[1].textContent.toLowerCase();
+                
+                if (name.includes(searchTerm) || id.includes(searchTerm)) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        });
+
+        // Crew filter
+        document.getElementById('crewFilter').addEventListener('change', function(e) {
+            const selectedCrew = e.target.value;
+            const rows = document.querySelectorAll('#overtimeTable tbody tr');
+            
+            rows.forEach(row => {
+                const crewCell = row.cells[2].textContent;
+                
+                if (!selectedCrew || crewCell.includes('Crew ' + selectedCrew)) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        });
+    </script>
 </body>
 </html>
