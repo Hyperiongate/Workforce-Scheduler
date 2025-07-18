@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create Schedule - Workforce Scheduler</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
+    <style>
+        body {
+            background-color: #f5f7fa;
+        }
+        
+        .page-header {
+            background: white;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            border-bottom: 3px solid #00c9ff;
+        }
+        
+        .wizard-container {
+            background: white;
+            border-radius: 8px;
+            padding: 2rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        
+        .wizard-steps {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 2rem;
+            position: relative;
+        }
+        
+        .wizard-steps::before {
+            content: '';
+            position: absolute;
+            top: 25px;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: #e9ecef;
+            z-index: 1;
+        }
+        
+        .step {
+            text-align: center;
+            position: relative;
+            z-index: 2;
+            background: white;
+            padding: 0 1rem;
+        }
+        
+        .step-number {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: #e9ecef;
+            color: #6c757d;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            margin: 0 auto 0.5rem;
+            transition: all 0.3s ease;
+        }
+        
+        .step.active .step-number {
+            background: #00c9ff;
+            color: white;
+            transform: scale(1.1);
+        }
+        
+        .step.completed .step-number {
+            background: #28a745;
+            color: white;
+        }
+        
+        .step-label {
+            font-size: 0.875rem;
+            color: #6c757d;
+        }
+        
+        .step.active .step-label {
+            color: #00c9ff;
+            font-weight: 600;
+        }
+        
+        .pattern-card {
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .pattern-card:hover {
+            border-color: #00c9ff;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        
+        .pattern-card.selected {
+            border-color: #00c9ff;
+            background: #e7f9ff;
+        }
+        
+        .pattern-preview {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 0.25rem;
+            margin-top: 1rem;
+        }
+        
+        .pattern-day {
+            padding: 0.5rem;
+            text-align: center;
+            font-size: 0.75rem;
+            border-radius: 4px;
+        }
+        
+        .pattern-day.work {
+            background: #00c9ff;
+            color: white;
+        }
+        
+        .pattern-day.off {
+            background: #f8f9fa;
+            color: #6c757d;
+        }
+        
+        .crew-assignment {
+            background: #f8f9fa;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+        }
+        
+        .crew-badge {
+            display: inline-block;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-weight: 600;
+            margin-right: 0.5rem;
+        }
+        
+        .crew-a { background: #e3f2fd; color: #1565c0; }
+        .crew-b { background: #f3e5f5; color: #6a1b9a; }
+        .crew-c { background: #e8f5e9; color: #2e7d32; }
+        .crew-d { background: #fff3e0; color: #e65100; }
+        
+        .coverage-check {
+            background: #f8f9fa;
+            padding: 1.5rem;
+            border-radius: 8px;
+            margin-top: 1rem;
+        }
+        
+        .coverage-indicator {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        .coverage-good { color: #28a745; }
+        .coverage-warning { color: #ffc107; }
+        .coverage-bad { color: #dc3545; }
+        
+        .schedule-preview {
+            background: white;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-top: 1rem;
+            overflow-x: auto;
+        }
+        
+        .preview-table {
+            width: 100%;
+            font-size: 0.875rem;
+        }
+        
+        .preview-table th,
+        .preview-table td {
+            padding: 0.5rem;
+            text-align: center;
+            border: 1px solid #dee2e6;
+        }
+        
+        .conflict-alert {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 4px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+        
+        .date-input-group {
+            background: #f8f9fa;
+            padding: 1.5rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/dashboard">
+                <i class="bi bi-calendar-week"></i> Workforce Scheduler
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/dashboard">Dashboard</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/schedule/create">Create Schedule</a>
+                    </li>
+                </ul>
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown">
+                            <i class="bi bi-person-circle"></i> {{ current_user.name }}
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><a class="dropdown-item" href="/logout">Logout</a></li>
+                        </ul>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="page-header">
+        <div class="container-fluid">
+            <h1><i class="bi bi-calendar-plus" style="color: #00c9ff;"></i> Create Schedule</h1>
+            <p class="text-muted mb-0">Schedule creation wizard for crew rotations</p>
+        </div>
+    </div>
+
+    <div class="container-fluid">
+        <div class="wizard-container">
+            <!-- Wizard Steps -->
+            <div class="wizard-steps">
+                <div class="step completed">
+                    <div class="step-number">
+                        <i class="bi bi-check"></i>
+                    </div>
+                    <div class="step-label">Basic Info</div>
+                </div>
+                <div class="step active">
+                    <div class="step-number">2</div>
+                    <div class="step-label">Pattern Selection</div>
+                </div>
+                <div class="step">
+                    <div class="step-number">3</div>
+                    <div class="step-label">Crew Assignment</div>
+                </div>
+                <div class="step">
+                    <div class="step-number">4</div>
+                    <div class="step-label">Review & Create</div>
+                </div>
+            </div>
+
+            <!-- Step 1: Basic Info (Completed) -->
+            <div class="step-content" style="display: none;">
+                <h3>Basic Information</h3>
+                <div class="date-input-group">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <label class="form-label">Schedule Name</label>
+                            <input type="text" class="form-control" value="Q3 2025 Rotation" readonly>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Start Date</label>
+                            <input type="date" class="form-control" value="2025-08-01" readonly>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">End Date</label>
+                            <input type="date" class="form-control" value="2025-10-31" readonly>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 2: Pattern Selection (Active) -->
+            <div class="step-content">
+                <h3>Select Rotation Pattern</h3>
+                <p class="text-muted">Choose a shift pattern for your 4-crew rotation</p>
+
+                <!-- Pattern 1: 2-2 Rotation -->
+                <div class="pattern-card selected">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <h5 class="mb-1">2-2 Rotation</h5>
+                            <p class="mb-1">2 days on, 2 days off</p>
+                            <small class="text-muted">Most common pattern, balanced work-life</small>
+                        </div>
+                        <span class="badge bg-success">Recommended</span>
+                    </div>
+                    <div class="pattern-preview">
+                        <div class="pattern-day work">ON</div>
+                        <div class="pattern-day work">ON</div>
+                        <div class="pattern-day off">OFF</div>
+                        <div class="pattern-day off">OFF</div>
+                        <div class="pattern-day work">ON</div>
+                        <div class="pattern-day work">ON</div>
+                        <div class="pattern-day off">OFF</div>
+                    </div>
+                </div>
+
+                <!-- Pattern 2: 4-4 Rotation -->
+                <div class="pattern-card">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <h5 class="mb-1">4-4 Rotation</h5>
+                            <p class="mb-1">4 days on, 4 days off</p>
+                            <small class="text-muted">Longer blocks, good for 12-hour shifts</small>
+                        </div>
+                    </div>
+                    <div class="pattern-preview">
+                        <div class="pattern-day work">ON</div>
+                        <div class="pattern-day work">ON</div>
+                        <div class="pattern-day work">ON</div>
+                        <div class="pattern-day work">ON</div>
+                        <div class="pattern-day off">OFF</div>
+                        <div class="pattern-day off">OFF</div>
+                        <div class="pattern-day off">OFF</div>
+                    </div>
+                </div>
+
+                <!-- Pattern 3: Pitman Schedule -->
+                <div class="pattern-card">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <h5 class="mb-1">Pitman Schedule (2-3-2)</h5>
+                            <p class="mb-1">2 on, 2 off, 3 on, 2 off, 2 on, 3 off</p>
+                            <small class="text-muted">Every other weekend off</small>
+                        </div>
+                        <span class="badge bg-info">Popular</span>
+                    </div>
+                    <div class="pattern-preview">
+                        <div class="pattern-day work">ON</div>
+                        <div class="pattern-day work">ON</div>
+                        <div class="pattern-day off">OFF</div>
+                        <div class="pattern-day off">OFF</div>
+                        <div class="pattern-day work">ON</div>
+                        <div class="pattern-day work">ON</div>
+                        <div class="pattern-day work">ON</div>
+                    </div>
+                </div>
+
+                <!-- Pattern 4: DuPont Schedule -->
+                <div class="pattern-card">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <h5 class="mb-1">DuPont Schedule</h5>
+                            <p class="mb-1">4-week cycle with 7 consecutive days off</p>
+                            <small class="text-muted">Good for employee satisfaction</small>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="coverage-check">
+                    <h6>Coverage Analysis</h6>
+                    <div class="coverage-indicator coverage-good">
+                        <i class="bi bi-check-circle-fill"></i>
+                        <span>24/7 coverage maintained with selected pattern</span>
+                    </div>
+                    <div class="coverage-indicator coverage-good">
+                        <i class="bi bi-check-circle-fill"></i>
+                        <span>Equal distribution of weekends and holidays</span>
+                    </div>
+                    <div class="coverage-indicator coverage-warning">
+                        <i class="bi bi-exclamation-triangle-fill"></i>
+                        <span>Requires exactly 48 employees (12 per crew)</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 3: Crew Assignment (Hidden) -->
+            <div class="step-content" style="display: none;">
+                <h3>Assign Crews to Rotation</h3>
+                <p class="text-muted">Assign your 4 crews to the rotation cycle</p>
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <h5>Day Shift Rotation</h5>
+                        <div class="crew-assignment">
+                            <label class="form-label">First Day Shift Crew</label>
+                            <select class="form-select mb-3">
+                                <option selected>Crew A</option>
+                                <option>Crew B</option>
+                                <option>Crew C</option>
+                                <option>Crew D</option>
+                            </select>
+                            
+                            <label class="form-label">Second Day Shift Crew</label>
+                            <select class="form-select">
+                                <option>Crew A</option>
+                                <option>Crew B</option>
+                                <option selected>Crew C</option>
+                                <option>Crew D</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <h5>Night Shift Rotation</h5>
+                        <div class="crew-assignment">
+                            <label class="form-label">First Night Shift Crew</label>
+                            <select class="form-select mb-3">
+                                <option>Crew A</option>
+                                <option selected>Crew B</option>
+                                <option>Crew C</option>
+                                <option>Crew D</option>
+                            </select>
+                            
+                            <label class="form-label">Second Night Shift Crew</label>
+                            <select class="form-select">
+                                <option>Crew A</option>
+                                <option>Crew B</option>
+                                <option>Crew C</option>
+                                <option selected>Crew D</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="alert alert-info mt-3">
+                    <i class="bi bi-info-circle"></i> <strong>Rotation Order:</strong>
+                    Day Shift: A → C → A → C (alternating)<br>
+                    Night Shift: B → D → B → D (alternating)
+                </div>
+            </div>
+
+            <!-- Step 4: Review & Create (Hidden) -->
+            <div class="step-content" style="display: none;">
+                <h3>Review Schedule</h3>
+                
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <h5>Schedule Summary</h5>
+                        <table class="table">
+                            <tr>
+                                <td>Schedule Name:</td>
+                                <td><strong>Q3 2025 Rotation</strong></td>
+                            </tr>
+                            <tr>
+                                <td>Pattern:</td>
+                                <td><strong>2-2 Rotation</strong></td>
+                            </tr>
+                            <tr>
+                                <td>Duration:</td>
+                                <td><strong>Aug 1 - Oct 31, 2025</strong></td>
+                            </tr>
+                            <tr>
+                                <td>Total Shifts:</td>
+                                <td><strong>1,488 shifts</strong></td>
+                            </tr>
+                        </table>
+                    </div>
+                    <div class="col-md-6">
+                        <h5>Crew Assignments</h5>
+                        <div class="mb-2">
+                            <span class="crew-badge crew-a">Crew A</span> Day Shift
+                        </div>
+                        <div class="mb-2">
+                            <span class="crew-badge crew-b">Crew B</span> Night Shift
+                        </div>
+                        <div class="mb-2">
+                            <span class="crew-badge crew-c">Crew C</span> Day Shift
+                        </div>
+                        <div class="mb-2">
+                            <span class="crew-badge crew-d">Crew D</span> Night Shift
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Conflict Check -->
+                <div class="conflict-alert">
+                    <h6><i class="bi bi-exclamation-triangle-fill"></i> Conflicts Detected</h6>
+                    <ul class="mb-0">
+                        <li>3 employees have approved vacation during this period</li>
+                        <li>Labor Day (Sep 2) - Consider holiday coverage</li>
+                    </ul>
+                </div>
+
+                <!-- Preview -->
+                <h5>First Week Preview</h5>
+                <div class="schedule-preview">
+                    <table class="preview-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Aug 1</th>
+                                <th>Aug 2</th>
+                                <th>Aug 3</th>
+                                <th>Aug 4</th>
+                                <th>Aug 5</th>
+                                <th>Aug 6</th>
+                                <th>Aug 7</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Day</strong></td>
+                                <td><span class="crew-badge crew-a">A</span></td>
+                                <td><span class="crew-badge crew-a">A</span></td>
+                                <td><span class="crew-badge crew-c">C</span></td>
+                                <td><span class="crew-badge crew-c">C</span></td>
+                                <td><span class="crew-badge crew-a">A</span></td>
+                                <td><span class="crew-badge crew-a">A</span></td>
+                                <td><span class="crew-badge crew-c">C</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Night</strong></td>
+                                <td><span class="crew-badge crew-b">B</span></td>
+                                <td><span class="crew-badge crew-b">B</span></td>
+                                <td><span class="crew-badge crew-d">D</span></td>
+                                <td><span class="crew-badge crew-d">D</span></td>
+                                <td><span class="crew-badge crew-b">B</span></td>
+                                <td><span class="crew-badge crew-b">B</span></td>
+                                <td><span class="crew-badge crew-d">D</span></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Navigation Buttons -->
+            <div class="d-flex justify-content-between mt-4">
+                <button class="btn btn-secondary">
+                    <i class="bi bi-arrow-left"></i> Previous
+                </button>
+                <button class="btn btn-primary">
+                    Next <i class="bi bi-arrow-right"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Pattern selection
+        document.querySelectorAll('.pattern-card').forEach(card => {
+            card.addEventListener('click', function() {
+                document.querySelectorAll('.pattern-card').forEach(c => c.classList.remove('selected'));
+                this.classList.add('selected');
+            });
+        });
+    </script>
+</body>
+</html>
