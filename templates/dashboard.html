@@ -116,27 +116,25 @@
             100% { transform: scale(1); }
         }
         
-        /* Column 1 Colors - Requests & Info */
+        /* Column 1 Colors - Purple/Pink Theme (Requests & Info) */
         .card-timeoff { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
-        .card-swap { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
-        .card-coverage { background: linear-gradient(135deg, #ff6e7f 0%, #bfe9ff 100%); }
-        .card-employees { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); }
-        .card-vacation { background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); }
-        .card-casual { background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); color: #2c3e50; }
-        .card-casual i { color: #2c3e50; }
-        .card-casual:hover { color: #2c3e50; }
-        .card-marketplace { background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); }
+        .card-swap { background: linear-gradient(135deg, #764ba2 0%, #f093fb 100%); }
+        .card-coverage { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
+        .card-vacation { background: linear-gradient(135deg, #e0c3fc 0%, #8ec5fc 100%); }
+        .card-casual { background: linear-gradient(135deg, #ddd6f3 0%, #faaca8 100%); }
+        .card-marketplace { background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); }
         
-        /* Column 2 Colors - Schedule & Management */
-        .card-view-schedule { background: linear-gradient(135deg, #30cfd0 0%, #330867 100%); }
-        .card-create-schedule { background: linear-gradient(135deg, #00b09b 0%, #96c93d 100%); }
-        .card-adjust-coverage { background: linear-gradient(135deg, #e0c3fc 0%, #8ec5fc 100%); }
-        .card-overtime { background: linear-gradient(135deg, #f77062 0%, #fe5196 100%); }
+        /* Column 2 Colors - Blue/Green Theme (Schedule & Management) */
+        .card-view-schedule { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); }
+        .card-create-schedule { background: linear-gradient(135deg, #00c9ff 0%, #92fe9d 100%); }
+        .card-adjust-coverage { background: linear-gradient(135deg, #00b09b 0%, #96c93d 100%); }
+        .card-overtime { background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); }
+        .card-employees { background: linear-gradient(135deg, #30cfd0 0%, #330867 100%); }
         
-        /* Column 3 Colors - Communications */
-        .card-maintenance { background: linear-gradient(135deg, #622774 0%, #c53364 100%); }
-        .card-employee-msg { background: linear-gradient(135deg, #17ead9 0%, #6078ea 100%); }
-        .card-supervisor-msg { background: linear-gradient(135deg, #FBD786 0%, #f7797d 100%); }
+        /* Column 3 Colors - Orange/Red Theme (Communications) */
+        .card-maintenance { background: linear-gradient(135deg, #fc4a1a 0%, #f7b733 100%); }
+        .card-employee-msg { background: linear-gradient(135deg, #f7b733 0%, #fc4a1a 100%); }
+        .card-supervisor-msg { background: linear-gradient(135deg, #ff6e7f 0%, #bfe9ff 100%); }
         
         /* Special styling for metric cards */
         .metric-card {
@@ -233,15 +231,6 @@
                     <div class="access-card-number">{{ coverage_gaps|default(0) }}</div>
                 </a>
                 
-                <!-- View Employees and Crews -->
-                <a href="/dashboard" class="access-card card-employees">
-                    <i class="bi bi-people-fill"></i>
-                    <div class="access-card-content">
-                        <h3>View Employees & Crews</h3>
-                        <p>{{ total_employees }} total staff</p>
-                    </div>
-                </a>
-                
                 <!-- Vacation Calendar -->
                 <a href="/vacation-calendar" class="access-card card-vacation">
                     <i class="bi bi-calendar-event"></i>
@@ -310,6 +299,15 @@
                     <div class="access-card-content">
                         <h3>Overtime Management</h3>
                         <p>Track & distribute fairly</p>
+                    </div>
+                </a>
+                
+                <!-- View Employees and Crews -->
+                <a href="/dashboard" class="access-card card-employees">
+                    <i class="bi bi-people-fill"></i>
+                    <div class="access-card-content">
+                        <h3>View Employees & Crews</h3>
+                        <p>{{ total_employees }} total staff</p>
                     </div>
                 </a>
             </div>
