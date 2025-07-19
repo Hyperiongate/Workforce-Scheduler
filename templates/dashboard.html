@@ -373,34 +373,6 @@
 
         <h1 class="dashboard-title">Supervisor Dashboard</h1>
 
-        <!-- Quick Stats Summary -->
-        <div class="row mb-4">
-            <div class="col-md-3 mb-3">
-                <div class="stat-card bg-danger text-white">
-                    <div class="stat-value" id="critical_items">{{ (pending_time_off + pending_swaps + coverage_gaps)|default(0) }}</div>
-                    <div class="stat-label">Critical Items</div>
-                </div>
-            </div>
-            <div class="col-md-3 mb-3">
-                <div class="stat-card bg-warning text-dark">
-                    <div class="stat-value" id="today_on_leave">{{ today_on_leave|default(0) }}</div>
-                    <div class="stat-label">Out Today</div>
-                </div>
-            </div>
-            <div class="col-md-3 mb-3">
-                <div class="stat-card bg-info text-white">
-                    <div class="stat-value" id="today_scheduled">{{ today_scheduled|default(0) }}</div>
-                    <div class="stat-label">Working Today</div>
-                </div>
-            </div>
-            <div class="col-md-3 mb-3">
-                <div class="stat-card bg-success text-white">
-                    <div class="stat-value" id="coverage_percentage">{{ ((today_scheduled / (today_scheduled + coverage_gaps)) * 100)|round|default(100) }}%</div>
-                    <div class="stat-label">Coverage Rate</div>
-                </div>
-            </div>
-        </div>
-
         <!-- Three Column Layout -->
         <div class="dashboard-columns">
             <!-- Column 1: Employee Management -->
