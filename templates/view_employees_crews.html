@@ -43,24 +43,43 @@
         .crew-header.crew-d { border-left-color: #ff9800; }
         
         .employee-card {
-            background: white;
+            background: #f8f9fa;
             border: 1px solid #e9ecef;
             border-radius: 8px;
             padding: 1rem;
-            margin-bottom: 1rem;
+            margin-bottom: 0.5rem;
             transition: all 0.3s ease;
             cursor: pointer;
         }
         
         .employee-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            background: #e9ecef;
+            transform: translateX(5px);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
             border-color: #30cfd0;
         }
         
+        .employee-basic {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        
+        .employee-basic h6 {
+            margin: 0;
+            color: #333;
+            font-weight: 600;
+        }
+        
+        .employee-basic p {
+            margin: 0;
+            color: #6c757d;
+            font-size: 0.875rem;
+        }
+        
         .employee-avatar {
-            width: 60px;
-            height: 60px;
+            width: 40px;
+            height: 40px;
             border-radius: 50%;
             background: #30cfd0;
             color: white;
@@ -68,14 +87,16 @@
             align-items: center;
             justify-content: center;
             font-weight: bold;
-            font-size: 1.25rem;
+            font-size: 1rem;
+            flex-shrink: 0;
         }
         
         .status-badge {
-            padding: 0.35rem 0.75rem;
-            border-radius: 20px;
-            font-size: 0.875rem;
+            padding: 0.25rem 0.5rem;
+            border-radius: 15px;
+            font-size: 0.75rem;
             font-weight: 600;
+            margin-left: auto;
         }
         
         .badge-active { background: #d4edda; color: #155724; }
@@ -90,6 +111,7 @@
             border-radius: 4px;
             font-size: 0.75rem;
             margin-right: 0.25rem;
+            margin-bottom: 0.25rem;
         }
         
         .stats-row {
@@ -121,30 +143,6 @@
             box-shadow: 0 2px 4px rgba(0,0,0,0.05);
         }
         
-        .employee-details {
-            display: flex;
-            gap: 1.5rem;
-            align-items: start;
-        }
-        
-        .employee-info {
-            flex-grow: 1;
-        }
-        
-        .employee-meta {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 0.5rem;
-            margin-top: 0.5rem;
-            font-size: 0.875rem;
-        }
-        
-        .action-buttons {
-            display: flex;
-            gap: 0.5rem;
-            flex-wrap: wrap;
-        }
-        
         .crew-stats {
             display: flex;
             gap: 2rem;
@@ -160,8 +158,7 @@
         
         .employee-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-            gap: 1rem;
+            gap: 0.5rem;
         }
         
         .supervisor-indicator {
@@ -171,6 +168,46 @@
             border-radius: 3px;
             font-size: 0.75rem;
             margin-left: 0.5rem;
+        }
+        
+        /* Modal Styles */
+        .modal-header {
+            background: #30cfd0;
+            color: white;
+        }
+        
+        .modal-header .btn-close {
+            filter: brightness(0) invert(1);
+        }
+        
+        .detail-row {
+            padding: 0.75rem 0;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        .detail-row:last-child {
+            border-bottom: none;
+        }
+        
+        .detail-label {
+            font-weight: 600;
+            color: #495057;
+            width: 140px;
+            display: inline-block;
+        }
+        
+        .avatar-large {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: #30cfd0;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 2rem;
+            margin: 0 auto 1rem;
         }
     </style>
 </head>
@@ -229,19 +266,19 @@
         <!-- Statistics -->
         <div class="stats-row">
             <div class="stat-card">
-                <div class="stat-number">48</div>
+                <div class="stat-number">{{ employees|length }}</div>
                 <p class="mb-0">Total Employees</p>
             </div>
             <div class="stat-card">
-                <div class="stat-number">42</div>
+                <div class="stat-number">{{ employees|selectattr("status", "equalto", "active")|list|length }}</div>
                 <p class="mb-0">Active Today</p>
             </div>
             <div class="stat-card">
-                <div class="stat-number">4</div>
+                <div class="stat-number">{{ employees|selectattr("status", "equalto", "vacation")|list|length }}</div>
                 <p class="mb-0">On Vacation</p>
             </div>
             <div class="stat-card">
-                <div class="stat-number">2</div>
+                <div class="stat-number">{{ employees|selectattr("status", "equalto", "sick")|list|length }}</div>
                 <p class="mb-0">Sick Leave</p>
             </div>
         </div>
@@ -251,11 +288,11 @@
             <div class="row align-items-end">
                 <div class="col-md-4">
                     <label class="form-label">Search Employee</label>
-                    <input type="text" class="form-control" placeholder="Name, ID, or position...">
+                    <input type="text" class="form-control" id="searchInput" placeholder="Name, ID, or position...">
                 </div>
                 <div class="col-md-2">
                     <label class="form-label">Crew</label>
-                    <select class="form-select">
+                    <select class="form-select" id="crewFilter">
                         <option value="">All Crews</option>
                         <option value="A">Crew A</option>
                         <option value="B">Crew B</option>
@@ -265,17 +302,16 @@
                 </div>
                 <div class="col-md-2">
                     <label class="form-label">Position</label>
-                    <select class="form-select">
+                    <select class="form-select" id="positionFilter">
                         <option value="">All Positions</option>
-                        <option>Operator</option>
-                        <option>Technician</option>
-                        <option>Lead Technician</option>
-                        <option>Supervisor</option>
+                        {% for position in positions %}
+                        <option>{{ position.name }}</option>
+                        {% endfor %}
                     </select>
                 </div>
                 <div class="col-md-2">
                     <label class="form-label">Status</label>
-                    <select class="form-select">
+                    <select class="form-select" id="statusFilter">
                         <option value="">All Status</option>
                         <option>Active</option>
                         <option>On Leave</option>
@@ -283,35 +319,23 @@
                     </select>
                 </div>
                 <div class="col-md-2">
-                    <button class="btn btn-primary w-100">
+                    <button class="btn btn-primary w-100" onclick="filterEmployees()">
                         <i class="bi bi-search"></i> Search
                     </button>
                 </div>
             </div>
         </div>
 
-        <!-- View Toggle -->
-        <div class="view-toggle">
-            <button class="btn btn-sm btn-outline-primary active">
-                <i class="bi bi-people"></i> By Crew
-            </button>
-            <button class="btn btn-sm btn-outline-primary">
-                <i class="bi bi-list-ul"></i> List View
-            </button>
-            <button class="btn btn-sm btn-outline-primary">
-                <i class="bi bi-grid-3x3"></i> Grid View
-            </button>
-        </div>
-
-        <!-- Crew A -->
-        <div class="crew-section">
-            <div class="crew-header crew-a">
+        <!-- Crew Sections -->
+        {% for crew in ['A', 'B', 'C', 'D'] %}
+        <div class="crew-section" data-crew="{{ crew }}">
+            <div class="crew-header crew-{{ crew|lower }}">
                 <div>
-                    <h3 class="mb-0">Crew A</h3>
+                    <h3 class="mb-0">Crew {{ crew }}</h3>
                     <div class="crew-stats">
-                        <span><i class="bi bi-people"></i> 12 employees</span>
-                        <span><i class="bi bi-clock"></i> Day Shift</span>
-                        <span><i class="bi bi-check-circle text-success"></i> 11 active</span>
+                        <span><i class="bi bi-people"></i> {{ employees|selectattr("crew", "equalto", crew)|list|length }} employees</span>
+                        <span><i class="bi bi-clock"></i> {{ 'Day' if crew in ['A', 'B'] else 'Night' }} Shift</span>
+                        <span><i class="bi bi-check-circle text-success"></i> {{ employees|selectattr("crew", "equalto", crew)|selectattr("status", "equalto", "active")|list|length }} active</span>
                     </div>
                 </div>
                 <button class="btn btn-sm btn-primary">
@@ -320,172 +344,56 @@
             </div>
             
             <div class="employee-grid">
-                <!-- Employee 1 -->
-                <div class="employee-card">
-                    <div class="employee-details">
-                        <div class="employee-avatar">JD</div>
-                        <div class="employee-info">
-                            <h5 class="mb-1">John Doe
-                                <span class="supervisor-indicator">Supervisor</span>
-                            </h5>
-                            <span class="status-badge badge-active">On Duty</span>
-                            <div class="employee-meta">
-                                <div><i class="bi bi-hash"></i> EMP001</div>
-                                <div><i class="bi bi-telephone"></i> (555) 123-4567</div>
-                                <div><i class="bi bi-calendar3"></i> 5 years</div>
-                                <div><i class="bi bi-clock"></i> 40 hrs/week</div>
+                {% for employee in employees %}
+                    {% if employee.crew == crew %}
+                    <div class="employee-card" onclick="showEmployeeDetails({{ employee.id }})" data-employee='{{ employee|tojson }}'>
+                        <div class="employee-basic">
+                            <div class="employee-avatar" style="background: {{ '#30cfd0' if loop.index % 4 == 1 else '#e91e63' if loop.index % 4 == 2 else '#ff9800' if loop.index % 4 == 3 else '#9c27b0' }};">
+                                {{ employee.name.split()[0][0] }}{{ employee.name.split()[-1][0] }}
                             </div>
-                            <div class="mt-2">
-                                <span class="skill-tag">Leadership</span>
-                                <span class="skill-tag">All Positions</span>
-                                <span class="skill-tag">Safety Certified</span>
+                            <div>
+                                <h6>{{ employee.name }}
+                                    {% if employee.is_supervisor %}
+                                    <span class="supervisor-indicator">Supervisor</span>
+                                    {% endif %}
+                                </h6>
+                                <p>{{ employee.position.name if employee.position else 'No Position' }}</p>
                             </div>
+                            <span class="status-badge badge-{{ 'active' if employee.status == 'active' else 'vacation' if employee.status == 'vacation' else 'off' }}">
+                                {{ employee.status|title }}
+                            </span>
                         </div>
                     </div>
-                </div>
-
-                <!-- Employee 2 -->
-                <div class="employee-card">
-                    <div class="employee-details">
-                        <div class="employee-avatar" style="background: #e91e63;">SJ</div>
-                        <div class="employee-info">
-                            <h5 class="mb-1">Sarah Johnson</h5>
-                            <span class="status-badge badge-active">On Duty</span>
-                            <div class="employee-meta">
-                                <div><i class="bi bi-hash"></i> EMP002</div>
-                                <div><i class="bi bi-telephone"></i> (555) 234-5678</div>
-                                <div><i class="bi bi-briefcase"></i> Operator</div>
-                                <div><i class="bi bi-clock"></i> 40 hrs/week</div>
-                            </div>
-                            <div class="mt-2">
-                                <span class="skill-tag">Machine Op</span>
-                                <span class="skill-tag">Forklift</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Employee 3 -->
-                <div class="employee-card">
-                    <div class="employee-details">
-                        <div class="employee-avatar" style="background: #ff9800;">MT</div>
-                        <div class="employee-info">
-                            <h5 class="mb-1">Mike Thompson</h5>
-                            <span class="status-badge badge-vacation">Vacation</span>
-                            <div class="employee-meta">
-                                <div><i class="bi bi-hash"></i> EMP003</div>
-                                <div><i class="bi bi-telephone"></i> (555) 345-6789</div>
-                                <div><i class="bi bi-briefcase"></i> Lead Technician</div>
-                                <div><i class="bi bi-calendar-x"></i> Off until July 22</div>
-                            </div>
-                            <div class="mt-2">
-                                <span class="skill-tag">Electrical</span>
-                                <span class="skill-tag">Mechanical</span>
-                                <span class="skill-tag">Troubleshooting</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="text-center mt-3">
-                <button class="btn btn-outline-primary btn-sm">
-                    Show All Crew A Employees (9 more)
-                </button>
+                    {% endif %}
+                {% endfor %}
             </div>
         </div>
+        {% endfor %}
+    </div>
 
-        <!-- Crew B -->
-        <div class="crew-section">
-            <div class="crew-header crew-b">
-                <div>
-                    <h3 class="mb-0">Crew B</h3>
-                    <div class="crew-stats">
-                        <span><i class="bi bi-people"></i> 12 employees</span>
-                        <span><i class="bi bi-moon"></i> Night Shift</span>
-                        <span><i class="bi bi-check-circle text-success"></i> 12 active</span>
+    <!-- Employee Detail Modal -->
+    <div class="modal fade" id="employeeDetailModal" tabindex="-1" aria-labelledby="employeeDetailModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="employeeDetailModalLabel">Employee Details</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="employeeDetails">
+                        <!-- Details will be populated by JavaScript -->
                     </div>
                 </div>
-                <button class="btn btn-sm btn-primary">
-                    <i class="bi bi-pencil"></i> Edit Crew
-                </button>
-            </div>
-            
-            <div class="employee-grid">
-                <!-- Employee 1 -->
-                <div class="employee-card">
-                    <div class="employee-details">
-                        <div class="employee-avatar" style="background: #9c27b0;">BB</div>
-                        <div class="employee-info">
-                            <h5 class="mb-1">Barbara Bennett
-                                <span class="supervisor-indicator">Supervisor</span>
-                            </h5>
-                            <span class="status-badge badge-active">On Duty</span>
-                            <div class="employee-meta">
-                                <div><i class="bi bi-hash"></i> EMP013</div>
-                                <div><i class="bi bi-telephone"></i> (555) 456-7890</div>
-                                <div><i class="bi bi-calendar3"></i> 8 years</div>
-                                <div><i class="bi bi-award"></i> Excellence Award 2024</div>
-                            </div>
-                            <div class="mt-2">
-                                <span class="skill-tag">Leadership</span>
-                                <span class="skill-tag">Night Operations</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Employee 2 -->
-                <div class="employee-card">
-                    <div class="employee-details">
-                        <div class="employee-avatar" style="background: #3f51b5;">RW</div>
-                        <div class="employee-info">
-                            <h5 class="mb-1">Robert Wilson</h5>
-                            <span class="status-badge badge-off">Off Duty</span>
-                            <div class="employee-meta">
-                                <div><i class="bi bi-hash"></i> EMP014</div>
-                                <div><i class="bi bi-telephone"></i> (555) 567-8901</div>
-                                <div><i class="bi bi-briefcase"></i> Technician</div>
-                                <div><i class="bi bi-clock"></i> 44 hrs/week</div>
-                            </div>
-                            <div class="mt-2">
-                                <span class="skill-tag">Electrical</span>
-                                <span class="skill-tag">PLC Programming</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="text-center mt-3">
-                <button class="btn btn-outline-primary btn-sm">
-                    Show All Crew B Employees (10 more)
-                </button>
-            </div>
-        </div>
-
-        <!-- Quick Actions -->
-        <div class="mt-4">
-            <h4>Quick Actions</h4>
-            <div class="row">
-                <div class="col-md-3">
-                    <button class="btn btn-primary w-100 mb-2">
-                        <i class="bi bi-arrow-left-right"></i> Reassign Crews
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary">
+                        <i class="bi bi-pencil"></i> Edit Employee
                     </button>
-                </div>
-                <div class="col-md-3">
-                    <button class="btn btn-success w-100 mb-2">
-                        <i class="bi bi-file-earmark-excel"></i> Export to Excel
+                    <button type="button" class="btn btn-info">
+                        <i class="bi bi-calendar-plus"></i> Schedule
                     </button>
-                </div>
-                <div class="col-md-3">
-                    <button class="btn btn-warning w-100 mb-2">
-                        <i class="bi bi-graph-up"></i> Skills Matrix
-                    </button>
-                </div>
-                <div class="col-md-3">
-                    <button class="btn btn-info w-100 mb-2">
-                        <i class="bi bi-printer"></i> Print Roster
+                    <button type="button" class="btn btn-warning">
+                        <i class="bi bi-file-earmark-text"></i> View History
                     </button>
                 </div>
             </div>
@@ -494,19 +402,106 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        // Employee card click handler
-        document.querySelectorAll('.employee-card').forEach(card => {
-            card.addEventListener('click', function() {
-                alert('Click would open detailed employee profile');
+        function showEmployeeDetails(employeeId) {
+            // In a real application, this would fetch from the backend
+            // For now, we'll use the data stored in the card's data attribute
+            const card = document.querySelector(`[onclick="showEmployeeDetails(${employeeId})"]`);
+            const employee = JSON.parse(card.dataset.employee);
+            
+            const detailsHtml = `
+                <div class="avatar-large">
+                    ${employee.name.split(' ')[0][0]}${employee.name.split(' ').slice(-1)[0][0]}
+                </div>
+                <h4 class="text-center mb-4">${employee.name}</h4>
+                
+                <div class="detail-row">
+                    <span class="detail-label">Employee ID:</span>
+                    <span>${employee.id}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Position:</span>
+                    <span>${employee.position?.name || 'No Position'}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Crew:</span>
+                    <span>Crew ${employee.crew}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Department:</span>
+                    <span>${employee.department || 'Operations'}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Phone:</span>
+                    <span>${employee.phone || '(555) 000-0000'}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Email:</span>
+                    <span>${employee.email}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Hire Date:</span>
+                    <span>${employee.hire_date || 'January 1, 2020'}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Status:</span>
+                    <span class="status-badge badge-${employee.status === 'active' ? 'active' : 'off'}">${employee.status}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Vacation Days:</span>
+                    <span>${employee.vacation_days} days remaining</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Sick Days:</span>
+                    <span>${employee.sick_days} days remaining</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Skills:</span>
+                    <div style="display: inline-block;">
+                        ${employee.skills?.map(skill => `<span class="skill-tag">${skill.name}</span>`).join('') || '<span class="skill-tag">No skills listed</span>'}
+                    </div>
+                </div>
+            `;
+            
+            document.getElementById('employeeDetails').innerHTML = detailsHtml;
+            document.getElementById('employeeDetailModalLabel').textContent = employee.name + ' - Details';
+            
+            const modal = new bootstrap.Modal(document.getElementById('employeeDetailModal'));
+            modal.show();
+        }
+        
+        function filterEmployees() {
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+            const crewFilter = document.getElementById('crewFilter').value;
+            const positionFilter = document.getElementById('positionFilter').value.toLowerCase();
+            const statusFilter = document.getElementById('statusFilter').value.toLowerCase();
+            
+            document.querySelectorAll('.crew-section').forEach(section => {
+                if (crewFilter && section.dataset.crew !== crewFilter) {
+                    section.style.display = 'none';
+                } else {
+                    section.style.display = 'block';
+                    
+                    section.querySelectorAll('.employee-card').forEach(card => {
+                        const employee = JSON.parse(card.dataset.employee);
+                        const name = employee.name.toLowerCase();
+                        const position = (employee.position?.name || '').toLowerCase();
+                        const status = employee.status.toLowerCase();
+                        
+                        const matchesSearch = !searchTerm || name.includes(searchTerm) || position.includes(searchTerm);
+                        const matchesPosition = !positionFilter || position.includes(positionFilter);
+                        const matchesStatus = !statusFilter || status === statusFilter;
+                        
+                        card.style.display = matchesSearch && matchesPosition && matchesStatus ? 'block' : 'none';
+                    });
+                }
             });
-        });
-
-        // View toggle
-        document.querySelectorAll('.view-toggle button').forEach(btn => {
-            btn.addEventListener('click', function() {
-                document.querySelectorAll('.view-toggle button').forEach(b => b.classList.remove('active'));
-                this.classList.add('active');
-            });
+        }
+        
+        // Enable search on Enter key
+        document.getElementById('searchInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                filterEmployees();
+            }
         });
     </script>
 </body>
