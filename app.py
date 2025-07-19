@@ -105,6 +105,95 @@ def init_db():
         <p><a href="/login">Go to login</a></p>
         '''
 
+@app.route('/fix-database-emergency')
+def fix_database():
+    """Emergency database fix - remove this after running once"""
+    try:
+        from sqlalchemy import text
+        
+        results = []
+        results.append("<h2>🔧 Database Fix Results</h2>")
+        
+        # Check current column names
+        check_query = text("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'time_off_request'
+        """)
+        
+        try:
+            current_columns = db.session.execute(check_query).fetchall()
+            column_names = [col[0] for col in current_columns]
+            results.append(f"<p><strong>Current columns:</strong> {', '.join(column_names)}</p>")
+        except:
+            results.append("<p>Could not check current columns</p>")
+        
+        # List of SQL commands to fix the table
+        fixes = [
+            # Try to rename columns first
+            ("ALTER TABLE time_off_request RENAME COLUMN submitted_date TO created_at", "Rename submitted_date to created_at"),
+            ("ALTER TABLE time_off_request RENAME COLUMN reviewed_by_id TO approved_by", "Rename reviewed_by_id to approved_by"),
+            ("ALTER TABLE time_off_request RENAME COLUMN reviewed_date TO approved_date", "Rename reviewed_date to approved_date"),
+            ("ALTER TABLE time_off_request RENAME COLUMN reviewer_notes TO notes", "Rename reviewer_notes to notes"),
+        ]
+        
+        # Try to add columns if they don't exist
+        adds = [
+            ("ALTER TABLE time_off_request ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP", "Add created_at column"),
+            ("ALTER TABLE time_off_request ADD COLUMN approved_by INTEGER", "Add approved_by column"),
+            ("ALTER TABLE time_off_request ADD COLUMN approved_date TIMESTAMP", "Add approved_date column"),
+            ("ALTER TABLE time_off_request ADD COLUMN notes TEXT", "Add notes column"),
+        ]
+        
+        results.append("<h3>Attempting column renames:</h3><ul>")
+        
+        # Try renaming first
+        for fix_sql, description in fixes:
+            try:
+                db.session.execute(text(fix_sql))
+                db.session.commit()
+                results.append(f"<li>✅ Success: {description}</li>")
+            except Exception as e:
+                db.session.rollback()
+                error_msg = str(e).split('\n')[0]  # Get first line of error
+                results.append(f"<li>❌ Failed: {description}<br><small>{error_msg}</small></li>")
+        
+        results.append("</ul><h3>Attempting to add missing columns:</h3><ul>")
+        
+        # Then try adding
+        for add_sql, description in adds:
+            try:
+                db.session.execute(text(add_sql))
+                db.session.commit()
+                results.append(f"<li>✅ Success: {description}</li>")
+            except Exception as e:
+                db.session.rollback()
+                error_msg = str(e).split('\n')[0]  # Get first line of error
+                results.append(f"<li>❌ Failed: {description}<br><small>{error_msg}</small></li>")
+        
+        results.append("</ul>")
+        
+        # Check final column names
+        try:
+            final_columns = db.session.execute(check_query).fetchall()
+            column_names = [col[0] for col in final_columns]
+            results.append(f"<p><strong>Final columns:</strong> {', '.join(column_names)}</p>")
+        except:
+            pass
+        
+        results.append('<hr><p><a href="/dashboard" class="btn btn-primary">Go to Dashboard</a></p>')
+        results.append('<p><small>Note: This fix route should be removed after successful repair.</small></p>')
+        
+        return "".join(results)
+        
+    except Exception as e:
+        return f"""
+        <h2>❌ Database Fix Error</h2>
+        <p>An error occurred while trying to fix the database:</p>
+        <pre>{str(e)}</pre>
+        <p><a href="/dashboard">Try Dashboard Anyway</a></p>
+        """
+
 @app.route('/add-overtime-tables')
 def add_overtime_tables():
     """Add the new overtime and skill tracking tables"""
@@ -202,6 +291,95 @@ def populate_crews():
     except Exception as e:
         db.session.rollback()
         return f'<h2>Error</h2><p>{str(e)}</p>'
+
+@app.route('/create-test-time-off')
+def create_test_time_off():
+    """Create test time off requests"""
+    from datetime import datetime, timedelta
+    import random
+    
+    try:
+        # Get some employees
+        employees = Employee.query.limit(5).all()
+        
+        if not employees:
+            return '''
+            <h2>No Employees Found</h2>
+            <p>Please create employees first:</p>
+            <ul>
+                <li><a href="/init-db">Initialize Database</a></li>
+                <li><a href="/populate-crews">Populate Crews</a></li>
+            </ul>
+            '''
+        
+        # Import TimeOffRequest model
+        from models import TimeOffRequest
+        
+        # Create some test requests
+        request_types = ['vacation', 'sick', 'personal']
+        reasons = [
+            'Family vacation to Hawaii',
+            'Doctor appointment',
+            'Personal matters',
+            'Wedding anniversary trip',
+            'Feeling unwell',
+            'Moving to new apartment'
+        ]
+        
+        created_count = 0
+        for i in range(8):
+            employee = random.choice(employees)
+            request_type = random.choice(request_types)
+            
+            # Random dates in the next 2 months
+            start_date = datetime.now().date() + timedelta(days=random.randint(5, 60))
+            duration = random.randint(1, 5)
+            end_date = start_date + timedelta(days=duration-1)
+            
+            # Check if this employee already has a request for these dates
+            existing = TimeOffRequest.query.filter(
+                TimeOffRequest.employee_id == employee.id,
+                TimeOffRequest.start_date == start_date
+            ).first()
+            
+            if not existing:
+                time_off = TimeOffRequest(
+                    employee_id=employee.id,
+                    request_type=request_type,
+                    start_date=start_date,
+                    end_date=end_date,
+                    reason=random.choice(reasons) if random.random() > 0.3 else None,
+                    status='pending' if i < 5 else random.choice(['approved', 'denied']),
+                    created_at=datetime.now() - timedelta(days=random.randint(1, 10)),
+                    days_requested=duration
+                )
+                
+                # Add approval info for non-pending requests
+                if time_off.status != 'pending':
+                    time_off.approved_by = 1  # Admin user
+                    time_off.approved_date = datetime.now() - timedelta(days=random.randint(1, 5))
+                    if time_off.status == 'denied':
+                        time_off.notes = "Insufficient coverage during this period"
+                
+                db.session.add(time_off)
+                created_count += 1
+        
+        db.session.commit()
+        
+        return f'''
+        <h2>✅ Test Data Created!</h2>
+        <p>Created {created_count} time off requests.</p>
+        <p><a href="/supervisor/time-off-requests" class="btn btn-primary">View Time Off Requests</a></p>
+        <p><a href="/dashboard">Back to Dashboard</a></p>
+        '''
+        
+    except Exception as e:
+        db.session.rollback()
+        return f'''
+        <h2>❌ Error Creating Test Data</h2>
+        <p>{str(e)}</p>
+        <p><a href="/fix-database-emergency">Try fixing database first</a></p>
+        '''
 
 @app.route('/debug-routes')
 def debug_routes():
