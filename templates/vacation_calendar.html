@@ -1,140 +1,727 @@
-# Update your dashboard route in blueprints/main.py
-
-from flask import Blueprint, render_template, redirect, url_for
-from flask_login import login_required, current_user
-from models import db, Employee, TimeOffRequest, ShiftSwapRequest, ScheduleSuggestion, MaintenanceIssue, Schedule
-from datetime import date, timedelta
-from sqlalchemy import func
-from utils.helpers import get_coverage_gaps
-
-main_bp = Blueprint('main', __name__)
-
-@main_bp.route('/')
-def index():
-    """Redirect to appropriate dashboard based on user role"""
-    if current_user.is_authenticated:
-        if current_user.is_supervisor:
-            return redirect(url_for('main.dashboard'))
-        else:
-            return redirect(url_for('main.employee_dashboard'))
-    return redirect(url_for('auth.login'))
-
-@main_bp.route('/dashboard')
-@login_required
-def dashboard():
-    """Supervisor dashboard with real statistics"""
-    if not current_user.is_supervisor:
-        return redirect(url_for('main.employee_dashboard'))
-    
-    # Calculate pending time off requests
-    pending_time_off = TimeOffRequest.query.filter_by(
-        status='pending'
-    ).count()
-    
-    # Calculate pending swap requests
-    pending_swaps = ShiftSwapRequest.query.filter_by(
-        status='pending'
-    ).count()
-    
-    # Calculate coverage gaps for the next 7 days
-    gaps = get_coverage_gaps('ALL', 7)
-    coverage_gaps = len(gaps)
-    
-    # Calculate pending suggestions
-    pending_suggestions = ScheduleSuggestion.query.filter_by(
-        status='new'
-    ).count()
-    
-    # Get total employee count
-    total_employees = Employee.query.count()
-    
-    # Get critical maintenance issues
-    critical_maintenance = MaintenanceIssue.query.filter_by(
-        status='open',
-        priority='critical'
-    ).count()
-    
-    # Get today's schedule statistics
-    today_scheduled = Schedule.query.filter_by(
-        date=date.today()
-    ).count()
-    
-    # Get employees on leave today
-    from models import VacationCalendar
-    today_on_leave = VacationCalendar.query.filter_by(
-        date=date.today()
-    ).count()
-    
-    return render_template('dashboard.html',
-                         pending_time_off=pending_time_off,
-                         pending_swaps=pending_swaps,
-                         coverage_gaps=coverage_gaps,
-                         pending_suggestions=pending_suggestions,
-                         total_employees=total_employees,
-                         critical_maintenance=critical_maintenance,
-                         today_scheduled=today_scheduled,
-                         today_on_leave=today_on_leave)
-
-@main_bp.route('/employee-dashboard')
-@login_required
-def employee_dashboard():
-    """Employee dashboard"""
-    if current_user.is_supervisor:
-        return redirect(url_for('main.dashboard'))
-    
-    # Get employee's upcoming schedule
-    upcoming_schedules = Schedule.query.filter(
-        Schedule.employee_id == current_user.id,
-        Schedule.date >= date.today(),
-        Schedule.date <= date.today() + timedelta(days=14)
-    ).order_by(Schedule.date).all()
-    
-    # Get pending requests
-    pending_time_off = TimeOffRequest.query.filter_by(
-        employee_id=current_user.id,
-        status='pending'
-    ).count()
-    
-    pending_swaps = ShiftSwapRequest.query.filter_by(
-        requester_id=current_user.id,
-        status='pending'
-    ).count()
-    
-    # Get time off balances
-    balances = {
-        'vacation': current_user.vacation_days,
-        'sick': current_user.sick_days,
-        'personal': current_user.personal_days
-    }
-    
-    # Get next shift
-    next_shift = Schedule.query.filter(
-        Schedule.employee_id == current_user.id,
-        Schedule.date >= date.today()
-    ).order_by(Schedule.date).first()
-    
-    # Get overtime stats
-    current_week_ot = current_user.current_week_overtime
-    avg_weekly_ot = current_user.average_weekly_overtime
-    
-    # Check for unread messages
-    from models import PositionMessage, PositionMessageRead
-    unread_messages = 0
-    if current_user.position_id:
-        position_messages = PositionMessage.query.filter_by(
-            position_id=current_user.position_id
-        ).all()
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vacation Calendar - Workforce Scheduler</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
+    <style>
+        body {
+            background-color: #f5f7fa;
+        }
         
-        for msg in position_messages:
-            if not msg.is_read_by(current_user.id):
-                unread_messages += 1
-    
-    return render_template('employee_dashboard.html',
-                         upcoming_schedules=upcoming_schedules,
-                         pending_time_off=pending_time_off,
-                         pending_swaps=pending_swaps,
-                         balances=balances,
-                         next_shift=next_shift,
-                         current_week_ot=current_week_ot,
-                         avg_weekly_ot=avg_weekly_ot,
-                         unread_messages=unread_messages)
+        .calendar-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+        
+        .calendar-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+        
+        .calendar-title {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #2c3e50;
+        }
+        
+        .calendar-controls {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        .month-nav {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+        
+        .month-display {
+            font-size: 1.25rem;
+            font-weight: 600;
+            min-width: 180px;
+            text-align: center;
+        }
+        
+        .calendar-grid {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .calendar-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .calendar-table th {
+            background-color: #2c3e50;
+            color: white;
+            padding: 1rem;
+            text-align: left;
+            font-weight: 600;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        
+        .calendar-table td {
+            padding: 0.75rem;
+            border-bottom: 1px solid #e9ecef;
+            vertical-align: top;
+        }
+        
+        .employee-name {
+            font-weight: 600;
+            color: #2c3e50;
+            white-space: nowrap;
+            position: sticky;
+            left: 0;
+            background: white;
+            z-index: 5;
+        }
+        
+        .day-cell {
+            min-height: 40px;
+            position: relative;
+            border-left: 1px solid #e9ecef;
+        }
+        
+        .weekend {
+            background-color: #f8f9fa;
+        }
+        
+        .today {
+            background-color: #fff3cd;
+            font-weight: 600;
+        }
+        
+        .time-off-bar {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            height: 28px;
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            padding: 0 8px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: white;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .time-off-bar:hover {
+            transform: translateY(-50%) scale(1.05);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            z-index: 20;
+        }
+        
+        .vacation { background-color: #667eea; }
+        .sick { background-color: #f093fb; }
+        .personal { background-color: #764ba2; }
+        .holiday { background-color: #30cfd0; }
+        
+        .legend {
+            display: flex;
+            gap: 2rem;
+            margin-top: 1rem;
+            flex-wrap: wrap;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 10px;
+        }
+        
+        .stats-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        
+        .stat-card {
+            background: white;
+            border-radius: 8px;
+            padding: 1.5rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .stat-card h3 {
+            font-size: 1rem;
+            color: #6c757d;
+            margin-bottom: 0.5rem;
+        }
+        
+        .stat-card .value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #2c3e50;
+        }
+        
+        .crew-filter {
+            display: flex;
+            gap: 0.5rem;
+        }
+        
+        .crew-btn {
+            padding: 0.5rem 1rem;
+            border: 2px solid #dee2e6;
+            background: white;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .crew-btn:hover {
+            border-color: #667eea;
+            color: #667eea;
+        }
+        
+        .crew-btn.active {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+        
+        .export-btn {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .export-btn:hover {
+            background: #218838;
+            transform: translateY(-1px);
+        }
+        
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        
+        .loading-spinner {
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            text-align: center;
+        }
+        
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .calendar-container {
+                padding: 1rem;
+            }
+            
+            .calendar-title {
+                font-size: 1.5rem;
+            }
+            
+            .stats-cards {
+                grid-template-columns: 1fr;
+            }
+            
+            .calendar-table {
+                font-size: 0.875rem;
+            }
+            
+            .time-off-bar {
+                font-size: 0.625rem;
+                height: 24px;
+            }
+        }
+        
+        /* Tooltip styles */
+        .time-off-tooltip {
+            position: absolute;
+            background: #2c3e50;
+            color: white;
+            padding: 0.5rem;
+            border-radius: 4px;
+            font-size: 0.875rem;
+            white-space: nowrap;
+            z-index: 100;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+        }
+        
+        .time-off-tooltip.show {
+            opacity: 1;
+        }
+        
+        .time-off-tooltip::before {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            border: 6px solid transparent;
+            border-top-color: #2c3e50;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/dashboard">
+                <i class="bi bi-calendar-week"></i> Workforce Scheduler
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/dashboard">Dashboard</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/vacation-calendar">Vacation Calendar</a>
+                    </li>
+                </ul>
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown">
+                            <i class="bi bi-person-circle"></i> {{ current_user.name }}
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><a class="dropdown-item" href="/logout">Logout</a></li>
+                        </ul>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="calendar-container">
+        <div class="calendar-header">
+            <h1 class="calendar-title">
+                <i class="bi bi-calendar-event"></i> Vacation Calendar
+            </h1>
+            <div class="calendar-controls">
+                <div class="crew-filter">
+                    <button class="crew-btn active" data-crew="ALL">All Crews</button>
+                    <button class="crew-btn" data-crew="A">Crew A</button>
+                    <button class="crew-btn" data-crew="B">Crew B</button>
+                    <button class="crew-btn" data-crew="C">Crew C</button>
+                    <button class="crew-btn" data-crew="D">Crew D</button>
+                </div>
+                <div class="month-nav">
+                    <button class="btn btn-outline-primary" id="prevMonth">
+                        <i class="bi bi-chevron-left"></i>
+                    </button>
+                    <div class="month-display" id="currentMonth">November 2024</div>
+                    <button class="btn btn-outline-primary" id="nextMonth">
+                        <i class="bi bi-chevron-right"></i>
+                    </button>
+                </div>
+                <button class="export-btn" id="exportBtn">
+                    <i class="bi bi-download"></i> Export
+                </button>
+            </div>
+        </div>
+
+        <!-- Statistics Cards -->
+        <div class="stats-cards">
+            <div class="stat-card">
+                <h3>Total Days Off This Month</h3>
+                <div class="value" id="totalDaysOff">0</div>
+            </div>
+            <div class="stat-card">
+                <h3>Employees on Leave Today</h3>
+                <div class="value" id="todayOffCount">0</div>
+            </div>
+            <div class="stat-card">
+                <h3>Average Coverage</h3>
+                <div class="value" id="avgCoverage">0%</div>
+            </div>
+            <div class="stat-card">
+                <h3>Peak Absence Day</h3>
+                <div class="value" id="peakDay">-</div>
+            </div>
+        </div>
+
+        <!-- Calendar Grid -->
+        <div class="calendar-grid">
+            <div style="overflow-x: auto;">
+                <table class="calendar-table" id="calendarTable">
+                    <!-- Table content will be generated by JavaScript -->
+                </table>
+            </div>
+        </div>
+
+        <!-- Legend -->
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-color vacation"></div>
+                <span>Vacation</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color sick"></div>
+                <span>Sick Leave</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color personal"></div>
+                <span>Personal Day</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color holiday"></div>
+                <span>Holiday</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-spinner">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-2">Loading calendar data...</p>
+        </div>
+    </div>
+
+    <!-- Tooltip -->
+    <div class="time-off-tooltip" id="tooltip"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Calendar functionality
+        let currentDate = new Date();
+        let selectedCrew = 'ALL';
+        let calendarData = [];
+
+        // Initialize calendar
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeEventListeners();
+            loadCalendarData();
+        });
+
+        function initializeEventListeners() {
+            // Month navigation
+            document.getElementById('prevMonth').addEventListener('click', () => {
+                currentDate.setMonth(currentDate.getMonth() - 1);
+                loadCalendarData();
+            });
+
+            document.getElementById('nextMonth').addEventListener('click', () => {
+                currentDate.setMonth(currentDate.getMonth() + 1);
+                loadCalendarData();
+            });
+
+            // Crew filter
+            document.querySelectorAll('.crew-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    document.querySelectorAll('.crew-btn').forEach(b => b.classList.remove('active'));
+                    this.classList.add('active');
+                    selectedCrew = this.dataset.crew;
+                    loadCalendarData();
+                });
+            });
+
+            // Export button
+            document.getElementById('exportBtn').addEventListener('click', exportCalendar);
+        }
+
+        function loadCalendarData() {
+            showLoading(true);
+            const year = currentDate.getFullYear();
+            const month = currentDate.getMonth() + 1;
+
+            // Update month display
+            const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                              'July', 'August', 'September', 'October', 'November', 'December'];
+            document.getElementById('currentMonth').textContent = `${monthNames[currentDate.getMonth()]} ${year}`;
+
+            // Fetch calendar data
+            fetch(`/api/vacation-calendar?year=${year}&month=${month}&crew=${selectedCrew}`)
+                .then(response => response.json())
+                .then(data => {
+                    calendarData = data;
+                    renderCalendar(data);
+                    updateStatistics(data);
+                    showLoading(false);
+                })
+                .catch(error => {
+                    console.error('Error loading calendar:', error);
+                    showLoading(false);
+                    // For development, use mock data
+                    const mockData = generateMockData(year, month);
+                    renderCalendar(mockData);
+                    updateStatistics(mockData);
+                });
+        }
+
+        function renderCalendar(data) {
+            const table = document.getElementById('calendarTable');
+            const year = currentDate.getFullYear();
+            const month = currentDate.getMonth();
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            const firstDay = new Date(year, month, 1).getDay();
+            const today = new Date();
+
+            // Clear existing content
+            table.innerHTML = '';
+
+            // Create header row
+            const headerRow = document.createElement('tr');
+            headerRow.innerHTML = '<th style="width: 150px;">Employee</th>';
+            
+            for (let day = 1; day <= daysInMonth; day++) {
+                const date = new Date(year, month, day);
+                const dayOfWeek = date.getDay();
+                const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+                const isToday = date.toDateString() === today.toDateString();
+                
+                const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+                let className = '';
+                if (isWeekend) className = 'weekend';
+                if (isToday) className += ' today';
+                
+                headerRow.innerHTML += `<th class="${className}">${dayNames[dayOfWeek]}<br>${day}</th>`;
+            }
+            
+            const thead = document.createElement('thead');
+            thead.appendChild(headerRow);
+            table.appendChild(thead);
+
+            // Create body
+            const tbody = document.createElement('tbody');
+            
+            // Group data by employee
+            const employeeMap = {};
+            data.forEach(entry => {
+                if (!employeeMap[entry.employee_id]) {
+                    employeeMap[entry.employee_id] = {
+                        name: entry.employee_name,
+                        crew: entry.crew,
+                        timeOffs: []
+                    };
+                }
+                employeeMap[entry.employee_id].timeOffs.push(entry);
+            });
+
+            // Render each employee row
+            Object.entries(employeeMap).forEach(([employeeId, employeeData]) => {
+                const row = document.createElement('tr');
+                row.innerHTML = `<td class="employee-name">${employeeData.name} (${employeeData.crew})</td>`;
+                
+                for (let day = 1; day <= daysInMonth; day++) {
+                    const date = new Date(year, month, day);
+                    const dayOfWeek = date.getDay();
+                    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+                    const isToday = date.toDateString() === today.toDateString();
+                    
+                    let className = 'day-cell';
+                    if (isWeekend) className += ' weekend';
+                    if (isToday) className += ' today';
+                    
+                    const cell = document.createElement('td');
+                    cell.className = className;
+                    
+                    // Check for time off on this day
+                    const timeOff = employeeData.timeOffs.find(to => {
+                        const startDate = new Date(to.start_date);
+                        const endDate = new Date(to.end_date);
+                        return date >= startDate && date <= endDate;
+                    });
+                    
+                    if (timeOff) {
+                        const bar = document.createElement('div');
+                        bar.className = `time-off-bar ${timeOff.type}`;
+                        bar.textContent = timeOff.type.charAt(0).toUpperCase();
+                        bar.dataset.info = JSON.stringify({
+                            employee: employeeData.name,
+                            type: timeOff.type,
+                            start: timeOff.start_date,
+                            end: timeOff.end_date,
+                            reason: timeOff.reason || 'No reason provided'
+                        });
+                        
+                        // Add tooltip on hover
+                        bar.addEventListener('mouseenter', showTooltip);
+                        bar.addEventListener('mouseleave', hideTooltip);
+                        
+                        cell.appendChild(bar);
+                    }
+                    
+                    row.appendChild(cell);
+                }
+                
+                tbody.appendChild(row);
+            });
+            
+            table.appendChild(tbody);
+        }
+
+        function updateStatistics(data) {
+            const year = currentDate.getFullYear();
+            const month = currentDate.getMonth();
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            const today = new Date();
+            
+            let totalDays = 0;
+            let todayCount = 0;
+            const dailyCounts = {};
+            
+            // Initialize daily counts
+            for (let day = 1; day <= daysInMonth; day++) {
+                dailyCounts[day] = 0;
+            }
+            
+            // Count time offs
+            data.forEach(entry => {
+                const startDate = new Date(entry.start_date);
+                const endDate = new Date(entry.end_date);
+                
+                for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
+                    if (date.getMonth() === month && date.getFullYear() === year) {
+                        const day = date.getDate();
+                        dailyCounts[day]++;
+                        totalDays++;
+                        
+                        if (date.toDateString() === today.toDateString()) {
+                            todayCount++;
+                        }
+                    }
+                }
+            });
+            
+            // Find peak day
+            let peakDay = 1;
+            let peakCount = 0;
+            Object.entries(dailyCounts).forEach(([day, count]) => {
+                if (count > peakCount) {
+                    peakCount = count;
+                    peakDay = day;
+                }
+            });
+            
+            // Calculate average coverage (assuming total employees)
+            const totalEmployees = Object.keys(data.reduce((acc, entry) => {
+                acc[entry.employee_id] = true;
+                return acc;
+            }, {})).length || 20; // Default to 20 if no data
+            
+            const avgAbsence = totalDays / daysInMonth / totalEmployees;
+            const avgCoverage = Math.round((1 - avgAbsence) * 100);
+            
+            // Update displays
+            document.getElementById('totalDaysOff').textContent = totalDays;
+            document.getElementById('todayOffCount').textContent = todayCount;
+            document.getElementById('avgCoverage').textContent = avgCoverage + '%';
+            document.getElementById('peakDay').textContent = `${month + 1}/${peakDay} (${peakCount})`;
+        }
+
+        function showTooltip(event) {
+            const info = JSON.parse(event.target.dataset.info);
+            const tooltip = document.getElementById('tooltip');
+            
+            tooltip.innerHTML = `
+                <strong>${info.employee}</strong><br>
+                ${info.type.charAt(0).toUpperCase() + info.type.slice(1)}<br>
+                ${formatDate(info.start)} - ${formatDate(info.end)}<br>
+                <em>${info.reason}</em>
+            `;
+            
+            const rect = event.target.getBoundingClientRect();
+            tooltip.style.left = rect.left + rect.width / 2 + 'px';
+            tooltip.style.top = rect.top - 10 + 'px';
+            tooltip.style.transform = 'translate(-50%, -100%)';
+            tooltip.classList.add('show');
+        }
+
+        function hideTooltip() {
+            document.getElementById('tooltip').classList.remove('show');
+        }
+
+        function formatDate(dateString) {
+            const date = new Date(dateString);
+            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        }
+
+        function showLoading(show) {
+            document.getElementById('loadingOverlay').style.display = show ? 'flex' : 'none';
+        }
+
+        function exportCalendar() {
+            const year = currentDate.getFullYear();
+            const month = currentDate.getMonth() + 1;
+            window.location.href = `/api/vacation-calendar/export?year=${year}&month=${month}&crew=${selectedCrew}`;
+        }
+
+        // Mock data generator for development
+        function generateMockData(year, month) {
+            const mockData = [];
+            const types = ['vacation', 'sick', 'personal'];
+            const employees = [
+                {id: 1, name: 'John Smith', crew: 'A'},
+                {id: 2, name: 'Jane Doe', crew: 'A'},
+                {id: 3, name: 'Bob Johnson', crew: 'B'},
+                {id: 4, name: 'Alice Williams', crew: 'B'},
+                {id: 5, name: 'Charlie Brown', crew: 'C'},
+                {id: 6, name: 'Diana Prince', crew: 'C'},
+                {id: 7, name: 'Eve Anderson', crew: 'D'},
+                {id: 8, name: 'Frank Miller', crew: 'D'}
+            ];
+            
+            employees.forEach(emp => {
+                // Random 1-3 time offs per employee
+                const numTimeOffs = Math.floor(Math.random() * 3) + 1;
+                
+                for (let i = 0; i < numTimeOffs; i++) {
+                    const startDay = Math.floor(Math.random() * 25) + 1;
+                    const duration = Math.floor(Math.random() * 5) + 1;
+                    const endDay = Math.min(startDay + duration, 28);
+                    
+                    mockData.push({
+                        employee_id: emp.id,
+                        employee_name: emp.name,
+                        crew: emp.crew,
+                        type: types[Math.floor(Math.random() * types.length)],
+                        start_date: `${year}-${String(month).padStart(2, '0')}-${String(startDay).padStart(2, '0')}`,
+                        end_date: `${year}-${String(month).padStart(2, '0')}-${String(endDay).padStart(2, '0')}`,
+                        reason: 'Personal time off'
+                    });
+                }
+            });
+            
+            return mockData;
+        }
+    </script>
+</body>
+</html>
