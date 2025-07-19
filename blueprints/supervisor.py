@@ -2,7 +2,7 @@ from flask import Blueprint, render_template, redirect, url_for, flash, request,
 from flask_login import login_required, current_user
 from models import db, Schedule, Employee, Position, TimeOffRequest, ShiftSwapRequest, ScheduleSuggestion, VacationCalendar
 from datetime import datetime, date, timedelta
-from sqlalchemy import func
+from sqlalchemy import func, case
 from functools import wraps
 import calendar
 import io
@@ -173,19 +173,6 @@ def export_vacation_calendar():
         download_name=filename
     )
 
-# ========== OTHER SUPERVISOR ROUTES ==========
-# Add your other supervisor routes below here
-
-@supervisor_bp.route('/supervisor/coverage-needs')
-@login_required
-@supervisor_required
-def coverage_needs():
-    """View and manage coverage needs"""
-    # Implementation here
-    pass
-
-# Add this to your supervisor.py file, replacing the existing time-off-requests route
-
 @supervisor_bp.route('/supervisor/time-off-requests')
 @login_required
 @supervisor_required
@@ -299,8 +286,15 @@ def handle_time_off_request(request_id, action):
     db.session.commit()
     return redirect(url_for('supervisor.time_off_requests'))
 
-# Also add this import at the top of supervisor.py if not already present:
-# from sqlalchemy import case
+# ========== OTHER SUPERVISOR ROUTES ==========
+
+@supervisor_bp.route('/supervisor/coverage-needs')
+@login_required
+@supervisor_required
+def coverage_needs():
+    """View and manage coverage needs"""
+    # Implementation here
+    pass
 
 @supervisor_bp.route('/supervisor/swap-requests')
 @login_required
