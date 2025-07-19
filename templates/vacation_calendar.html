@@ -1,500 +1,140 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Vacation Calendar - Workforce Scheduler</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
-    <style>
-        body {
-            background-color: #f5f7fa;
-        }
-        
-        .page-header {
-            background: white;
-            padding: 2rem;
-            margin-bottom: 2rem;
-            border-bottom: 3px solid #e0c3fc;
-        }
-        
-        .calendar-controls {
-            background: white;
-            padding: 1.5rem;
-            border-radius: 8px;
-            margin-bottom: 2rem;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-        }
-        
-        .calendar-container {
-            background: white;
-            border-radius: 8px;
-            padding: 1.5rem;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-            overflow-x: auto;
-        }
-        
-        .calendar-table {
-            width: 100%;
-            border-collapse: separate;
-            border-spacing: 0;
-        }
-        
-        .calendar-table th {
-            background: #f8f9fa;
-            padding: 0.75rem;
-            text-align: center;
-            font-weight: 600;
-            border: 1px solid #dee2e6;
-            position: sticky;
-            top: 0;
-            z-index: 10;
-        }
-        
-        .calendar-table td {
-            border: 1px solid #dee2e6;
-            padding: 0.5rem;
-            height: 80px;
-            vertical-align: top;
-            position: relative;
-        }
-        
-        .day-number {
-            font-weight: bold;
-            margin-bottom: 0.25rem;
-        }
-        
-        .weekend {
-            background: #f8f9fa;
-        }
-        
-        .today {
-            background: #e3f2fd;
-        }
-        
-        .vacation-entry {
-            background: #e8d4f8;
-            color: #2c3e50;
-            padding: 0.125rem 0.25rem;
-            border-radius: 3px;
-            font-size: 0.7rem;
-            margin-bottom: 0.125rem;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            cursor: pointer;
-            border: 1px solid #d0a3fc;
-        }
-        
-        .vacation-entry:hover {
-            background: #dcc4f8;
-        }
-        
-        .vacation-entry.sick {
-            background: #ffe4e6;
-            color: #2c3e50;
-            border-color: #ffb3ba;
-        }
-        
-        .vacation-entry.personal {
-            background: #fff9e6;
-            color: #2c3e50;
-            border-color: #ffd966;
-        }
-        
-        .crew-filter {
-            display: flex;
-            gap: 0.5rem;
-            flex-wrap: wrap;
-        }
-        
-        .crew-badge {
-            padding: 0.5rem 1rem;
-            border-radius: 20px;
-            background: #f0e6ff;
-            color: #2c3e50;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            border: 2px solid transparent;
-        }
-        
-        .crew-badge.active {
-            background: #d0a3fc;
-            color: #2c3e50;
-            border-color: #b380e6;
-        }
-        
-        .crew-badge:hover {
-            transform: translateY(-2px);
-            border-color: #d0a3fc;
-        }
-        
-        .stats-section {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 1rem;
-            margin-bottom: 2rem;
-        }
-        
-        .stat-card {
-            background: white;
-            padding: 1.5rem;
-            border-radius: 8px;
-            text-align: center;
-            border: 2px solid #e0c3fc;
-        }
-        
-        .stat-number {
-            font-size: 2rem;
-            font-weight: bold;
-            color: #e0c3fc;
-        }
-        
-        .employee-list {
-            background: white;
-            padding: 1.5rem;
-            border-radius: 8px;
-            margin-top: 2rem;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-        }
-        
-        .employee-vacation-item {
-            padding: 0.75rem;
-            border-bottom: 1px solid #e9ecef;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-        
-        .employee-vacation-item:last-child {
-            border-bottom: none;
-        }
-        
-        .more-indicator {
-            background: #6c757d;
-            color: white;
-            font-size: 0.7rem;
-            padding: 0.125rem 0.25rem;
-            border-radius: 3px;
-        }
-    </style>
-</head>
-<body>
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
-        <div class="container-fluid">
-            <a class="navbar-brand" href="/dashboard">
-                <i class="bi bi-calendar-week"></i> Workforce Scheduler
-            </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav">
-                    <li class="nav-item">
-                        <a class="nav-link" href="/dashboard">Dashboard</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link active" href="/vacation-calendar">Vacation Calendar</a>
-                    </li>
-                </ul>
-                <ul class="navbar-nav ms-auto">
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown">
-                            <i class="bi bi-person-circle"></i> {{ current_user.name }}
-                        </a>
-                        <ul class="dropdown-menu dropdown-menu-end">
-                            <li><a class="dropdown-item" href="/logout">Logout</a></li>
-                        </ul>
-                    </li>
-                </ul>
-            </div>
-        </div>
-    </nav>
+# Update your dashboard route in blueprints/main.py
 
-    <div class="page-header">
-        <div class="container-fluid">
-            <h1><i class="bi bi-calendar-event" style="color: #e0c3fc;"></i> Vacation Calendar</h1>
-            <p class="text-muted mb-0">Team time off overview and vacation planning</p>
-        </div>
-    </div>
+from flask import Blueprint, render_template, redirect, url_for
+from flask_login import login_required, current_user
+from models import db, Employee, TimeOffRequest, ShiftSwapRequest, ScheduleSuggestion, MaintenanceIssue, Schedule
+from datetime import date, timedelta
+from sqlalchemy import func
+from utils.helpers import get_coverage_gaps
 
-    <div class="container-fluid">
-        <!-- Calendar Controls -->
-        <div class="calendar-controls">
-            <div class="row align-items-center">
-                <div class="col-md-6">
-                    <div class="d-flex align-items-center gap-3">
-                        <button class="btn btn-outline-primary">
-                            <i class="bi bi-chevron-left"></i>
-                        </button>
-                        <h3 class="mb-0">July 2025</h3>
-                        <button class="btn btn-outline-primary">
-                            <i class="bi bi-chevron-right"></i>
-                        </button>
-                        <button class="btn btn-primary ms-3">Today</button>
-                    </div>
-                </div>
-                <div class="col-md-6">
-                    <div class="crew-filter justify-content-end">
-                        <div class="crew-badge active">All Crews</div>
-                        <div class="crew-badge">Crew A</div>
-                        <div class="crew-badge">Crew B</div>
-                        <div class="crew-badge">Crew C</div>
-                        <div class="crew-badge">Crew D</div>
-                    </div>
-                </div>
-            </div>
-        </div>
+main_bp = Blueprint('main', __name__)
 
-        <!-- Calendar Grid -->
-        <div class="calendar-container">
-            <table class="calendar-table">
-                <thead>
-                    <tr>
-                        <th>Sunday</th>
-                        <th>Monday</th>
-                        <th>Tuesday</th>
-                        <th>Wednesday</th>
-                        <th>Thursday</th>
-                        <th>Friday</th>
-                        <th>Saturday</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <!-- Week 1 -->
-                    <tr>
-                        <td class="weekend">
-                            <div class="day-number">30</div>
-                        </td>
-                        <td>
-                            <div class="day-number">1</div>
-                            <div class="vacation-entry">J. Doe - Operator</div>
-                        </td>
-                        <td>
-                            <div class="day-number">2</div>
-                            <div class="vacation-entry">J. Doe - Operator</div>
-                        </td>
-                        <td>
-                            <div class="day-number">3</div>
-                            <div class="vacation-entry">J. Doe - Operator</div>
-                        </td>
-                        <td>
-                            <div class="day-number">4</div>
-                        </td>
-                        <td>
-                            <div class="day-number">5</div>
-                            <div class="vacation-entry sick">M. Smith - Technician</div>
-                        </td>
-                        <td class="weekend">
-                            <div class="day-number">6</div>
-                        </td>
-                    </tr>
-                    <!-- Week 2 -->
-                    <tr>
-                        <td class="weekend">
-                            <div class="day-number">7</div>
-                        </td>
-                        <td>
-                            <div class="day-number">8</div>
-                            <div class="vacation-entry">S. Johnson - Supervisor</div>
-                            <div class="vacation-entry personal">T. Brown - Operator</div>
-                        </td>
-                        <td>
-                            <div class="day-number">9</div>
-                            <div class="vacation-entry">S. Johnson - Supervisor</div>
-                        </td>
-                        <td>
-                            <div class="day-number">10</div>
-                            <div class="vacation-entry">S. Johnson - Supervisor</div>
-                        </td>
-                        <td>
-                            <div class="day-number">11</div>
-                        </td>
-                        <td>
-                            <div class="day-number">12</div>
-                            <div class="vacation-entry">K. Davis - Lead Tech</div>
-                        </td>
-                        <td class="weekend">
-                            <div class="day-number">13</div>
-                        </td>
-                    </tr>
-                    <!-- Week 3 (Current Week) -->
-                    <tr>
-                        <td class="weekend">
-                            <div class="day-number">14</div>
-                        </td>
-                        <td>
-                            <div class="day-number">15</div>
-                            <div class="vacation-entry">E. Wilson - Operator</div>
-                            <div class="vacation-entry">R. Martinez - Technician</div>
-                        </td>
-                        <td>
-                            <div class="day-number">16</div>
-                            <div class="vacation-entry">E. Wilson - Operator</div>
-                            <div class="vacation-entry">R. Martinez - Technician</div>
-                        </td>
-                        <td>
-                            <div class="day-number">17</div>
-                            <div class="vacation-entry">E. Wilson - Operator</div>
-                            <div class="vacation-entry">R. Martinez - Technician</div>
-                        </td>
-                        <td class="today">
-                            <div class="day-number">18</div>
-                            <div class="vacation-entry sick">L. Anderson - Supervisor</div>
-                            <div class="vacation-entry">P. Taylor - Lead Tech</div>
-                            <div class="vacation-entry personal">J. White - Operator</div>
-                        </td>
-                        <td>
-                            <div class="day-number">19</div>
-                            <div class="vacation-entry">P. Taylor - Lead Tech</div>
-                        </td>
-                        <td class="weekend">
-                            <div class="day-number">20</div>
-                        </td>
-                    </tr>
-                    <!-- Week 4 -->
-                    <tr>
-                        <td class="weekend">
-                            <div class="day-number">21</div>
-                        </td>
-                        <td>
-                            <div class="day-number">22</div>
-                            <div class="vacation-entry">D. Clark - Technician</div>
-                        </td>
-                        <td>
-                            <div class="day-number">23</div>
-                            <div class="vacation-entry">D. Clark - Technician</div>
-                            <div class="vacation-entry">H. Lewis - Operator</div>
-                        </td>
-                        <td>
-                            <div class="day-number">24</div>
-                            <div class="vacation-entry">D. Clark - Technician</div>
-                            <div class="vacation-entry">H. Lewis - Operator</div>
-                            <div class="vacation-entry">N. Hall - Supervisor</div>
-                            <div class="more-indicator">+2 more</div>
-                        </td>
-                        <td>
-                            <div class="day-number">25</div>
-                            <div class="vacation-entry">D. Clark - Technician</div>
-                            <div class="vacation-entry">H. Lewis - Operator</div>
-                            <div class="vacation-entry">N. Hall - Supervisor</div>
-                            <div class="vacation-entry">J. Doe - Operator</div>
-                        </td>
-                        <td>
-                            <div class="day-number">26</div>
-                            <div class="vacation-entry">J. Doe - Operator</div>
-                            <div class="vacation-entry">H. Lewis - Operator</div>
-                            <div class="vacation-entry">N. Hall - Supervisor</div>
-                        </td>
-                        <td class="weekend">
-                            <div class="day-number">27</div>
-                            <div class="vacation-entry">J. Doe - Operator</div>
-                        </td>
-                    </tr>
-                    <!-- Week 5 -->
-                    <tr>
-                        <td class="weekend">
-                            <div class="day-number">28</div>
-                            <div class="vacation-entry">J. Doe - Operator</div>
-                        </td>
-                        <td>
-                            <div class="day-number">29</div>
-                        </td>
-                        <td>
-                            <div class="day-number">30</div>
-                        </td>
-                        <td>
-                            <div class="day-number">31</div>
-                            <div class="vacation-entry">B. Young - Lead Tech</div>
-                        </td>
-                        <td>
-                            <div class="day-number">1</div>
-                        </td>
-                        <td>
-                            <div class="day-number">2</div>
-                        </td>
-                        <td class="weekend">
-                            <div class="day-number">3</div>
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
+@main_bp.route('/')
+def index():
+    """Redirect to appropriate dashboard based on user role"""
+    if current_user.is_authenticated:
+        if current_user.is_supervisor:
+            return redirect(url_for('main.dashboard'))
+        else:
+            return redirect(url_for('main.employee_dashboard'))
+    return redirect(url_for('auth.login'))
 
-        <!-- Legend -->
-        <div class="mt-3">
-            <span class="vacation-entry d-inline-block me-3">Vacation</span>
-            <span class="vacation-entry sick d-inline-block me-3">Sick Leave</span>
-            <span class="vacation-entry personal d-inline-block">Personal Time</span>
-        </div>
+@main_bp.route('/dashboard')
+@login_required
+def dashboard():
+    """Supervisor dashboard with real statistics"""
+    if not current_user.is_supervisor:
+        return redirect(url_for('main.employee_dashboard'))
+    
+    # Calculate pending time off requests
+    pending_time_off = TimeOffRequest.query.filter_by(
+        status='pending'
+    ).count()
+    
+    # Calculate pending swap requests
+    pending_swaps = ShiftSwapRequest.query.filter_by(
+        status='pending'
+    ).count()
+    
+    # Calculate coverage gaps for the next 7 days
+    gaps = get_coverage_gaps('ALL', 7)
+    coverage_gaps = len(gaps)
+    
+    # Calculate pending suggestions
+    pending_suggestions = ScheduleSuggestion.query.filter_by(
+        status='new'
+    ).count()
+    
+    # Get total employee count
+    total_employees = Employee.query.count()
+    
+    # Get critical maintenance issues
+    critical_maintenance = MaintenanceIssue.query.filter_by(
+        status='open',
+        priority='critical'
+    ).count()
+    
+    # Get today's schedule statistics
+    today_scheduled = Schedule.query.filter_by(
+        date=date.today()
+    ).count()
+    
+    # Get employees on leave today
+    from models import VacationCalendar
+    today_on_leave = VacationCalendar.query.filter_by(
+        date=date.today()
+    ).count()
+    
+    return render_template('dashboard.html',
+                         pending_time_off=pending_time_off,
+                         pending_swaps=pending_swaps,
+                         coverage_gaps=coverage_gaps,
+                         pending_suggestions=pending_suggestions,
+                         total_employees=total_employees,
+                         critical_maintenance=critical_maintenance,
+                         today_scheduled=today_scheduled,
+                         today_on_leave=today_on_leave)
 
-        <!-- Upcoming Time Off List -->
-        <div class="employee-list">
-            <h4 class="mb-3">Upcoming Time Off Requests</h4>
-            
-            <div class="employee-vacation-item">
-                <div>
-                    <strong>John Doe</strong> - Crew A<br>
-                    <small class="text-muted">July 25-28 (4 days) - Family vacation</small>
-                </div>
-                <span class="badge bg-warning">Pending Approval</span>
-            </div>
-            
-            <div class="employee-vacation-item">
-                <div>
-                    <strong>Sarah Miller</strong> - Crew B<br>
-                    <small class="text-muted">July 19 (1 day) - Doctor's appointment</small>
-                </div>
-                <span class="badge bg-warning">Pending Approval</span>
-            </div>
-            
-            <div class="employee-vacation-item">
-                <div>
-                    <strong>Robert Johnson</strong> - Crew C<br>
-                    <small class="text-muted">August 5-6 (2 days) - Moving house</small>
-                </div>
-                <span class="badge bg-warning">Pending Approval</span>
-            </div>
-            
-            <div class="employee-vacation-item">
-                <div>
-                    <strong>Barbara Young</strong> - Crew D<br>
-                    <small class="text-muted">July 31 - August 2 (3 days) - Summer vacation</small>
-                </div>
-                <span class="badge bg-success">Approved</span>
-            </div>
-        </div>
-
-        <!-- Export Options -->
-        <div class="mt-4">
-            <button class="btn btn-primary me-2">
-                <i class="bi bi-download"></i> Export Calendar
-            </button>
-            <button class="btn btn-secondary me-2">
-                <i class="bi bi-printer"></i> Print Calendar
-            </button>
-            <button class="btn btn-info">
-                <i class="bi bi-envelope"></i> Email Team Schedule
-            </button>
-        </div>
-    </div>
-
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        // Calendar interactions
-        document.querySelectorAll('.vacation-entry').forEach(entry => {
-            entry.addEventListener('click', function() {
-                alert('Employee: ' + this.textContent + '\nClick would show full details in a modal');
-            });
-        });
-
-        // Crew filter
-        document.querySelectorAll('.crew-badge').forEach(badge => {
-            badge.addEventListener('click', function() {
-                document.querySelectorAll('.crew-badge').forEach(b => b.classList.remove('active'));
-                this.classList.add('active');
-            });
-        });
-    </script>
-</body>
-</html>
+@main_bp.route('/employee-dashboard')
+@login_required
+def employee_dashboard():
+    """Employee dashboard"""
+    if current_user.is_supervisor:
+        return redirect(url_for('main.dashboard'))
+    
+    # Get employee's upcoming schedule
+    upcoming_schedules = Schedule.query.filter(
+        Schedule.employee_id == current_user.id,
+        Schedule.date >= date.today(),
+        Schedule.date <= date.today() + timedelta(days=14)
+    ).order_by(Schedule.date).all()
+    
+    # Get pending requests
+    pending_time_off = TimeOffRequest.query.filter_by(
+        employee_id=current_user.id,
+        status='pending'
+    ).count()
+    
+    pending_swaps = ShiftSwapRequest.query.filter_by(
+        requester_id=current_user.id,
+        status='pending'
+    ).count()
+    
+    # Get time off balances
+    balances = {
+        'vacation': current_user.vacation_days,
+        'sick': current_user.sick_days,
+        'personal': current_user.personal_days
+    }
+    
+    # Get next shift
+    next_shift = Schedule.query.filter(
+        Schedule.employee_id == current_user.id,
+        Schedule.date >= date.today()
+    ).order_by(Schedule.date).first()
+    
+    # Get overtime stats
+    current_week_ot = current_user.current_week_overtime
+    avg_weekly_ot = current_user.average_weekly_overtime
+    
+    # Check for unread messages
+    from models import PositionMessage, PositionMessageRead
+    unread_messages = 0
+    if current_user.position_id:
+        position_messages = PositionMessage.query.filter_by(
+            position_id=current_user.position_id
+        ).all()
+        
+        for msg in position_messages:
+            if not msg.is_read_by(current_user.id):
+                unread_messages += 1
+    
+    return render_template('employee_dashboard.html',
+                         upcoming_schedules=upcoming_schedules,
+                         pending_time_off=pending_time_off,
+                         pending_swaps=pending_swaps,
+                         balances=balances,
+                         next_shift=next_shift,
+                         current_week_ot=current_week_ot,
+                         avg_weekly_ot=avg_weekly_ot,
+                         unread_messages=unread_messages)
