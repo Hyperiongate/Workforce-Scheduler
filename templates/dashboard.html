@@ -1,5 +1,99 @@
 <!DOCTYPE html>
 <html lang="en">
+<!--
+==============================================
+WORKFORCE MANAGEMENT SYSTEM - FILE STRUCTURE
+==============================================
+
+PROJECT: Flask-based 24/7 Workforce Scheduler with 4-crew rotation (A,B,C,D)
+
+*** IMPORTANT: UPDATE THESE NOTES WHEN MAKING STRUCTURAL CHANGES ***
+When adding new files, routes, models, or features, please update this documentation
+to maintain accuracy for future development sessions.
+
+LAST UPDATED: Current as of the last modification to this file
+UPDATE CHECKLIST:
+[ ] New routes added? Update the blueprint section
+[ ] New models created? Add to DATABASE MODELS
+[ ] New templates made? Add to /templates/ list  
+[ ] New API endpoints? Add to API ENDPOINTS
+[ ] New features implemented? Update KEY FEATURES
+[ ] New dependencies? Note to update requirements.txt
+
+FILE STRUCTURE:
+/app.py                 - Main Flask app, blueprint registration, routes: /init-db, /add-overtime-tables, /populate-crews
+/models.py              - SQLAlchemy models: Employee, Schedule, TimeOffRequest, ShiftSwapRequest, etc.
+/requirements.txt       - Dependencies: Flask, Flask-SQLAlchemy, Flask-Login, psycopg2, pandas, etc.
+
+/blueprints/
+  auth.py              - Login/logout functionality
+  main.py              - Routes: /, /dashboard (supervisor), /employee-dashboard
+  schedule.py          - Routes: /schedule/view, /schedule/create, /schedule/wizard/<pattern>
+  supervisor.py        - Routes: /supervisor/*, /vacation-calendar, /api/vacation-calendar
+  employee.py          - Routes: /overtime-management, /vacation/request, /shift-marketplace, /maintenance/*
+
+/templates/
+  dashboard.html       - THIS FILE - Supervisor dashboard with 3-column layout
+  employee_dashboard.html - Employee dashboard with schedule, time-off, messaging
+  vacation_calendar.html  - Monthly calendar view of team time-off
+  vacation_request.html   - Time-off request form (vacation/sick/personal)
+  shift_marketplace.html  - Shift trading marketplace
+  [others...]          - overtime_management, maintenance_issues, position_messages, etc.
+
+/utils/
+  helpers.py           - Functions: get_coverage_gaps(), get_overtime_opportunities(), calculate_trade_compatibility()
+
+KEY FEATURES:
+- 4-crew 24/7 operation (Crews A,B,C,D)
+- Shift types: day, evening, night
+- Time-off management (vacation, sick, personal days)
+- Shift trading marketplace with compatibility scoring
+- Overtime tracking (13-week history)
+- Position-based messaging
+- Maintenance issue reporting
+- Sleep health tracking
+- Supervisor messaging system
+- Coverage gap analysis
+- Casual worker management
+
+DATABASE MODELS (from models.py):
+- Employee (with overtime properties, skills, crew assignment)
+- Schedule, TimeOffRequest, ShiftSwapRequest
+- ShiftTradePost, ShiftTradeProposal, ShiftTrade
+- Position, Skill, PositionMessage
+- MaintenanceIssue, MaintenanceUpdate
+- CircadianProfile, SleepLog
+- OvertimeHistory, VacationCalendar
+- CoverageRequest, CasualWorker
+
+TEMPLATE VARIABLES USED IN THIS FILE:
+- current_user (Flask-Login)
+- pending_time_off, pending_swaps (counts)
+- coverage_gaps, pending_suggestions (counts)
+- total_employees, critical_maintenance
+- today_scheduled, today_on_leave
+
+API ENDPOINTS REFERENCED:
+- /api/dashboard-stats (for real-time updates)
+- /api/quick-schedule (POST)
+- /api/quick-alert (POST)
+
+AUTHENTICATION:
+- @login_required decorator
+- @supervisor_required custom decorator
+- current_user.is_supervisor check
+
+UI FRAMEWORK: Bootstrap 5.1.3 with Bootstrap Icons
+
+PENDING IMPLEMENTATION:
+- /casual-workers route and template
+- /supervisor/messages template
+- /quick/position-broadcast functionality
+- Real-time WebSocket notifications
+- Advanced analytics dashboard
+
+==============================================
+-->
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -23,34 +117,6 @@
             color: #2c3e50;
             margin-bottom: 2rem;
             text-align: center;
-        }
-        
-        /* Quick Stats Summary */
-        .stat-card {
-            padding: 1.5rem;
-            border-radius: 12px;
-            text-align: center;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            transition: transform 0.2s ease;
-            height: 100%;
-        }
-        
-        .stat-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 12px rgba(0,0,0,0.15);
-        }
-        
-        .stat-value {
-            font-size: 2.5rem;
-            font-weight: 700;
-            margin-bottom: 0.25rem;
-        }
-        
-        .stat-label {
-            font-size: 0.875rem;
-            opacity: 0.9;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
         }
         
         .dashboard-columns {
@@ -677,10 +743,6 @@
                     updateNumber('pending_swaps', data.pending_swaps);
                     updateNumber('coverage_gaps', data.coverage_gaps);
                     updateNumber('pending_suggestions', data.pending_suggestions);
-                    updateNumber('critical_items', data.critical_items);
-                    updateNumber('today_on_leave', data.today_on_leave);
-                    updateNumber('today_scheduled', data.today_scheduled);
-                    updateNumber('coverage_percentage', data.coverage_percentage + '%');
                     
                     // Update notification count
                     const notificationCount = data.new_critical_items || 0;
