@@ -184,13 +184,123 @@ def coverage_needs():
     # Implementation here
     pass
 
+# Add this to your supervisor.py file, replacing the existing time-off-requests route
+
 @supervisor_bp.route('/supervisor/time-off-requests')
 @login_required
 @supervisor_required
 def time_off_requests():
-    """Review and approve time off requests"""
-    # Implementation here
-    pass
+    """View and manage time off requests"""
+    # Get filter parameters
+    status_filter = request.args.get('status', 'pending')
+    crew_filter = request.args.get('crew', 'all')
+    date_filter = request.args.get('date_range', 'upcoming')
+    
+    # Base query
+    query = TimeOffRequest.query
+    
+    # Apply status filter
+    if status_filter != 'all':
+        query = query.filter_by(status=status_filter)
+    
+    # Apply crew filter
+    if crew_filter != 'all':
+        query = query.join(Employee).filter(Employee.crew == crew_filter)
+    else:
+        query = query.join(Employee)
+    
+    # Apply date filter
+    today = datetime.now().date()
+    if date_filter == 'upcoming':
+        query = query.filter(TimeOffRequest.start_date >= today)
+    elif date_filter == 'past':
+        query = query.filter(TimeOffRequest.end_date < today)
+    elif date_filter == 'current':
+        query = query.filter(
+            TimeOffRequest.start_date <= today,
+            TimeOffRequest.end_date >= today
+        )
+    
+    # Order by start date (pending first, then by date)
+    requests = query.order_by(
+        case(
+            (TimeOffRequest.status == 'pending', 0),
+            (TimeOffRequest.status == 'approved', 1),
+            (TimeOffRequest.status == 'denied', 2)
+        ),
+        TimeOffRequest.start_date
+    ).all()
+    
+    # Get statistics
+    stats = {
+        'pending_count': TimeOffRequest.query.filter_by(status='pending').count(),
+        'approved_this_week': TimeOffRequest.query.filter(
+            TimeOffRequest.status == 'approved',
+            TimeOffRequest.approved_date >= datetime.now() - timedelta(days=7)
+        ).count(),
+        'coverage_warnings': 0  # Will be calculated based on coverage needs
+    }
+    
+    # Check for coverage warnings (requests that might cause coverage issues)
+    for req in requests:
+        if req.status == 'pending':
+            # Check if approving this would cause coverage issues
+            conflicting = TimeOffRequest.query.filter(
+                TimeOffRequest.status == 'approved',
+                TimeOffRequest.employee.has(crew=req.employee.crew),
+                TimeOffRequest.start_date <= req.end_date,
+                TimeOffRequest.end_date >= req.start_date
+            ).count()
+            
+            if conflicting >= 2:  # If 2 or more people are already off
+                stats['coverage_warnings'] += 1
+                req.has_coverage_warning = True
+            else:
+                req.has_coverage_warning = False
+    
+    return render_template('time_off_requests.html',
+                         requests=requests,
+                         stats=stats,
+                         status_filter=status_filter,
+                         crew_filter=crew_filter,
+                         date_filter=date_filter)
+
+@supervisor_bp.route('/supervisor/time-off-requests/<int:request_id>/<action>', methods=['POST'])
+@login_required
+@supervisor_required
+def handle_time_off_request(request_id, action):
+    """Approve or deny a time off request"""
+    time_off_request = TimeOffRequest.query.get_or_404(request_id)
+    
+    if time_off_request.status != 'pending':
+        flash('This request has already been processed.', 'warning')
+        return redirect(url_for('supervisor.time_off_requests'))
+    
+    if action == 'approve':
+        time_off_request.status = 'approved'
+        time_off_request.approved_by = current_user.id
+        time_off_request.approved_date = datetime.now()
+        
+        # Send notification to employee (you can implement this later)
+        flash(f'Approved {time_off_request.employee.name}\'s time off request for {time_off_request.start_date.strftime("%b %d")} - {time_off_request.end_date.strftime("%b %d")}', 'success')
+        
+    elif action == 'deny':
+        time_off_request.status = 'denied'
+        time_off_request.approved_by = current_user.id
+        time_off_request.approved_date = datetime.now()
+        
+        # Get denial reason if provided
+        denial_reason = request.form.get('denial_reason', '')
+        if denial_reason:
+            time_off_request.notes = f"Denial reason: {denial_reason}"
+        
+        flash(f'Denied {time_off_request.employee.name}\'s time off request', 'info')
+    
+    db.session.commit()
+    return redirect(url_for('supervisor.time_off_requests'))
+
+# Also add this import at the top of supervisor.py if not already present:
+# from sqlalchemy import case
 
 @supervisor_bp.route('/supervisor/swap-requests')
 @login_required
