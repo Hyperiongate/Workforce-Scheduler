@@ -12,41 +12,65 @@
         }
         
         .page-header {
-            background: white;
-            padding: 2rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 2rem 0;
             margin-bottom: 2rem;
-            border-bottom: 3px solid #667eea;
+        }
+        
+        .stats-card {
+            background: white;
+            border-radius: 10px;
+            padding: 1.5rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            text-align: center;
+            transition: transform 0.2s;
+        }
+        
+        .stats-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+        }
+        
+        .stats-number {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: #667eea;
+        }
+        
+        .stats-label {
+            color: #6c757d;
+            font-size: 0.875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
         
         .request-card {
             background: white;
-            border-radius: 8px;
+            border-radius: 10px;
             padding: 1.5rem;
             margin-bottom: 1rem;
-            border-left: 4px solid;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             transition: all 0.3s ease;
         }
         
         .request-card:hover {
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
         }
         
-        .request-card.pending { border-left-color: #ffc107; }
-        .request-card.approved { border-left-color: #28a745; }
-        .request-card.denied { border-left-color: #dc3545; }
-        
-        .status-badge {
-            padding: 0.35rem 0.75rem;
-            border-radius: 20px;
-            font-size: 0.875rem;
-            font-weight: 600;
+        .request-card.pending {
+            border-left: 4px solid #f39c12;
         }
         
-        .badge-pending { background: #fff3cd; color: #856404; }
-        .badge-approved { background: #d4edda; color: #155724; }
-        .badge-denied { background: #f8d7da; color: #721c24; }
+        .request-card.approved {
+            border-left: 4px solid #27ae60;
+            opacity: 0.8;
+        }
+        
+        .request-card.denied {
+            border-left: 4px solid #e74c3c;
+            opacity: 0.6;
+        }
         
         .employee-info {
             display: flex;
@@ -63,9 +87,43 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            font-weight: bold;
+            font-weight: 600;
             margin-right: 1rem;
         }
+        
+        .crew-badge {
+            background: #f8f9fa;
+            padding: 0.25rem 0.5rem;
+            border-radius: 15px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            margin-left: 0.5rem;
+        }
+        
+        .crew-A { background: #e3f2fd; color: #1976d2; }
+        .crew-B { background: #f3e5f5; color: #7b1fa2; }
+        .crew-C { background: #e8f5e9; color: #388e3c; }
+        .crew-D { background: #fff3e0; color: #f57c00; }
+        
+        .date-range {
+            background: #f8f9fa;
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
+            margin-bottom: 0.5rem;
+        }
+        
+        .request-type {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 15px;
+            font-size: 0.875rem;
+            font-weight: 500;
+            margin-right: 0.5rem;
+        }
+        
+        .type-vacation { background: #e3f2fd; color: #1976d2; }
+        .type-sick { background: #ffebee; color: #c62828; }
+        .type-personal { background: #f3e5f5; color: #7b1fa2; }
         
         .action-buttons {
             display: flex;
@@ -75,26 +133,36 @@
         
         .coverage-warning {
             background: #fff3cd;
-            border: 1px solid #ffeaa7;
-            border-radius: 4px;
-            padding: 0.75rem;
+            border: 1px solid #ffc107;
+            color: #856404;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
             margin-top: 0.5rem;
             font-size: 0.875rem;
         }
         
-        .date-range {
-            background: #f8f9fa;
-            padding: 0.5rem 1rem;
-            border-radius: 4px;
-            display: inline-block;
+        .coverage-warning i {
+            margin-right: 0.5rem;
         }
         
         .filter-section {
             background: white;
             padding: 1.5rem;
-            border-radius: 8px;
+            border-radius: 10px;
             margin-bottom: 2rem;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 3rem;
+            color: #6c757d;
+        }
+        
+        .empty-state i {
+            font-size: 4rem;
+            color: #dee2e6;
+            margin-bottom: 1rem;
         }
     </style>
 </head>
@@ -108,21 +176,25 @@
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav">
-                    <li class="nav-item">
-                        <a class="nav-link" href="/dashboard">Dashboard</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link active" href="/supervisor/time-off-requests">Time Off Requests</a>
-                    </li>
-                </ul>
                 <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/dashboard">
+                            <i class="bi bi-grid-3x3-gap"></i> Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/vacation-calendar">
+                            <i class="bi bi-calendar-event"></i> Calendar View
+                        </a>
+                    </li>
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown">
                             <i class="bi bi-person-circle"></i> {{ current_user.name }}
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end">
-                            <li><a class="dropdown-item" href="/logout">Logout</a></li>
+                            <li><a class="dropdown-item" href="/logout">
+                                <i class="bi bi-box-arrow-right"></i> Logout
+                            </a></li>
                         </ul>
                     </li>
                 </ul>
@@ -131,220 +203,211 @@
     </nav>
 
     <div class="page-header">
-        <div class="container-fluid">
-            <div class="row align-items-center">
-                <div class="col">
-                    <h1><i class="bi bi-calendar-x" style="color: #667eea;"></i> Time Off Requests</h1>
-                    <p class="text-muted mb-0">Review and approve employee vacation, sick leave, and personal time requests</p>
-                </div>
-                <div class="col-auto">
-                    <div class="text-center">
-                        <h2 class="mb-0" style="color: #667eea;">3</h2>
-                        <small class="text-muted">Pending Approval</small>
-                    </div>
-                </div>
-            </div>
+        <div class="container">
+            <h1><i class="bi bi-calendar-x"></i> Time Off Requests</h1>
+            <p class="mb-0">Review and manage employee vacation, sick leave, and personal time requests</p>
         </div>
     </div>
 
-    <div class="container-fluid">
-        <!-- Filter Section -->
+    <div class="container">
+        <!-- Flash Messages -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <!-- Statistics Cards -->
+        <div class="row mb-4">
+            <div class="col-md-4">
+                <div class="stats-card">
+                    <div class="stats-number">{{ stats.pending_count }}</div>
+                    <div class="stats-label">Pending Requests</div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="stats-card">
+                    <div class="stats-number">{{ stats.approved_this_week }}</div>
+                    <div class="stats-label">Approved This Week</div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="stats-card">
+                    <div class="stats-number text-warning">{{ stats.coverage_warnings }}</div>
+                    <div class="stats-label">Coverage Warnings</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Filters -->
         <div class="filter-section">
-            <div class="row align-items-end">
-                <div class="col-md-3">
-                    <label class="form-label">Status Filter</label>
-                    <select class="form-select">
-                        <option value="">All Requests</option>
-                        <option value="pending" selected>Pending Only</option>
-                        <option value="approved">Approved</option>
-                        <option value="denied">Denied</option>
+            <form method="get" class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">Status</label>
+                    <select name="status" class="form-select" onchange="this.form.submit()">
+                        <option value="pending" {% if status_filter == 'pending' %}selected{% endif %}>Pending</option>
+                        <option value="all" {% if status_filter == 'all' %}selected{% endif %}>All Requests</option>
+                        <option value="approved" {% if status_filter == 'approved' %}selected{% endif %}>Approved</option>
+                        <option value="denied" {% if status_filter == 'denied' %}selected{% endif %}>Denied</option>
                     </select>
                 </div>
-                <div class="col-md-3">
+                <div class="col-md-4">
+                    <label class="form-label">Crew</label>
+                    <select name="crew" class="form-select" onchange="this.form.submit()">
+                        <option value="all" {% if crew_filter == 'all' %}selected{% endif %}>All Crews</option>
+                        <option value="A" {% if crew_filter == 'A' %}selected{% endif %}>Crew A</option>
+                        <option value="B" {% if crew_filter == 'B' %}selected{% endif %}>Crew B</option>
+                        <option value="C" {% if crew_filter == 'C' %}selected{% endif %}>Crew C</option>
+                        <option value="D" {% if crew_filter == 'D' %}selected{% endif %}>Crew D</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
                     <label class="form-label">Date Range</label>
-                    <input type="date" class="form-control" value="2025-07-01">
+                    <select name="date_range" class="form-select" onchange="this.form.submit()">
+                        <option value="upcoming" {% if date_filter == 'upcoming' %}selected{% endif %}>Upcoming</option>
+                        <option value="all" {% if date_filter == 'all' %}selected{% endif %}>All Dates</option>
+                        <option value="current" {% if date_filter == 'current' %}selected{% endif %}>Currently Active</option>
+                        <option value="past" {% if date_filter == 'past' %}selected{% endif %}>Past</option>
+                    </select>
                 </div>
-                <div class="col-md-3">
-                    <label class="form-label">To</label>
-                    <input type="date" class="form-control" value="2025-07-31">
-                </div>
-                <div class="col-md-3">
-                    <button class="btn btn-primary w-100">
-                        <i class="bi bi-funnel"></i> Apply Filters
-                    </button>
-                </div>
-            </div>
+            </form>
         </div>
 
-        <!-- Pending Requests -->
-        <h3 class="mb-3">Pending Requests (3)</h3>
-        
-        <!-- Request 1 -->
-        <div class="request-card pending">
-            <div class="employee-info">
-                <div class="employee-avatar">JD</div>
-                <div class="flex-grow-1">
-                    <h5 class="mb-0">John Doe</h5>
-                    <small class="text-muted">Operator - Crew A</small>
-                </div>
-                <span class="status-badge badge-pending">Pending</span>
-            </div>
-            
-            <div class="row">
-                <div class="col-md-8">
-                    <p class="mb-2"><strong>Request Type:</strong> Vacation</p>
-                    <p class="mb-2"><strong>Dates:</strong> <span class="date-range">July 25-28, 2025 (4 days)</span></p>
-                    <p class="mb-2"><strong>Reason:</strong> Family vacation to Florida</p>
-                    <p class="mb-0"><strong>Vacation Balance:</strong> 10 days remaining (after approval: 6 days)</p>
-                </div>
-                <div class="col-md-4">
-                    <div class="coverage-warning">
-                        <i class="bi bi-exclamation-triangle-fill"></i> <strong>Coverage Alert</strong><br>
-                        2 operators already off on July 26
+        <!-- Requests List -->
+        <div class="requests-container">
+            {% if requests %}
+                {% for request in requests %}
+                <div class="request-card {{ request.status }}">
+                    <div class="employee-info">
+                        <div class="employee-avatar">
+                            {{ request.employee.name.split()[0][0] }}{{ request.employee.name.split()[-1][0] }}
+                        </div>
+                        <div>
+                            <h5 class="mb-0">{{ request.employee.name }}</h5>
+                            <span class="text-muted">{{ request.employee.position }}</span>
+                            <span class="crew-badge crew-{{ request.employee.crew }}">Crew {{ request.employee.crew }}</span>
+                        </div>
+                        <div class="ms-auto text-end">
+                            <span class="request-type type-{{ request.request_type }}">
+                                <i class="bi bi-{{ 'sun' if request.request_type == 'vacation' else 'thermometer' if request.request_type == 'sick' else 'person' }}"></i>
+                                {{ request.request_type.title() }}
+                            </span>
+                            <div class="text-muted small mt-1">
+                                Requested {{ request.created_at.strftime('%b %d, %Y') }}
+                            </div>
+                        </div>
                     </div>
-                </div>
-            </div>
-            
-            <div class="action-buttons">
-                <button class="btn btn-success">
-                    <i class="bi bi-check-circle"></i> Approve
-                </button>
-                <button class="btn btn-danger">
-                    <i class="bi bi-x-circle"></i> Deny
-                </button>
-                <button class="btn btn-outline-secondary">
-                    <i class="bi bi-chat-dots"></i> Request More Info
-                </button>
-                <button class="btn btn-outline-primary ms-auto">
-                    <i class="bi bi-calendar-week"></i> View Schedule
-                </button>
-            </div>
-        </div>
 
-        <!-- Request 2 -->
-        <div class="request-card pending">
-            <div class="employee-info">
-                <div class="employee-avatar" style="background: #764ba2;">SM</div>
-                <div class="flex-grow-1">
-                    <h5 class="mb-0">Sarah Miller</h5>
-                    <small class="text-muted">Technician - Crew B</small>
-                </div>
-                <span class="status-badge badge-pending">Pending</span>
-            </div>
-            
-            <div class="row">
-                <div class="col-md-8">
-                    <p class="mb-2"><strong>Request Type:</strong> Sick Leave</p>
-                    <p class="mb-2"><strong>Dates:</strong> <span class="date-range">July 19, 2025 (1 day)</span></p>
-                    <p class="mb-2"><strong>Reason:</strong> Doctor's appointment and recovery</p>
-                    <p class="mb-0"><strong>Sick Leave Balance:</strong> 5 days remaining (after approval: 4 days)</p>
-                </div>
-                <div class="col-md-4">
-                    <small class="text-success"><i class="bi bi-check-circle"></i> No coverage issues</small>
-                </div>
-            </div>
-            
-            <div class="action-buttons">
-                <button class="btn btn-success">
-                    <i class="bi bi-check-circle"></i> Approve
-                </button>
-                <button class="btn btn-danger">
-                    <i class="bi bi-x-circle"></i> Deny
-                </button>
-                <button class="btn btn-outline-secondary">
-                    <i class="bi bi-chat-dots"></i> Request More Info
-                </button>
-            </div>
-        </div>
-
-        <!-- Request 3 -->
-        <div class="request-card pending">
-            <div class="employee-info">
-                <div class="employee-avatar" style="background: #f093fb;">RJ</div>
-                <div class="flex-grow-1">
-                    <h5 class="mb-0">Robert Johnson</h5>
-                    <small class="text-muted">Supervisor - Crew C</small>
-                </div>
-                <span class="status-badge badge-pending">Pending</span>
-            </div>
-            
-            <div class="row">
-                <div class="col-md-8">
-                    <p class="mb-2"><strong>Request Type:</strong> Personal Time</p>
-                    <p class="mb-2"><strong>Dates:</strong> <span class="date-range">August 5-6, 2025 (2 days)</span></p>
-                    <p class="mb-2"><strong>Reason:</strong> Moving to new house</p>
-                    <p class="mb-0"><strong>Personal Time Balance:</strong> 3 days remaining (after approval: 1 day)</p>
-                </div>
-                <div class="col-md-4">
-                    <div class="coverage-warning">
-                        <i class="bi bi-exclamation-triangle-fill"></i> <strong>Supervisor Coverage</strong><br>
-                        Need backup supervisor for Crew C
+                    <div class="date-range">
+                        <i class="bi bi-calendar-range"></i>
+                        <strong>{{ request.start_date.strftime('%B %d, %Y') }}</strong>
+                        {% if request.start_date != request.end_date %}
+                            to <strong>{{ request.end_date.strftime('%B %d, %Y') }}</strong>
+                            <span class="text-muted">({{ (request.end_date - request.start_date).days + 1 }} days)</span>
+                        {% else %}
+                            <span class="text-muted">(1 day)</span>
+                        {% endif %}
                     </div>
-                </div>
-            </div>
-            
-            <div class="action-buttons">
-                <button class="btn btn-success">
-                    <i class="bi bi-check-circle"></i> Approve
-                </button>
-                <button class="btn btn-danger">
-                    <i class="bi bi-x-circle"></i> Deny
-                </button>
-                <button class="btn btn-outline-secondary">
-                    <i class="bi bi-chat-dots"></i> Request More Info
-                </button>
-                <button class="btn btn-outline-warning ms-auto">
-                    <i class="bi bi-person-plus"></i> Assign Coverage
-                </button>
-            </div>
-        </div>
 
-        <!-- Recently Processed -->
-        <h3 class="mb-3 mt-5">Recently Processed</h3>
-        
-        <!-- Approved Request -->
-        <div class="request-card approved">
-            <div class="employee-info">
-                <div class="employee-avatar" style="background: #28a745;">EW</div>
-                <div class="flex-grow-1">
-                    <h5 class="mb-0">Emily Wilson</h5>
-                    <small class="text-muted">Operator - Crew D</small>
-                </div>
-                <span class="status-badge badge-approved">Approved</span>
-            </div>
-            
-            <div class="row">
-                <div class="col-md-8">
-                    <p class="mb-2"><strong>Request Type:</strong> Vacation</p>
-                    <p class="mb-2"><strong>Dates:</strong> <span class="date-range">July 15-17, 2025 (3 days)</span></p>
-                    <p class="mb-2"><strong>Reason:</strong> Anniversary trip</p>
-                    <p class="mb-0"><small class="text-muted">Approved by you on July 10, 2025</small></p>
-                </div>
-            </div>
-        </div>
+                    {% if request.reason %}
+                    <div class="mt-2">
+                        <small class="text-muted">Reason:</small> {{ request.reason }}
+                    </div>
+                    {% endif %}
 
-        <!-- Denied Request -->
-        <div class="request-card denied">
-            <div class="employee-info">
-                <div class="employee-avatar" style="background: #dc3545;">MB</div>
-                <div class="flex-grow-1">
-                    <h5 class="mb-0">Michael Brown</h5>
-                    <small class="text-muted">Technician - Crew A</small>
+                    {% if request.status == 'pending' %}
+                        {% if request.has_coverage_warning %}
+                        <div class="coverage-warning">
+                            <i class="bi bi-exclamation-triangle-fill"></i>
+                            Warning: Multiple team members already scheduled off during this period
+                        </div>
+                        {% endif %}
+
+                        <div class="action-buttons">
+                            <form method="post" action="{{ url_for('supervisor.handle_time_off_request', request_id=request.id, action='approve') }}" style="display: inline;">
+                                <button type="submit" class="btn btn-success">
+                                    <i class="bi bi-check-circle"></i> Approve
+                                </button>
+                            </form>
+                            <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#denyModal{{ request.id }}">
+                                <i class="bi bi-x-circle"></i> Deny
+                            </button>
+                            <a href="/vacation-calendar?highlight={{ request.start_date }}" class="btn btn-outline-primary">
+                                <i class="bi bi-calendar"></i> View Calendar
+                            </a>
+                        </div>
+
+                        <!-- Deny Modal -->
+                        <div class="modal fade" id="denyModal{{ request.id }}" tabindex="-1">
+                            <div class="modal-dialog">
+                                <div class="modal-content">
+                                    <div class="modal-header">
+                                        <h5 class="modal-title">Deny Time Off Request</h5>
+                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                    </div>
+                                    <form method="post" action="{{ url_for('supervisor.handle_time_off_request', request_id=request.id, action='deny') }}">
+                                        <div class="modal-body">
+                                            <p>Deny {{ request.employee.name }}'s request for {{ request.start_date.strftime('%b %d') }}{% if request.start_date != request.end_date %} - {{ request.end_date.strftime('%b %d') }}{% endif %}?</p>
+                                            <div class="mb-3">
+                                                <label class="form-label">Reason for denial (optional)</label>
+                                                <textarea name="denial_reason" class="form-control" rows="3" placeholder="e.g., Coverage requirements, blackout period, etc."></textarea>
+                                            </div>
+                                        </div>
+                                        <div class="modal-footer">
+                                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                            <button type="submit" class="btn btn-danger">Deny Request</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    {% else %}
+                        <div class="mt-3 text-muted">
+                            <small>
+                                {{ request.status.title() }} by {{ request.approver.name if request.approver else 'System' }}
+                                {% if request.approved_date %}
+                                    on {{ request.approved_date.strftime('%b %d, %Y') }}
+                                {% endif %}
+                            </small>
+                            {% if request.notes and 'Denial reason:' in request.notes %}
+                                <div class="mt-1">
+                                    <small class="text-danger">{{ request.notes }}</small>
+                                </div>
+                            {% endif %}
+                        </div>
+                    {% endif %}
                 </div>
-                <span class="status-badge badge-denied">Denied</span>
-            </div>
-            
-            <div class="row">
-                <div class="col-md-8">
-                    <p class="mb-2"><strong>Request Type:</strong> Vacation</p>
-                    <p class="mb-2"><strong>Dates:</strong> <span class="date-range">July 20-24, 2025 (5 days)</span></p>
-                    <p class="mb-2"><strong>Denial Reason:</strong> Critical project deadline - insufficient coverage</p>
-                    <p class="mb-0"><small class="text-muted">Denied by you on July 12, 2025</small></p>
+                {% endfor %}
+            {% else %}
+                <div class="empty-state">
+                    <i class="bi bi-inbox"></i>
+                    <h4>No time off requests found</h4>
+                    <p>Try adjusting your filters or check back later</p>
                 </div>
-            </div>
+            {% endif %}
         </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Auto-refresh pending requests count every 30 seconds
+        if ('{{ status_filter }}' === 'pending') {
+            setInterval(() => {
+                location.reload();
+            }, 30000);
+        }
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                window.location.href = '/dashboard';
+            }
+        });
+    </script>
 </body>
 </html>
