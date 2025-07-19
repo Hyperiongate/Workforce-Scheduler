@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request
 from flask_login import LoginManager
+from flask_migrate import Migrate
 from models import db, Employee
 import os
 
@@ -32,6 +33,7 @@ if not os.path.exists(app.config['UPLOAD_FOLDER']):
 
 # Initialize extensions
 db.init_app(app)
+migrate = Migrate(app, db)
 
 login_manager = LoginManager()
 login_manager.init_app(app)
