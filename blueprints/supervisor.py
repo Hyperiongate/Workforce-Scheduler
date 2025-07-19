@@ -303,8 +303,115 @@ def coverage_needs():
 @supervisor_required
 def swap_requests():
     """Review and approve shift swap requests"""
-    # Implementation here
-    pass
+    # Get filter parameters
+    status_filter = request.args.get('status', 'pending')
+    crew_filter = request.args.get('crew', 'all')
+    
+    # Base query
+    query = ShiftSwapRequest.query
+    
+    # Apply status filter
+    if status_filter != 'all':
+        query = query.filter_by(status=status_filter)
+    
+    # Apply crew filter
+    if crew_filter != 'all':
+        # Join with requester employee to filter by crew
+        query = query.join(Employee, Employee.id == ShiftSwapRequest.requester_id).filter(
+            Employee.crew == crew_filter
+        )
+    
+    # Order by creation date (newest first for pending)
+    if status_filter == 'pending':
+        swap_requests = query.order_by(ShiftSwapRequest.created_at.desc()).all()
+    else:
+        swap_requests = query.order_by(ShiftSwapRequest.created_at.desc()).all()
+    
+    # Get statistics
+    stats = {
+        'pending_count': ShiftSwapRequest.query.filter_by(status='pending').count(),
+        'approved_this_week': ShiftSwapRequest.query.filter(
+            ShiftSwapRequest.status == 'approved',
+            ShiftSwapRequest.created_at >= datetime.now() - timedelta(days=7)
+        ).count(),
+        'needs_dual_approval': 0
+    }
+    
+    # Check for swaps needing dual approval
+    for swap in swap_requests:
+        if swap.status == 'pending':
+            # Check if this needs approval from both supervisors
+            if swap.requester and swap.target_employee:
+                if swap.requester.crew != swap.target_employee.crew:
+                    stats['needs_dual_approval'] += 1
+                    swap.needs_dual_approval = True
+                else:
+                    swap.needs_dual_approval = False
+    
+    return render_template('swap_requests.html',
+                         requests=swap_requests,
+                         stats=stats,
+                         status_filter=status_filter,
+                         crew_filter=crew_filter)
+
+@supervisor_bp.route('/supervisor/swap-requests/<int:request_id>/<action>', methods=['POST'])
+@login_required
+@supervisor_required
+def handle_swap_request(request_id, action):
+    """Approve or deny a swap request"""
+    swap_request = ShiftSwapRequest.query.get_or_404(request_id)
+    
+    if swap_request.status != 'pending':
+        flash('This swap request has already been processed.', 'warning')
+        return redirect(url_for('supervisor.swap_requests'))
+    
+    # Determine which supervisor is approving
+    is_requester_supervisor = current_user.crew == swap_request.requester.crew
+    is_target_supervisor = swap_request.target_employee and current_user.crew == swap_request.target_employee.crew
+    
+    if action == 'approve':
+        # Handle approval based on supervisor's crew
+        if is_requester_supervisor:
+            swap_request.requester_supervisor_approved = True
+            swap_request.requester_supervisor_id = current_user.id
+            swap_request.requester_supervisor_date = datetime.now()
+        
+        if is_target_supervisor:
+            swap_request.target_supervisor_approved = True
+            swap_request.target_supervisor_id = current_user.id
+            swap_request.target_supervisor_date = datetime.now()
+        
+        # Check if both approvals are complete (or if only one is needed)
+        needs_both = swap_request.requester.crew != swap_request.target_employee.crew if swap_request.target_employee else False
+        
+        if not needs_both or (swap_request.requester_supervisor_approved and swap_request.target_supervisor_approved):
+            swap_request.status = 'approved'
+            
+            # TODO: Actually swap the schedules in the database
+            # This would involve swapping the employee_id fields in the Schedule records
+            
+            flash(f'Approved shift swap between {swap_request.requester.name} and {swap_request.target_employee.name if swap_request.target_employee else "TBD"}', 'success')
+        else:
+            flash('Swap request partially approved. Waiting for other supervisor approval.', 'info')
+            
+    elif action == 'deny':
+        swap_request.status = 'denied'
+        
+        # Set the appropriate supervisor fields
+        if is_requester_supervisor:
+            swap_request.requester_supervisor_approved = False
+            swap_request.requester_supervisor_id = current_user.id
+            swap_request.requester_supervisor_date = datetime.now()
+        
+        if is_target_supervisor:
+            swap_request.target_supervisor_approved = False
+            swap_request.target_supervisor_id = current_user.id
+            swap_request.target_supervisor_date = datetime.now()
+        
+        flash(f'Denied shift swap request from {swap_request.requester.name}', 'info')
+    
+    db.session.commit()
+    return redirect(url_for('supervisor.swap_requests'))
 
 @supervisor_bp.route('/supervisor/suggestions')
 @login_required
