@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Time Off Requests - Workforce Scheduler</title>
+    <title>Shift Swap Requests - Workforce Scheduler</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
     <style>
@@ -12,7 +12,7 @@
         }
         
         .page-header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
             color: white;
             padding: 2rem 0;
             margin-bottom: 2rem;
@@ -35,7 +35,7 @@
         .stats-number {
             font-size: 2.5rem;
             font-weight: 700;
-            color: #667eea;
+            color: #764ba2;
         }
         
         .stats-label {
@@ -45,7 +45,7 @@
             letter-spacing: 0.5px;
         }
         
-        .request-card {
+        .swap-card {
             background: white;
             border-radius: 10px;
             padding: 1.5rem;
@@ -54,28 +54,34 @@
             transition: all 0.3s ease;
         }
         
-        .request-card:hover {
+        .swap-card:hover {
             box-shadow: 0 4px 12px rgba(0,0,0,0.15);
         }
         
-        .request-card.pending {
+        .swap-card.pending {
             border-left: 4px solid #f39c12;
         }
         
-        .request-card.approved {
+        .swap-card.approved {
             border-left: 4px solid #27ae60;
             opacity: 0.8;
         }
         
-        .request-card.denied {
+        .swap-card.denied {
             border-left: 4px solid #e74c3c;
             opacity: 0.6;
+        }
+        
+        .employee-swap {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1rem;
         }
         
         .employee-info {
             display: flex;
             align-items: center;
-            margin-bottom: 1rem;
         }
         
         .employee-avatar {
@@ -89,6 +95,12 @@
             justify-content: center;
             font-weight: 600;
             margin-right: 1rem;
+        }
+        
+        .swap-arrow {
+            font-size: 2rem;
+            color: #6c757d;
+            margin: 0 2rem;
         }
         
         .crew-badge {
@@ -105,25 +117,12 @@
         .crew-C { background: #e8f5e9; color: #388e3c; }
         .crew-D { background: #fff3e0; color: #f57c00; }
         
-        .date-range {
+        .shift-details {
             background: #f8f9fa;
-            padding: 0.75rem 1rem;
+            padding: 1rem;
             border-radius: 8px;
-            margin-bottom: 0.5rem;
+            margin: 1rem 0;
         }
-        
-        .request-type {
-            display: inline-block;
-            padding: 0.25rem 0.75rem;
-            border-radius: 15px;
-            font-size: 0.875rem;
-            font-weight: 500;
-            margin-right: 0.5rem;
-        }
-        
-        .type-vacation { background: #e3f2fd; color: #1976d2; }
-        .type-sick { background: #ffebee; color: #c62828; }
-        .type-personal { background: #f3e5f5; color: #7b1fa2; }
         
         .action-buttons {
             display: flex;
@@ -131,19 +130,22 @@
             margin-top: 1rem;
         }
         
-        .coverage-warning {
-            background: #fff3cd;
-            border: 1px solid #ffc107;
-            color: #856404;
-            padding: 0.5rem 1rem;
-            border-radius: 6px;
+        .approval-status {
+            display: flex;
+            gap: 1rem;
             margin-top: 0.5rem;
             font-size: 0.875rem;
         }
         
-        .coverage-warning i {
-            margin-right: 0.5rem;
+        .approval-badge {
+            padding: 0.25rem 0.75rem;
+            border-radius: 15px;
+            font-weight: 500;
         }
+        
+        .approval-pending { background: #fff3cd; color: #856404; }
+        .approval-approved { background: #d4edda; color: #155724; }
+        .approval-denied { background: #f8d7da; color: #721c24; }
         
         .filter-section {
             background: white;
@@ -164,6 +166,16 @@
             color: #dee2e6;
             margin-bottom: 1rem;
         }
+        
+        .dual-approval-warning {
+            background: #f0f0ff;
+            border: 1px solid #764ba2;
+            color: #764ba2;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            margin-top: 0.5rem;
+            font-size: 0.875rem;
+        }
     </style>
 </head>
 <body>
@@ -180,11 +192,6 @@
                     <li class="nav-item">
                         <a class="nav-link" href="/dashboard">
                             <i class="bi bi-grid-3x3-gap"></i> Dashboard
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/vacation-calendar">
-                            <i class="bi bi-calendar-event"></i> Calendar View
                         </a>
                     </li>
                     <li class="nav-item dropdown">
@@ -204,8 +211,8 @@
 
     <div class="page-header">
         <div class="container">
-            <h1><i class="bi bi-calendar-x"></i> Time Off Requests</h1>
-            <p class="mb-0">Review and manage employee vacation, sick leave, and personal time requests</p>
+            <h1><i class="bi bi-arrow-left-right"></i> Shift Swap Requests</h1>
+            <p class="mb-0">Review and approve employee shift trade requests</p>
         </div>
     </div>
 
@@ -227,7 +234,7 @@
             <div class="col-md-4">
                 <div class="stats-card">
                     <div class="stats-number">{{ stats.pending_count }}</div>
-                    <div class="stats-label">Pending Requests</div>
+                    <div class="stats-label">Pending Swaps</div>
                 </div>
             </div>
             <div class="col-md-4">
@@ -238,8 +245,8 @@
             </div>
             <div class="col-md-4">
                 <div class="stats-card">
-                    <div class="stats-number text-warning">{{ stats.coverage_warnings }}</div>
-                    <div class="stats-label">Coverage Warnings</div>
+                    <div class="stats-number text-warning">{{ stats.needs_dual_approval }}</div>
+                    <div class="stats-label">Need Dual Approval</div>
                 </div>
             </div>
         </div>
@@ -247,7 +254,7 @@
         <!-- Filters -->
         <div class="filter-section">
             <form method="get" class="row g-3">
-                <div class="col-md-4">
+                <div class="col-md-6">
                     <label class="form-label">Status</label>
                     <select name="status" class="form-select" onchange="this.form.submit()">
                         <option value="pending" {% if status_filter == 'pending' %}selected{% endif %}>Pending</option>
@@ -256,7 +263,7 @@
                         <option value="denied" {% if status_filter == 'denied' %}selected{% endif %}>Denied</option>
                     </select>
                 </div>
-                <div class="col-md-4">
+                <div class="col-md-6">
                     <label class="form-label">Crew</label>
                     <select name="crew" class="form-select" onchange="this.form.submit()">
                         <option value="all" {% if crew_filter == 'all' %}selected{% endif %}>All Crews</option>
@@ -266,52 +273,79 @@
                         <option value="D" {% if crew_filter == 'D' %}selected{% endif %}>Crew D</option>
                     </select>
                 </div>
-                <div class="col-md-4">
-                    <label class="form-label">Date Range</label>
-                    <select name="date_range" class="form-select" onchange="this.form.submit()">
-                        <option value="upcoming" {% if date_filter == 'upcoming' %}selected{% endif %}>Upcoming</option>
-                        <option value="all" {% if date_filter == 'all' %}selected{% endif %}>All Dates</option>
-                        <option value="current" {% if date_filter == 'current' %}selected{% endif %}>Currently Active</option>
-                        <option value="past" {% if date_filter == 'past' %}selected{% endif %}>Past</option>
-                    </select>
-                </div>
             </form>
         </div>
 
-        <!-- Requests List -->
-        <div class="requests-container">
+        <!-- Swap Requests List -->
+        <div class="swap-requests-container">
             {% if requests %}
                 {% for request in requests %}
-                <div class="request-card {{ request.status }}">
-                    <div class="employee-info">
-                        <div class="employee-avatar">
-                            {{ request.employee.name.split()[0][0] }}{{ request.employee.name.split()[-1][0] }}
-                        </div>
-                        <div>
-                            <h5 class="mb-0">{{ request.employee.name }}</h5>
-                            <span class="text-muted">{{ request.employee.position }}</span>
-                            <span class="crew-badge crew-{{ request.employee.crew }}">Crew {{ request.employee.crew }}</span>
-                        </div>
-                        <div class="ms-auto text-end">
-                            <span class="request-type type-{{ request.request_type }}">
-                                <i class="bi bi-{{ 'sun' if request.request_type == 'vacation' else 'thermometer' if request.request_type == 'sick' else 'person' }}"></i>
-                                {{ request.request_type.title() }}
-                            </span>
-                            <div class="text-muted small mt-1">
-                                Requested {{ request.created_at.strftime('%b %d, %Y') }}
+                <div class="swap-card {{ request.status }}">
+                    <!-- Employee Swap Info -->
+                    <div class="employee-swap">
+                        <div class="employee-info">
+                            <div class="employee-avatar">
+                                {{ request.requester.name.split()[0][0] }}{{ request.requester.name.split()[-1][0] }}
                             </div>
+                            <div>
+                                <h5 class="mb-0">{{ request.requester.name }}</h5>
+                                <span class="text-muted">{{ request.requester.position.name if request.requester.position else 'No Position' }}</span>
+                                <span class="crew-badge crew-{{ request.requester.crew }}">Crew {{ request.requester.crew }}</span>
+                            </div>
+                        </div>
+                        
+                        <i class="bi bi-arrow-left-right swap-arrow"></i>
+                        
+                        <div class="employee-info">
+                            {% if request.target_employee %}
+                                <div class="employee-avatar">
+                                    {{ request.target_employee.name.split()[0][0] }}{{ request.target_employee.name.split()[-1][0] }}
+                                </div>
+                                <div>
+                                    <h5 class="mb-0">{{ request.target_employee.name }}</h5>
+                                    <span class="text-muted">{{ request.target_employee.position.name if request.target_employee.position else 'No Position' }}</span>
+                                    <span class="crew-badge crew-{{ request.target_employee.crew }}">Crew {{ request.target_employee.crew }}</span>
+                                </div>
+                            {% else %}
+                                <div class="employee-avatar" style="background: #e9ecef; color: #6c757d;">
+                                    <i class="bi bi-question"></i>
+                                </div>
+                                <div>
+                                    <h5 class="mb-0">Open Swap</h5>
+                                    <span class="text-muted">Looking for someone to trade</span>
+                                </div>
+                            {% endif %}
                         </div>
                     </div>
 
-                    <div class="date-range">
-                        <i class="bi bi-calendar-range"></i>
-                        <strong>{{ request.start_date.strftime('%B %d, %Y') }}</strong>
-                        {% if request.start_date != request.end_date %}
-                            to <strong>{{ request.end_date.strftime('%B %d, %Y') }}</strong>
-                            <span class="text-muted">({{ (request.end_date - request.start_date).days + 1 }} days)</span>
-                        {% else %}
-                            <span class="text-muted">(1 day)</span>
-                        {% endif %}
+                    <!-- Shift Details -->
+                    <div class="shift-details">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <strong>{{ request.requester.name }}'s Shift:</strong><br>
+                                {% if request.original_schedule %}
+                                    <i class="bi bi-calendar"></i> {{ request.original_schedule.date.strftime('%B %d, %Y') }}<br>
+                                    <i class="bi bi-clock"></i> {{ request.original_schedule.shift_type.title() }} Shift
+                                    {% if request.original_schedule.start_time %}
+                                        ({{ request.original_schedule.start_time.strftime('%H:%M') }} - {{ request.original_schedule.end_time.strftime('%H:%M') }})
+                                    {% endif %}
+                                {% else %}
+                                    <span class="text-muted">Schedule information not available</span>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-6">
+                                <strong>{% if request.target_employee %}{{ request.target_employee.name }}'s{% else %}Requested{% endif %} Shift:</strong><br>
+                                {% if request.target_schedule %}
+                                    <i class="bi bi-calendar"></i> {{ request.target_schedule.date.strftime('%B %d, %Y') }}<br>
+                                    <i class="bi bi-clock"></i> {{ request.target_schedule.shift_type.title() }} Shift
+                                    {% if request.target_schedule.start_time %}
+                                        ({{ request.target_schedule.start_time.strftime('%H:%M') }} - {{ request.target_schedule.end_time.strftime('%H:%M') }})
+                                    {% endif %}
+                                {% else %}
+                                    <span class="text-muted">Any available shift</span>
+                                {% endif %}
+                            </div>
+                        </div>
                     </div>
 
                     {% if request.reason %}
@@ -320,65 +354,57 @@
                     </div>
                     {% endif %}
 
+                    <div class="mt-2">
+                        <small class="text-muted">Requested {{ request.created_at.strftime('%b %d, %Y at %H:%M') }}</small>
+                    </div>
+
                     {% if request.status == 'pending' %}
-                        {% if request.has_coverage_warning %}
-                        <div class="coverage-warning">
-                            <i class="bi bi-exclamation-triangle-fill"></i>
-                            Warning: Multiple team members already scheduled off during this period
+                        {% if request.needs_dual_approval %}
+                        <div class="dual-approval-warning">
+                            <i class="bi bi-exclamation-circle"></i>
+                            This swap requires approval from both crew supervisors
+                        </div>
+                        {% endif %}
+
+                        <!-- Approval Status -->
+                        {% if request.requester_supervisor_approved is not none or request.target_supervisor_approved is not none %}
+                        <div class="approval-status">
+                            <span class="approval-badge {% if request.requester_supervisor_approved %}approval-approved{% else %}approval-pending{% endif %}">
+                                Crew {{ request.requester.crew }} Supervisor: 
+                                {% if request.requester_supervisor_approved %}Approved{% else %}Pending{% endif %}
+                            </span>
+                            {% if request.target_employee %}
+                            <span class="approval-badge {% if request.target_supervisor_approved %}approval-approved{% else %}approval-pending{% endif %}">
+                                Crew {{ request.target_employee.crew }} Supervisor: 
+                                {% if request.target_supervisor_approved %}Approved{% else %}Pending{% endif %}
+                            </span>
+                            {% endif %}
                         </div>
                         {% endif %}
 
                         <div class="action-buttons">
-                            <form method="post" action="{{ url_for('supervisor.handle_time_off_request', request_id=request.id, action='approve') }}" style="display: inline;">
+                            <form method="post" action="{{ url_for('supervisor.handle_swap_request', request_id=request.id, action='approve') }}" style="display: inline;">
                                 <button type="submit" class="btn btn-success">
                                     <i class="bi bi-check-circle"></i> Approve
                                 </button>
                             </form>
-                            <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#denyModal{{ request.id }}">
-                                <i class="bi bi-x-circle"></i> Deny
-                            </button>
-                            <a href="/vacation-calendar?highlight={{ request.start_date }}" class="btn btn-outline-primary">
-                                <i class="bi bi-calendar"></i> View Calendar
-                            </a>
-                        </div>
-
-                        <!-- Deny Modal -->
-                        <div class="modal fade" id="denyModal{{ request.id }}" tabindex="-1">
-                            <div class="modal-dialog">
-                                <div class="modal-content">
-                                    <div class="modal-header">
-                                        <h5 class="modal-title">Deny Time Off Request</h5>
-                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                                    </div>
-                                    <form method="post" action="{{ url_for('supervisor.handle_time_off_request', request_id=request.id, action='deny') }}">
-                                        <div class="modal-body">
-                                            <p>Deny {{ request.employee.name }}'s request for {{ request.start_date.strftime('%b %d') }}{% if request.start_date != request.end_date %} - {{ request.end_date.strftime('%b %d') }}{% endif %}?</p>
-                                            <div class="mb-3">
-                                                <label class="form-label">Reason for denial (optional)</label>
-                                                <textarea name="denial_reason" class="form-control" rows="3" placeholder="e.g., Coverage requirements, blackout period, etc."></textarea>
-                                            </div>
-                                        </div>
-                                        <div class="modal-footer">
-                                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                                            <button type="submit" class="btn btn-danger">Deny Request</button>
-                                        </div>
-                                    </form>
-                                </div>
-                            </div>
+                            <form method="post" action="{{ url_for('supervisor.handle_swap_request', request_id=request.id, action='deny') }}" style="display: inline;">
+                                <button type="submit" class="btn btn-danger">
+                                    <i class="bi bi-x-circle"></i> Deny
+                                </button>
+                            </form>
                         </div>
                     {% else %}
                         <div class="mt-3 text-muted">
                             <small>
-                                {{ request.status.title() }} by {{ request.approver.name if request.approver else 'System' }}
-                                {% if request.approved_date %}
-                                    on {{ request.approved_date.strftime('%b %d, %Y') }}
+                                {{ request.status.title() }}
+                                {% if request.requester_supervisor %}
+                                    by {{ request.requester_supervisor.name }}
+                                {% endif %}
+                                {% if request.requester_supervisor_date %}
+                                    on {{ request.requester_supervisor_date.strftime('%b %d, %Y') }}
                                 {% endif %}
                             </small>
-                            {% if request.notes and 'Denial reason:' in request.notes %}
-                                <div class="mt-1">
-                                    <small class="text-danger">{{ request.notes }}</small>
-                                </div>
-                            {% endif %}
                         </div>
                     {% endif %}
                 </div>
@@ -386,7 +412,7 @@
             {% else %}
                 <div class="empty-state">
                     <i class="bi bi-inbox"></i>
-                    <h4>No time off requests found</h4>
+                    <h4>No shift swap requests found</h4>
                     <p>Try adjusting your filters or check back later</p>
                 </div>
             {% endif %}
@@ -394,20 +420,5 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        // Auto-refresh pending requests count every 30 seconds
-        if ('{{ status_filter }}' === 'pending') {
-            setInterval(() => {
-                location.reload();
-            }, 30000);
-        }
-
-        // Keyboard shortcuts
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') {
-                window.location.href = '/dashboard';
-            }
-        });
-    </script>
 </body>
 </html>
