@@ -190,11 +190,11 @@ def time_off_requests():
     if status_filter != 'all':
         query = query.filter_by(status=status_filter)
     
-    # Apply crew filter
+    # Apply crew filter - FIXED: Specify the join explicitly
     if crew_filter != 'all':
-        query = query.join(Employee).filter(Employee.crew == crew_filter)
+        query = query.join(Employee, Employee.id == TimeOffRequest.employee_id).filter(Employee.crew == crew_filter)
     else:
-        query = query.join(Employee)
+        query = query.join(Employee, Employee.id == TimeOffRequest.employee_id)
     
     # Apply date filter
     today = datetime.now().date()
@@ -231,10 +231,12 @@ def time_off_requests():
     # Check for coverage warnings (requests that might cause coverage issues)
     for req in requests:
         if req.status == 'pending':
-            # Check if approving this would cause coverage issues
-            conflicting = TimeOffRequest.query.filter(
+            # Check if approving this would cause coverage issues - FIXED: Use explicit join
+            conflicting = TimeOffRequest.query.join(
+                Employee, Employee.id == TimeOffRequest.employee_id
+            ).filter(
                 TimeOffRequest.status == 'approved',
-                TimeOffRequest.employee.has(crew=req.employee.crew),
+                Employee.crew == req.employee.crew,
                 TimeOffRequest.start_date <= req.end_date,
                 TimeOffRequest.end_date >= req.start_date
             ).count()
