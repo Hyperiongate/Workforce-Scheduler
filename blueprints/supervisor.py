@@ -1,10 +1,25 @@
-# Add these routes to your supervisor blueprint (blueprints/supervisor.py)
-
-from flask import render_template, jsonify, request, send_file
+from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, send_file
+from flask_login import login_required, current_user
+from models import db, Schedule, Employee, Position, TimeOffRequest, ShiftSwapRequest, ScheduleSuggestion, VacationCalendar
 from datetime import datetime, date, timedelta
+from sqlalchemy import func
+from functools import wraps
 import calendar
 import io
 import csv
+
+supervisor_bp = Blueprint('supervisor', __name__)
+
+# Decorator to require supervisor privileges
+def supervisor_required(f):
+    """Decorator to require supervisor privileges"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated or not current_user.is_supervisor:
+            flash('You must be a supervisor to access this page.', 'danger')
+            return redirect(url_for('main.dashboard'))
+        return f(*args, **kwargs)
+    return decorated_function
 
 @supervisor_bp.route('/vacation-calendar')
 @login_required
@@ -158,13 +173,53 @@ def export_vacation_calendar():
         download_name=filename
     )
 
-# Also add this helper decorator if not already present
-def supervisor_required(f):
-    """Decorator to require supervisor privileges"""
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if not current_user.is_authenticated or not current_user.is_supervisor:
-            flash('You must be a supervisor to access this page.', 'danger')
-            return redirect(url_for('main.dashboard'))
-        return f(*args, **kwargs)
-    return decorated_function
+# ========== OTHER SUPERVISOR ROUTES ==========
+# Add your other supervisor routes below here
+
+@supervisor_bp.route('/supervisor/coverage-needs')
+@login_required
+@supervisor_required
+def coverage_needs():
+    """View and manage coverage needs"""
+    # Implementation here
+    pass
+
+@supervisor_bp.route('/supervisor/time-off-requests')
+@login_required
+@supervisor_required
+def time_off_requests():
+    """Review and approve time off requests"""
+    # Implementation here
+    pass
+
+@supervisor_bp.route('/supervisor/swap-requests')
+@login_required
+@supervisor_required
+def swap_requests():
+    """Review and approve shift swap requests"""
+    # Implementation here
+    pass
+
+@supervisor_bp.route('/supervisor/suggestions')
+@login_required
+@supervisor_required
+def suggestions():
+    """View employee suggestions"""
+    # Implementation here
+    pass
+
+@supervisor_bp.route('/supervisor/overtime-distribution')
+@login_required
+@supervisor_required
+def overtime_distribution():
+    """Manage overtime distribution"""
+    # Implementation here
+    pass
+
+@supervisor_bp.route('/supervisor/messages')
+@login_required
+@supervisor_required
+def supervisor_messages():
+    """Supervisor to supervisor messaging"""
+    # Implementation here
+    pass
