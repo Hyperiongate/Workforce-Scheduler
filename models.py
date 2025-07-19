@@ -2,6 +2,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
 from datetime import datetime, date, timedelta
 from werkzeug.security import generate_password_hash, check_password_hash
+from sqlalchemy import func
 
 db = SQLAlchemy()
 
@@ -42,8 +43,6 @@ class Employee(UserMixin, db.Model):
     skills = db.relationship('Skill', secondary=employee_skills, backref='employees')
     schedules = db.relationship('Schedule', backref='employee', lazy='dynamic')
     availability = db.relationship('Availability', backref='employee', lazy='dynamic')
-    time_off_requests = db.relationship('TimeOffRequest', backref='employee', lazy='dynamic',
-                                       foreign_keys='TimeOffRequest.employee_id')
     coverage_requests = db.relationship('CoverageRequest', backref='requester', lazy='dynamic', 
                                       foreign_keys='CoverageRequest.requester_id')
     circadian_profile = db.relationship('CircadianProfile', backref='employee', uselist=False, 
@@ -227,15 +226,17 @@ class TimeOffRequest(db.Model):
     end_date = db.Column(db.Date, nullable=False)
     reason = db.Column(db.Text)
     status = db.Column(db.String(20), default='pending')  # pending, approved, denied
-    submitted_date = db.Column(db.DateTime, default=datetime.utcnow)
-    reviewed_date = db.Column(db.DateTime)
-    reviewed_by_id = db.Column(db.Integer, db.ForeignKey('employee.id'))
-    reviewer_notes = db.Column(db.Text)
+    
+    # UPDATED FIELDS
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)  # Changed from submitted_date
+    approved_by = db.Column(db.Integer, db.ForeignKey('employee.id'))  # Changed from reviewed_by_id
+    approved_date = db.Column(db.DateTime)  # Changed from reviewed_date
+    notes = db.Column(db.Text)  # Changed from reviewer_notes
     days_requested = db.Column(db.Float)
     
     # Relationships
-    reviewed_by = db.relationship('Employee', foreign_keys=[reviewed_by_id], 
-                                backref='reviewed_time_off_requests')
+    employee = db.relationship('Employee', foreign_keys=[employee_id], backref='time_off_requests')
+    approver = db.relationship('Employee', foreign_keys=[approved_by], backref='approved_time_off_requests')
 
 class VacationCalendar(db.Model):
     id = db.Column(db.Integer, primary_key=True)
