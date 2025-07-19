@@ -270,6 +270,18 @@ def handle_time_off_request(request_id, action):
         time_off_request.approved_by = current_user.id
         time_off_request.approved_date = datetime.now()
         
+        # CREATE VACATION CALENDAR ENTRIES FOR EACH DAY
+        current_date = time_off_request.start_date
+        while current_date <= time_off_request.end_date:
+            vacation_entry = VacationCalendar(
+                employee_id=time_off_request.employee_id,
+                date=current_date,
+                type=time_off_request.type,
+                request_id=time_off_request.id
+            )
+            db.session.add(vacation_entry)
+            current_date += timedelta(days=1)
+        
         # Send notification to employee (you can implement this later)
         flash(f'Approved {time_off_request.employee.name}\'s time off request for {time_off_request.start_date.strftime("%b %d")} - {time_off_request.end_date.strftime("%b %d")}', 'success')
         
@@ -282,6 +294,10 @@ def handle_time_off_request(request_id, action):
         denial_reason = request.form.get('denial_reason', '')
         if denial_reason:
             time_off_request.notes = f"Denial reason: {denial_reason}"
+        
+        # If previously approved, remove vacation calendar entries
+        if time_off_request.status == 'approved':
+            VacationCalendar.query.filter_by(request_id=time_off_request.id).delete()
         
         flash(f'Denied {time_off_request.employee.name}\'s time off request', 'info')
     
@@ -402,6 +418,114 @@ def handle_swap_request(request_id, action):
     
     db.session.commit()
     return redirect(url_for('supervisor.swap_requests'))
+
+# ========== DEBUG ROUTES (REMOVE IN PRODUCTION) ==========
+
+@supervisor_bp.route('/debug/vacation-calendar')
+@login_required
+@supervisor_required
+def debug_vacation_calendar():
+    """Debug route to check VacationCalendar data"""
+    # Get all VacationCalendar entries
+    vacation_entries = VacationCalendar.query.all()
+    
+    # Get all approved TimeOffRequests
+    approved_requests = TimeOffRequest.query.filter_by(status='approved').all()
+    
+    # Check for missing entries
+    missing_entries = []
+    for request in approved_requests:
+        # Check if this request has vacation calendar entries
+        calendar_count = VacationCalendar.query.filter_by(request_id=request.id).count()
+        expected_days = (request.end_date - request.start_date).days + 1
+        
+        if calendar_count != expected_days:
+            missing_entries.append({
+                'request_id': request.id,
+                'employee': request.employee.name,
+                'start_date': request.start_date.strftime('%Y-%m-%d'),
+                'end_date': request.end_date.strftime('%Y-%m-%d'),
+                'expected_days': expected_days,
+                'actual_entries': calendar_count
+            })
+    
+    return f"""
+    <h2>Vacation Calendar Debug Info</h2>
+    <h3>Summary</h3>
+    <ul>
+        <li>Total VacationCalendar entries: {len(vacation_entries)}</li>
+        <li>Total approved TimeOffRequests: {len(approved_requests)}</li>
+        <li>Requests with missing entries: {len(missing_entries)}</li>
+    </ul>
+    
+    <h3>Missing Entries</h3>
+    <pre>{missing_entries}</pre>
+    
+    <h3>All VacationCalendar Entries</h3>
+    <table border="1">
+        <tr>
+            <th>ID</th>
+            <th>Employee</th>
+            <th>Date</th>
+            <th>Type</th>
+            <th>Request ID</th>
+        </tr>
+        {''.join(f'''
+        <tr>
+            <td>{v.id}</td>
+            <td>{v.employee.name if v.employee else 'No employee'}</td>
+            <td>{v.date.strftime('%Y-%m-%d') if v.date else 'No date'}</td>
+            <td>{v.type}</td>
+            <td>{v.request_id}</td>
+        </tr>
+        ''' for v in vacation_entries)}
+    </table>
+    
+    <br><a href="/supervisor/time-off-requests">Back to Time Off Requests</a>
+    <br><a href="/fix/populate-vacation-calendar">Fix Missing Entries</a>
+    """
+
+@supervisor_bp.route('/fix/populate-vacation-calendar')
+@login_required
+@supervisor_required
+def fix_populate_vacation_calendar():
+    """One-time fix to populate VacationCalendar for existing approved requests"""
+    # Get all approved requests that don't have calendar entries
+    approved_requests = TimeOffRequest.query.filter_by(status='approved').all()
+    
+    fixed_count = 0
+    for request in approved_requests:
+        # Check if this request already has calendar entries
+        existing_count = VacationCalendar.query.filter_by(request_id=request.id).count()
+        expected_days = (request.end_date - request.start_date).days + 1
+        
+        if existing_count < expected_days:
+            # Create missing entries
+            current_date = request.start_date
+            while current_date <= request.end_date:
+                # Check if entry already exists for this date
+                existing = VacationCalendar.query.filter_by(
+                    employee_id=request.employee_id,
+                    date=current_date
+                ).first()
+                
+                if not existing:
+                    vacation_entry = VacationCalendar(
+                        employee_id=request.employee_id,
+                        date=current_date,
+                        type=request.type,
+                        request_id=request.id
+                    )
+                    db.session.add(vacation_entry)
+                
+                current_date += timedelta(days=1)
+            
+            fixed_count += 1
+    
+    db.session.commit()
+    
+    flash(f'Fixed {fixed_count} approved requests by adding vacation calendar entries.', 'success')
+    return redirect(url_for('supervisor.vacation_calendar'))
 
 # ========== OTHER SUPERVISOR ROUTES ==========
 
