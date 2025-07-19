@@ -288,16 +288,6 @@ def handle_time_off_request(request_id, action):
     db.session.commit()
     return redirect(url_for('supervisor.time_off_requests'))
 
-# ========== OTHER SUPERVISOR ROUTES ==========
-
-@supervisor_bp.route('/supervisor/coverage-needs')
-@login_required
-@supervisor_required
-def coverage_needs():
-    """View and manage coverage needs"""
-    # Implementation here
-    pass
-
 @supervisor_bp.route('/supervisor/swap-requests')
 @login_required
 @supervisor_required
@@ -413,26 +403,64 @@ def handle_swap_request(request_id, action):
     db.session.commit()
     return redirect(url_for('supervisor.swap_requests'))
 
+# ========== OTHER SUPERVISOR ROUTES ==========
+
+@supervisor_bp.route('/supervisor/coverage-needs')
+@login_required
+@supervisor_required
+def coverage_needs():
+    """View and manage coverage needs"""
+    return render_template('coming_soon.html',
+                         title='Coverage Needs',
+                         description='View and manage staffing gaps and coverage requirements across all shifts and crews.',
+                         icon='bi bi-shield-exclamation')
+
 @supervisor_bp.route('/supervisor/suggestions')
 @login_required
 @supervisor_required
 def suggestions():
     """View employee suggestions"""
-    # Implementation here
-    pass
+    return render_template('coming_soon.html',
+                         title='Employee Suggestions',
+                         description='Review and respond to suggestions and feedback from your team members.',
+                         icon='bi bi-lightbulb')
 
 @supervisor_bp.route('/supervisor/overtime-distribution')
 @login_required
 @supervisor_required
 def overtime_distribution():
     """Manage overtime distribution"""
-    # Implementation here
-    pass
+    return render_template('coming_soon.html',
+                         title='Overtime Distribution',
+                         description='Track and fairly distribute overtime opportunities across all employees.',
+                         icon='bi bi-clock-history')
 
 @supervisor_bp.route('/supervisor/messages')
 @login_required
 @supervisor_required
 def supervisor_messages():
     """Supervisor to supervisor messaging"""
-    # Implementation here
-    pass
+    return render_template('coming_soon.html',
+                         title='Supervisor Messages',
+                         description='Communicate with other supervisors across different shifts and crews.',
+                         icon='bi bi-envelope-fill')
+
+@supervisor_bp.route('/casual-workers')
+@login_required
+@supervisor_required
+def casual_workers():
+    """Manage casual workers"""
+    return render_template('coming_soon.html',
+                         title='Casual Workers',
+                         description='Manage your pool of temporary and on-call workers for filling coverage gaps.',
+                         icon='bi bi-person-badge')
+
+@supervisor_bp.route('/quick/position-broadcast')
+@login_required
+@supervisor_required
+def position_broadcast():
+    """Plantwide communications"""
+    return render_template('coming_soon.html',
+                         title='Position Broadcast',
+                         description='Send announcements and messages to all employees in specific positions across all crews.',
+                         icon='bi bi-megaphone')
