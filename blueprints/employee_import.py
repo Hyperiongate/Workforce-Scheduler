@@ -1,0 +1,470 @@
+# blueprints/employee_import.py
+"""
+Employee import/export functionality for workforce scheduler
+Handles Excel template download and data upload
+"""
+
+from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file, current_app
+from flask_login import login_required, current_user
+from werkzeug.utils import secure_filename
+import pandas as pd
+from datetime import datetime
+import os
+import io
+from models import db, Employee, Position, Skill, EmployeeSkill, OvertimeHistory, FileUpload
+from sqlalchemy import func
+import traceback
+
+employee_import_bp = Blueprint('employee_import', __name__)
+
+def supervisor_required(f):
+    """Decorator to require supervisor access"""
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated or not current_user.is_supervisor:
+            flash('Access denied. Supervisor privileges required.', 'error')
+            return redirect(url_for('main.index'))
+        return f(*args, **kwargs)
+    decorated_function.__name__ = f.__name__
+    return decorated_function
+
+@employee_import_bp.route('/download-employee-template')
+@login_required
+@supervisor_required
+def download_employee_template():
+    """Generate and download the employee import template"""
+    try:
+        # Get all positions from database
+        positions = Position.query.order_by(Position.name).all()
+        position_names = [pos.name for pos in positions]
+        
+        # If no positions exist, use defaults
+        if not position_names:
+            position_names = [
+                'Operator', 'Senior Operator', 'Lead Operator', 
+                'Maintenance Technician', 'Senior Maintenance', 
+                'Shift Supervisor', 'Area Coordinator', 
+                'Quality Inspector', 'Material Handler', 'Trainer'
+            ]
+        
+        # Ensure we have at least 10 position columns
+        while len(position_names) < 10:
+            position_names.append(f'Position {len(position_names) + 1}')
+        
+        # Create the template structure
+        template_data = {
+            'Last Name': ['Example', 'Sample'],
+            'First Name': ['John', 'Jane'],
+            'Employee ID': ['EMP001', 'EMP002'],
+            'Date of Hire': ['2020-01-15', '2021-03-22'],
+            'Total Overtime (Last 3 Months)': [120.5, 85.0],
+            'Crew Assigned': ['A', 'B'],
+            'Current Job Position': [position_names[0], position_names[1]]
+        }
+        
+        # Add position columns
+        for i, pos_name in enumerate(position_names[:10]):
+            if i == 0:
+                template_data[pos_name] = ['current', 'yes']
+            elif i == 1:
+                template_data[pos_name] = ['yes', 'current']
+            elif i == 2:
+                template_data[pos_name] = ['yes', '']
+            else:
+                template_data[pos_name] = ['', '']
+        
+        # Create DataFrame
+        df = pd.DataFrame(template_data)
+        
+        # Create Excel writer with xlsxwriter engine for better formatting
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            # Write instructions on first sheet
+            instructions_df = pd.DataFrame({
+                'A': ['EMPLOYEE IMPORT TEMPLATE - INSTRUCTIONS', '', 
+                     'IMPORTANT: Before filling out this template, you MUST replace the position column headers with your actual job position titles.',
+                     '', 'INSTRUCTIONS:',
+                     '1. The position columns have been pre-filled with your system positions.',
+                     '2. For each employee, enter their basic information in the first 7 columns',
+                     '3. In the position columns, mark their qualifications as follows:',
+                     '   - Write "current" under the position that matches their Current Job Position',
+                     '   - Write "yes" under any other positions they are qualified for',
+                     '   - Leave blank if they are not qualified for that position',
+                     '', 'EXAMPLE:',
+                     'If an employee\'s current position is "Operator" and they\'re also qualified as "Senior Operator":',
+                     '- Under the "Operator" column: write "current"',
+                     '- Under the "Senior Operator" column: write "yes"',
+                     '', 'NOTES:',
+                     '- Date of Hire should be in YYYY-MM-DD format',
+                     '- Total Overtime is in hours for the last 3 months',
+                     '- Crew Assigned should be A, B, C, or D',
+                     '- Delete the example rows before uploading']
+            })
+            
+            instructions_df.to_excel(writer, sheet_name='Instructions', index=False, header=False)
+            
+            # Write the actual template
+            df.to_excel(writer, sheet_name='Employee Data', index=False)
+            
+            # Get the workbook and worksheets
+            workbook = writer.book
+            instructions_sheet = writer.sheets['Instructions']
+            data_sheet = writer.sheets['Employee Data']
+            
+            # Format instructions sheet
+            title_format = workbook.add_format({'bold': True, 'font_size': 14, 'bg_color': '#4472C4', 'font_color': 'white'})
+            header_format = workbook.add_format({'bold': True, 'bg_color': '#D9E1F2'})
+            
+            instructions_sheet.set_column('A:A', 100)
+            instructions_sheet.write('A1', instructions_df.iloc[0, 0], title_format)
+            
+            # Format data sheet
+            header_format = workbook.add_format({
+                'bold': True,
+                'bg_color': '#4472C4',
+                'font_color': 'white',
+                'border': 1,
+                'text_wrap': True,
+                'valign': 'vcenter'
+            })
+            
+            date_format = workbook.add_format({'num_format': 'yyyy-mm-dd'})
+            
+            # Set column widths
+            data_sheet.set_column('A:B', 15)  # Names
+            data_sheet.set_column('C:C', 12)  # Employee ID
+            data_sheet.set_column('D:D', 12)  # Date of Hire
+            data_sheet.set_column('E:E', 20)  # Overtime
+            data_sheet.set_column('F:F', 12)  # Crew
+            data_sheet.set_column('G:G', 20)  # Current Position
+            data_sheet.set_column('H:Q', 15)  # Qualification columns
+            
+            # Write headers with formatting
+            for col_num, value in enumerate(df.columns.values):
+                data_sheet.write(0, col_num, value, header_format)
+            
+            # Add data validation for Crew column
+            data_sheet.data_validation('F2:F1000', {
+                'validate': 'list',
+                'source': ['A', 'B', 'C', 'D'],
+                'error_title': 'Invalid Crew',
+                'error_message': 'Please select A, B, C, or D'
+            })
+            
+            # Add conditional formatting for position columns
+            current_format = workbook.add_format({'bg_color': '#C6EFCE', 'font_color': '#006100'})
+            yes_format = workbook.add_format({'bg_color': '#FFEB9C', 'font_color': '#9C5700'})
+            
+            for col in range(7, 17):  # Position columns (H-Q)
+                data_sheet.conditional_format(1, col, 1000, col, {
+                    'type': 'text',
+                    'criteria': 'containing',
+                    'value': 'current',
+                    'format': current_format
+                })
+                data_sheet.conditional_format(1, col, 1000, col, {
+                    'type': 'text',
+                    'criteria': 'containing',
+                    'value': 'yes',
+                    'format': yes_format
+                })
+        
+        output.seek(0)
+        
+        # Generate filename with timestamp
+        filename = f'employee_import_template_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
+        
+        return send_file(
+            output,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=filename
+        )
+        
+    except Exception as e:
+        current_app.logger.error(f"Error generating template: {str(e)}")
+        flash(f'Error generating template: {str(e)}', 'error')
+        return redirect(url_for('supervisor.dashboard'))
+
+@employee_import_bp.route('/upload-employees', methods=['GET', 'POST'])
+@login_required
+@supervisor_required
+def upload_employees():
+    """Handle employee data upload from Excel file"""
+    if request.method == 'GET':
+        # Get upload history
+        uploads = FileUpload.query.filter_by(
+            uploaded_by_id=current_user.id
+        ).order_by(FileUpload.upload_date.desc()).limit(10).all()
+        
+        return render_template('upload_employees.html', recent_uploads=uploads)
+    
+    if 'file' not in request.files:
+        flash('No file selected', 'error')
+        return redirect(request.url)
+    
+    file = request.files['file']
+    if file.filename == '':
+        flash('No file selected', 'error')
+        return redirect(request.url)
+    
+    if not file.filename.endswith(('.xlsx', '.xls')):
+        flash('Please upload an Excel file (.xlsx or .xls)', 'error')
+        return redirect(request.url)
+    
+    try:
+        # Save file record
+        file_upload = FileUpload(
+            filename=secure_filename(file.filename),
+            file_type='employee_import',
+            uploaded_by_id=current_user.id,
+            status='processing'
+        )
+        db.session.add(file_upload)
+        db.session.commit()
+        
+        # Read Excel file
+        df = pd.read_excel(file, sheet_name='Employee Data' if 'Employee Data' in pd.ExcelFile(file).sheet_names else 0)
+        
+        # Process each row
+        success_count = 0
+        error_count = 0
+        errors = []
+        
+        # Get position columns (everything after the first 7 columns)
+        base_columns = ['Last Name', 'First Name', 'Employee ID', 'Date of Hire', 
+                       'Total Overtime (Last 3 Months)', 'Crew Assigned', 'Current Job Position']
+        position_columns = [col for col in df.columns if col not in base_columns]
+        
+        for index, row in df.iterrows():
+            try:
+                # Skip empty rows
+                if pd.isna(row['Last Name']) or pd.isna(row['First Name']):
+                    continue
+                
+                # Check if employee exists
+                employee = Employee.query.filter_by(
+                    employee_id=str(row['Employee ID'])
+                ).first()
+                
+                if not employee:
+                    # Create new employee
+                    employee = Employee(
+                        employee_id=str(row['Employee ID']),
+                        name=f"{row['First Name']} {row['Last Name']}",
+                        email=f"{row['First Name'].lower()}.{row['Last Name'].lower()}@company.com",
+                        password_hash='$2b$12$default_hash',  # Will need to be reset
+                        crew=row['Crew Assigned'],
+                        is_supervisor=False,
+                        hire_date=pd.to_datetime(row['Date of Hire']).date() if pd.notna(row['Date of Hire']) else datetime.now().date()
+                    )
+                    db.session.add(employee)
+                    db.session.flush()  # Get the ID
+                else:
+                    # Update existing employee
+                    employee.crew = row['Crew Assigned']
+                    if pd.notna(row['Date of Hire']):
+                        employee.hire_date = pd.to_datetime(row['Date of Hire']).date()
+                
+                # Handle current position
+                current_pos_name = row['Current Job Position']
+                if pd.notna(current_pos_name):
+                    position = Position.query.filter_by(name=current_pos_name).first()
+                    if not position:
+                        position = Position(name=current_pos_name, description=f"{current_pos_name} position")
+                        db.session.add(position)
+                        db.session.flush()
+                    employee.position_id = position.id
+                
+                # Handle overtime if provided
+                if pd.notna(row['Total Overtime (Last 3 Months)']):
+                    # Calculate average weekly overtime from 3-month total
+                    total_ot = float(row['Total Overtime (Last 3 Months)'])
+                    weekly_avg = total_ot / 13  # Approximately 13 weeks in 3 months
+                    
+                    # Create overtime history record for current week
+                    current_week = datetime.now().isocalendar()[1]
+                    current_year = datetime.now().year
+                    
+                    ot_record = OvertimeHistory.query.filter_by(
+                        employee_id=employee.id,
+                        year=current_year,
+                        week_number=current_week
+                    ).first()
+                    
+                    if not ot_record:
+                        ot_record = OvertimeHistory(
+                            employee_id=employee.id,
+                            year=current_year,
+                            week_number=current_week,
+                            hours=weekly_avg
+                        )
+                        db.session.add(ot_record)
+                
+                # Handle position qualifications
+                for pos_col in position_columns:
+                    if pd.notna(row[pos_col]) and row[pos_col].lower() in ['current', 'yes']:
+                        # Find or create position
+                        position = Position.query.filter_by(name=pos_col).first()
+                        if not position:
+                            position = Position(name=pos_col, description=f"{pos_col} position")
+                            db.session.add(position)
+                            db.session.flush()
+                        
+                        # Find or create skill for this position
+                        skill = Skill.query.filter_by(name=f"{pos_col} Certified").first()
+                        if not skill:
+                            skill = Skill(
+                                name=f"{pos_col} Certified",
+                                description=f"Qualified to work as {pos_col}",
+                                category='position'
+                            )
+                            db.session.add(skill)
+                            db.session.flush()
+                        
+                        # Add employee skill if not exists
+                        emp_skill = EmployeeSkill.query.filter_by(
+                            employee_id=employee.id,
+                            skill_id=skill.id
+                        ).first()
+                        
+                        if not emp_skill:
+                            emp_skill = EmployeeSkill(
+                                employee_id=employee.id,
+                                skill_id=skill.id,
+                                is_certified=True,
+                                certification_date=datetime.now().date()
+                            )
+                            db.session.add(emp_skill)
+                
+                success_count += 1
+                
+            except Exception as e:
+                error_count += 1
+                errors.append(f"Row {index + 2}: {str(e)}")
+                current_app.logger.error(f"Error processing row {index}: {str(e)}")
+        
+        # Commit all changes
+        db.session.commit()
+        
+        # Update file upload record
+        file_upload.status = 'completed'
+        file_upload.records_processed = success_count
+        file_upload.records_failed = error_count
+        file_upload.error_details = '\n'.join(errors) if errors else None
+        db.session.commit()
+        
+        if success_count > 0:
+            flash(f'Successfully imported {success_count} employees.', 'success')
+        if error_count > 0:
+            flash(f'{error_count} records failed to import. Check the upload history for details.', 'warning')
+        
+        return redirect(url_for('employee_import.upload_employees'))
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error uploading file: {str(e)}\n{traceback.format_exc()}")
+        
+        if 'file_upload' in locals():
+            file_upload.status = 'failed'
+            file_upload.error_details = str(e)
+            db.session.commit()
+        
+        flash(f'Error processing file: {str(e)}', 'error')
+        return redirect(url_for('employee_import.upload_employees'))
+
+@employee_import_bp.route('/download-sample-data')
+@login_required
+@supervisor_required
+def download_sample_data():
+    """Download a sample filled template with 100 employees"""
+    try:
+        # Get positions from database or use defaults
+        positions = Position.query.order_by(Position.name).limit(10).all()
+        position_names = [pos.name for pos in positions]
+        
+        if len(position_names) < 10:
+            default_positions = [
+                'Operator', 'Senior Operator', 'Lead Operator', 
+                'Maintenance Technician', 'Senior Maintenance', 
+                'Shift Supervisor', 'Area Coordinator', 
+                'Quality Inspector', 'Material Handler', 'Trainer'
+            ]
+            position_names.extend(default_positions[len(position_names):10])
+        
+        # Generate sample data
+        data = []
+        first_names = ['John', 'Jane', 'Michael', 'Sarah', 'David', 'Emily', 'Robert', 'Lisa', 'James', 'Mary']
+        last_names = ['Smith', 'Johnson', 'Williams', 'Brown', 'Jones', 'Garcia', 'Miller', 'Davis', 'Martinez', 'Wilson']
+        crews = ['A', 'B', 'C', 'D']
+        
+        for i in range(100):
+            employee = {
+                'Last Name': last_names[i % len(last_names)] + str(i // len(last_names) + 1),
+                'First Name': first_names[i % len(first_names)],
+                'Employee ID': f'EMP{str(i + 1).zfill(3)}',
+                'Date of Hire': (datetime.now() - pd.Timedelta(days=np.random.randint(30, 3650))).strftime('%Y-%m-%d'),
+                'Total Overtime (Last 3 Months)': round(np.random.uniform(0, 200), 1),
+                'Crew Assigned': crews[i % 4],
+                'Current Job Position': position_names[np.random.randint(0, 5)]
+            }
+            
+            # Add position qualifications
+            current_pos_index = position_names.index(employee['Current Job Position'])
+            for j, pos in enumerate(position_names):
+                if j == current_pos_index:
+                    employee[pos] = 'current'
+                elif j < current_pos_index:  # Qualified for lower positions
+                    employee[pos] = 'yes' if np.random.random() > 0.3 else ''
+                else:  # Might be qualified for some higher positions
+                    employee[pos] = 'yes' if np.random.random() > 0.7 else ''
+            
+            data.append(employee)
+        
+        # Create DataFrame
+        df = pd.DataFrame(data)
+        
+        # Create Excel file
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            df.to_excel(writer, sheet_name='Employee Data', index=False)
+            
+            # Format the sheet
+            workbook = writer.book
+            worksheet = writer.sheets['Employee Data']
+            
+            # Header format
+            header_format = workbook.add_format({
+                'bold': True,
+                'bg_color': '#4472C4',
+                'font_color': 'white',
+                'border': 1
+            })
+            
+            # Write headers
+            for col_num, value in enumerate(df.columns.values):
+                worksheet.write(0, col_num, value, header_format)
+            
+            # Set column widths
+            worksheet.set_column('A:B', 15)
+            worksheet.set_column('C:C', 12)
+            worksheet.set_column('D:D', 12)
+            worksheet.set_column('E:E', 20)
+            worksheet.set_column('F:F', 12)
+            worksheet.set_column('G:Q', 15)
+        
+        output.seek(0)
+        
+        return send_file(
+            output,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=f'sample_employee_data_100.xlsx'
+        )
+        
+    except Exception as e:
+        current_app.logger.error(f"Error generating sample data: {str(e)}")
+        flash(f'Error generating sample data: {str(e)}', 'error')
+        return redirect(url_for('supervisor.dashboard'))
+
+# Import numpy for sample data generation
+import numpy as np
