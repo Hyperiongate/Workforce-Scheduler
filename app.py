@@ -464,11 +464,11 @@ def add_employee_id_column():
         # Update existing employees with default employee IDs if needed
         employees = Employee.query.all()
         for emp in employees:
-            if not hasattr(emp, 'employee_id') or not emp.employee_id:
+            if not emp.employee_id:
                 # Check if this employee was created from app init
                 if emp.email == 'admin@workforce.com':
                     emp.employee_id = 'ADMIN001'
-                elif hasattr(emp, 'employee_id'):
+                else:
                     # Generate employee ID based on existing pattern or use ID
                     emp.employee_id = f"EMP{str(emp.id).zfill(5)}"
         db.session.commit()
@@ -476,7 +476,7 @@ def add_employee_id_column():
         return f'''
         <h2>✅ Success!</h2>
         <p>Added employee_id column to Employee table.</p>
-        <p>Updated existing employees with employee IDs.</p>
+        <p>Updated {len(employees)} existing employees with employee IDs.</p>
         <p><a href="/upload-employees" class="btn btn-primary">Go to Import Employees</a></p>
         <p><a href="/dashboard">Return to Dashboard</a></p>
         '''
@@ -506,74 +506,6 @@ def debug_routes():
     output += '</ul><p><a href="/dashboard">Back to Dashboard</a></p>'
     
     return output
-
-@app.route('/add-employee-id-column')
-def add_employee_id_column():
-    """Add employee_id column to Employee table"""
-    if request.args.get('confirm') != 'yes':
-        return '''
-        <h2>Add Employee ID Column</h2>
-        <p>This will add an employee_id column to the Employee table.</p>
-        <p>This is required for the Excel import functionality to work properly.</p>
-        <p><a href="/add-employee-id-column?confirm=yes" class="btn btn-primary">Click here to add employee_id column</a></p>
-        '''
-    
-    try:
-        from sqlalchemy import text
-        
-        # First, check if column already exists
-        check_query = text("""
-            SELECT column_name 
-            FROM information_schema.columns 
-            WHERE table_name = 'employee' 
-            AND column_name = 'employee_id'
-        """)
-        
-        result = db.session.execute(check_query).fetchone()
-        
-        if result:
-            return '''
-            <h2>✅ Column Already Exists</h2>
-            <p>The employee_id column already exists in the Employee table.</p>
-            <p><a href="/dashboard">Return to Dashboard</a></p>
-            '''
-        
-        # Add the column
-        alter_query = text("""
-            ALTER TABLE employee 
-            ADD COLUMN employee_id VARCHAR(20) UNIQUE
-        """)
-        
-        db.session.execute(alter_query)
-        db.session.commit()
-        
-        # Update existing employees with default employee IDs if needed
-        employees = Employee.query.all()
-        for emp in employees:
-            if not emp.employee_id:
-                # Check if this employee was created from app init
-                if emp.email == 'admin@workforce.com':
-                    emp.employee_id = 'ADMIN001'
-                else:
-                    # Generate employee ID based on existing pattern or use ID
-                    emp.employee_id = f"EMP{str(emp.id).zfill(5)}"
-        db.session.commit()
-        
-        return f'''
-        <h2>✅ Success!</h2>
-        <p>Added employee_id column to Employee table.</p>
-        <p>Updated {len(employees)} existing employees with employee IDs.</p>
-        <p><a href="/upload-employees" class="btn btn-primary">Go to Import Employees</a></p>
-        <p><a href="/dashboard">Return to Dashboard</a></p>
-        '''
-        
-    except Exception as e:
-        db.session.rollback()
-        return f'''
-        <h2>❌ Error</h2>
-        <p>Failed to add employee_id column: {str(e)}</p>
-        <p><a href="/dashboard">Return to Dashboard</a></p>
-        '''
 
 # Error handlers
 @app.errorhandler(404)
