@@ -1,7 +1,7 @@
-from flask import Flask, render_template, request
-from flask_login import LoginManager
+from flask import Flask, render_template, request, jsonify
+from flask_login import LoginManager, login_required
 from flask_migrate import Migrate
-from models import db, Employee
+from models import db, Employee, TimeOffRequest, ShiftSwapRequest, ScheduleSuggestion, CoverageRequest, MaintenanceIssue
 import os
 
 # Import blueprints
@@ -52,6 +52,41 @@ app.register_blueprint(schedule_bp)
 app.register_blueprint(supervisor_bp)
 app.register_blueprint(employee_bp)
 
+# API endpoints
+@app.route('/api/dashboard-stats')
+@login_required
+def dashboard_stats():
+    """Get real-time dashboard statistics"""
+    try:
+        stats = {
+            'pending_time_off': TimeOffRequest.query.filter_by(status='pending').count(),
+            'pending_swaps': ShiftSwapRequest.query.filter_by(status='pending').count(),
+            'coverage_gaps': CoverageRequest.query.filter_by(status='open').count(),
+            'pending_suggestions': ScheduleSuggestion.query.filter_by(status='new').count(),
+            'new_critical_items': 0
+        }
+        
+        # Add any critical maintenance issues
+        critical_maintenance = MaintenanceIssue.query.filter_by(
+            priority='critical',
+            status='open'
+        ).count()
+        
+        if critical_maintenance > 0:
+            stats['new_critical_items'] += critical_maintenance
+        
+        return jsonify(stats)
+    except Exception as e:
+        # Return zeros if tables don't exist or other errors
+        return jsonify({
+            'pending_time_off': 0,
+            'pending_swaps': 0,
+            'coverage_gaps': 0,
+            'pending_suggestions': 0,
+            'new_critical_items': 0,
+            'error': str(e)
+        })
+
 # Database initialization routes
 @app.route('/init-db')
 def init_db():
@@ -67,6 +102,7 @@ def init_db():
             admin = Employee(
                 name='Admin User',
                 email='admin@workforce.com',
+                employee_id='ADMIN001',
                 is_supervisor=True,
                 crew='A',
                 vacation_days=20,
@@ -208,7 +244,6 @@ def add_overtime_tables():
         <ul>
             <li><strong>OvertimeHistory</strong> - Track weekly overtime hours for each employee</li>
             <li><strong>SkillRequirement</strong> - Define skill requirements for shifts</li>
-            <li><strong>EmployeeSkill</strong> - Track employee skill certifications</li>
             <li><strong>FileUpload</strong> - Track uploaded Excel files</li>
         </ul>
         <p><a href="/add-overtime-tables?confirm=yes" class="btn btn-primary">Click here to add tables</a></p>
@@ -274,6 +309,7 @@ def populate_crews():
                     emp = Employee(
                         name=name,
                         email=email,
+                        employee_id=f'{crew}{str(i+1).zfill(2)}',
                         phone=f'555-{crew}{str(i).zfill(3)}',
                         is_supervisor=(i == 0),  # First in each crew is supervisor
                         crew=crew,
