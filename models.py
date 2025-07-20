@@ -22,6 +22,7 @@ position_skills = db.Table('position_skills',
 
 class Employee(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    employee_id = db.Column(db.String(20), unique=True)  # ADD THIS LINE - Employee ID field
     email = db.Column(db.String(120), unique=True, nullable=False)
     name = db.Column(db.String(100), nullable=False)
     password_hash = db.Column(db.String(200))
