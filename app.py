@@ -6,6 +6,7 @@ import os
 
 # Import blueprints
 from blueprints.auth import auth_bp
+from blueprints.employee_import import employee_import_bp
 from blueprints.main import main_bp
 from blueprints.schedule import schedule_bp
 from blueprints.supervisor import supervisor_bp
@@ -45,6 +46,7 @@ def load_user(user_id):
 
 # Register blueprints
 app.register_blueprint(auth_bp)
+app.register_blueprint(employee_import_bp)
 app.register_blueprint(main_bp)
 app.register_blueprint(schedule_bp)
 app.register_blueprint(supervisor_bp)
