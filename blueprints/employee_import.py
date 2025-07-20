@@ -11,7 +11,7 @@ import pandas as pd
 from datetime import datetime
 import os
 import io
-from models import db, Employee, Position, Skill, EmployeeSkill, OvertimeHistory, FileUpload
+from models import db, Employee, Position, Skill, OvertimeHistory, employee_skills
 from sqlalchemy import func
 import traceback
 
@@ -191,12 +191,8 @@ def download_employee_template():
 def upload_employees():
     """Handle employee data upload from Excel file"""
     if request.method == 'GET':
-        # Get upload history
-        uploads = FileUpload.query.filter_by(
-            uploaded_by_id=current_user.id
-        ).order_by(FileUpload.upload_date.desc()).limit(10).all()
-        
-        return render_template('upload_employees.html', recent_uploads=uploads)
+        # Get upload history - simplified without FileUpload model
+        return render_template('upload_employees.html', recent_uploads=[])
     
     if 'file' not in request.files:
         flash('No file selected', 'error')
@@ -212,16 +208,6 @@ def upload_employees():
         return redirect(request.url)
     
     try:
-        # Save file record
-        file_upload = FileUpload(
-            filename=secure_filename(file.filename),
-            file_type='employee_import',
-            uploaded_by_id=current_user.id,
-            status='processing'
-        )
-        db.session.add(file_upload)
-        db.session.commit()
-        
         # Read Excel file
         df = pd.read_excel(file, sheet_name='Employee Data' if 'Employee Data' in pd.ExcelFile(file).sheet_names else 0)
         
@@ -270,7 +256,7 @@ def upload_employees():
                 if pd.notna(current_pos_name):
                     position = Position.query.filter_by(name=current_pos_name).first()
                     if not position:
-                        position = Position(name=current_pos_name, description=f"{current_pos_name} position")
+                        position = Position(name=current_pos_name, department=f"{current_pos_name} department")
                         db.session.add(position)
                         db.session.flush()
                     employee.position_id = position.id
@@ -284,19 +270,20 @@ def upload_employees():
                     # Create overtime history record for current week
                     current_week = datetime.now().isocalendar()[1]
                     current_year = datetime.now().year
+                    week_start = datetime.now().date() - timedelta(days=datetime.now().weekday())
                     
                     ot_record = OvertimeHistory.query.filter_by(
                         employee_id=employee.id,
-                        year=current_year,
-                        week_number=current_week
+                        week_start_date=week_start
                     ).first()
                     
                     if not ot_record:
                         ot_record = OvertimeHistory(
                             employee_id=employee.id,
-                            year=current_year,
-                            week_number=current_week,
-                            hours=weekly_avg
+                            week_start_date=week_start,
+                            overtime_hours=weekly_avg,
+                            regular_hours=40,
+                            total_hours=40 + weekly_avg
                         )
                         db.session.add(ot_record)
                 
@@ -306,7 +293,7 @@ def upload_employees():
                         # Find or create position
                         position = Position.query.filter_by(name=pos_col).first()
                         if not position:
-                            position = Position(name=pos_col, description=f"{pos_col} position")
+                            position = Position(name=pos_col, department=f"{pos_col} department")
                             db.session.add(position)
                             db.session.flush()
                         
@@ -321,20 +308,23 @@ def upload_employees():
                             db.session.add(skill)
                             db.session.flush()
                         
-                        # Add employee skill if not exists
-                        emp_skill = EmployeeSkill.query.filter_by(
-                            employee_id=employee.id,
-                            skill_id=skill.id
+                        # Add employee skill if not exists using the association table
+                        existing_skill = db.session.execute(
+                            db.select(employee_skills).where(
+                                employee_skills.c.employee_id == employee.id,
+                                employee_skills.c.skill_id == skill.id
+                            )
                         ).first()
                         
-                        if not emp_skill:
-                            emp_skill = EmployeeSkill(
-                                employee_id=employee.id,
-                                skill_id=skill.id,
-                                is_certified=True,
-                                certification_date=datetime.now().date()
+                        if not existing_skill:
+                            db.session.execute(
+                                employee_skills.insert().values(
+                                    employee_id=employee.id,
+                                    skill_id=skill.id,
+                                    is_primary=(row[pos_col].lower() == 'current'),
+                                    certification_date=datetime.now().date()
+                                )
                             )
-                            db.session.add(emp_skill)
                 
                 success_count += 1
                 
@@ -346,29 +336,16 @@ def upload_employees():
         # Commit all changes
         db.session.commit()
         
-        # Update file upload record
-        file_upload.status = 'completed'
-        file_upload.records_processed = success_count
-        file_upload.records_failed = error_count
-        file_upload.error_details = '\n'.join(errors) if errors else None
-        db.session.commit()
-        
         if success_count > 0:
             flash(f'Successfully imported {success_count} employees.', 'success')
         if error_count > 0:
-            flash(f'{error_count} records failed to import. Check the upload history for details.', 'warning')
+            flash(f'{error_count} records failed to import. Details: {"; ".join(errors[:5])}', 'warning')
         
         return redirect(url_for('employee_import.upload_employees'))
         
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"Error uploading file: {str(e)}\n{traceback.format_exc()}")
-        
-        if 'file_upload' in locals():
-            file_upload.status = 'failed'
-            file_upload.error_details = str(e)
-            db.session.commit()
-        
         flash(f'Error processing file: {str(e)}', 'error')
         return redirect(url_for('employee_import.upload_employees'))
 
@@ -466,5 +443,124 @@ def download_sample_data():
         flash(f'Error generating sample data: {str(e)}', 'error')
         return redirect(url_for('supervisor.dashboard'))
 
+@employee_import_bp.route('/export-current-employees')
+@login_required
+@supervisor_required
+def export_current_employees():
+    """Export current employee data to Excel"""
+    try:
+        # Get all employees with their positions and skills
+        employees = Employee.query.order_by(Employee.crew, Employee.name).all()
+        
+        # Get all positions for columns
+        positions = Position.query.order_by(Position.name).all()
+        position_names = [pos.name for pos in positions[:10]]  # Limit to 10 positions
+        
+        # Build data for export
+        data = []
+        for emp in employees:
+            if emp.email == 'admin@workforce.com':  # Skip admin
+                continue
+                
+            # Calculate total overtime for last 13 weeks
+            total_overtime = emp.last_13_weeks_overtime
+            
+            # Parse name (assuming "First Last" format)
+            name_parts = emp.name.split(' ', 1)
+            first_name = name_parts[0] if name_parts else emp.name
+            last_name = name_parts[1] if len(name_parts) > 1 else ''
+            
+            row = {
+                'Last Name': last_name,
+                'First Name': first_name,
+                'Employee ID': emp.employee_id,
+                'Date of Hire': emp.hire_date.strftime('%Y-%m-%d') if emp.hire_date else '',
+                'Total Overtime (Last 3 Months)': round(total_overtime, 1),
+                'Crew Assigned': emp.crew or '',
+                'Current Job Position': emp.position.name if emp.position else ''
+            }
+            
+            # Add position qualifications
+            emp_skills = set()
+            for skill in emp.skills:
+                if skill.name.endswith(' Certified'):
+                    pos_name = skill.name.replace(' Certified', '')
+                    emp_skills.add(pos_name)
+            
+            for pos_name in position_names:
+                if emp.position and emp.position.name == pos_name:
+                    row[pos_name] = 'current'
+                elif pos_name in emp_skills:
+                    row[pos_name] = 'yes'
+                else:
+                    row[pos_name] = ''
+            
+            data.append(row)
+        
+        # Create DataFrame
+        df = pd.DataFrame(data)
+        
+        # Create Excel file
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            df.to_excel(writer, sheet_name='Employee Data', index=False)
+            
+            # Format the sheet
+            workbook = writer.book
+            worksheet = writer.sheets['Employee Data']
+            
+            # Header format
+            header_format = workbook.add_format({
+                'bold': True,
+                'bg_color': '#4472C4',
+                'font_color': 'white',
+                'border': 1
+            })
+            
+            # Write headers
+            for col_num, value in enumerate(df.columns.values):
+                worksheet.write(0, col_num, value, header_format)
+            
+            # Set column widths
+            worksheet.set_column('A:B', 15)
+            worksheet.set_column('C:C', 12)
+            worksheet.set_column('D:D', 12)
+            worksheet.set_column('E:E', 20)
+            worksheet.set_column('F:F', 12)
+            worksheet.set_column('G:Q', 15)
+            
+            # Conditional formatting
+            current_format = workbook.add_format({'bg_color': '#C6EFCE', 'font_color': '#006100'})
+            yes_format = workbook.add_format({'bg_color': '#FFEB9C', 'font_color': '#9C5700'})
+            
+            for col in range(7, 17):
+                worksheet.conditional_format(1, col, len(data), col, {
+                    'type': 'text',
+                    'criteria': 'containing',
+                    'value': 'current',
+                    'format': current_format
+                })
+                worksheet.conditional_format(1, col, len(data), col, {
+                    'type': 'text',
+                    'criteria': 'containing',
+                    'value': 'yes',
+                    'format': yes_format
+                })
+        
+        output.seek(0)
+        
+        return send_file(
+            output,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=f'employee_export_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
+        )
+        
+    except Exception as e:
+        current_app.logger.error(f"Error exporting employees: {str(e)}")
+        flash(f'Error exporting employees: {str(e)}', 'error')
+        return redirect(url_for('supervisor.dashboard'))
+
 # Import numpy for sample data generation
 import numpy as np
+from datetime import timedelta
