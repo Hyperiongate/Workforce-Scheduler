@@ -211,6 +211,15 @@ def upload_employees():
         # Read Excel file
         df = pd.read_excel(file, sheet_name='Employee Data' if 'Employee Data' in pd.ExcelFile(file).sheet_names else 0)
         
+        # Check if we have the required columns
+        required_columns = ['Last Name', 'First Name', 'Employee ID', 'Date of Hire', 
+                           'Total Overtime (Last 3 Months)', 'Crew Assigned', 'Current Job Position']
+        
+        missing_columns = [col for col in required_columns if col not in df.columns]
+        if missing_columns:
+            flash(f'Missing required columns: {", ".join(missing_columns)}. Please use the correct template.', 'error')
+            return redirect(request.url)
+        
         # Process each row
         success_count = 0
         error_count = 0
@@ -223,8 +232,15 @@ def upload_employees():
         
         for index, row in df.iterrows():
             try:
-                # Skip empty rows
-                if pd.isna(row['Last Name']) or pd.isna(row['First Name']):
+                # Skip empty rows - check if Last Name or First Name is empty/NaN
+                if pd.isna(row.get('Last Name', '')) or pd.isna(row.get('First Name', '')) or \
+                   str(row.get('Last Name', '')).strip() == '' or str(row.get('First Name', '')).strip() == '':
+                    continue
+                
+                # Also skip if Employee ID is missing
+                if pd.isna(row.get('Employee ID', '')) or str(row.get('Employee ID', '')).strip() == '':
+                    errors.append(f"Row {index + 2}: Missing Employee ID")
+                    error_count += 1
                     continue
                 
                 # Check if employee exists
@@ -237,63 +253,69 @@ def upload_employees():
                     employee = Employee(
                         employee_id=str(row['Employee ID']),
                         name=f"{row['First Name']} {row['Last Name']}",
-                        email=f"{row['First Name'].lower()}.{row['Last Name'].lower()}@company.com",
+                        email=f"{str(row['First Name']).lower()}.{str(row['Last Name']).lower()}@company.com",
                         password_hash='$2b$12$default_hash',  # Will need to be reset
-                        crew=row['Crew Assigned'],
+                        crew=str(row.get('Crew Assigned', '')),
                         is_supervisor=False,
-                        hire_date=pd.to_datetime(row['Date of Hire']).date() if pd.notna(row['Date of Hire']) else datetime.now().date()
+                        hire_date=pd.to_datetime(row['Date of Hire']).date() if pd.notna(row.get('Date of Hire')) else datetime.now().date()
                     )
                     db.session.add(employee)
                     db.session.flush()  # Get the ID
                 else:
                     # Update existing employee
-                    employee.crew = row['Crew Assigned']
-                    if pd.notna(row['Date of Hire']):
+                    employee.crew = str(row.get('Crew Assigned', ''))
+                    if pd.notna(row.get('Date of Hire')):
                         employee.hire_date = pd.to_datetime(row['Date of Hire']).date()
                 
                 # Handle current position
-                current_pos_name = row['Current Job Position']
-                if pd.notna(current_pos_name):
-                    position = Position.query.filter_by(name=current_pos_name).first()
+                current_pos_name = row.get('Current Job Position', '')
+                if pd.notna(current_pos_name) and str(current_pos_name).strip():
+                    position = Position.query.filter_by(name=str(current_pos_name)).first()
                     if not position:
-                        position = Position(name=current_pos_name, department=f"{current_pos_name} department")
+                        position = Position(name=str(current_pos_name), department=f"{current_pos_name} department")
                         db.session.add(position)
                         db.session.flush()
                     employee.position_id = position.id
                 
                 # Handle overtime if provided
-                if pd.notna(row['Total Overtime (Last 3 Months)']):
-                    # Calculate average weekly overtime from 3-month total
-                    total_ot = float(row['Total Overtime (Last 3 Months)'])
-                    weekly_avg = total_ot / 13  # Approximately 13 weeks in 3 months
-                    
-                    # Create overtime history record for current week
-                    current_week = datetime.now().isocalendar()[1]
-                    current_year = datetime.now().year
-                    week_start = datetime.now().date() - timedelta(days=datetime.now().weekday())
-                    
-                    ot_record = OvertimeHistory.query.filter_by(
-                        employee_id=employee.id,
-                        week_start_date=week_start
-                    ).first()
-                    
-                    if not ot_record:
-                        ot_record = OvertimeHistory(
+                overtime_value = row.get('Total Overtime (Last 3 Months)')
+                if pd.notna(overtime_value) and str(overtime_value).strip():
+                    try:
+                        # Calculate average weekly overtime from 3-month total
+                        total_ot = float(overtime_value)
+                        weekly_avg = total_ot / 13  # Approximately 13 weeks in 3 months
+                        
+                        # Create overtime history record for current week
+                        current_week = datetime.now().isocalendar()[1]
+                        current_year = datetime.now().year
+                        week_start = datetime.now().date() - timedelta(days=datetime.now().weekday())
+                        
+                        ot_record = OvertimeHistory.query.filter_by(
                             employee_id=employee.id,
-                            week_start_date=week_start,
-                            overtime_hours=weekly_avg,
-                            regular_hours=40,
-                            total_hours=40 + weekly_avg
-                        )
-                        db.session.add(ot_record)
+                            week_start_date=week_start
+                        ).first()
+                        
+                        if not ot_record:
+                            ot_record = OvertimeHistory(
+                                employee_id=employee.id,
+                                week_start_date=week_start,
+                                overtime_hours=weekly_avg,
+                                regular_hours=40,
+                                total_hours=40 + weekly_avg
+                            )
+                            db.session.add(ot_record)
+                    except ValueError:
+                        # Skip if overtime value is not a valid number
+                        pass
                 
                 # Handle position qualifications
                 for pos_col in position_columns:
-                    if pd.notna(row[pos_col]) and row[pos_col].lower() in ['current', 'yes']:
+                    cell_value = row.get(pos_col, '')
+                    if pd.notna(cell_value) and str(cell_value).strip().lower() in ['current', 'yes']:
                         # Find or create position
-                        position = Position.query.filter_by(name=pos_col).first()
+                        position = Position.query.filter_by(name=str(pos_col)).first()
                         if not position:
-                            position = Position(name=pos_col, department=f"{pos_col} department")
+                            position = Position(name=str(pos_col), department=f"{pos_col} department")
                             db.session.add(position)
                             db.session.flush()
                         
@@ -321,7 +343,7 @@ def upload_employees():
                                 employee_skills.insert().values(
                                     employee_id=employee.id,
                                     skill_id=skill.id,
-                                    is_primary=(row[pos_col].lower() == 'current'),
+                                    is_primary=(str(cell_value).strip().lower() == 'current'),
                                     certification_date=datetime.now().date()
                                 )
                             )
