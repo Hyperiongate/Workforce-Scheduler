@@ -877,3 +877,27 @@ class SkillRequirement(db.Model):
     shift_type = db.Column(db.String(50), nullable=False)  # day, evening, night
     minimum_required = db.Column(db.Integer, default=1)
     position_id = db.Column(db.Integer, db.ForeignKey('position.id'))
+# Add this to the end of your models.py file, after the SkillRequirement class
+
+class FileUpload(db.Model):
+    """Track uploaded files and their processing status"""
+    __tablename__ = 'file_uploads'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    filename = db.Column(db.String(255), nullable=False)
+    file_type = db.Column(db.String(50))  # employee_import, schedule_import, etc.
+    file_size = db.Column(db.Integer)  # Size in bytes
+    upload_date = db.Column(db.DateTime, default=datetime.utcnow)
+    uploaded_by_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=False)
+    
+    # Processing status
+    status = db.Column(db.String(20), default='pending')  # pending, processing, completed, failed
+    records_processed = db.Column(db.Integer, default=0)
+    records_failed = db.Column(db.Integer, default=0)
+    error_details = db.Column(db.Text)
+    
+    # Relationships
+    uploaded_by = db.relationship('Employee', backref='file_uploads')
+    
+    def __repr__(self):
+        return f'<FileUpload {self.filename} - {self.status}>'
