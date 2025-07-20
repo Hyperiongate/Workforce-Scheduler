@@ -31,6 +31,7 @@ FILE STRUCTURE:
   schedule.py          - Routes: /schedule/view, /schedule/create, /schedule/wizard/<pattern>
   supervisor.py        - Routes: /supervisor/*, /vacation-calendar, /api/vacation-calendar
   employee.py          - Routes: /overtime-management, /vacation/request, /shift-marketplace, /maintenance/*
+  employee_import.py   - Routes: /upload-employees, /download-employee-template, /export-current-employees
 
 /templates/
   dashboard.html       - THIS FILE - Supervisor dashboard with 3-column layout
@@ -38,6 +39,7 @@ FILE STRUCTURE:
   vacation_calendar.html  - Monthly calendar view of team time-off
   vacation_request.html   - Time-off request form (vacation/sick/personal)
   shift_marketplace.html  - Shift trading marketplace
+  upload_employees.html   - Employee import/export interface
   [others...]          - overtime_management, maintenance_issues, position_messages, etc.
 
 /utils/
@@ -55,6 +57,7 @@ KEY FEATURES:
 - Supervisor messaging system
 - Coverage gap analysis
 - Casual worker management
+- Employee import/export via Excel
 
 DATABASE MODELS (from models.py):
 - Employee (with overtime properties, skills, crew assignment)
@@ -65,6 +68,7 @@ DATABASE MODELS (from models.py):
 - CircadianProfile, SleepLog
 - OvertimeHistory, VacationCalendar
 - CoverageRequest, CasualWorker
+- FileUpload, EmployeeSkill, SkillRequirement
 
 TEMPLATE VARIABLES USED IN THIS FILE:
 - current_user (Flask-Login)
@@ -244,6 +248,9 @@ PENDING IMPLEMENTATION:
         
         .card-employees { border-color: #30cfd0; }
         .card-employees i { color: #30cfd0; }
+        
+        .card-import { border-color: #20e3b2; }
+        .card-import i { color: #20e3b2; }
         
         /* Column 3 - Orange/Red Theme (Communications) */
         .card-maintenance { border-color: #fc4a1a; }
@@ -547,6 +554,15 @@ PENDING IMPLEMENTATION:
                     <div class="access-card-content">
                         <h3>View Employees & Crews</h3>
                         <p>{{ total_employees }} total staff</p>
+                    </div>
+                </a>
+                
+                <!-- Import/Export Employees -->
+                <a href="/upload-employees" class="access-card card-import">
+                    <i class="bi bi-file-earmark-arrow-up"></i>
+                    <div class="access-card-content">
+                        <h3>Import/Export Employees</h3>
+                        <p>Excel upload & download</p>
                     </div>
                 </a>
             </div>
