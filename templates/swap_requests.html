@@ -18,6 +18,36 @@
             border-bottom: 3px solid #764ba2;
         }
         
+        .filter-section {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            margin-bottom: 2rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        
+        .filter-btn {
+            padding: 0.5rem 1rem;
+            border: 2px solid #dee2e6;
+            background: white;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-decoration: none;
+            color: #495057;
+        }
+        
+        .filter-btn:hover {
+            border-color: #764ba2;
+            color: #764ba2;
+        }
+        
+        .filter-btn.active {
+            background: #764ba2;
+            color: white;
+            border-color: #764ba2;
+        }
+        
         .swap-card {
             background: white;
             border-radius: 8px;
@@ -39,6 +69,11 @@
         
         .swap-card.approved {
             border-left: 4px solid #28a745;
+            opacity: 0.8;
+        }
+        
+        .swap-card.denied {
+            border-left: 4px solid #dc3545;
             opacity: 0.8;
         }
         
@@ -108,7 +143,9 @@
         
         .badge-pending { background: #fff3cd; color: #856404; }
         .badge-approved { background: #d4edda; color: #155724; }
+        .badge-denied { background: #f8d7da; color: #721c24; }
         .badge-waiting { background: #cce5ff; color: #004085; }
+        .badge-dual { background: #e2e3e5; color: #383d41; }
         
         .action-buttons {
             display: flex;
@@ -118,6 +155,24 @@
         
         .alert-info {
             border-left: 4px solid #17a2b8;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 3rem;
+            color: #6c757d;
+        }
+        
+        .empty-state i {
+            font-size: 4rem;
+            color: #dee2e6;
+            margin-bottom: 1rem;
+        }
+        
+        /* Modal styles */
+        .modal-header {
+            background: #f8f9fa;
+            border-bottom: 2px solid #dee2e6;
         }
     </style>
 </head>
@@ -162,7 +217,7 @@
                 </div>
                 <div class="col-auto">
                     <div class="text-center">
-                        <h2 class="mb-0" style="color: #764ba2;">2</h2>
+                        <h2 class="mb-0" style="color: #764ba2;">{{ stats.pending_count }}</h2>
                         <small class="text-muted">Pending Approval</small>
                     </div>
                 </div>
@@ -171,192 +226,276 @@
     </div>
 
     <div class="container-fluid">
-        <!-- Alert about dual approval -->
+        <!-- Stats Alert -->
+        {% if stats.needs_dual_approval > 0 %}
         <div class="alert alert-info alert-dismissible fade show" role="alert">
-            <i class="bi bi-info-circle"></i> <strong>Dual Approval Required:</strong> Shift swaps need approval from both employees' supervisors. You can see the status from both sides below.
+            <i class="bi bi-info-circle"></i> <strong>Dual Approval Required:</strong> 
+            {{ stats.needs_dual_approval }} swap request(s) need approval from supervisors of different crews.
             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
         </div>
+        {% endif %}
 
-        <!-- Pending Swaps -->
-        <h3 class="mb-3">Pending Swap Requests (2)</h3>
-        
-        <!-- Swap Request 1 -->
-        <div class="swap-card pending">
-            <div class="d-flex justify-content-between align-items-center mb-3">
-                <h5 class="mb-0">Swap Request #1247</h5>
-                <span class="status-badge badge-pending">Pending Your Approval</span>
-            </div>
-            
+        <!-- Filters -->
+        <div class="filter-section">
             <div class="row align-items-center">
-                <div class="col-md-5">
-                    <div class="employee-box">
-                        <div class="employee-avatar">JD</div>
-                        <h6 class="mb-1">John Doe</h6>
-                        <small class="text-muted">Operator - Crew A</small>
-                        <div class="shift-details">
-                            <strong>Giving Up:</strong><br>
-                            July 22, 2025<br>
-                            Morning Shift (7:00 AM - 3:00 PM)
-                        </div>
+                <div class="col-md-6">
+                    <h5 class="mb-3">Filter by Status</h5>
+                    <div class="d-flex gap-2 flex-wrap">
+                        <a href="?status=pending&crew={{ crew_filter }}" 
+                           class="filter-btn {% if status_filter == 'pending' %}active{% endif %}">
+                            Pending ({{ stats.pending_count }})
+                        </a>
+                        <a href="?status=approved&crew={{ crew_filter }}" 
+                           class="filter-btn {% if status_filter == 'approved' %}active{% endif %}">
+                            Approved
+                        </a>
+                        <a href="?status=denied&crew={{ crew_filter }}" 
+                           class="filter-btn {% if status_filter == 'denied' %}active{% endif %}">
+                            Denied
+                        </a>
+                        <a href="?status=all&crew={{ crew_filter }}" 
+                           class="filter-btn {% if status_filter == 'all' %}active{% endif %}">
+                            All Requests
+                        </a>
                     </div>
                 </div>
-                
-                <div class="col-md-2">
-                    <div class="swap-arrow">
-                        <i class="bi bi-arrow-left-right"></i>
+                <div class="col-md-6">
+                    <h5 class="mb-3">Filter by Crew</h5>
+                    <div class="d-flex gap-2 flex-wrap">
+                        <a href="?status={{ status_filter }}&crew=all" 
+                           class="filter-btn {% if crew_filter == 'all' %}active{% endif %}">
+                            All Crews
+                        </a>
+                        <a href="?status={{ status_filter }}&crew=A" 
+                           class="filter-btn {% if crew_filter == 'A' %}active{% endif %}">
+                            Crew A
+                        </a>
+                        <a href="?status={{ status_filter }}&crew=B" 
+                           class="filter-btn {% if crew_filter == 'B' %}active{% endif %}">
+                            Crew B
+                        </a>
+                        <a href="?status={{ status_filter }}&crew=C" 
+                           class="filter-btn {% if crew_filter == 'C' %}active{% endif %}">
+                            Crew C
+                        </a>
+                        <a href="?status={{ status_filter }}&crew=D" 
+                           class="filter-btn {% if crew_filter == 'D' %}active{% endif %}">
+                            Crew D
+                        </a>
                     </div>
                 </div>
-                
-                <div class="col-md-5">
-                    <div class="employee-box">
-                        <div class="employee-avatar" style="background: #e91e63;">MW</div>
-                        <h6 class="mb-1">Mary Williams</h6>
-                        <small class="text-muted">Operator - Crew B</small>
-                        <div class="shift-details">
-                            <strong>Giving Up:</strong><br>
-                            July 23, 2025<br>
-                            Afternoon Shift (3:00 PM - 11:00 PM)
-                        </div>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="approval-status">
-                <div class="approval-item">
-                    <div class="approval-icon text-warning">
-                        <i class="bi bi-clock-fill"></i>
-                    </div>
-                    <strong>Your Approval</strong><br>
-                    <small>Pending (Crew A Supervisor)</small>
-                </div>
-                <div class="approval-item">
-                    <div class="approval-icon text-success">
-                        <i class="bi bi-check-circle-fill"></i>
-                    </div>
-                    <strong>Crew B Supervisor</strong><br>
-                    <small>Already Approved</small>
-                </div>
-            </div>
-            
-            <p class="mb-2"><strong>Reason:</strong> John needs to attend a medical appointment on the 23rd, Mary is willing to cover.</p>
-            
-            <div class="action-buttons">
-                <button class="btn btn-success">
-                    <i class="bi bi-check-circle"></i> Approve Swap
-                </button>
-                <button class="btn btn-danger">
-                    <i class="bi bi-x-circle"></i> Deny Swap
-                </button>
-                <button class="btn btn-outline-secondary">
-                    <i class="bi bi-calendar-week"></i> Check Schedule Impact
-                </button>
             </div>
         </div>
 
-        <!-- Swap Request 2 -->
-        <div class="swap-card pending">
-            <div class="d-flex justify-content-between align-items-center mb-3">
-                <h5 class="mb-0">Swap Request #1248</h5>
-                <span class="status-badge badge-waiting">Waiting for Other Approval</span>
-            </div>
-            
-            <div class="row align-items-center">
-                <div class="col-md-5">
-                    <div class="employee-box">
-                        <div class="employee-avatar" style="background: #009688;">TJ</div>
-                        <h6 class="mb-1">Tom Johnson</h6>
-                        <small class="text-muted">Technician - Crew A</small>
-                        <div class="shift-details">
-                            <strong>Giving Up:</strong><br>
-                            July 28, 2025<br>
-                            Night Shift (11:00 PM - 7:00 AM)
-                        </div>
+        <!-- Swap Requests List -->
+        {% if requests %}
+            {% for swap in requests %}
+            <div class="swap-card {{ swap.status }}">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="mb-0">Swap Request #{{ swap.id }}</h5>
+                    <div>
+                        {% if swap.status == 'pending' %}
+                            {% if swap.needs_dual_approval %}
+                                <span class="status-badge badge-dual">Needs Dual Approval</span>
+                            {% endif %}
+                            {% if current_user.crew == swap.requester.crew and not swap.requester_supervisor_approved %}
+                                <span class="status-badge badge-pending">Pending Your Approval</span>
+                            {% elif swap.target_employee and current_user.crew == swap.target_employee.crew and not swap.target_supervisor_approved %}
+                                <span class="status-badge badge-pending">Pending Your Approval</span>
+                            {% else %}
+                                <span class="status-badge badge-waiting">Waiting for Other Approval</span>
+                            {% endif %}
+                        {% elif swap.status == 'approved' %}
+                            <span class="status-badge badge-approved">Approved</span>
+                        {% else %}
+                            <span class="status-badge badge-denied">Denied</span>
+                        {% endif %}
                     </div>
                 </div>
                 
-                <div class="col-md-2">
-                    <div class="swap-arrow">
-                        <i class="bi bi-arrow-left-right"></i>
+                <div class="row align-items-center">
+                    <div class="col-md-5">
+                        <div class="employee-box">
+                            <div class="employee-avatar">
+                                {{ swap.requester.name[:2].upper() }}
+                            </div>
+                            <h6 class="mb-1">{{ swap.requester.name }}</h6>
+                            <small class="text-muted">{{ swap.requester.position.name }} - Crew {{ swap.requester.crew }}</small>
+                            <div class="shift-details">
+                                <strong>Giving Up:</strong><br>
+                                {{ swap.original_shift_date.strftime('%B %d, %Y') }}<br>
+                                {{ swap.original_shift_type }}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-2">
+                        <div class="swap-arrow">
+                            {% if swap.status == 'approved' %}
+                                <i class="bi bi-check-circle" style="color: #28a745;"></i>
+                            {% elif swap.status == 'denied' %}
+                                <i class="bi bi-x-circle" style="color: #dc3545;"></i>
+                            {% else %}
+                                <i class="bi bi-arrow-left-right"></i>
+                            {% endif %}
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-5">
+                        {% if swap.target_employee %}
+                        <div class="employee-box">
+                            <div class="employee-avatar" style="background: #e91e63;">
+                                {{ swap.target_employee.name[:2].upper() }}
+                            </div>
+                            <h6 class="mb-1">{{ swap.target_employee.name }}</h6>
+                            <small class="text-muted">{{ swap.target_employee.position.name }} - Crew {{ swap.target_employee.crew }}</small>
+                            <div class="shift-details">
+                                <strong>Giving Up:</strong><br>
+                                {{ swap.target_shift_date.strftime('%B %d, %Y') if swap.target_shift_date else 'TBD' }}<br>
+                                {{ swap.target_shift_type if swap.target_shift_type else 'TBD' }}
+                            </div>
+                        </div>
+                        {% else %}
+                        <div class="employee-box">
+                            <div class="employee-avatar" style="background: #6c757d;">
+                                <i class="bi bi-question"></i>
+                            </div>
+                            <h6 class="mb-1">Open Swap Request</h6>
+                            <small class="text-muted">Waiting for someone to accept</small>
+                            <div class="shift-details">
+                                Looking for coverage on<br>
+                                {{ swap.original_shift_date.strftime('%B %d, %Y') }}
+                            </div>
+                        </div>
+                        {% endif %}
                     </div>
                 </div>
                 
-                <div class="col-md-5">
-                    <div class="employee-box">
-                        <div class="employee-avatar" style="background: #ff5722;">DB</div>
-                        <h6 class="mb-1">David Brown</h6>
-                        <small class="text-muted">Technician - Crew C</small>
-                        <div class="shift-details">
-                            <strong>Giving Up:</strong><br>
-                            July 29, 2025<br>
-                            Morning Shift (7:00 AM - 3:00 PM)
+                {% if swap.status == 'pending' %}
+                <div class="approval-status">
+                    <div class="approval-item">
+                        <div class="approval-icon {% if swap.requester_supervisor_approved %}text-success{% else %}text-warning{% endif %}">
+                            {% if swap.requester_supervisor_approved %}
+                                <i class="bi bi-check-circle-fill"></i>
+                            {% else %}
+                                <i class="bi bi-clock-fill"></i>
+                            {% endif %}
                         </div>
+                        <strong>{{ swap.requester.crew }} Supervisor</strong><br>
+                        <small>
+                            {% if swap.requester_supervisor_approved %}
+                                Approved on {{ swap.requester_supervisor_date.strftime('%b %d') }}
+                            {% else %}
+                                Pending Approval
+                            {% endif %}
+                        </small>
                     </div>
-                </div>
-            </div>
-            
-            <div class="approval-status">
-                <div class="approval-item">
-                    <div class="approval-icon text-success">
-                        <i class="bi bi-check-circle-fill"></i>
-                    </div>
-                    <strong>Your Approval</strong><br>
-                    <small>Already Approved</small>
-                </div>
-                <div class="approval-item">
-                    <div class="approval-icon text-warning">
-                        <i class="bi bi-clock-fill"></i>
-                    </div>
-                    <strong>Crew C Supervisor</strong><br>
-                    <small>Pending Approval</small>
-                </div>
-            </div>
-            
-            <p class="mb-2"><strong>Reason:</strong> Tom prefers morning shifts for family reasons, David prefers nights.</p>
-            <p class="mb-0"><small class="text-muted">You approved this on July 16, 2025 - Waiting for Crew C Supervisor</small></p>
-        </div>
-
-        <!-- Recently Completed -->
-        <h3 class="mb-3 mt-5">Recently Completed Swaps</h3>
-        
-        <!-- Approved Swap -->
-        <div class="swap-card approved">
-            <div class="d-flex justify-content-between align-items-center mb-3">
-                <h5 class="mb-0">Swap Request #1245</h5>
-                <span class="status-badge badge-approved">Fully Approved</span>
-            </div>
-            
-            <div class="row align-items-center">
-                <div class="col-md-5">
-                    <div class="employee-box">
-                        <div class="employee-avatar" style="background: #28a745;">SJ</div>
-                        <h6 class="mb-1">Sarah Jones</h6>
-                        <small class="text-muted">Operator - Crew A</small>
-                        <div class="shift-details">
-                            July 15, 2025 - Afternoon Shift
+                    {% if swap.target_employee %}
+                    <div class="approval-item">
+                        <div class="approval-icon {% if swap.target_supervisor_approved %}text-success{% else %}text-warning{% endif %}">
+                            {% if swap.target_supervisor_approved %}
+                                <i class="bi bi-check-circle-fill"></i>
+                            {% else %}
+                                <i class="bi bi-clock-fill"></i>
+                            {% endif %}
                         </div>
+                        <strong>{{ swap.target_employee.crew }} Supervisor</strong><br>
+                        <small>
+                            {% if swap.target_supervisor_approved %}
+                                Approved on {{ swap.target_supervisor_date.strftime('%b %d') }}
+                            {% else %}
+                                Pending Approval
+                            {% endif %}
+                        </small>
                     </div>
+                    {% endif %}
                 </div>
+                {% endif %}
                 
-                <div class="col-md-2">
-                    <div class="swap-arrow">
-                        <i class="bi bi-check-circle" style="color: #28a745;"></i>
-                    </div>
-                </div>
+                {% if swap.reason %}
+                <p class="mb-2"><strong>Reason:</strong> {{ swap.reason }}</p>
+                {% endif %}
                 
-                <div class="col-md-5">
-                    <div class="employee-box">
-                        <div class="employee-avatar" style="background: #28a745;">KL</div>
-                        <h6 class="mb-1">Kevin Lee</h6>
-                        <small class="text-muted">Operator - Crew A</small>
-                        <div class="shift-details">
-                            July 16, 2025 - Morning Shift
+                {% if swap.status == 'pending' %}
+                    {% set can_approve = False %}
+                    {% if current_user.crew == swap.requester.crew and not swap.requester_supervisor_approved %}
+                        {% set can_approve = True %}
+                    {% elif swap.target_employee and current_user.crew == swap.target_employee.crew and not swap.target_supervisor_approved %}
+                        {% set can_approve = True %}
+                    {% endif %}
+                    
+                    {% if can_approve %}
+                    <div class="action-buttons">
+                        <form action="{{ url_for('supervisor.handle_swap_request', request_id=swap.id, action='approve') }}" 
+                              method="POST" style="display: inline;">
+                            <button type="submit" class="btn btn-success">
+                                <i class="bi bi-check-circle"></i> Approve Swap
+                            </button>
+                        </form>
+                        <button type="button" class="btn btn-danger" data-bs-toggle="modal" 
+                                data-bs-target="#denyModal{{ swap.id }}">
+                            <i class="bi bi-x-circle"></i> Deny Swap
+                        </button>
+                        <button class="btn btn-outline-secondary" disabled>
+                            <i class="bi bi-calendar-week"></i> Check Schedule Impact
+                        </button>
+                    </div>
+                    {% else %}
+                    <p class="mb-0 text-muted">
+                        <small>Waiting for approval from the other supervisor.</small>
+                    </p>
+                    {% endif %}
+                {% else %}
+                    <p class="mb-0 mt-3">
+                        <small class="text-muted">
+                            {% if swap.status == 'approved' %}
+                                Approved on {{ swap.created_at.strftime('%B %d, %Y') }}
+                            {% else %}
+                                Denied on {{ swap.created_at.strftime('%B %d, %Y') }}
+                            {% endif %}
+                        </small>
+                    </p>
+                {% endif %}
+            </div>
+            
+            <!-- Deny Modal -->
+            {% if swap.status == 'pending' %}
+            <div class="modal fade" id="denyModal{{ swap.id }}" tabindex="-1">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Deny Swap Request</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                         </div>
+                        <form action="{{ url_for('supervisor.handle_swap_request', request_id=swap.id, action='deny') }}" 
+                              method="POST">
+                            <div class="modal-body">
+                                <p>Are you sure you want to deny this swap request?</p>
+                                <div class="mb-3">
+                                    <label for="denial_reason{{ swap.id }}" class="form-label">
+                                        Reason for denial (optional):
+                                    </label>
+                                    <textarea class="form-control" id="denial_reason{{ swap.id }}" 
+                                              name="denial_reason" rows="3"></textarea>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                <button type="submit" class="btn btn-danger">Deny Request</button>
+                            </div>
+                        </form>
                     </div>
                 </div>
             </div>
-            
-            <p class="mb-0 mt-3"><small class="text-muted">Approved by both supervisors on July 10, 2025 - Swap completed successfully</small></p>
-        </div>
+            {% endif %}
+            {% endfor %}
+        {% else %}
+            <div class="empty-state">
+                <i class="bi bi-arrow-left-right"></i>
+                <h4>No Swap Requests Found</h4>
+                <p>There are no swap requests matching your current filters.</p>
+            </div>
+        {% endif %}
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
