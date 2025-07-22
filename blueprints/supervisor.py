@@ -969,6 +969,12 @@ def position_broadcast():
 
 # ========== DIAGNOSTIC AND IMPROVED UPLOAD ROUTES ==========
 
+@supervisor_bp.route('/test-route')
+@login_required
+def test_route():
+    """Simple test route to verify blueprint is working"""
+    return "Supervisor blueprint is working!"
+
 @supervisor_bp.route('/employees/check-duplicates')
 @login_required
 @supervisor_required
@@ -1013,15 +1019,50 @@ def force_cleanup():
             # Get count before deletion
             before_count = conn.execute(db.text("SELECT COUNT(*) FROM employee")).scalar()
             
-            # Delete all related data
+            # Delete all related data in the correct order
+            # First, tables that reference other tables
+            conn.execute(db.text("DELETE FROM position_message_read WHERE reader_id != :user_id"), {'user_id': current_user_id})
+            conn.execute(db.text("DELETE FROM maintenance_update WHERE author_id != :user_id"), {'user_id': current_user_id})
+            conn.execute(db.text("DELETE FROM shift_trade_proposal WHERE proposer_id != :user_id"), {'user_id': current_user_id})
+            conn.execute(db.text("DELETE FROM shift_trade WHERE employee1_id != :user_id AND employee2_id != :user_id"), {'user_id': current_user_id})
+            conn.execute(db.text("DELETE FROM coverage_notification WHERE sent_to_employee_id != :user_id AND sent_by_id != :user_id"), {'user_id': current_user_id})
+            
+            # Then, direct employee references
             conn.execute(db.text("DELETE FROM employee_skills WHERE employee_id != :user_id"), {'user_id': current_user_id})
             conn.execute(db.text("DELETE FROM overtime_history WHERE employee_id != :user_id"), {'user_id': current_user_id})
             conn.execute(db.text("DELETE FROM vacation_calendar WHERE employee_id != :user_id"), {'user_id': current_user_id})
             conn.execute(db.text("DELETE FROM time_off_request WHERE employee_id != :user_id"), {'user_id': current_user_id})
             conn.execute(db.text("DELETE FROM shift_swap_request WHERE requester_id != :user_id AND target_employee_id != :user_id"), {'user_id': current_user_id})
             conn.execute(db.text("DELETE FROM schedule WHERE employee_id != :user_id"), {'user_id': current_user_id})
+            conn.execute(db.text("DELETE FROM availability WHERE employee_id != :user_id"), {'user_id': current_user_id})
+            conn.execute(db.text("DELETE FROM coverage_request WHERE requester_id != :user_id AND filled_by_id != :user_id"), {'user_id': current_user_id})
+            conn.execute(db.text("DELETE FROM schedule_suggestion WHERE employee_id != :user_id AND reviewed_by_id != :user_id"), {'user_id': current_user_id})
             
-            # Delete employees
+            # Sleep/health related tables
+            conn.execute(db.text("DELETE FROM circadian_profile WHERE employee_id != :user_id"), {'user_id': current_user_id})
+            conn.execute(db.text("DELETE FROM sleep_log WHERE employee_id != :user_id"), {'user_id': current_user_id})
+            conn.execute(db.text("DELETE FROM sleep_recommendation WHERE employee_id != :user_id"), {'user_id': current_user_id})
+            conn.execute(db.text("DELETE FROM shift_transition_plan WHERE employee_id != :user_id"), {'user_id': current_user_id})
+            
+            # Communication tables
+            conn.execute(db.text("DELETE FROM supervisor_message WHERE sender_id != :user_id AND recipient_id != :user_id"), {'user_id': current_user_id})
+            conn.execute(db.text("DELETE FROM position_message WHERE sender_id != :user_id"), {'user_id': current_user_id})
+            conn.execute(db.text("DELETE FROM maintenance_issue WHERE reporter_id != :user_id AND assigned_to_id != :user_id"), {'user_id': current_user_id})
+            
+            # Shift trade marketplace
+            conn.execute(db.text("DELETE FROM shift_trade_post WHERE poster_id != :user_id"), {'user_id': current_user_id})
+            conn.execute(db.text("DELETE FROM trade_match_preference WHERE employee_id != :user_id"), {'user_id': current_user_id})
+            
+            # Casual worker assignments
+            conn.execute(db.text("DELETE FROM casual_assignment"), {})
+            
+            # Maintenance manager role
+            conn.execute(db.text("DELETE FROM maintenance_manager WHERE employee_id != :user_id"), {'user_id': current_user_id})
+            
+            # File uploads
+            conn.execute(db.text("DELETE FROM file_upload WHERE uploaded_by_id != :user_id"), {'user_id': current_user_id})
+            
+            # Finally delete employees
             deleted = conn.execute(db.text("DELETE FROM employee WHERE id != :user_id"), {'user_id': current_user_id})
             
             trans.commit()
