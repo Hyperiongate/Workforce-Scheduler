@@ -506,6 +506,9 @@ def download_employee_template():
 def upload_employees():
     """Upload employee data from Excel file - REPLACES all existing data"""
     
+    # Ensure clean session state
+    db.session.rollback()
+    
     if 'file' not in request.files:
         flash('No file uploaded', 'danger')
         return redirect(url_for('supervisor.employee_management'))
@@ -537,26 +540,45 @@ def upload_employees():
         
         # STEP 1: Delete all existing employee data (except current user)
         try:
+            # Use a fresh session for deletions
+            db.session.rollback()  # Clear any pending operations
+            
+            # Get current user ID before deletions
+            current_user_id = current_user.id
+            
             # First delete related records using raw SQL for the association table
             db.session.execute(
                 db.text("DELETE FROM employee_skills WHERE employee_id != :user_id"),
-                {'user_id': current_user.id}
+                {'user_id': current_user_id}
             )
             
             # Delete other related records
-            OvertimeHistory.query.filter(OvertimeHistory.employee_id != current_user.id).delete()
-            VacationCalendar.query.filter(VacationCalendar.employee_id != current_user.id).delete()
-            TimeOffRequest.query.filter(TimeOffRequest.employee_id != current_user.id).delete()
-            ShiftSwapRequest.query.filter(
-                db.or_(
-                    ShiftSwapRequest.requester_id != current_user.id,
-                    ShiftSwapRequest.target_employee_id != current_user.id
-                )
-            ).delete()
-            Schedule.query.filter(Schedule.employee_id != current_user.id).delete()
+            db.session.execute(
+                db.text("DELETE FROM overtime_history WHERE employee_id != :user_id"),
+                {'user_id': current_user_id}
+            )
+            db.session.execute(
+                db.text("DELETE FROM vacation_calendar WHERE employee_id != :user_id"),
+                {'user_id': current_user_id}
+            )
+            db.session.execute(
+                db.text("DELETE FROM time_off_request WHERE employee_id != :user_id"),
+                {'user_id': current_user_id}
+            )
+            db.session.execute(
+                db.text("DELETE FROM shift_swap_request WHERE requester_id != :user_id AND target_employee_id != :user_id"),
+                {'user_id': current_user_id}
+            )
+            db.session.execute(
+                db.text("DELETE FROM schedule WHERE employee_id != :user_id"),
+                {'user_id': current_user_id}
+            )
             
-            # Delete employees
-            Employee.query.filter(Employee.id != current_user.id).delete()
+            # Finally delete employees
+            db.session.execute(
+                db.text("DELETE FROM employee WHERE id != :user_id"),
+                {'user_id': current_user_id}
+            )
             
             # IMPORTANT: Commit the deletions before proceeding
             db.session.commit()
@@ -567,14 +589,19 @@ def upload_employees():
             return redirect(url_for('supervisor.employee_management'))
         
         # STEP 2: Ensure all positions exist in database
-        for pos_name in position_columns:
-            if pos_name and 'Qualified Position' not in pos_name:
-                position = Position.query.filter_by(name=pos_name).first()
-                if not position:
-                    position = Position(name=pos_name, min_coverage=1)
-                    db.session.add(position)
-        
-        db.session.commit()
+        try:
+            for pos_name in position_columns:
+                if pos_name and 'Qualified Position' not in pos_name:
+                    position = Position.query.filter_by(name=pos_name).first()
+                    if not position:
+                        position = Position(name=pos_name, min_coverage=1)
+                        db.session.add(position)
+            
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error creating positions: {str(e)}', 'danger')
+            return redirect(url_for('supervisor.employee_management'))
         
         # STEP 3: Process and insert new employees
         employees_created = 0
@@ -592,10 +619,14 @@ def upload_employees():
                 email = f"{first_name.lower()}.{last_name.lower()}@company.com"
                 email = email.replace(' ', '')
                 
-                # Check if this email already exists (in case of duplicates in the Excel file)
-                existing = Employee.query.filter_by(email=email).first()
-                if existing and existing.id != current_user.id:
-                    errors.append(f"Row {idx + 2}: Duplicate email {email} - skipping")
+                # Check if this email already exists (shouldn't happen after deletion, but let's be safe)
+                existing = db.session.execute(
+                    db.text("SELECT id FROM employee WHERE email = :email"),
+                    {'email': email}
+                ).first()
+                
+                if existing:
+                    errors.append(f"Row {idx + 2}: Email {email} already exists - skipping")
                     continue
                 
                 # Parse hire date
@@ -672,7 +703,7 @@ def upload_employees():
                 
             except Exception as e:
                 errors.append(f"Row {idx + 2}: {str(e)}")
-                db.session.rollback()  # Rollback this specific employee
+                # Don't rollback here - continue with other employees
                 continue
         
         # Commit the transaction
@@ -690,6 +721,9 @@ def upload_employees():
         
     except Exception as e:
         db.session.rollback()
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"Upload error details: {error_details}")  # Log to console for debugging
         flash(f'Error processing file: {str(e)}', 'danger')
         return redirect(url_for('supervisor.employee_management'))
 
