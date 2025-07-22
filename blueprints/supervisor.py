@@ -40,7 +40,16 @@ def upload_employees_text():
         required_columns = ['Last Name', 'First Name', 'Employee ID', 'Date of Hire', 
                           'Total Overtime (Last 3 Months)', 'Crew Assigned', 'Current Job Position']
         
-        missing_columns = [col for col in required_columns iffrom flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, send_file
+        missing_columns = [col for col in required_columns if col not in df.columns]
+        if missing_columns:
+            flash(f'Missing required columns: {", ".join(missing_columns)}', 'danger')
+            return redirect(url_for('supervisor.employee_management'))
+        
+        # Get position columns
+        position_columns = df.columns[7:].tolist()
+        
+        # Store current user ID
+        current_user_id = current_user.idfrom flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, send_file
 from flask_login import login_required, current_user
 from models import db, Schedule, Employee, Position, TimeOffRequest, ShiftSwapRequest, ScheduleSuggestion, VacationCalendar, Skill, employee_skills, OvertimeHistory
 from datetime import datetime, date, timedelta
