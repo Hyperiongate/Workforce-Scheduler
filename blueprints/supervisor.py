@@ -535,10 +535,38 @@ def upload_employees():
         # Get position columns (all columns after the first 7)
         position_columns = df.columns[7:].tolist()
         
-        # Start transaction
-        db.session.begin_nested()
+        # STEP 1: Delete all existing employee data (except current user)
+        try:
+            # First delete related records using raw SQL for the association table
+            db.session.execute(
+                db.text("DELETE FROM employee_skills WHERE employee_id != :user_id"),
+                {'user_id': current_user.id}
+            )
+            
+            # Delete other related records
+            OvertimeHistory.query.filter(OvertimeHistory.employee_id != current_user.id).delete()
+            VacationCalendar.query.filter(VacationCalendar.employee_id != current_user.id).delete()
+            TimeOffRequest.query.filter(TimeOffRequest.employee_id != current_user.id).delete()
+            ShiftSwapRequest.query.filter(
+                db.or_(
+                    ShiftSwapRequest.requester_id != current_user.id,
+                    ShiftSwapRequest.target_employee_id != current_user.id
+                )
+            ).delete()
+            Schedule.query.filter(Schedule.employee_id != current_user.id).delete()
+            
+            # Delete employees
+            Employee.query.filter(Employee.id != current_user.id).delete()
+            
+            # IMPORTANT: Commit the deletions before proceeding
+            db.session.commit()
+            
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error deleting existing data: {str(e)}', 'danger')
+            return redirect(url_for('supervisor.employee_management'))
         
-        # Ensure all positions exist in database
+        # STEP 2: Ensure all positions exist in database
         for pos_name in position_columns:
             if pos_name and 'Qualified Position' not in pos_name:
                 position = Position.query.filter_by(name=pos_name).first()
@@ -546,28 +574,9 @@ def upload_employees():
                     position = Position(name=pos_name, min_coverage=1)
                     db.session.add(position)
         
-        db.session.flush()
+        db.session.commit()
         
-        # STEP 1: Delete all existing employee data (except current user)
-        # First delete related records using raw SQL for the association table
-        db.session.execute(
-            db.text("DELETE FROM employee_skills WHERE employee_id != :user_id"),
-            {'user_id': current_user.id}
-        )
-        OvertimeHistory.query.filter(OvertimeHistory.employee_id != current_user.id).delete()
-        VacationCalendar.query.filter(VacationCalendar.employee_id != current_user.id).delete()
-        TimeOffRequest.query.filter(TimeOffRequest.employee_id != current_user.id).delete()
-        ShiftSwapRequest.query.filter(
-            (ShiftSwapRequest.requester_id != current_user.id) |
-            (ShiftSwapRequest.target_employee_id != current_user.id)
-        ).delete()
-        Schedule.query.filter(Schedule.employee_id != current_user.id).delete()
-        
-        # Then delete employees
-        Employee.query.filter(Employee.id != current_user.id).delete()
-        db.session.flush()
-        
-        # STEP 2: Process and insert new employees
+        # STEP 3: Process and insert new employees
         employees_created = 0
         errors = []
         
@@ -582,6 +591,12 @@ def upload_employees():
                 last_name = str(row['Last Name']).strip()
                 email = f"{first_name.lower()}.{last_name.lower()}@company.com"
                 email = email.replace(' ', '')
+                
+                # Check if this email already exists (in case of duplicates in the Excel file)
+                existing = Employee.query.filter_by(email=email).first()
+                if existing and existing.id != current_user.id:
+                    errors.append(f"Row {idx + 2}: Duplicate email {email} - skipping")
+                    continue
                 
                 # Parse hire date
                 hire_date = pd.to_datetime(row['Date of Hire']).date()
@@ -610,7 +625,7 @@ def upload_employees():
                         employee.position_id = current_pos.id
                 
                 db.session.add(employee)
-                db.session.flush()
+                db.session.flush()  # Flush to get the employee ID
                 
                 # Add overtime history if provided
                 if overtime_hours > 0:
@@ -657,6 +672,7 @@ def upload_employees():
                 
             except Exception as e:
                 errors.append(f"Row {idx + 2}: {str(e)}")
+                db.session.rollback()  # Rollback this specific employee
                 continue
         
         # Commit the transaction
