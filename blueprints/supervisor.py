@@ -1019,48 +1019,57 @@ def force_cleanup():
             # Get count before deletion
             before_count = conn.execute(db.text("SELECT COUNT(*) FROM employee")).scalar()
             
-            # Delete all related data in the correct order
-            # First, tables that reference other tables
-            conn.execute(db.text("DELETE FROM position_message_read WHERE reader_id != :user_id"), {'user_id': current_user_id})
-            conn.execute(db.text("DELETE FROM maintenance_update WHERE author_id != :user_id"), {'user_id': current_user_id})
-            conn.execute(db.text("DELETE FROM shift_trade_proposal WHERE proposer_id != :user_id"), {'user_id': current_user_id})
-            conn.execute(db.text("DELETE FROM shift_trade WHERE employee1_id != :user_id AND employee2_id != :user_id"), {'user_id': current_user_id})
-            conn.execute(db.text("DELETE FROM coverage_notification WHERE sent_to_employee_id != :user_id AND sent_by_id != :user_id"), {'user_id': current_user_id})
+            # List of tables to clean, in order of dependencies
+            cleanup_queries = [
+                # Tables that might not exist (wrap in try/except)
+                "DELETE FROM position_message_read WHERE reader_id != :user_id",
+                "DELETE FROM maintenance_update WHERE author_id != :user_id",
+                "DELETE FROM shift_trade_proposal WHERE proposer_id != :user_id",
+                "DELETE FROM shift_trade WHERE employee1_id != :user_id AND employee2_id != :user_id",
+                "DELETE FROM coverage_notification WHERE sent_to_employee_id != :user_id AND sent_by_id != :user_id",
+                "DELETE FROM file_upload WHERE uploaded_by_id != :user_id",
+                "DELETE FROM maintenance_manager WHERE employee_id != :user_id",
+                "DELETE FROM trade_match_preference WHERE employee_id != :user_id",
+                "DELETE FROM shift_trade_post WHERE poster_id != :user_id",
+                "DELETE FROM casual_assignment",
+                
+                # Core tables that should exist
+                "DELETE FROM employee_skills WHERE employee_id != :user_id",
+                "DELETE FROM overtime_history WHERE employee_id != :user_id",
+                "DELETE FROM vacation_calendar WHERE employee_id != :user_id",
+                "DELETE FROM time_off_request WHERE employee_id != :user_id",
+                "DELETE FROM shift_swap_request WHERE requester_id != :user_id AND target_employee_id != :user_id",
+                "DELETE FROM schedule WHERE employee_id != :user_id",
+                "DELETE FROM availability WHERE employee_id != :user_id",
+                "DELETE FROM coverage_request WHERE requester_id != :user_id AND filled_by_id != :user_id",
+                "DELETE FROM schedule_suggestion WHERE employee_id != :user_id AND reviewed_by_id != :user_id",
+                
+                # Sleep/health tables
+                "DELETE FROM circadian_profile WHERE employee_id != :user_id",
+                "DELETE FROM sleep_log WHERE employee_id != :user_id",
+                "DELETE FROM sleep_recommendation WHERE employee_id != :user_id",
+                "DELETE FROM shift_transition_plan WHERE employee_id != :user_id",
+                
+                # Communication tables
+                "DELETE FROM supervisor_message WHERE sender_id != :user_id AND recipient_id != :user_id",
+                "DELETE FROM position_message WHERE sender_id != :user_id",
+                "DELETE FROM maintenance_issue WHERE reporter_id != :user_id AND assigned_to_id != :user_id",
+            ]
             
-            # Then, direct employee references
-            conn.execute(db.text("DELETE FROM employee_skills WHERE employee_id != :user_id"), {'user_id': current_user_id})
-            conn.execute(db.text("DELETE FROM overtime_history WHERE employee_id != :user_id"), {'user_id': current_user_id})
-            conn.execute(db.text("DELETE FROM vacation_calendar WHERE employee_id != :user_id"), {'user_id': current_user_id})
-            conn.execute(db.text("DELETE FROM time_off_request WHERE employee_id != :user_id"), {'user_id': current_user_id})
-            conn.execute(db.text("DELETE FROM shift_swap_request WHERE requester_id != :user_id AND target_employee_id != :user_id"), {'user_id': current_user_id})
-            conn.execute(db.text("DELETE FROM schedule WHERE employee_id != :user_id"), {'user_id': current_user_id})
-            conn.execute(db.text("DELETE FROM availability WHERE employee_id != :user_id"), {'user_id': current_user_id})
-            conn.execute(db.text("DELETE FROM coverage_request WHERE requester_id != :user_id AND filled_by_id != :user_id"), {'user_id': current_user_id})
-            conn.execute(db.text("DELETE FROM schedule_suggestion WHERE employee_id != :user_id AND reviewed_by_id != :user_id"), {'user_id': current_user_id})
-            
-            # Sleep/health related tables
-            conn.execute(db.text("DELETE FROM circadian_profile WHERE employee_id != :user_id"), {'user_id': current_user_id})
-            conn.execute(db.text("DELETE FROM sleep_log WHERE employee_id != :user_id"), {'user_id': current_user_id})
-            conn.execute(db.text("DELETE FROM sleep_recommendation WHERE employee_id != :user_id"), {'user_id': current_user_id})
-            conn.execute(db.text("DELETE FROM shift_transition_plan WHERE employee_id != :user_id"), {'user_id': current_user_id})
-            
-            # Communication tables
-            conn.execute(db.text("DELETE FROM supervisor_message WHERE sender_id != :user_id AND recipient_id != :user_id"), {'user_id': current_user_id})
-            conn.execute(db.text("DELETE FROM position_message WHERE sender_id != :user_id"), {'user_id': current_user_id})
-            conn.execute(db.text("DELETE FROM maintenance_issue WHERE reporter_id != :user_id AND assigned_to_id != :user_id"), {'user_id': current_user_id})
-            
-            # Shift trade marketplace
-            conn.execute(db.text("DELETE FROM shift_trade_post WHERE poster_id != :user_id"), {'user_id': current_user_id})
-            conn.execute(db.text("DELETE FROM trade_match_preference WHERE employee_id != :user_id"), {'user_id': current_user_id})
-            
-            # Casual worker assignments
-            conn.execute(db.text("DELETE FROM casual_assignment"), {})
-            
-            # Maintenance manager role
-            conn.execute(db.text("DELETE FROM maintenance_manager WHERE employee_id != :user_id"), {'user_id': current_user_id})
-            
-            # File uploads
-            conn.execute(db.text("DELETE FROM file_upload WHERE uploaded_by_id != :user_id"), {'user_id': current_user_id})
+            # Execute each query, but continue if table doesn't exist
+            failed_tables = []
+            for query in cleanup_queries:
+                try:
+                    conn.execute(db.text(query), {'user_id': current_user_id})
+                except Exception as e:
+                    # If table doesn't exist, just continue
+                    if "does not exist" in str(e):
+                        table_name = query.split("FROM ")[1].split(" ")[0]
+                        failed_tables.append(table_name)
+                        continue
+                    else:
+                        # Re-raise other errors
+                        raise e
             
             # Finally delete employees
             deleted = conn.execute(db.text("DELETE FROM employee WHERE id != :user_id"), {'user_id': current_user_id})
@@ -1070,7 +1079,11 @@ def force_cleanup():
             # Get count after deletion
             after_count = conn.execute(db.text("SELECT COUNT(*) FROM employee")).scalar()
             
-            flash(f'Cleanup complete. Before: {before_count} employees, After: {after_count} employees', 'success')
+            message = f'Cleanup complete. Before: {before_count} employees, After: {after_count} employees'
+            if failed_tables:
+                message += f' (Skipped non-existent tables: {", ".join(set(failed_tables))})'
+            
+            flash(message, 'success')
             
         except Exception as e:
             trans.rollback()
