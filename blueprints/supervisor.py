@@ -1,12 +1,14 @@
 from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, send_file
 from flask_login import login_required, current_user
-from models import db, Schedule, Employee, Position, TimeOffRequest, ShiftSwapRequest, ScheduleSuggestion, VacationCalendar
+from models import db, Schedule, Employee, Position, TimeOffRequest, ShiftSwapRequest, ScheduleSuggestion, VacationCalendar, Skill, employee_skills, OvertimeHistory
 from datetime import datetime, date, timedelta
-from sqlalchemy import func, case
+from sqlalchemy import func, case, text
 from functools import wraps
+from werkzeug.security import generate_password_hash
 import calendar
 import io
 import csv
+import pandas as pd
 
 supervisor_bp = Blueprint('supervisor', __name__)
 
@@ -418,6 +420,364 @@ def handle_swap_request(request_id, action):
     
     db.session.commit()
     return redirect(url_for('supervisor.swap_requests'))
+
+# ========== EMPLOYEE MANAGEMENT ROUTES ==========
+
+@supervisor_bp.route('/employees/download-template')
+@login_required
+@supervisor_required
+def download_employee_template():
+    """Download the employee import template with current positions"""
+    
+    # Get all positions from database
+    positions = Position.query.order_by(Position.name).all()
+    
+    # Create the template structure
+    columns = [
+        'Last Name',
+        'First Name', 
+        'Employee ID',
+        'Date of Hire',
+        'Total Overtime (Last 3 Months)',
+        'Crew Assigned',
+        'Current Job Position'
+    ]
+    
+    # Add position columns (up to 10)
+    position_names = [pos.name for pos in positions[:10]]
+    columns.extend(position_names)
+    
+    # Add padding if less than 10 positions
+    while len(columns) < 17:  # 7 base columns + 10 position columns
+        columns.append(f'Qualified Position {len(columns) - 6}')
+    
+    # Create DataFrame with instructions
+    instructions = [
+        "EMPLOYEE IMPORT TEMPLATE - INSTRUCTIONS",
+        "",
+        "INSTRUCTIONS:",
+        "1. Fill out employee information in the first 7 columns",
+        "2. For position qualifications:",
+        "   - Write 'current' under their current position",
+        "   - Write 'yes' for other qualified positions",
+        "   - Leave blank if not qualified",
+        "",
+        "NOTES:",
+        "- Employee emails will be auto-generated as: firstname.lastname@company.com",
+        "- Default passwords will be set (users must change on first login)",
+        "- This upload will REPLACE all existing employee data"
+    ]
+    
+    # Create the Excel file
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        # Write instructions
+        df_instructions = pd.DataFrame(instructions, columns=['Instructions'])
+        df_instructions.to_excel(writer, sheet_name='Instructions', index=False)
+        
+        # Write the template
+        df_template = pd.DataFrame(columns=columns)
+        df_template.to_excel(writer, sheet_name='Employee Data', index=False)
+        
+        # Format the template sheet
+        workbook = writer.book
+        worksheet = writer.sheets['Employee Data']
+        
+        # Set column widths
+        worksheet.set_column('A:B', 15)  # Names
+        worksheet.set_column('C:C', 12)  # Employee ID
+        worksheet.set_column('D:D', 12)  # Date of Hire
+        worksheet.set_column('E:E', 20)  # Overtime
+        worksheet.set_column('F:F', 12)  # Crew
+        worksheet.set_column('G:G', 20)  # Current Position
+        worksheet.set_column('H:Q', 18)  # Position columns
+        
+    output.seek(0)
+    return send_file(
+        output,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True,
+        download_name=f'employee_import_template_{datetime.now().strftime("%Y%m%d")}.xlsx'
+    )
+
+@supervisor_bp.route('/employees/upload', methods=['POST'])
+@login_required
+@supervisor_required
+def upload_employees():
+    """Upload employee data from Excel file - REPLACES all existing data"""
+    
+    if 'file' not in request.files:
+        flash('No file uploaded', 'danger')
+        return redirect(url_for('supervisor.employee_management'))
+    
+    file = request.files['file']
+    if file.filename == '':
+        flash('No file selected', 'danger')
+        return redirect(url_for('supervisor.employee_management'))
+    
+    if not file.filename.endswith(('.xlsx', '.xls')):
+        flash('Please upload an Excel file (.xlsx or .xls)', 'danger')
+        return redirect(url_for('supervisor.employee_management'))
+    
+    try:
+        # Read the Excel file
+        df = pd.read_excel(file, sheet_name='Employee Data')
+        
+        # Validate required columns
+        required_columns = ['Last Name', 'First Name', 'Employee ID', 'Date of Hire', 
+                          'Total Overtime (Last 3 Months)', 'Crew Assigned', 'Current Job Position']
+        
+        missing_columns = [col for col in required_columns if col not in df.columns]
+        if missing_columns:
+            flash(f'Missing required columns: {", ".join(missing_columns)}', 'danger')
+            return redirect(url_for('supervisor.employee_management'))
+        
+        # Get position columns (all columns after the first 7)
+        position_columns = df.columns[7:].tolist()
+        
+        # Start transaction
+        db.session.begin_nested()
+        
+        # Ensure all positions exist in database
+        for pos_name in position_columns:
+            if pos_name and 'Qualified Position' not in pos_name:
+                position = Position.query.filter_by(name=pos_name).first()
+                if not position:
+                    position = Position(name=pos_name, min_coverage=1)
+                    db.session.add(position)
+        
+        db.session.flush()
+        
+        # STEP 1: Delete all existing employee data (except current user)
+        # First delete related records using raw SQL for the association table
+        db.session.execute(
+            db.text("DELETE FROM employee_skills WHERE employee_id != :user_id"),
+            {'user_id': current_user.id}
+        )
+        OvertimeHistory.query.filter(OvertimeHistory.employee_id != current_user.id).delete()
+        VacationCalendar.query.filter(VacationCalendar.employee_id != current_user.id).delete()
+        TimeOffRequest.query.filter(TimeOffRequest.employee_id != current_user.id).delete()
+        ShiftSwapRequest.query.filter(
+            (ShiftSwapRequest.requester_id != current_user.id) |
+            (ShiftSwapRequest.target_employee_id != current_user.id)
+        ).delete()
+        Schedule.query.filter(Schedule.employee_id != current_user.id).delete()
+        
+        # Then delete employees
+        Employee.query.filter(Employee.id != current_user.id).delete()
+        db.session.flush()
+        
+        # STEP 2: Process and insert new employees
+        employees_created = 0
+        errors = []
+        
+        for idx, row in df.iterrows():
+            try:
+                # Skip empty rows
+                if pd.isna(row['Employee ID']) or pd.isna(row['Last Name']):
+                    continue
+                
+                # Generate email
+                first_name = str(row['First Name']).strip()
+                last_name = str(row['Last Name']).strip()
+                email = f"{first_name.lower()}.{last_name.lower()}@company.com"
+                email = email.replace(' ', '')
+                
+                # Parse hire date
+                hire_date = pd.to_datetime(row['Date of Hire']).date()
+                
+                # Get overtime hours (default to 0 if not provided)
+                overtime_hours = float(row['Total Overtime (Last 3 Months)']) if pd.notna(row['Total Overtime (Last 3 Months)']) else 0.0
+                
+                # Create employee
+                employee = Employee(
+                    employee_id=str(int(row['Employee ID'])) if not pd.isna(row['Employee ID']) else None,
+                    email=email,
+                    name=f"{first_name} {last_name}",
+                    password_hash=generate_password_hash('changeme123'),  # Default password
+                    is_supervisor=False,
+                    crew=str(row['Crew Assigned']).strip(),
+                    hire_date=hire_date,
+                    vacation_days=10.0,  # Default values
+                    sick_days=5.0,
+                    personal_days=3.0
+                )
+                
+                # Set current position
+                if pd.notna(row['Current Job Position']):
+                    current_pos = Position.query.filter_by(name=str(row['Current Job Position']).strip()).first()
+                    if current_pos:
+                        employee.position_id = current_pos.id
+                
+                db.session.add(employee)
+                db.session.flush()
+                
+                # Add overtime history if provided
+                if overtime_hours > 0:
+                    # Create overtime history for the last 13 weeks
+                    for week_offset in range(13):
+                        week_date = datetime.now().date() - timedelta(weeks=week_offset)
+                        overtime_entry = OvertimeHistory(
+                            employee_id=employee.id,
+                            week_start_date=week_date - timedelta(days=week_date.weekday()),
+                            hours=overtime_hours / 13  # Distribute evenly across 13 weeks
+                        )
+                        db.session.add(overtime_entry)
+                
+                # Add skills/qualifications
+                for pos_name in position_columns:
+                    if pos_name and 'Qualified Position' not in pos_name and pd.notna(row[pos_name]):
+                        cell_value = str(row[pos_name]).lower().strip()
+                        
+                        if cell_value in ['current', 'yes']:
+                            position = Position.query.filter_by(name=pos_name).first()
+                            if position:
+                                # Create skill record
+                                skill = Skill.query.filter_by(name=f"Qualified: {pos_name}").first()
+                                if not skill:
+                                    skill = Skill(
+                                        name=f"Qualified: {pos_name}",
+                                        description=f"Qualified to work as {pos_name}",
+                                        category='position'
+                                    )
+                                    db.session.add(skill)
+                                    db.session.flush()
+                                
+                                # Link employee to skill using the association table
+                                db.session.execute(
+                                    employee_skills.insert().values(
+                                        employee_id=employee.id,
+                                        skill_id=skill.id,
+                                        certification_date=datetime.now().date(),
+                                        is_primary=(cell_value == 'current')
+                                    )
+                                )
+                
+                employees_created += 1
+                
+            except Exception as e:
+                errors.append(f"Row {idx + 2}: {str(e)}")
+                continue
+        
+        # Commit the transaction
+        db.session.commit()
+        
+        # Report results
+        if errors:
+            flash(f'Upload completed with {len(errors)} errors. {employees_created} employees created.', 'warning')
+            for error in errors[:5]:  # Show first 5 errors
+                flash(error, 'danger')
+        else:
+            flash(f'Successfully replaced all employee data. {employees_created} employees created.', 'success')
+        
+        return redirect(url_for('supervisor.employee_management'))
+        
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error processing file: {str(e)}', 'danger')
+        return redirect(url_for('supervisor.employee_management'))
+
+@supervisor_bp.route('/employees/download-current')
+@login_required
+@supervisor_required
+def download_current_employees():
+    """Download current employee data in the upload template format"""
+    
+    # Get all employees with their positions and skills
+    employees = Employee.query.filter(Employee.id != current_user.id).order_by(Employee.crew, Employee.name).all()
+    
+    # Get all positions
+    positions = Position.query.order_by(Position.name).limit(10).all()
+    
+    # Build the data structure
+    data = []
+    for emp in employees:
+        # Parse name into first and last
+        name_parts = emp.name.split(' ', 1)
+        first_name = name_parts[0] if name_parts else emp.name
+        last_name = name_parts[1] if len(name_parts) > 1 else ''
+        
+        # Calculate overtime (from overtime history)
+        overtime_total = db.session.query(func.sum(OvertimeHistory.hours)).filter(
+            OvertimeHistory.employee_id == emp.id,
+            OvertimeHistory.week_start_date >= datetime.now().date() - timedelta(weeks=13)
+        ).scalar() or 0.0
+        
+        row = {
+            'Last Name': last_name,
+            'First Name': first_name,
+            'Employee ID': emp.employee_id,
+            'Date of Hire': emp.hire_date.strftime('%m/%d/%Y') if emp.hire_date else '',
+            'Total Overtime (Last 3 Months)': round(overtime_total, 1),
+            'Crew Assigned': emp.crew,
+            'Current Job Position': emp.position.name if emp.position else ''
+        }
+        
+        # Add position qualifications
+        for pos in positions:
+            # Check if employee has skill for this position
+            skill_name = f"Qualified: {pos.name}"
+            
+            # Query the association table to check if employee has this skill
+            has_skill = db.session.execute(
+                db.select(employee_skills).where(
+                    employee_skills.c.employee_id == emp.id
+                ).join(
+                    Skill, Skill.id == employee_skills.c.skill_id
+                ).where(
+                    Skill.name == skill_name
+                )
+            ).first() is not None
+            
+            if emp.position and emp.position.name == pos.name:
+                row[pos.name] = 'current'
+            elif has_skill:
+                row[pos.name] = 'yes'
+            else:
+                row[pos.name] = ''
+        
+        data.append(row)
+    
+    # Create DataFrame
+    df = pd.DataFrame(data)
+    
+    # Create Excel file
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        df.to_excel(writer, sheet_name='Employee Data', index=False)
+        
+        # Format the sheet
+        workbook = writer.book
+        worksheet = writer.sheets['Employee Data']
+        
+        # Set column widths
+        worksheet.set_column('A:B', 15)  # Names
+        worksheet.set_column('C:C', 12)  # Employee ID
+        worksheet.set_column('D:D', 12)  # Date of Hire
+        worksheet.set_column('E:E', 20)  # Overtime
+        worksheet.set_column('F:F', 12)  # Crew
+        worksheet.set_column('G:G', 20)  # Current Position
+        worksheet.set_column('H:Q', 18)  # Position columns
+    
+    output.seek(0)
+    return send_file(
+        output,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True,
+        download_name=f'current_employees_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
+    )
+
+@supervisor_bp.route('/employees/management')
+@login_required
+@supervisor_required
+def employee_management():
+    """Employee management dashboard"""
+    employees = Employee.query.filter(Employee.id != current_user.id).order_by(Employee.crew, Employee.name).all()
+    positions = Position.query.order_by(Position.name).all()
+    
+    return render_template('employee_management.html',
+                         employees=employees,
+                         positions=positions)
 
 # ========== DEBUG ROUTES (REMOVE IN PRODUCTION) ==========
 
