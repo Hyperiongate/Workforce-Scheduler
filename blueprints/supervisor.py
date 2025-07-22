@@ -1,4 +1,46 @@
-from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, send_file
+@supervisor_bp.route('/employees/upload-text', methods=['GET', 'POST'])
+@login_required
+@supervisor_required
+def upload_employees_text():
+    """Upload employee data from pasted text (TSV/CSV format)"""
+    
+    if request.method == 'GET':
+        return '''
+        <h2>Upload Employees from Text Data</h2>
+        <p>Paste your tab-separated or comma-separated employee data below:</p>
+        <form method="POST">
+            <textarea name="data" rows="20" cols="100" style="width: 100%; font-family: monospace;" required></textarea>
+            <br><br>
+            <button type="submit" class="btn btn-primary" onclick="return confirm('This will DELETE all existing employees and replace with the pasted data. Are you sure?')">
+                Upload Data
+            </button>
+            <a href="/employees/management" class="btn btn-secondary">Cancel</a>
+        </form>
+        '''
+    
+    try:
+        # Get the pasted data
+        data_text = request.form.get('data', '')
+        if not data_text:
+            flash('No data provided', 'danger')
+            return redirect(url_for('supervisor.employee_management'))
+        
+        # Convert text to DataFrame - try tab-separated first, then comma-separated
+        from io import StringIO
+        try:
+            df = pd.read_csv(StringIO(data_text), sep='\t')
+        except:
+            try:
+                df = pd.read_csv(StringIO(data_text), sep=',')
+            except Exception as e:
+                flash(f'Could not parse data. Make sure it is tab or comma separated. Error: {str(e)}', 'danger')
+                return redirect(url_for('supervisor.employee_management'))
+        
+        # Validate required columns
+        required_columns = ['Last Name', 'First Name', 'Employee ID', 'Date of Hire', 
+                          'Total Overtime (Last 3 Months)', 'Crew Assigned', 'Current Job Position']
+        
+        missing_columns = [col for col in required_columns iffrom flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, send_file
 from flask_login import login_required, current_user
 from models import db, Schedule, Employee, Position, TimeOffRequest, ShiftSwapRequest, ScheduleSuggestion, VacationCalendar, Skill, employee_skills, OvertimeHistory
 from datetime import datetime, date, timedelta
@@ -1013,89 +1055,112 @@ def force_cleanup():
     """Force cleanup of all employees except current user"""
     current_user_id = current_user.id
     
+    # Use separate connections for each operation to avoid transaction issues
+    cleanup_results = []
+    
+    # Get count before deletion
+    with db.engine.connect() as conn:
+        before_count = conn.execute(db.text("SELECT COUNT(*) FROM employee")).scalar()
+    
+    # List of tables to clean, in order of dependencies
+    cleanup_queries = [
+        # Tables that might not exist (wrap in try/except)
+        ("position_message_read", "DELETE FROM position_message_read WHERE reader_id != :user_id"),
+        ("maintenance_update", "DELETE FROM maintenance_update WHERE author_id != :user_id"),
+        ("shift_trade_proposal", "DELETE FROM shift_trade_proposal WHERE proposer_id != :user_id"),
+        ("shift_trade", "DELETE FROM shift_trade WHERE employee1_id != :user_id AND employee2_id != :user_id"),
+        ("coverage_notification", "DELETE FROM coverage_notification WHERE sent_to_employee_id != :user_id AND sent_by_id != :user_id"),
+        ("file_upload", "DELETE FROM file_upload WHERE uploaded_by_id != :user_id"),
+        ("maintenance_manager", "DELETE FROM maintenance_manager WHERE employee_id != :user_id"),
+        ("trade_match_preference", "DELETE FROM trade_match_preference WHERE employee_id != :user_id"),
+        ("shift_trade_post", "DELETE FROM shift_trade_post WHERE poster_id != :user_id"),
+        ("casual_assignment", "DELETE FROM casual_assignment"),
+        
+        # Core tables that should exist
+        ("employee_skills", "DELETE FROM employee_skills WHERE employee_id != :user_id"),
+        ("overtime_history", "DELETE FROM overtime_history WHERE employee_id != :user_id"),
+        ("vacation_calendar", "DELETE FROM vacation_calendar WHERE employee_id != :user_id"),
+        ("time_off_request", "DELETE FROM time_off_request WHERE employee_id != :user_id"),
+        ("shift_swap_request", "DELETE FROM shift_swap_request WHERE requester_id != :user_id AND target_employee_id != :user_id"),
+        ("schedule", "DELETE FROM schedule WHERE employee_id != :user_id"),
+        ("availability", "DELETE FROM availability WHERE employee_id != :user_id"),
+        ("coverage_request", "DELETE FROM coverage_request WHERE requester_id != :user_id AND filled_by_id != :user_id"),
+        ("schedule_suggestion", "DELETE FROM schedule_suggestion WHERE employee_id != :user_id AND reviewed_by_id != :user_id"),
+        
+        # Sleep/health tables
+        ("circadian_profile", "DELETE FROM circadian_profile WHERE employee_id != :user_id"),
+        ("sleep_log", "DELETE FROM sleep_log WHERE employee_id != :user_id"),
+        ("sleep_recommendation", "DELETE FROM sleep_recommendation WHERE employee_id != :user_id"),
+        ("shift_transition_plan", "DELETE FROM shift_transition_plan WHERE employee_id != :user_id"),
+        
+        # Communication tables
+        ("supervisor_message", "DELETE FROM supervisor_message WHERE sender_id != :user_id AND recipient_id != :user_id"),
+        ("position_message", "DELETE FROM position_message WHERE sender_id != :user_id"),
+        ("maintenance_issue", "DELETE FROM maintenance_issue WHERE reporter_id != :user_id AND assigned_to_id != :user_id"),
+    ]
+    
+    # Execute each query in its own transaction
+    skipped_tables = []
+    cleaned_tables = []
+    errors = []
+    
+    for table_name, query in cleanup_queries:
+        with db.engine.connect() as conn:
+            trans = conn.begin()
+            try:
+                result = conn.execute(db.text(query), {'user_id': current_user_id})
+                trans.commit()
+                cleaned_tables.append(f"{table_name} ({result.rowcount} rows)")
+            except Exception as e:
+                trans.rollback()
+                if "does not exist" in str(e) or "no such table" in str(e).lower():
+                    skipped_tables.append(table_name)
+                else:
+                    errors.append(f"{table_name}: {str(e)}")
+    
+    # Finally delete employees
     with db.engine.connect() as conn:
         trans = conn.begin()
         try:
-            # Get count before deletion
-            before_count = conn.execute(db.text("SELECT COUNT(*) FROM employee")).scalar()
-            
-            # List of tables to clean, in order of dependencies
-            cleanup_queries = [
-                # Tables that might not exist (wrap in try/except)
-                "DELETE FROM position_message_read WHERE reader_id != :user_id",
-                "DELETE FROM maintenance_update WHERE author_id != :user_id",
-                "DELETE FROM shift_trade_proposal WHERE proposer_id != :user_id",
-                "DELETE FROM shift_trade WHERE employee1_id != :user_id AND employee2_id != :user_id",
-                "DELETE FROM coverage_notification WHERE sent_to_employee_id != :user_id AND sent_by_id != :user_id",
-                "DELETE FROM file_upload WHERE uploaded_by_id != :user_id",
-                "DELETE FROM maintenance_manager WHERE employee_id != :user_id",
-                "DELETE FROM trade_match_preference WHERE employee_id != :user_id",
-                "DELETE FROM shift_trade_post WHERE poster_id != :user_id",
-                "DELETE FROM casual_assignment",
-                
-                # Core tables that should exist
-                "DELETE FROM employee_skills WHERE employee_id != :user_id",
-                "DELETE FROM overtime_history WHERE employee_id != :user_id",
-                "DELETE FROM vacation_calendar WHERE employee_id != :user_id",
-                "DELETE FROM time_off_request WHERE employee_id != :user_id",
-                "DELETE FROM shift_swap_request WHERE requester_id != :user_id AND target_employee_id != :user_id",
-                "DELETE FROM schedule WHERE employee_id != :user_id",
-                "DELETE FROM availability WHERE employee_id != :user_id",
-                "DELETE FROM coverage_request WHERE requester_id != :user_id AND filled_by_id != :user_id",
-                "DELETE FROM schedule_suggestion WHERE employee_id != :user_id AND reviewed_by_id != :user_id",
-                
-                # Sleep/health tables
-                "DELETE FROM circadian_profile WHERE employee_id != :user_id",
-                "DELETE FROM sleep_log WHERE employee_id != :user_id",
-                "DELETE FROM sleep_recommendation WHERE employee_id != :user_id",
-                "DELETE FROM shift_transition_plan WHERE employee_id != :user_id",
-                
-                # Communication tables
-                "DELETE FROM supervisor_message WHERE sender_id != :user_id AND recipient_id != :user_id",
-                "DELETE FROM position_message WHERE sender_id != :user_id",
-                "DELETE FROM maintenance_issue WHERE reporter_id != :user_id AND assigned_to_id != :user_id",
-            ]
-            
-            # Execute each query, but continue if table doesn't exist
-            failed_tables = []
-            for query in cleanup_queries:
-                try:
-                    conn.execute(db.text(query), {'user_id': current_user_id})
-                except Exception as e:
-                    # If table doesn't exist, just continue
-                    if "does not exist" in str(e):
-                        table_name = query.split("FROM ")[1].split(" ")[0]
-                        failed_tables.append(table_name)
-                        continue
-                    else:
-                        # Re-raise other errors
-                        raise e
-            
-            # Finally delete employees
-            deleted = conn.execute(db.text("DELETE FROM employee WHERE id != :user_id"), {'user_id': current_user_id})
-            
+            result = conn.execute(db.text("DELETE FROM employee WHERE id != :user_id"), {'user_id': current_user_id})
             trans.commit()
-            
-            # Get count after deletion
-            after_count = conn.execute(db.text("SELECT COUNT(*) FROM employee")).scalar()
-            
-            message = f'Cleanup complete. Before: {before_count} employees, After: {after_count} employees'
-            if failed_tables:
-                message += f' (Skipped non-existent tables: {", ".join(set(failed_tables))})'
-            
-            flash(message, 'success')
-            
+            cleaned_tables.append(f"employee ({result.rowcount} rows)")
         except Exception as e:
             trans.rollback()
-            flash(f'Cleanup failed: {str(e)}', 'danger')
+            errors.append(f"employee: {str(e)}")
+            flash(f'Failed to delete employees: {str(e)}', 'danger')
+            return redirect(url_for('supervisor.employee_management'))
+    
+    # Get count after deletion
+    with db.engine.connect() as conn:
+        after_count = conn.execute(db.text("SELECT COUNT(*) FROM employee")).scalar()
+    
+    # Build result message
+    message_parts = [f'Cleanup complete. Before: {before_count} employees, After: {after_count} employees']
+    
+    if cleaned_tables:
+        message_parts.append(f'Cleaned {len(cleaned_tables)} tables')
+    
+    if skipped_tables:
+        message_parts.append(f'Skipped {len(skipped_tables)} non-existent tables')
+    
+    if errors:
+        message_parts.append(f'Errors in {len(errors)} tables')
+        for error in errors[:3]:  # Show first 3 errors
+            flash(error, 'warning')
+    
+    flash('. '.join(message_parts), 'success' if not errors else 'warning')
     
     return redirect(url_for('supervisor.employee_management'))
 
-@supervisor_bp.route('/employees/upload-v2', methods=['POST'])
+@supervisor_bp.route('/employees/upload-v2', methods=['GET', 'POST'])
 @login_required
 @supervisor_required
 def upload_employees_v2():
     """Alternative upload method with better error handling"""
+    
+    if request.method == 'GET':
+        return redirect(url_for('supervisor.employee_management'))
     
     if 'file' not in request.files:
         flash('No file uploaded', 'danger')
@@ -1111,8 +1176,21 @@ def upload_employees_v2():
         return redirect(url_for('supervisor.employee_management'))
     
     try:
-        # Read the Excel file
-        df = pd.read_excel(file, sheet_name='Employee Data')
+        # Read the Excel file - try to be flexible with sheet names
+        try:
+            # First, try the expected sheet name
+            df = pd.read_excel(file, sheet_name='Employee Data')
+        except ValueError:
+            # If that fails, try common variations
+            try:
+                df = pd.read_excel(file, sheet_name='Sheet1')
+            except ValueError:
+                try:
+                    df = pd.read_excel(file, sheet_name='Employees')
+                except ValueError:
+                    # Last resort - just read the first sheet
+                    df = pd.read_excel(file, sheet_name=0)
+                    flash(f'Note: Using first sheet in Excel file. Expected sheet name "Employee Data"', 'info')
         
         # Validate required columns
         required_columns = ['Last Name', 'First Name', 'Employee ID', 'Date of Hire', 
