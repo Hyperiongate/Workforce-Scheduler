@@ -3,124 +3,145 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Workforce Scheduler</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.8.1/font/bootstrap-icons.css">
+    <title>News Analyzer - AI-Powered Media Analysis</title>
+    
+    <!-- CSS Files -->
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <link rel="stylesheet" href="/static/css/components/trust-score.css">
+    <link rel="stylesheet" href="/static/css/components/bias-analysis.css">
+    <link rel="stylesheet" href="/static/css/components/fact-checker.css">
+    <link rel="stylesheet" href="/static/css/components/author-card.css">
+    <link rel="stylesheet" href="/static/css/components/clickbait-detector.css">
+    <link rel="stylesheet" href="/static/css/components/export-handler.css">
+    
+    <!-- Enhanced Dropdowns CSS -->
+    <link rel="stylesheet" href="/static/css/components/analysis-dropdowns-enhanced.css">
 </head>
 <body>
-    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+    <!-- Header -->
+    <header>
         <div class="container">
-            <a class="navbar-brand" href="/">Workforce Scheduler</a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto">
-                    <li class="nav-item">
-                        <a class="nav-link" href="/dashboard">Dashboard</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/schedule">Schedule</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link btn btn-warning text-dark ms-2" href="/register-casual">
-                            <i class="bi bi-person-plus"></i> Join as Casual Worker
-                        </a>
-                    </li>
-                </ul>
+            <nav>
+                <div class="logo">
+                    <span class="logo-icon">🔍</span>
+                    <span class="logo-text">News Analyzer</span>
+                </div>
+                <div class="nav-links">
+                    <a href="#features">Features</a>
+                    <a href="#how-it-works">How it Works</a>
+                    <a href="#pricing">Pricing</a>
+                </div>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main>
+        <div class="container">
+            <!-- Hero Section -->
+            <section class="hero">
+                <h1>AI-Powered News Analysis</h1>
+                <p class="hero-subtitle">Detect bias, verify facts, and assess credibility with advanced AI</p>
+            </section>
+
+            <!-- Analyzer Card -->
+            <div class="analyzer-card">
+                <form id="analyzeForm">
+                    <div class="input-group">
+                        <input type="url" id="urlInput" placeholder="Paste article URL here..." required>
+                        <button type="submit" id="analyzeBtn">
+                            <span class="btn-text">Analyze</span>
+                            <span class="btn-loading hidden">Analyzing...</span>
+                        </button>
+                    </div>
+                    
+                    <div class="option-toggle">
+                        <label>
+                            <input type="checkbox" id="textToggle">
+                            <span>Paste article text instead</span>
+                        </label>
+                    </div>
+                    
+                    <div class="text-input-container hidden" id="textInputContainer">
+                        <textarea id="textInput" placeholder="Paste article text here..." rows="6"></textarea>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Results Section -->
+            <div id="results" class="results-section hidden"></div>
+
+            <!-- Resources Section -->
+            <div id="resources" class="resources-section hidden">
+                <h3>Analysis Resources Used</h3>
+                <div class="resource-list"></div>
             </div>
         </div>
-    </nav>
-    
-    <div class="container mt-5">
-        <div class="row">
-            <div class="col-md-8 mx-auto text-center">
-                <h1 class="display-4">Welcome to Workforce Scheduler</h1>
-                <p class="lead">Efficient scheduling and shift management for your team</p>
-                <div class="mt-4">
-                    <a href="/dashboard" class="btn btn-primary btn-lg">Go to Dashboard</a>
-                </div>
-            </div>
-        </div>
-        
-        <!-- New Casual Worker Section -->
-        <div class="row mt-5">
-            <div class="col-md-12">
-                <div class="card bg-light border-primary">
-                    <div class="card-body text-center py-4">
-                        <h3 class="card-title">
-                            <i class="bi bi-people-fill text-primary"></i> 
-                            Looking for Flexible Work?
-                        </h3>
-                        <p class="card-text lead">
-                            Join our casual worker pool and get notified when temporary shifts become available
-                        </p>
-                        <div class="row mt-3">
-                            <div class="col-md-3">
-                                <i class="bi bi-clock-history display-6 text-primary"></i>
-                                <p class="mt-2">Work on your schedule</p>
-                            </div>
-                            <div class="col-md-3">
-                                <i class="bi bi-phone-vibrate display-6 text-primary"></i>
-                                <p class="mt-2">Get instant notifications</p>
-                            </div>
-                            <div class="col-md-3">
-                                <i class="bi bi-cash-stack display-6 text-primary"></i>
-                                <p class="mt-2">Competitive hourly rates</p>
-                            </div>
-                            <div class="col-md-3">
-                                <i class="bi bi-shield-check display-6 text-primary"></i>
-                                <p class="mt-2">No long-term commitment</p>
-                            </div>
-                        </div>
-                        <a href="/register-casual" class="btn btn-warning btn-lg mt-3">
-                            <i class="bi bi-person-plus"></i> Register as Casual Worker
-                        </a>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
-        <div class="row mt-5">
-            <div class="col-md-4">
-                <div class="card h-100">
-                    <div class="card-body">
-                        <h5 class="card-title">
-                            <i class="bi bi-calendar-check text-primary"></i> Easy Scheduling
-                        </h5>
-                        <p class="card-text">Create and manage employee schedules with drag-and-drop simplicity</p>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="card h-100">
-                    <div class="card-body">
-                        <h5 class="card-title">
-                            <i class="bi bi-lightning-charge text-primary"></i> Instant Coverage
-                        </h5>
-                        <p class="card-text">Fill shifts quickly by notifying available employees and casual workers automatically</p>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="card h-100">
-                    <div class="card-body">
-                        <h5 class="card-title">
-                            <i class="bi bi-person-workspace text-primary"></i> Employee Self-Service
-                        </h5>
-                        <p class="card-text">Let employees view schedules, request time off, and pick up shifts</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <footer class="mt-5 py-4 bg-light">
-        <div class="container text-center">
-            <p class="text-muted mb-0">© 2024 Workforce Scheduler. Simplifying shift management.</p>
+    </main>
+
+    <!-- Footer -->
+    <footer>
+        <div class="container">
+            <p>&copy; 2024 News Analyzer. Empowering informed media consumption.</p>
         </div>
     </footer>
+
+    <!-- Scripts -->
+    <!-- Core JavaScript -->
+    <script src="/static/js/main.js"></script>
     
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Component Scripts -->
+    <script src="/static/js/components/trust-score.js"></script>
+    <script src="/static/js/components/bias-analysis.js"></script>
+    <script src="/static/js/components/fact-checker.js"></script>
+    <script src="/static/js/components/author-card.js"></script>
+    <script src="/static/js/components/clickbait-detector.js"></script>
+    <script src="/static/js/components/export-handler.js"></script>
+    
+    <!-- Enhanced Dropdowns Component - MUST be loaded before UI Controller -->
+    <script src="/static/js/components/analysis-dropdowns-enhanced.js"></script>
+    
+    <!-- UI Controller - Load AFTER all components -->
+    <script src="/static/js/ui-controller.js"></script>
+    
+    <!-- Component Registration Verification -->
+    <script>
+    // Ensure all components are properly registered
+    document.addEventListener('DOMContentLoaded', function() {
+        // Give components time to register
+        setTimeout(() => {
+            if (window.UI) {
+                const components = Object.keys(window.UI.components);
+                console.log('Components loaded:', components);
+                
+                // Verify critical components are registered
+                const requiredComponents = [
+                    'trustScore',
+                    'biasAnalysis',
+                    'factChecker',
+                    'authorCard',
+                    'clickbaitDetector',
+                    'analysisDropdowns'
+                ];
+                
+                const missingComponents = requiredComponents.filter(comp => !window.UI.components[comp]);
+                
+                if (missingComponents.length > 0) {
+                    console.error('Missing components:', missingComponents);
+                    
+                    // Try to manually register analysisDropdowns if it's missing
+                    if (missingComponents.includes('analysisDropdowns') && window.AnalysisDropdowns) {
+                        window.UI.registerComponent('analysisDropdowns', new window.AnalysisDropdowns());
+                        console.log('Manually registered analysisDropdowns component');
+                    }
+                } else {
+                    console.log('All required components registered successfully');
+                }
+            } else {
+                console.error('UI Controller not initialized');
+            }
+        }, 200);
+    });
+    </script>
 </body>
 </html>
