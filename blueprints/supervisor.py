@@ -1189,4 +1189,3 @@ def api_dashboard_stats():
         'new_critical_items': 0  # Implement based on your critical items logic
     }
     return jsonify(stats)
-    
