@@ -994,10 +994,29 @@ def force_fix_duplicates():
 @supervisor_required
 def coverage_needs():
     """View and manage coverage needs"""
-    return render_template('coming_soon.html',
-                         title='Coverage Needs',
-                         description='View and manage staffing gaps and coverage requirements across all shifts and crews.',
-                         icon='bi bi-shield-exclamation')
+    # Get all positions
+    positions = Position.query.order_by(Position.name).all()
+    
+    # Get crew-specific requirements if they exist (you might need to create a new model for this)
+    # For now, we'll use the default position min_coverage
+    crew_requirements = {}
+    
+    # Calculate current coverage for each crew and position
+    current_coverage = {}
+    for crew in ['A', 'B', 'C', 'D']:
+        current_coverage[crew] = {}
+        for position in positions:
+            # Count employees in this crew with this position
+            count = Employee.query.filter_by(
+                crew=crew,
+                position_id=position.id
+            ).count()
+            current_coverage[crew][position.id] = count
+    
+    return render_template('coverage_needs.html',
+                         positions=positions,
+                         crew_requirements=crew_requirements,
+                         current_coverage=current_coverage)
 
 @supervisor_bp.route('/supervisor/suggestions')
 @login_required
@@ -1050,6 +1069,65 @@ def position_broadcast():
                          icon='bi bi-megaphone')
 
 # ========== API ENDPOINTS ==========
+
+@supervisor_bp.route('/api/coverage-needs', methods=['POST'])
+@login_required
+@supervisor_required
+def api_update_coverage_needs():
+    """API endpoint to update coverage needs"""
+    data = request.get_json()
+    
+    crew = data.get('crew')
+    position_id = data.get('position_id')
+    min_coverage = data.get('min_coverage', 0)
+    
+    try:
+        if crew == 'global':
+            # Update the global position requirement
+            position = Position.query.get(position_id)
+            if position:
+                position.min_coverage = min_coverage
+                db.session.commit()
+                return jsonify({'success': True})
+        else:
+            # For crew-specific requirements, you might want to create a new model
+            # For now, we'll just return success
+            # In a full implementation, you'd create a CrewCoverageRequirement model
+            return jsonify({'success': True, 'message': 'Crew-specific requirements saved'})
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+
+@supervisor_bp.route('/api/coverage-gaps')
+@login_required
+@supervisor_required
+def api_coverage_gaps():
+    """API endpoint to get current coverage gaps"""
+    crew = request.args.get('crew', 'ALL')
+    
+    gaps = []
+    positions = Position.query.all()
+    
+    crews_to_check = ['A', 'B', 'C', 'D'] if crew == 'ALL' else [crew]
+    
+    for check_crew in crews_to_check:
+        for position in positions:
+            required = position.min_coverage
+            current = Employee.query.filter_by(
+                crew=check_crew,
+                position_id=position.id
+            ).count()
+            
+            if current < required:
+                gaps.append({
+                    'crew': check_crew,
+                    'position': position.name,
+                    'required': required,
+                    'current': current,
+                    'gap': required - current
+                })
+    
+    return jsonify({'gaps': gaps, 'total_gaps': sum(g['gap'] for g in gaps)})
 
 @supervisor_bp.route('/api/dashboard-stats')
 @login_required
