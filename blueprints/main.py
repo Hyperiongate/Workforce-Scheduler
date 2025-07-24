@@ -134,3 +134,36 @@ def employee_dashboard():
                          current_week_ot=current_week_ot,
                          avg_weekly_ot=avg_weekly_ot,
                          unread_messages=unread_messages)
+
+# ========== REDIRECT OLD ROUTES ==========
+
+@main_bp.route('/upload-employees')
+@login_required
+def old_upload_redirect():
+    """Redirect old upload route to new employee management"""
+    if current_user.is_supervisor:
+        return redirect(url_for('supervisor.employee_management'))
+    else:
+        return redirect(url_for('main.dashboard'))
+
+@main_bp.route('/employees/upload')
+@login_required
+def old_upload_redirect2():
+    """Redirect another old upload route to new employee management"""
+    if current_user.is_supervisor:
+        return redirect(url_for('supervisor.employee_management'))
+    else:
+        return redirect(url_for('main.dashboard'))
+
+# ========== OTHER UTILITY ROUTES ==========
+
+@main_bp.route('/view-employees-crews')
+@login_required
+def view_employees_crews():
+    """Redirect to crew management"""
+    if current_user.is_supervisor:
+        return redirect(url_for('supervisor.crew_management'))
+    else:
+        # Non-supervisors can view but not edit
+        employees = Employee.query.order_by(Employee.crew, Employee.name).all()
+        return render_template('view_employees_crews.html', employees=employees)
