@@ -220,89 +220,116 @@ def upload_employees():
         current_app.logger.info(f"Starting nuclear employee upload - deleting all employees except user {current_user.id}")
         
         # First, try to delete all employees except current user
+        deleted_count = 0
         try:
-            # Delete related records first to avoid foreign key constraints
-            # List of tables that reference employee
-            related_tables = [
-                'employee_skills',
-                'overtime_history',
-                'time_off_request',
-                'circadian_profile',
-                'sleep_log',
-                'schedule',
-                'shift_swap_request',
-                'shift_trade_post',
-                'shift_trade_proposal',
-                'shift_trade',
-                'maintenance_issue',
-                'maintenance_update',
-                'position_message',
-                'coverage_request',
-                'schedule_suggestion',
-                'vacation_calendar'
-            ]
+            # Start a fresh transaction
+            db.session.rollback()  # Clear any failed transactions
             
-            # Delete from each related table
-            for table in related_tables:
-                try:
-                    delete_query = text(f"""
-                        DELETE FROM {table} 
-                        WHERE employee_id IN (
-                            SELECT id FROM employee WHERE id != :current_user_id
-                        )
-                    """)
-                    db.session.execute(delete_query, {'current_user_id': current_user.id})
-                except Exception as e:
-                    # Table might not exist or might not have employee_id column
-                    current_app.logger.warning(f"Could not delete from {table}: {str(e)}")
-            
-            # Also handle tables with different column names
-            # For shift swap requests (has requester_id and requested_with_id)
+            # Option 1: Try CASCADE delete (if foreign keys support it)
             try:
-                db.session.execute(text("""
-                    DELETE FROM shift_swap_request 
-                    WHERE requester_id IN (SELECT id FROM employee WHERE id != :current_user_id)
-                    OR requested_with_id IN (SELECT id FROM employee WHERE id != :current_user_id)
-                """), {'current_user_id': current_user.id})
-            except:
-                pass
-            
-            # For shift trades (might have multiple employee references)
-            try:
-                db.session.execute(text("""
-                    DELETE FROM shift_trade 
-                    WHERE employee1_id IN (SELECT id FROM employee WHERE id != :current_user_id)
-                    OR employee2_id IN (SELECT id FROM employee WHERE id != :current_user_id)
-                """), {'current_user_id': current_user.id})
-            except:
-                pass
-            
-            # For messages (might have sender_id)
-            try:
-                db.session.execute(text("""
-                    DELETE FROM position_message 
-                    WHERE sender_id IN (SELECT id FROM employee WHERE id != :current_user_id)
-                """), {'current_user_id': current_user.id})
-            except:
-                pass
-            
-            # Now delete employees
-            delete_query = text("""
-                DELETE FROM employee 
-                WHERE id != :current_user_id
-            """)
-            
-            result = db.session.execute(delete_query, {'current_user_id': current_user.id})
-            deleted_count = result.rowcount
-            db.session.commit()
-            
-            current_app.logger.info(f"Successfully deleted {deleted_count} employees and their related records")
-            
+                delete_query = text("""
+                    DELETE FROM employee 
+                    WHERE id != :current_user_id
+                """)
+                result = db.session.execute(delete_query, {'current_user_id': current_user.id})
+                deleted_count = result.rowcount
+                db.session.commit()
+                current_app.logger.info(f"Successfully deleted {deleted_count} employees with CASCADE")
+            except Exception as cascade_error:
+                # If CASCADE fails, manually delete related records
+                db.session.rollback()
+                current_app.logger.info("CASCADE delete failed, trying manual deletion of related records")
+                
+                # Get list of employee IDs to delete
+                employee_ids_query = text("""
+                    SELECT id FROM employee WHERE id != :current_user_id
+                """)
+                employee_ids_result = db.session.execute(employee_ids_query, {'current_user_id': current_user.id})
+                employee_ids = [row[0] for row in employee_ids_result]
+                
+                if employee_ids:
+                    # Convert to comma-separated string for SQL IN clause
+                    ids_str = ','.join(map(str, employee_ids))
+                    
+                    # List of delete queries for all related tables
+                    delete_queries = [
+                        f"DELETE FROM employee_skills WHERE employee_id IN ({ids_str})",
+                        f"DELETE FROM overtime_history WHERE employee_id IN ({ids_str})",
+                        f"DELETE FROM time_off_request WHERE employee_id IN ({ids_str})",
+                        f"DELETE FROM circadian_profile WHERE employee_id IN ({ids_str})",
+                        f"DELETE FROM sleep_log WHERE employee_id IN ({ids_str})",
+                        f"DELETE FROM schedule WHERE employee_id IN ({ids_str})",
+                        f"DELETE FROM shift_swap_request WHERE requester_id IN ({ids_str}) OR requested_with_id IN ({ids_str})",
+                        f"DELETE FROM shift_trade_post WHERE employee_id IN ({ids_str})",
+                        f"DELETE FROM shift_trade_proposal WHERE employee_id IN ({ids_str})",
+                        f"DELETE FROM shift_trade WHERE employee1_id IN ({ids_str}) OR employee2_id IN ({ids_str})",
+                        f"DELETE FROM maintenance_issue WHERE employee_id IN ({ids_str})",
+                        f"DELETE FROM maintenance_update WHERE employee_id IN ({ids_str})",
+                        f"DELETE FROM position_message WHERE sender_id IN ({ids_str})",
+                        f"DELETE FROM coverage_request WHERE employee_id IN ({ids_str})",
+                        f"DELETE FROM schedule_suggestion WHERE employee_id IN ({ids_str})",
+                        f"DELETE FROM vacation_calendar WHERE employee_id IN ({ids_str})"
+                    ]
+                    
+                    # Execute each delete query
+                    for query in delete_queries:
+                        try:
+                            db.session.execute(text(query))
+                            current_app.logger.info(f"Executed: {query.split(' ')[2]}")
+                        except Exception as e:
+                            # Log but continue - table might not exist
+                            current_app.logger.debug(f"Could not execute {query.split(' ')[2]}: {str(e)}")
+                    
+                    # Now delete the employees
+                    delete_employees_query = text(f"DELETE FROM employee WHERE id IN ({ids_str})")
+                    result = db.session.execute(delete_employees_query)
+                    deleted_count = result.rowcount
+                    
+                    # Commit all deletions
+                    db.session.commit()
+                    current_app.logger.info(f"Successfully deleted {deleted_count} employees and their related records")
+                else:
+                    current_app.logger.info("No employees to delete")
+                    
         except Exception as delete_error:
             db.session.rollback()
             current_app.logger.error(f"Error during deletion: {str(delete_error)}")
-            flash(f'Error clearing existing employees: {str(delete_error)}', 'error')
-            return redirect(request.url)
+            
+            # Try one more time with a simpler approach
+            try:
+                # Just try to truncate everything except the current user
+                current_app.logger.info("Attempting final fallback deletion method")
+                
+                # Get current user data first
+                current_user_data = db.session.execute(
+                    text("SELECT * FROM employee WHERE id = :id"),
+                    {'id': current_user.id}
+                ).first()
+                
+                if current_user_data:
+                    # Store current user data
+                    user_dict = dict(current_user_data._mapping)
+                    
+                    # Truncate employee table (this should cascade or fail)
+                    db.session.execute(text("TRUNCATE TABLE employee CASCADE"))
+                    
+                    # Re-insert current user
+                    columns = ', '.join(user_dict.keys())
+                    placeholders = ', '.join([f":{k}" for k in user_dict.keys()])
+                    insert_query = text(f"INSERT INTO employee ({columns}) VALUES ({placeholders})")
+                    db.session.execute(insert_query, user_dict)
+                    
+                    db.session.commit()
+                    deleted_count = -1  # Flag for truncate method
+                    current_app.logger.info("Successfully used TRUNCATE CASCADE method")
+                else:
+                    raise Exception("Could not preserve current user data")
+                    
+            except Exception as final_error:
+                db.session.rollback()
+                current_app.logger.error(f"All deletion methods failed: {str(final_error)}")
+                flash(f'Error clearing existing employees. Database may have integrity constraints. Error: {str(delete_error)}', 'error')
+                return redirect(request.url)
         
         # Now proceed with uploading new data
         # Read Excel file
