@@ -8,11 +8,12 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 import io
+import numpy as np
 from models import db, Employee, Position, Skill, OvertimeHistory, employee_skills
-from sqlalchemy import func
+from sqlalchemy import func, text
 import traceback
 
 employee_import_bp = Blueprint('employee_import', __name__)
@@ -191,8 +192,10 @@ def download_employee_template():
 def upload_employees():
     """Handle employee data upload from Excel file"""
     if request.method == 'GET':
+        # Count employees (excluding current user)
+        employee_count = Employee.query.filter(Employee.id != current_user.id).count()
         # Get upload history - simplified without FileUpload model
-        return render_template('upload_employees.html', recent_uploads=[])
+        return render_template('upload_employees.html', employee_count=employee_count, recent_uploads=[])
     
     if 'file' not in request.files:
         flash('No file selected', 'error')
@@ -208,6 +211,30 @@ def upload_employees():
         return redirect(request.url)
     
     try:
+        # NUCLEAR OPTION - Delete all employees except current user
+        current_app.logger.info(f"Starting nuclear employee upload - deleting all employees except user {current_user.id}")
+        
+        # First, try to delete all employees except current user
+        try:
+            # Use raw SQL for more reliable deletion
+            delete_query = text("""
+                DELETE FROM employee 
+                WHERE id != :current_user_id
+            """)
+            
+            result = db.session.execute(delete_query, {'current_user_id': current_user.id})
+            deleted_count = result.rowcount
+            db.session.commit()
+            
+            current_app.logger.info(f"Successfully deleted {deleted_count} employees")
+            
+        except Exception as delete_error:
+            db.session.rollback()
+            current_app.logger.error(f"Error during deletion: {str(delete_error)}")
+            flash(f'Error clearing existing employees: {str(delete_error)}', 'error')
+            return redirect(request.url)
+        
+        # Now proceed with uploading new data
         # Read Excel file
         df = pd.read_excel(file, sheet_name='Employee Data' if 'Employee Data' in pd.ExcelFile(file).sheet_names else 0)
         
@@ -243,29 +270,18 @@ def upload_employees():
                     error_count += 1
                     continue
                 
-                # Check if employee exists
-                employee = Employee.query.filter_by(
-                    employee_id=str(row['Employee ID'])
-                ).first()
-                
-                if not employee:
-                    # Create new employee
-                    employee = Employee(
-                        employee_id=str(row['Employee ID']),
-                        name=f"{row['First Name']} {row['Last Name']}",
-                        email=f"{str(row['First Name']).lower()}.{str(row['Last Name']).lower()}@company.com",
-                        password_hash='$2b$12$default_hash',  # Will need to be reset
-                        crew=str(row.get('Crew Assigned', '')),
-                        is_supervisor=False,
-                        hire_date=pd.to_datetime(row['Date of Hire']).date() if pd.notna(row.get('Date of Hire')) else datetime.now().date()
-                    )
-                    db.session.add(employee)
-                    db.session.flush()  # Get the ID
-                else:
-                    # Update existing employee
-                    employee.crew = str(row.get('Crew Assigned', ''))
-                    if pd.notna(row.get('Date of Hire')):
-                        employee.hire_date = pd.to_datetime(row['Date of Hire']).date()
+                # Create new employee (no need to check for existing since we deleted all)
+                employee = Employee(
+                    employee_id=str(row['Employee ID']),
+                    name=f"{row['First Name']} {row['Last Name']}",
+                    email=f"{str(row['First Name']).lower()}.{str(row['Last Name']).lower()}@company.com",
+                    password_hash='$2b$12$default_hash',  # Will need to be reset
+                    crew=str(row.get('Crew Assigned', '')),
+                    is_supervisor=False,
+                    hire_date=pd.to_datetime(row['Date of Hire']).date() if pd.notna(row.get('Date of Hire')) else datetime.now().date()
+                )
+                db.session.add(employee)
+                db.session.flush()  # Get the ID
                 
                 # Handle current position
                 current_pos_name = row.get('Current Job Position', '')
@@ -290,20 +306,14 @@ def upload_employees():
                         current_year = datetime.now().year
                         week_start = datetime.now().date() - timedelta(days=datetime.now().weekday())
                         
-                        ot_record = OvertimeHistory.query.filter_by(
+                        ot_record = OvertimeHistory(
                             employee_id=employee.id,
-                            week_start_date=week_start
-                        ).first()
-                        
-                        if not ot_record:
-                            ot_record = OvertimeHistory(
-                                employee_id=employee.id,
-                                week_start_date=week_start,
-                                overtime_hours=weekly_avg,
-                                regular_hours=40,
-                                total_hours=40 + weekly_avg
-                            )
-                            db.session.add(ot_record)
+                            week_start_date=week_start,
+                            overtime_hours=weekly_avg,
+                            regular_hours=40,
+                            total_hours=40 + weekly_avg
+                        )
+                        db.session.add(ot_record)
                     except ValueError:
                         # Skip if overtime value is not a valid number
                         pass
@@ -330,23 +340,15 @@ def upload_employees():
                             db.session.add(skill)
                             db.session.flush()
                         
-                        # Add employee skill if not exists using the association table
-                        existing_skill = db.session.execute(
-                            db.select(employee_skills).where(
-                                employee_skills.c.employee_id == employee.id,
-                                employee_skills.c.skill_id == skill.id
+                        # Add employee skill using the association table
+                        db.session.execute(
+                            employee_skills.insert().values(
+                                employee_id=employee.id,
+                                skill_id=skill.id,
+                                is_primary=(str(cell_value).strip().lower() == 'current'),
+                                certification_date=datetime.now().date()
                             )
-                        ).first()
-                        
-                        if not existing_skill:
-                            db.session.execute(
-                                employee_skills.insert().values(
-                                    employee_id=employee.id,
-                                    skill_id=skill.id,
-                                    is_primary=(str(cell_value).strip().lower() == 'current'),
-                                    certification_date=datetime.now().date()
-                                )
-                            )
+                        )
                 
                 success_count += 1
                 
@@ -359,7 +361,7 @@ def upload_employees():
         db.session.commit()
         
         if success_count > 0:
-            flash(f'Successfully imported {success_count} employees.', 'success')
+            flash(f'Successfully imported {success_count} employees. (Deleted {deleted_count} existing employees first)', 'success')
         if error_count > 0:
             flash(f'{error_count} records failed to import. Details: {"; ".join(errors[:5])}', 'warning')
         
@@ -582,7 +584,3 @@ def export_current_employees():
         current_app.logger.error(f"Error exporting employees: {str(e)}")
         flash(f'Error exporting employees: {str(e)}', 'error')
         return redirect(url_for('supervisor.dashboard'))
-
-# Import numpy for sample data generation
-import numpy as np
-from datetime import timedelta
