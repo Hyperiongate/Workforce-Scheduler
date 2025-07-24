@@ -222,45 +222,69 @@ def upload_employees():
         # First, try to delete all employees except current user
         try:
             # Delete related records first to avoid foreign key constraints
-            # Delete employee skills
-            delete_skills_query = text("""
-                DELETE FROM employee_skills 
-                WHERE employee_id IN (
-                    SELECT id FROM employee WHERE id != :current_user_id
-                )
-            """)
-            db.session.execute(delete_skills_query, {'current_user_id': current_user.id})
+            # List of tables that reference employee
+            related_tables = [
+                'employee_skills',
+                'overtime_history',
+                'time_off_request',
+                'circadian_profile',
+                'sleep_log',
+                'schedule',
+                'shift_swap_request',
+                'shift_trade_post',
+                'shift_trade_proposal',
+                'shift_trade',
+                'maintenance_issue',
+                'maintenance_update',
+                'position_message',
+                'coverage_request',
+                'schedule_suggestion',
+                'vacation_calendar'
+            ]
             
-            # Delete overtime history
-            delete_overtime_query = text("""
-                DELETE FROM overtime_history 
-                WHERE employee_id IN (
-                    SELECT id FROM employee WHERE id != :current_user_id
-                )
-            """)
-            db.session.execute(delete_overtime_query, {'current_user_id': current_user.id})
+            # Delete from each related table
+            for table in related_tables:
+                try:
+                    delete_query = text(f"""
+                        DELETE FROM {table} 
+                        WHERE employee_id IN (
+                            SELECT id FROM employee WHERE id != :current_user_id
+                        )
+                    """)
+                    db.session.execute(delete_query, {'current_user_id': current_user.id})
+                except Exception as e:
+                    # Table might not exist or might not have employee_id column
+                    current_app.logger.warning(f"Could not delete from {table}: {str(e)}")
             
-            # Delete time off requests
-            delete_timeoff_query = text("""
-                DELETE FROM time_off_request 
-                WHERE employee_id IN (
-                    SELECT id FROM employee WHERE id != :current_user_id
-                )
-            """)
-            db.session.execute(delete_timeoff_query, {'current_user_id': current_user.id})
-            
-            # Delete any other related records (add more as needed)
-            # Delete schedules
+            # Also handle tables with different column names
+            # For shift swap requests (has requester_id and requested_with_id)
             try:
-                delete_schedule_query = text("""
-                    DELETE FROM schedule 
-                    WHERE employee_id IN (
-                        SELECT id FROM employee WHERE id != :current_user_id
-                    )
-                """)
-                db.session.execute(delete_schedule_query, {'current_user_id': current_user.id})
+                db.session.execute(text("""
+                    DELETE FROM shift_swap_request 
+                    WHERE requester_id IN (SELECT id FROM employee WHERE id != :current_user_id)
+                    OR requested_with_id IN (SELECT id FROM employee WHERE id != :current_user_id)
+                """), {'current_user_id': current_user.id})
             except:
-                pass  # Table might not exist
+                pass
+            
+            # For shift trades (might have multiple employee references)
+            try:
+                db.session.execute(text("""
+                    DELETE FROM shift_trade 
+                    WHERE employee1_id IN (SELECT id FROM employee WHERE id != :current_user_id)
+                    OR employee2_id IN (SELECT id FROM employee WHERE id != :current_user_id)
+                """), {'current_user_id': current_user.id})
+            except:
+                pass
+            
+            # For messages (might have sender_id)
+            try:
+                db.session.execute(text("""
+                    DELETE FROM position_message 
+                    WHERE sender_id IN (SELECT id FROM employee WHERE id != :current_user_id)
+                """), {'current_user_id': current_user.id})
+            except:
+                pass
             
             # Now delete employees
             delete_query = text("""
@@ -272,7 +296,7 @@ def upload_employees():
             deleted_count = result.rowcount
             db.session.commit()
             
-            current_app.logger.info(f"Successfully deleted {deleted_count} employees")
+            current_app.logger.info(f"Successfully deleted {deleted_count} employees and their related records")
             
         except Exception as delete_error:
             db.session.rollback()
