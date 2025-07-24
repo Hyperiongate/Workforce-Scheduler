@@ -423,6 +423,180 @@ def handle_swap_request(request_id, action):
 
 # ========== EMPLOYEE MANAGEMENT ROUTES ==========
 
+@supervisor_bp.route('/employees/delete-all', methods=['POST'])
+@login_required
+@supervisor_required
+def delete_all_employees():
+    """Step 1: Delete all employees except current user"""
+    try:
+        current_user_id = current_user.id
+        
+        # Use direct database connection, bypassing SQLAlchemy ORM entirely
+        from sqlalchemy import create_engine
+        engine = create_engine(db.engine.url)
+        
+        with engine.connect() as conn:
+            # Start a transaction
+            trans = conn.begin()
+            
+            try:
+                # Delete from all related tables first
+                conn.execute(text("DELETE FROM employee_skills WHERE employee_id != :uid"), {'uid': current_user_id})
+                conn.execute(text("DELETE FROM overtime_history WHERE employee_id != :uid"), {'uid': current_user_id})
+                conn.execute(text("DELETE FROM vacation_calendar WHERE employee_id != :uid"), {'uid': current_user_id})
+                conn.execute(text("DELETE FROM time_off_request WHERE employee_id != :uid"), {'uid': current_user_id})
+                conn.execute(text("DELETE FROM shift_swap_request WHERE requester_id != :uid AND target_employee_id != :uid"), {'uid': current_user_id})
+                conn.execute(text("DELETE FROM schedule WHERE employee_id != :uid"), {'uid': current_user_id})
+                
+                # Now delete employees
+                result = conn.execute(text("DELETE FROM employee WHERE id != :uid"), {'uid': current_user_id})
+                deleted_count = result.rowcount
+                
+                # Commit the transaction
+                trans.commit()
+                
+                flash(f'Successfully deleted {deleted_count} employees. You can now upload new data.', 'success')
+                
+            except Exception as e:
+                trans.rollback()
+                flash(f'Error deleting employees: {str(e)}', 'danger')
+                
+        # Dispose of all connections
+        engine.dispose()
+        db.session.remove()
+        
+    except Exception as e:
+        flash(f'Error: {str(e)}', 'danger')
+    
+    return redirect(url_for('supervisor.employee_management'))
+
+@supervisor_bp.route('/employees/simple-upload', methods=['POST'])
+@login_required
+@supervisor_required
+def simple_upload_employees():
+    """Step 2: Simple upload without deletion"""
+    
+    if 'file' not in request.files:
+        flash('No file uploaded', 'danger')
+        return redirect(url_for('supervisor.employee_management'))
+    
+    file = request.files['file']
+    if not file or file.filename == '':
+        flash('No file selected', 'danger')
+        return redirect(url_for('supervisor.employee_management'))
+    
+    try:
+        # Read Excel file
+        df = pd.read_excel(file, sheet_name=0)  # Just read first sheet
+        
+        # Basic validation
+        required_columns = ['Last Name', 'First Name', 'Employee ID', 'Date of Hire', 
+                          'Total Overtime (Last 3 Months)', 'Crew Assigned', 'Current Job Position']
+        
+        missing = [col for col in required_columns if col not in df.columns]
+        if missing:
+            flash(f'Missing columns: {", ".join(missing)}', 'danger')
+            return redirect(url_for('supervisor.employee_management'))
+        
+        # Get current user email to skip
+        current_user_email = current_user.email.lower()
+        
+        # Process employees
+        created = 0
+        skipped = 0
+        errors = []
+        
+        for idx, row in df.iterrows():
+            try:
+                # Skip empty rows
+                if pd.isna(row['Employee ID']) or pd.isna(row['Last Name']):
+                    continue
+                
+                # Generate email
+                first_name = str(row['First Name']).strip()
+                last_name = str(row['Last Name']).strip()
+                email = f"{first_name.lower()}.{last_name.lower()}@company.com".replace(' ', '')
+                
+                # Skip current user
+                if email == current_user_email:
+                    skipped += 1
+                    continue
+                
+                # Check if employee already exists
+                existing = Employee.query.filter_by(email=email).first()
+                if existing:
+                    errors.append(f"Row {idx + 2}: {email} already exists - skipping")
+                    skipped += 1
+                    continue
+                
+                # Create employee
+                employee = Employee(
+                    employee_id=str(int(row['Employee ID'])) if not pd.isna(row['Employee ID']) else None,
+                    email=email,
+                    name=f"{first_name} {last_name}",
+                    password_hash=generate_password_hash('changeme123'),
+                    is_supervisor=False,
+                    crew=str(row['Crew Assigned']).strip() if pd.notna(row['Crew Assigned']) else None,
+                    hire_date=pd.to_datetime(row['Date of Hire']).date(),
+                    vacation_days=10.0,
+                    sick_days=5.0,
+                    personal_days=3.0
+                )
+                
+                # Set position if exists
+                if pd.notna(row['Current Job Position']):
+                    position = Position.query.filter_by(name=str(row['Current Job Position']).strip()).first()
+                    if position:
+                        employee.position_id = position.id
+                    else:
+                        # Create position if it doesn't exist
+                        position = Position(name=str(row['Current Job Position']).strip(), min_coverage=1)
+                        db.session.add(position)
+                        db.session.flush()
+                        employee.position_id = position.id
+                
+                db.session.add(employee)
+                created += 1
+                
+                # Commit every 50 employees
+                if created % 50 == 0:
+                    db.session.commit()
+                    
+            except Exception as e:
+                errors.append(f"Row {idx + 2}: {str(e)}")
+                db.session.rollback()
+                continue
+        
+        # Final commit
+        db.session.commit()
+        
+        # Report results
+        message = f'Created {created} employees, skipped {skipped}.'
+        if errors:
+            message += f' {len(errors)} errors occurred.'
+            for error in errors[:5]:
+                flash(error, 'warning')
+        
+        flash(message, 'success' if created > 0 else 'warning')
+        
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error processing file: {str(e)}', 'danger')
+    
+    return redirect(url_for('supervisor.employee_management'))
+
+@supervisor_bp.route('/employees/management')
+@login_required
+@supervisor_required
+def employee_management():
+    """Employee management page with two-step upload"""
+    employees = Employee.query.filter(Employee.id != current_user.id).order_by(Employee.crew, Employee.name).all()
+    employee_count = len(employees)
+    
+    return render_template('employee_management_new.html',
+                         employees=employees,
+                         employee_count=employee_count)
+
 @supervisor_bp.route('/employees/crew-management')
 @login_required
 @supervisor_required
@@ -577,298 +751,6 @@ def download_employee_template():
         download_name=f'employee_import_template_{datetime.now().strftime("%Y%m%d")}.xlsx'
     )
 
-@supervisor_bp.route('/employees/upload', methods=['POST'])
-@login_required
-@supervisor_required
-def upload_employees():
-    """Upload employee data from Excel file - REPLACES all existing data"""
-    
-    if 'file' not in request.files:
-        flash('No file uploaded', 'danger')
-        return redirect(url_for('supervisor.crew_management'))
-    
-    file = request.files['file']
-    if file.filename == '':
-        flash('No file selected', 'danger')
-        return redirect(url_for('supervisor.crew_management'))
-    
-    if not file.filename.endswith(('.xlsx', '.xls')):
-        flash('Please upload an Excel file (.xlsx or .xls)', 'danger')
-        return redirect(url_for('supervisor.crew_management'))
-    
-    try:
-        # Read the Excel file first
-        try:
-            df = pd.read_excel(file, sheet_name='Employee Data')
-        except:
-            # Try first sheet if specific sheet name fails
-            df = pd.read_excel(file, sheet_name=0)
-        
-        # Validate required columns
-        required_columns = ['Last Name', 'First Name', 'Employee ID', 'Date of Hire', 
-                          'Total Overtime (Last 3 Months)', 'Crew Assigned', 'Current Job Position']
-        
-        missing_columns = [col for col in required_columns if col not in df.columns]
-        if missing_columns:
-            flash(f'Missing required columns: {", ".join(missing_columns)}', 'danger')
-            return redirect(url_for('supervisor.crew_management'))
-        
-        # Get position columns (all columns after the first 7)
-        position_columns = df.columns[7:].tolist()
-        
-        # Store current user info
-        current_user_id = current_user.id
-        current_user_email = current_user.email.lower()
-        
-        # CRITICAL: Force complete database cleanup
-        # Close ALL sessions and connections
-        db.session.remove()
-        db.session.close_all()
-        db.engine.dispose()  # This forces all connections to close
-        
-        # Create a fresh engine connection
-        with db.engine.connect() as conn:
-            with conn.begin():  # Automatic transaction management
-                # First, let's see what employees exist
-                result = conn.execute(db.text("SELECT id, email, name FROM employee WHERE id != :user_id"), {'user_id': current_user_id})
-                existing = result.fetchall()
-                print(f"Found {len(existing)} employees to delete")
-                for emp in existing[:5]:  # Print first 5
-                    print(f"  - {emp[2]} ({emp[1]})")
-                
-                # Comprehensive deletion in dependency order
-                # Using DELETE CASCADE would be better, but this ensures compatibility
-                deletion_queries = [
-                    # Most dependent tables first
-                    "DELETE FROM overtime_opportunity WHERE posted_by_id != :user_id",
-                    "DELETE FROM overtime_opportunity WHERE id IN (SELECT opportunity_id FROM overtime_history WHERE employee_id != :user_id)",
-                    "DELETE FROM casual_assignment WHERE casual_worker_id IN (SELECT id FROM casual_worker)",
-                    "DELETE FROM shift_trade_proposal WHERE trade_id IN (SELECT id FROM shift_trade_post WHERE poster_id != :user_id)",
-                    "DELETE FROM shift_trade_proposal WHERE proposer_id != :user_id",
-                    "DELETE FROM shift_trade WHERE employee1_id != :user_id AND employee2_id != :user_id",
-                    "DELETE FROM shift_trade_post WHERE poster_id != :user_id",
-                    "DELETE FROM trade_match_preference WHERE employee_id != :user_id",
-                    "DELETE FROM maintenance_update WHERE issue_id IN (SELECT id FROM maintenance_issue WHERE reporter_id != :user_id)",
-                    "DELETE FROM maintenance_update WHERE author_id != :user_id",
-                    "DELETE FROM maintenance_issue WHERE reporter_id != :user_id AND assigned_to_id != :user_id",
-                    "DELETE FROM position_message_read WHERE reader_id != :user_id",
-                    "DELETE FROM position_message_read WHERE message_id IN (SELECT id FROM position_message WHERE sender_id != :user_id)",
-                    "DELETE FROM position_message WHERE sender_id != :user_id",
-                    "DELETE FROM supervisor_message WHERE sender_id != :user_id AND recipient_id != :user_id",
-                    "DELETE FROM shift_transition_plan WHERE employee_id != :user_id",
-                    "DELETE FROM sleep_recommendation WHERE employee_id != :user_id",
-                    "DELETE FROM sleep_log WHERE employee_id != :user_id",
-                    "DELETE FROM circadian_profile WHERE employee_id != :user_id",
-                    "DELETE FROM schedule_suggestion WHERE employee_id != :user_id AND reviewed_by_id != :user_id",
-                    "DELETE FROM coverage_request WHERE requester_id != :user_id AND filled_by_id != :user_id",
-                    "DELETE FROM availability WHERE employee_id != :user_id",
-                    "DELETE FROM employee_skills WHERE employee_id != :user_id",
-                    "DELETE FROM overtime_history WHERE employee_id != :user_id",
-                    "DELETE FROM vacation_calendar WHERE employee_id != :user_id",
-                    "DELETE FROM time_off_request WHERE employee_id != :user_id",
-                    "DELETE FROM shift_swap_request WHERE requester_id != :user_id OR target_employee_id != :user_id",
-                    "DELETE FROM schedule WHERE employee_id != :user_id",
-                    # Clear maintenance managers
-                    "DELETE FROM maintenance_manager WHERE employee_id != :user_id",
-                    # Finally, delete employees
-                    "DELETE FROM employee WHERE id != :user_id"
-                ]
-                
-                for query in deletion_queries:
-                    try:
-                        result = conn.execute(db.text(query), {'user_id': current_user_id})
-                        if result.rowcount > 0:
-                            print(f"Deleted {result.rowcount} rows from: {query.split('FROM')[1].split('WHERE')[0].strip()}")
-                    except Exception as e:
-                        # Skip tables that don't exist
-                        if "does not exist" not in str(e):
-                            print(f"Error with query: {query[:50]}... - {str(e)}")
-                
-                # Verify deletion
-                result = conn.execute(db.text("SELECT COUNT(*) FROM employee WHERE id != :user_id"), {'user_id': current_user_id})
-                remaining = result.scalar()
-                print(f"Employees remaining after deletion: {remaining}")
-        
-        # STEP 2: Start fresh with new session
-        db.engine.dispose()  # Force new connections
-        db.session.remove()
-        
-        # Process file data first to check for issues
-        employees_to_create = []
-        emails_in_file = set()
-        errors = []
-        
-        for idx, row in df.iterrows():
-            # Skip empty rows
-            if pd.isna(row['Employee ID']) or pd.isna(row['Last Name']):
-                continue
-            
-            # Generate email
-            first_name = str(row['First Name']).strip()
-            last_name = str(row['Last Name']).strip()
-            email = f"{first_name.lower()}.{last_name.lower()}@company.com"
-            email = email.replace(' ', '').lower()
-            
-            # Skip current user
-            if email == current_user_email:
-                print(f"Row {idx + 2}: Skipping current user {email}")
-                continue
-            
-            # Check for duplicates in file
-            if email in emails_in_file:
-                errors.append(f"Row {idx + 2}: Duplicate email {email} in file")
-                continue
-            
-            emails_in_file.add(email)
-            
-            # Store employee data for creation
-            employees_to_create.append({
-                'row': idx + 2,
-                'data': row,
-                'email': email,
-                'first_name': first_name,
-                'last_name': last_name
-            })
-        
-        print(f"Preparing to create {len(employees_to_create)} employees")
-        
-        # STEP 3: Create positions first
-        for pos_name in position_columns:
-            if pos_name and 'Qualified Position' not in pos_name:
-                position = Position.query.filter_by(name=pos_name).first()
-                if not position:
-                    position = Position(name=pos_name, min_coverage=1)
-                    db.session.add(position)
-        
-        # Also ensure positions from Current Job Position column exist
-        for emp_data in employees_to_create:
-            job_position = emp_data['data']['Current Job Position']
-            if pd.notna(job_position):
-                pos_name = str(job_position).strip()
-                position = Position.query.filter_by(name=pos_name).first()
-                if not position:
-                    position = Position(name=pos_name, min_coverage=1)
-                    db.session.add(position)
-        
-        db.session.commit()
-        print("Positions created/verified")
-        
-        # STEP 4: Create employees
-        employees_created = 0
-        
-        for emp_data in employees_to_create:
-            row = emp_data['data']
-            
-            try:
-                # Parse hire date
-                hire_date = pd.to_datetime(row['Date of Hire']).date()
-                
-                # Get overtime hours
-                overtime_hours = float(row['Total Overtime (Last 3 Months)']) if pd.notna(row['Total Overtime (Last 3 Months)']) else 0.0
-                
-                # Create employee
-                employee = Employee(
-                    employee_id=str(int(row['Employee ID'])) if not pd.isna(row['Employee ID']) else None,
-                    email=emp_data['email'],
-                    name=f"{emp_data['first_name']} {emp_data['last_name']}",
-                    password_hash=generate_password_hash('changeme123'),
-                    is_supervisor=False,
-                    crew=str(row['Crew Assigned']).strip() if pd.notna(row['Crew Assigned']) else None,
-                    hire_date=hire_date,
-                    vacation_days=10.0,
-                    sick_days=5.0,
-                    personal_days=3.0
-                )
-                
-                # Set current position
-                if pd.notna(row['Current Job Position']):
-                    current_pos = Position.query.filter_by(name=str(row['Current Job Position']).strip()).first()
-                    if current_pos:
-                        employee.position_id = current_pos.id
-                
-                db.session.add(employee)
-                db.session.flush()  # Get the employee ID
-                
-                # Add overtime history if provided
-                if overtime_hours > 0:
-                    for week_offset in range(13):
-                        week_date = datetime.now().date() - timedelta(weeks=week_offset)
-                        week_start = week_date - timedelta(days=week_date.weekday())
-                        
-                        overtime_entry = OvertimeHistory(
-                            employee_id=employee.id,
-                            week_start_date=week_start,
-                            overtime_hours=round(overtime_hours / 13, 2),
-                            regular_hours=40,
-                            total_hours=40 + round(overtime_hours / 13, 2)
-                        )
-                        db.session.add(overtime_entry)
-                
-                # Add skills/qualifications
-                for pos_name in position_columns:
-                    if pos_name and 'Qualified Position' not in pos_name and pd.notna(row[pos_name]):
-                        cell_value = str(row[pos_name]).lower().strip()
-                        
-                        if cell_value in ['current', 'yes', 'x', '1', 'true']:
-                            position = Position.query.filter_by(name=pos_name).first()
-                            if position:
-                                skill_name = f"Qualified: {pos_name}"
-                                skill = Skill.query.filter_by(name=skill_name).first()
-                                if not skill:
-                                    skill = Skill(
-                                        name=skill_name,
-                                        description=f"Qualified to work as {pos_name}",
-                                        category='position'
-                                    )
-                                    db.session.add(skill)
-                                    db.session.flush()
-                                
-                                # Link employee to skill
-                                stmt = employee_skills.insert().values(
-                                    employee_id=employee.id,
-                                    skill_id=skill.id,
-                                    certification_date=datetime.now().date(),
-                                    is_primary=(cell_value == 'current')
-                                )
-                                db.session.execute(stmt)
-                
-                employees_created += 1
-                
-                # Commit every 50 employees to avoid memory issues
-                if employees_created % 50 == 0:
-                    db.session.commit()
-                    print(f"Created {employees_created} employees...")
-                
-            except Exception as e:
-                errors.append(f"Row {emp_data['row']}: {str(e)}")
-                db.session.rollback()
-                continue
-        
-        # Final commit
-        db.session.commit()
-        print(f"Successfully created {employees_created} employees")
-        
-        # Report results
-        if errors:
-            flash(f'Upload completed with {len(errors)} errors. {employees_created} employees created.', 'warning')
-            for error in errors[:10]:  # Show first 10 errors
-                flash(error, 'danger')
-            if len(errors) > 10:
-                flash(f'... and {len(errors) - 10} more errors', 'warning')
-        else:
-            flash(f'Successfully replaced all employee data. {employees_created} employees created.', 'success')
-        
-        return redirect(url_for('supervisor.crew_management'))
-        
-    except Exception as e:
-        db.session.rollback()
-        import traceback
-        error_details = traceback.format_exc()
-        print(f"Upload error: {str(e)}")
-        print(f"Details: {error_details}")
-        flash(f'Error processing file: {str(e)}', 'danger')
-        return redirect(url_for('supervisor.crew_management'))
-
 @supervisor_bp.route('/employees/download-current')
 @login_required
 @supervisor_required
@@ -959,13 +841,6 @@ def download_current_employees():
         download_name=f'current_employees_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
     )
 
-@supervisor_bp.route('/employees/management')
-@login_required
-@supervisor_required
-def employee_management():
-    """Employee management dashboard - redirects to crew management"""
-    return redirect(url_for('supervisor.crew_management'))
-
 @supervisor_bp.route('/employees/upload-text', methods=['GET', 'POST'])
 @login_required
 @supervisor_required
@@ -991,7 +866,7 @@ def upload_employees_text():
         data_text = request.form.get('data', '')
         if not data_text:
             flash('No data provided', 'danger')
-            return redirect(url_for('supervisor.crew_management'))
+            return redirect(url_for('supervisor.employee_management'))
         
         # Convert text to DataFrame - try tab-separated first, then comma-separated
         from io import StringIO
@@ -1002,7 +877,7 @@ def upload_employees_text():
                 df = pd.read_csv(StringIO(data_text), sep=',')
             except Exception as e:
                 flash(f'Could not parse data. Make sure it is tab or comma separated. Error: {str(e)}', 'danger')
-                return redirect(url_for('supervisor.crew_management'))
+                return redirect(url_for('supervisor.employee_management'))
         
         # Validate required columns
         required_columns = ['Last Name', 'First Name', 'Employee ID', 'Date of Hire', 
@@ -1011,7 +886,7 @@ def upload_employees_text():
         missing_columns = [col for col in required_columns if col not in df.columns]
         if missing_columns:
             flash(f'Missing required columns: {", ".join(missing_columns)}', 'danger')
-            return redirect(url_for('supervisor.crew_management'))
+            return redirect(url_for('supervisor.employee_management'))
         
         # Get position columns
         position_columns = df.columns[7:].tolist()
@@ -1023,11 +898,11 @@ def upload_employees_text():
         # ... (same deletion and insertion logic)
         
         flash('Text upload functionality implemented', 'success')
-        return redirect(url_for('supervisor.crew_management'))
+        return redirect(url_for('supervisor.employee_management'))
         
     except Exception as e:
         flash(f'Error processing text data: {str(e)}', 'danger')
-        return redirect(url_for('supervisor.crew_management'))
+        return redirect(url_for('supervisor.employee_management'))
 
 # ========== DIAGNOSTIC ROUTES ==========
 
@@ -1110,7 +985,7 @@ def force_fix_duplicates():
             print(f"Removed {result.rowcount} duplicates of {email}")
     
     flash(f'Removed {total_removed} duplicate employee records', 'success')
-    return redirect(url_for('supervisor.crew_management'))
+    return redirect(url_for('supervisor.employee_management'))
 
 # ========== OTHER SUPERVISOR ROUTES ==========
 
@@ -1185,7 +1060,7 @@ def api_dashboard_stats():
         'pending_time_off': TimeOffRequest.query.filter_by(status='pending').count(),
         'pending_swaps': ShiftSwapRequest.query.filter_by(status='pending').count(),
         'coverage_gaps': 0,  # Implement based on your coverage logic
-        'pending_suggestions': ScheduleSuggestion.query.filter_by(status='pending').count(),
+        'pending_suggestions': ScheduleSuggestion.query.filter_by(status='pending').count() if hasattr(ScheduleSuggestion, 'status') else 0,
         'new_critical_items': 0  # Implement based on your critical items logic
     }
     return jsonify(stats)
