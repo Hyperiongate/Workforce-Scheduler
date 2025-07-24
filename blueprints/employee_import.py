@@ -192,10 +192,15 @@ def download_employee_template():
 def upload_employees():
     """Handle employee data upload from Excel file"""
     if request.method == 'GET':
-        # Count employees (excluding current user)
-        employee_count = Employee.query.filter(Employee.id != current_user.id).count()
-        # Get upload history - simplified without FileUpload model
-        return render_template('upload_employees.html', employee_count=employee_count, recent_uploads=[])
+        try:
+            # Count employees (excluding current user)
+            employee_count = Employee.query.filter(Employee.id != current_user.id).count()
+            # Get upload history - simplified without FileUpload model
+            return render_template('upload_employees.html', employee_count=employee_count, recent_uploads=[])
+        except Exception as e:
+            current_app.logger.error(f"Error in upload_employees GET: {str(e)}\n{traceback.format_exc()}")
+            flash(f'Error loading upload page: {str(e)}', 'error')
+            return redirect(url_for('main.dashboard'))
     
     if 'file' not in request.files:
         flash('No file selected', 'error')
@@ -216,7 +221,48 @@ def upload_employees():
         
         # First, try to delete all employees except current user
         try:
-            # Use raw SQL for more reliable deletion
+            # Delete related records first to avoid foreign key constraints
+            # Delete employee skills
+            delete_skills_query = text("""
+                DELETE FROM employee_skills 
+                WHERE employee_id IN (
+                    SELECT id FROM employee WHERE id != :current_user_id
+                )
+            """)
+            db.session.execute(delete_skills_query, {'current_user_id': current_user.id})
+            
+            # Delete overtime history
+            delete_overtime_query = text("""
+                DELETE FROM overtime_history 
+                WHERE employee_id IN (
+                    SELECT id FROM employee WHERE id != :current_user_id
+                )
+            """)
+            db.session.execute(delete_overtime_query, {'current_user_id': current_user.id})
+            
+            # Delete time off requests
+            delete_timeoff_query = text("""
+                DELETE FROM time_off_request 
+                WHERE employee_id IN (
+                    SELECT id FROM employee WHERE id != :current_user_id
+                )
+            """)
+            db.session.execute(delete_timeoff_query, {'current_user_id': current_user.id})
+            
+            # Delete any other related records (add more as needed)
+            # Delete schedules
+            try:
+                delete_schedule_query = text("""
+                    DELETE FROM schedule 
+                    WHERE employee_id IN (
+                        SELECT id FROM employee WHERE id != :current_user_id
+                    )
+                """)
+                db.session.execute(delete_schedule_query, {'current_user_id': current_user.id})
+            except:
+                pass  # Table might not exist
+            
+            # Now delete employees
             delete_query = text("""
                 DELETE FROM employee 
                 WHERE id != :current_user_id
