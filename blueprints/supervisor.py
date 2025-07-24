@@ -987,7 +987,75 @@ def force_fix_duplicates():
     flash(f'Removed {total_removed} duplicate employee records', 'success')
     return redirect(url_for('supervisor.employee_management'))
 
-# ========== OTHER SUPERVISOR ROUTES ==========
+# ========== COVERAGE NEEDS ROUTE - FIXED ==========
+
+@supervisor_bp.route('/supervisor/coverage-needs')
+@login_required
+@supervisor_required
+def coverage_needs():
+    """View and manage coverage needs"""
+    try:
+        # Get all positions
+        positions = Position.query.order_by(Position.name).all()
+        
+        # If no positions exist, warn the user
+        if not positions:
+            flash('No positions found. Please upload employee data to create positions.', 'warning')
+            return render_template('coverage_needs.html',
+                                 positions=[],
+                                 crew_requirements={},
+                                 current_coverage={},
+                                 crew_totals={})
+        
+        # Get crew-specific requirements if they exist
+        crew_requirements = {}
+        
+        # Initialize with position defaults
+        for crew in ['A', 'B', 'C', 'D']:
+            crew_requirements[crew] = {}
+            for position in positions:
+                crew_requirements[crew][position.id] = position.min_coverage
+        
+        # Calculate current coverage for each crew and position
+        current_coverage = {}
+        crew_totals = {}
+        
+        for crew in ['A', 'B', 'C', 'D']:
+            current_coverage[crew] = {}
+            # Count total employees in this crew (excluding supervisors)
+            crew_totals[crew] = Employee.query.filter_by(
+                crew=crew,
+                is_supervisor=False
+            ).count()
+            
+            for position in positions:
+                # Count employees in this crew with this position
+                count = Employee.query.filter_by(
+                    crew=crew,
+                    position_id=position.id,
+                    is_supervisor=False  # Don't count supervisors in coverage
+                ).count()
+                current_coverage[crew][position.id] = count
+        
+        # Add debug information
+        print(f"Total positions: {len(positions)}")
+        for crew in ['A', 'B', 'C', 'D']:
+            print(f"Crew {crew}: {crew_totals[crew]} employees")
+        
+        # Calculate total current staff
+        total_current_staff = sum(crew_totals.values())
+        
+        return render_template('coverage_needs.html',
+                             positions=positions,
+                             crew_requirements=crew_requirements,
+                             current_coverage=current_coverage,
+                             crew_totals=crew_totals,
+                             total_current_staff=total_current_staff)
+                             
+    except Exception as e:
+        print(f"Error in coverage_needs route: {str(e)}")
+        flash(f'Error loading coverage needs: {str(e)}', 'danger')
+        return redirect(url_for('main.dashboard'))
 
 @supervisor_bp.route('/supervisor/coverage-needs/reset-defaults', methods=['POST'])
 @login_required
@@ -1000,60 +1068,8 @@ def reset_coverage_defaults():
     db.session.commit()
     flash(f'Reset {len(positions)} positions to minimum coverage of 1', 'success')
     return redirect(url_for('supervisor.coverage_needs'))
-    """View and manage coverage needs"""
-    # Get all positions
-    positions = Position.query.order_by(Position.name).all()
-    
-    # Get crew-specific requirements if they exist
-    crew_requirements = {}
-    
-    # If you have the CrewCoverageRequirement model, use it:
-    # for crew in ['A', 'B', 'C', 'D']:
-    #     crew_requirements[crew] = {}
-    #     for position in positions:
-    #         req = CrewCoverageRequirement.query.filter_by(
-    #             crew=crew, 
-    #             position_id=position.id
-    #         ).first()
-    #         crew_requirements[crew][position.id] = req.min_coverage if req else position.min_coverage
-    
-    # For now, initialize with position defaults
-    for crew in ['A', 'B', 'C', 'D']:
-        crew_requirements[crew] = {}
-        for position in positions:
-            crew_requirements[crew][position.id] = position.min_coverage
-    
-    # Calculate current coverage for each crew and position
-    current_coverage = {}
-    total_employees_by_crew = {}
-    
-    for crew in ['A', 'B', 'C', 'D']:
-        current_coverage[crew] = {}
-        # Count total employees in this crew (excluding supervisors)
-        total_employees_by_crew[crew] = Employee.query.filter_by(
-            crew=crew,
-            is_supervisor=False
-        ).count()
-        
-        for position in positions:
-            # Count employees in this crew with this position
-            count = Employee.query.filter_by(
-                crew=crew,
-                position_id=position.id,
-                is_supervisor=False  # Don't count supervisors in coverage
-            ).count()
-            current_coverage[crew][position.id] = count
-    
-    # Add debug information
-    print(f"Total positions: {len(positions)}")
-    for crew in ['A', 'B', 'C', 'D']:
-        print(f"Crew {crew}: {total_employees_by_crew[crew]} employees")
-    
-    return render_template('coverage_needs.html',
-                         positions=positions,
-                         crew_requirements=crew_requirements,
-                         current_coverage=current_coverage,
-                         total_employees_by_crew=total_employees_by_crew)
+
+# ========== OTHER SUPERVISOR ROUTES ==========
 
 @supervisor_bp.route('/supervisor/suggestions')
 @login_required
