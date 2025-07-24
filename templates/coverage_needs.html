@@ -164,6 +164,31 @@
                 <div class="col-md-3">
                     <div class="summary-stat">
                         <h3 id="totalPositions">{{ positions|length }}</h3>
+                        <p>Unique Positions</p>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="summary-stat">
+                        <h3 id="totalRequired">0</h3>
+                        <p>Total Staff Required (All Crews)</p>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="summary-stat">
+                        <h3 id="totalCurrent">0</h3>
+                        <p>Current Staff (All Crews)</p>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="summary-stat">
+                        <h3 id="coverageGaps" class="text-danger">0</h3>
+                        <p>Total Coverage Gaps</p>
+                    </div>
+                </div>
+            </div>
+        </div>"col-md-3">
+                    <div class="summary-stat">
+                        <h3 id="totalPositions">{{ positions|length }}</h3>
                         <p>Total Positions</p>
                     </div>
                 </div>
@@ -218,6 +243,29 @@
                     </div>
                 </div>
                 {% endfor %}
+            </div>
+        </div>
+
+        <!-- Debug Information (remove in production) -->
+        <div class="summary-card mt-4">
+            <h5>Debug Information</h5>
+            <div class="row">
+                <div class="col-md-6">
+                    <p><strong>Employees by Crew (non-supervisors):</strong></p>
+                    <ul>
+                        {% for crew, count in total_employees_by_crew.items() %}
+                        <li>Crew {{ crew }}: {{ count }} employees</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                <div class="col-md-6">
+                    <p><strong>Position Requirements:</strong></p>
+                    <ul>
+                        {% for position in positions %}
+                        <li>{{ position.name }}: {{ position.min_coverage }} required</li>
+                        {% endfor %}
+                    </ul>
+                </div>
             </div>
         </div>
 
@@ -360,10 +408,14 @@
             let totalCurrent = 0;
             let gaps = 0;
 
-            document.querySelectorAll('.crew-card:not(:first-child) .position-row').forEach(row => {
-                const required = parseInt(row.querySelector('.coverage-input').value) || 0;
-                const currentEl = row.querySelector('.staff-count');
-                const current = currentEl ? parseInt(currentEl.textContent) : 0;
+            // Only count crew-specific requirements (not the global settings)
+            {% for crew in ['A', 'B', 'C', 'D'] %}
+            {% for position in positions %}
+            {
+                const requiredInput = document.getElementById('crew-{{ crew }}-{{ position.id }}');
+                const required = parseInt(requiredInput.value) || 0;
+                const currentEl = document.getElementById('current-{{ crew }}-{{ position.id }}');
+                const current = parseInt(currentEl.textContent) || 0;
                 
                 totalRequired += required;
                 totalCurrent += current;
@@ -371,7 +423,9 @@
                 if (current < required) {
                     gaps += (required - current);
                 }
-            });
+            }
+            {% endfor %}
+            {% endfor %}
 
             document.getElementById('totalRequired').textContent = totalRequired;
             document.getElementById('totalCurrent').textContent = totalCurrent;
