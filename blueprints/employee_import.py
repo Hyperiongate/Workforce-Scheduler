@@ -431,7 +431,6 @@ def upload_employees():
                         if not skill:
                             skill = Skill(
                                 name=f"{pos_col} Certified",
-                                description=f"Qualified to work as {pos_col}",
                                 category='position'
                             )
                             db.session.add(skill)
