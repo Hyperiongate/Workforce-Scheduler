@@ -173,6 +173,32 @@ class Employee(UserMixin, db.Model):
         db.session.commit()
         return ot_record
 
+# Add this to your models.py file
+
+class CrewCoverageRequirement(db.Model):
+    """Crew-specific coverage requirements for positions"""
+    __tablename__ = 'crew_coverage_requirements'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    crew = db.Column(db.String(1), nullable=False)  # A, B, C, or D
+    position_id = db.Column(db.Integer, db.ForeignKey('position.id'), nullable=False)
+    min_coverage = db.Column(db.Integer, default=0)
+    
+    # Timestamps
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    position = db.relationship('Position', backref='crew_requirements')
+    
+    # Unique constraint to prevent duplicate crew-position combinations
+    __table_args__ = (
+        db.UniqueConstraint('crew', 'position_id', name='_crew_position_uc'),
+    )
+    
+    def __repr__(self):
+        return f'<CrewCoverageRequirement Crew {self.crew} - {self.position.name}: {self.min_coverage}>'
+
 class Position(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
