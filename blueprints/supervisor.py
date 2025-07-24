@@ -278,7 +278,7 @@ def handle_time_off_request(request_id, action):
             vacation_entry = VacationCalendar(
                 employee_id=time_off_request.employee_id,
                 date=current_date,
-                type=time_off_request.type,
+                type=time_off_request.request_type,
                 request_id=time_off_request.id
             )
             db.session.add(vacation_entry)
@@ -1069,6 +1069,147 @@ def reset_coverage_defaults():
     flash(f'Reset {len(positions)} positions to minimum coverage of 1', 'success')
     return redirect(url_for('supervisor.coverage_needs'))
 
+# ========== COVERAGE GAPS ROUTE - NEW ==========
+
+@supervisor_bp.route('/supervisor/coverage-gaps')
+@login_required
+@supervisor_required
+def coverage_gaps():
+    """View real-time coverage gaps considering absences"""
+    try:
+        # Get current date
+        today = date.today()
+        
+        # Get all positions
+        positions = Position.query.order_by(Position.name).all()
+        
+        # Initialize data structures
+        coverage_gaps_data = []
+        total_gaps = 0
+        critical_gaps = 0
+        
+        # For each crew
+        for crew in ['A', 'B', 'C', 'D']:
+            crew_data = {
+                'crew': crew,
+                'positions': [],
+                'total_required': 0,
+                'total_available': 0,
+                'total_absent': 0,
+                'total_gaps': 0
+            }
+            
+            for position in positions:
+                # Get required coverage (from Position model or CrewCoverageRequirement if you have it)
+                required = position.min_coverage
+                
+                # Get all employees in this crew and position
+                employees = Employee.query.filter_by(
+                    crew=crew,
+                    position_id=position.id,
+                    is_supervisor=False
+                ).all()
+                
+                # Count total employees
+                total_employees = len(employees)
+                
+                # Count employees who are absent today (vacation, sick, personal)
+                absent_count = 0
+                absent_employees = []
+                
+                for emp in employees:
+                    # Check vacation calendar for today
+                    absence = VacationCalendar.query.filter_by(
+                        employee_id=emp.id,
+                        date=today
+                    ).first()
+                    
+                    if absence:
+                        absent_count += 1
+                        absent_employees.append({
+                            'name': emp.name,
+                            'type': absence.type
+                        })
+                
+                # Calculate available employees
+                available = total_employees - absent_count
+                
+                # Calculate gap
+                gap = required - available
+                
+                # Only add if there's a gap or if there are absences
+                if gap > 0 or absent_count > 0:
+                    position_data = {
+                        'position': position.name,
+                        'required': required,
+                        'total_employees': total_employees,
+                        'absent': absent_count,
+                        'available': available,
+                        'gap': max(0, gap),  # Don't show negative gaps
+                        'absent_employees': absent_employees,
+                        'is_critical': gap > 0
+                    }
+                    
+                    crew_data['positions'].append(position_data)
+                    crew_data['total_required'] += required
+                    crew_data['total_available'] += available
+                    crew_data['total_absent'] += absent_count
+                    
+                    if gap > 0:
+                        crew_data['total_gaps'] += gap
+                        total_gaps += gap
+                        if gap >= 2:  # Consider gaps of 2+ as critical
+                            critical_gaps += 1
+            
+            # Only add crew if it has gaps or absences
+            if crew_data['positions']:
+                coverage_gaps_data.append(crew_data)
+        
+        # Get upcoming absences for next 7 days
+        upcoming_absences = db.session.query(
+            VacationCalendar.date,
+            func.count(VacationCalendar.id).label('count'),
+            Employee.crew
+        ).join(
+            Employee, VacationCalendar.employee_id == Employee.id
+        ).filter(
+            VacationCalendar.date > today,
+            VacationCalendar.date <= today + timedelta(days=7)
+        ).group_by(
+            VacationCalendar.date,
+            Employee.crew
+        ).order_by(
+            VacationCalendar.date
+        ).all()
+        
+        # Format upcoming absences
+        upcoming_by_date = {}
+        for absence in upcoming_absences:
+            date_str = absence.date.strftime('%Y-%m-%d')
+            if date_str not in upcoming_by_date:
+                upcoming_by_date[date_str] = {'date': absence.date, 'crews': {}}
+            upcoming_by_date[date_str]['crews'][absence.crew] = absence.count
+        
+        # Summary statistics
+        summary = {
+            'total_gaps': total_gaps,
+            'critical_gaps': critical_gaps,
+            'crews_affected': len([c for c in coverage_gaps_data if c['total_gaps'] > 0]),
+            'positions_affected': sum(len([p for p in c['positions'] if p['gap'] > 0]) for c in coverage_gaps_data),
+            'total_absences_today': sum(c['total_absent'] for c in coverage_gaps_data)
+        }
+        
+        return render_template('coverage_gaps.html',
+                             coverage_gaps=coverage_gaps_data,
+                             summary=summary,
+                             today=today,
+                             upcoming_absences=list(upcoming_by_date.values()))
+                             
+    except Exception as e:
+        print(f"Error in coverage_gaps route: {str(e)}")
+        flash(f'Error loading coverage gaps: {str(e)}', 'danger')
+        return redirect(url_for('main.dashboard'))
+
 # ========== OTHER SUPERVISOR ROUTES ==========
 
 @supervisor_bp.route('/supervisor/suggestions')
@@ -1181,6 +1322,63 @@ def api_coverage_gaps():
                 })
     
     return jsonify({'gaps': gaps, 'total_gaps': sum(g['gap'] for g in gaps)})
+
+@supervisor_bp.route('/api/coverage-gaps-summary')
+@login_required
+@supervisor_required
+def api_coverage_gaps_summary():
+    """API endpoint to get coverage gaps summary for dashboard"""
+    try:
+        today = date.today()
+        total_gaps = 0
+        critical_gaps = 0
+        
+        # Quick calculation of gaps
+        for crew in ['A', 'B', 'C', 'D']:
+            positions = Position.query.all()
+            
+            for position in positions:
+                # Required coverage
+                required = position.min_coverage
+                
+                # Get total employees in position
+                total_employees = Employee.query.filter_by(
+                    crew=crew,
+                    position_id=position.id,
+                    is_supervisor=False
+                ).count()
+                
+                # Count absences today
+                absent_count = db.session.query(func.count(VacationCalendar.id)).join(
+                    Employee, VacationCalendar.employee_id == Employee.id
+                ).filter(
+                    Employee.crew == crew,
+                    Employee.position_id == position.id,
+                    VacationCalendar.date == today
+                ).scalar() or 0
+                
+                # Calculate gap
+                available = total_employees - absent_count
+                gap = required - available
+                
+                if gap > 0:
+                    total_gaps += gap
+                    if gap >= 2:
+                        critical_gaps += 1
+        
+        return jsonify({
+            'total_gaps': total_gaps,
+            'critical_gaps': critical_gaps,
+            'has_gaps': total_gaps > 0
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'total_gaps': 0,
+            'critical_gaps': 0,
+            'has_gaps': False,
+            'error': str(e)
+        })
 
 @supervisor_bp.route('/api/dashboard-stats')
 @login_required
