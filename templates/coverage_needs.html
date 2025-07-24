@@ -32,14 +32,14 @@
         .crew-header.crew-b { background-color: #764ba2; }
         .crew-header.crew-c { background-color: #4facfe; }
         .crew-header.crew-d { background-color: #00c9ff; }
-        .crew-header.crew-all { background-color: #11998e; }
         
         .position-row {
-            display: flex;
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr 1.5fr;
             align-items: center;
             padding: 0.75rem 1.5rem;
             border-bottom: 1px solid #e9ecef;
-            transition: background-color 0.2s;
+            gap: 1rem;
         }
         .position-row:hover {
             background-color: #f8f9fa;
@@ -47,57 +47,66 @@
         .position-row:last-child {
             border-bottom: none;
         }
+        .position-header {
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr 1.5fr;
+            padding: 0.75rem 1.5rem;
+            background-color: #f8f9fa;
+            font-weight: 600;
+            font-size: 0.9rem;
+            color: #6c757d;
+            gap: 1rem;
+        }
         .position-name {
-            flex: 1;
             font-weight: 500;
+        }
+        .current-count {
+            text-align: center;
+            font-weight: bold;
+            color: #28a745;
+        }
+        .required-count {
+            text-align: center;
+            font-weight: bold;
         }
         .coverage-controls {
             display: flex;
             align-items: center;
-            gap: 1rem;
+            justify-content: center;
+            gap: 0.5rem;
         }
         .coverage-input {
-            width: 60px;
+            width: 50px;
             text-align: center;
             border: 1px solid #ced4da;
             border-radius: 4px;
             padding: 0.25rem;
         }
         .btn-adjust {
-            width: 32px;
-            height: 32px;
+            width: 28px;
+            height: 28px;
             padding: 0;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 1.2rem;
+            font-size: 1rem;
             border-radius: 4px;
         }
-        .current-staff {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            margin-left: 2rem;
-            color: #6c757d;
-            font-size: 0.9rem;
-        }
-        .staff-count {
+        .gap-indicator {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.875rem;
             font-weight: bold;
-            color: #28a745;
+            margin-left: 0.5rem;
         }
-        .staff-count.insufficient {
+        .gap-indicator.shortage {
+            background-color: #fee;
             color: #dc3545;
         }
-        .save-indicator {
-            position: fixed;
-            top: 80px;
-            right: 20px;
-            padding: 0.5rem 1rem;
-            background: #28a745;
-            color: white;
-            border-radius: 4px;
-            display: none;
-            z-index: 1000;
+        .gap-indicator.adequate {
+            background-color: #efe;
+            color: #28a745;
         }
         .summary-card {
             background: white;
@@ -120,25 +129,21 @@
             color: #6c757d;
             font-size: 0.9rem;
         }
-        .position-badge {
-            display: inline-block;
-            padding: 0.25rem 0.5rem;
-            background-color: #e9ecef;
+        .save-indicator {
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            padding: 0.5rem 1rem;
+            background: #28a745;
+            color: white;
             border-radius: 4px;
-            font-size: 0.875rem;
-            margin-left: 0.5rem;
+            display: none;
+            z-index: 1000;
         }
         @media (max-width: 768px) {
-            .current-staff {
-                margin-left: 0;
-                margin-top: 0.5rem;
-            }
-            .position-row {
-                flex-wrap: wrap;
-            }
-            .position-name {
-                width: 100%;
-                margin-bottom: 0.5rem;
+            .position-row, .position-header {
+                grid-template-columns: 1fr;
+                text-align: center;
             }
         }
     </style>
@@ -156,97 +161,34 @@
     </nav>
 
     <div class="coverage-container">
-        <div class="d-flex justify-content-between align-items-center mb-4">
-            <h1>Set Coverage Requirements</h1>
-            <form method="POST" action="{{ url_for('supervisor.reset_coverage_defaults') }}" style="display: inline;">
-                <button type="submit" class="btn btn-warning" onclick="return confirm('This will reset all position requirements to 1. Are you sure?')">
-                    <i class="bi bi-arrow-clockwise"></i> Reset All to 1
-                </button>
-            </form>
-        </div>
+        <h1 class="mb-4">Set Coverage Requirements by Crew</h1>
         
         <!-- Summary Statistics -->
         <div class="summary-card">
             <div class="row">
                 <div class="col-md-3">
                     <div class="summary-stat">
-                        <h3 id="totalPositions">{{ positions|length }}</h3>
-                        <p>Unique Positions</p>
+                        <h3>{{ positions|length }}</h3>
+                        <p>Total Positions</p>
                     </div>
                 </div>
                 <div class="col-md-3">
                     <div class="summary-stat">
                         <h3 id="totalRequired">0</h3>
-                        <p>Total Staff Required (All Crews)</p>
+                        <p>Total Required (All Crews)</p>
                     </div>
                 </div>
                 <div class="col-md-3">
                     <div class="summary-stat">
-                        <h3 id="totalCurrent">0</h3>
+                        <h3 id="totalCurrent">{{ total_current_staff }}</h3>
                         <p>Current Staff (All Crews)</p>
                     </div>
                 </div>
                 <div class="col-md-3">
                     <div class="summary-stat">
-                        <h3 id="coverageGaps" class="text-danger">0</h3>
-                        <p>Total Coverage Gaps</p>
+                        <h3 id="totalGaps" class="text-danger">0</h3>
+                        <p>Total Gaps</p>
                     </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Global Settings -->
-        <div class="crew-card">
-            <div class="crew-header crew-all">
-                <i class="bi bi-globe"></i> Global Coverage Requirements (All Crews)
-            </div>
-            <div class="crew-body">
-                {% for position in positions %}
-                <div class="position-row">
-                    <div class="position-name">
-                        {{ position.name }}
-                        <span class="position-badge">ID: {{ position.id }}</span>
-                    </div>
-                    <div class="coverage-controls">
-                        <button class="btn btn-sm btn-outline-secondary btn-adjust" 
-                                onclick="adjustCoverage('global', {{ position.id }}, -1)">
-                            <i class="bi bi-dash"></i>
-                        </button>
-                        <input type="number" 
-                               class="coverage-input" 
-                               id="global-{{ position.id }}" 
-                               value="{{ position.min_coverage }}"
-                               min="0"
-                               onchange="updateCoverage('global', {{ position.id }}, this.value)">
-                        <button class="btn btn-sm btn-outline-secondary btn-adjust" 
-                                onclick="adjustCoverage('global', {{ position.id }}, 1)">
-                            <i class="bi bi-plus"></i>
-                        </button>
-                    </div>
-                </div>
-                {% endfor %}
-            </div>
-        </div>
-
-        <!-- Debug Information (remove in production) -->
-        <div class="summary-card mt-4">
-            <h5>Debug Information</h5>
-            <div class="row">
-                <div class="col-md-6">
-                    <p><strong>Employees by Crew (non-supervisors):</strong></p>
-                    <ul>
-                        {% for crew, count in total_employees_by_crew.items() %}
-                        <li>Crew {{ crew }}: {{ count }} employees</li>
-                        {% endfor %}
-                    </ul>
-                </div>
-                <div class="col-md-6">
-                    <p><strong>Position Requirements:</strong></p>
-                    <ul>
-                        {% for position in positions %}
-                        <li>{{ position.name }}: {{ position.min_coverage }} required</li>
-                        {% endfor %}
-                    </ul>
                 </div>
             </div>
         </div>
@@ -255,12 +197,25 @@
         {% for crew in ['A', 'B', 'C', 'D'] %}
         <div class="crew-card">
             <div class="crew-header crew-{{ crew|lower }}">
-                Crew {{ crew }} Coverage Requirements
+                Crew {{ crew }} - {{ crew_totals[crew] }} Current Employees
+            </div>
+            <div class="position-header">
+                <div>Position</div>
+                <div>Current</div>
+                <div>Required</div>
+                <div>Set Requirement</div>
             </div>
             <div class="crew-body">
                 {% for position in positions %}
                 <div class="position-row">
                     <div class="position-name">{{ position.name }}</div>
+                    <div class="current-count" id="current-{{ crew }}-{{ position.id }}">
+                        {{ current_coverage[crew][position.id] }}
+                    </div>
+                    <div class="required-count">
+                        <span id="required-display-{{ crew }}-{{ position.id }}">0</span>
+                        <span class="gap-indicator" id="gap-{{ crew }}-{{ position.id }}" style="display: none;"></span>
+                    </div>
                     <div class="coverage-controls">
                         <button class="btn btn-sm btn-outline-secondary btn-adjust" 
                                 onclick="adjustCoverage('{{ crew }}', {{ position.id }}, -1)">
@@ -268,21 +223,14 @@
                         </button>
                         <input type="number" 
                                class="coverage-input" 
-                               id="crew-{{ crew }}-{{ position.id }}" 
-                               value="{{ crew_requirements.get(crew, {}).get(position.id, position.min_coverage) }}"
+                               id="required-{{ crew }}-{{ position.id }}" 
+                               value="0"
                                min="0"
                                onchange="updateCoverage('{{ crew }}', {{ position.id }}, this.value)">
                         <button class="btn btn-sm btn-outline-secondary btn-adjust" 
                                 onclick="adjustCoverage('{{ crew }}', {{ position.id }}, 1)">
                             <i class="bi bi-plus"></i>
                         </button>
-                    </div>
-                    <div class="current-staff">
-                        <span>Current:</span>
-                        <span class="staff-count" id="current-{{ crew }}-{{ position.id }}">
-                            {{ current_coverage.get(crew, {}).get(position.id, 0) }}
-                        </span>
-                        <span>staff</span>
                     </div>
                 </div>
                 {% endfor %}
@@ -316,10 +264,20 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+        // Store coverage requirements
+        let coverageRequirements = {};
+
+        // Initialize coverage requirements from server data
+        {% for crew in ['A', 'B', 'C', 'D'] %}
+        coverageRequirements['{{ crew }}'] = {};
+        {% for position in positions %}
+        coverageRequirements['{{ crew }}'][{{ position.id }}] = 0;
+        {% endfor %}
+        {% endfor %}
+
         // Update coverage value via +/- buttons
         function adjustCoverage(crew, positionId, delta) {
-            const inputId = crew === 'global' ? `global-${positionId}` : `crew-${crew}-${positionId}`;
-            const input = document.getElementById(inputId);
+            const input = document.getElementById(`required-${crew}-${positionId}`);
             const currentValue = parseInt(input.value) || 0;
             const newValue = Math.max(0, currentValue + delta);
             input.value = newValue;
@@ -328,7 +286,80 @@
 
         // Update coverage value
         function updateCoverage(crew, positionId, value) {
-            // Send update to server
+            const numValue = parseInt(value) || 0;
+            coverageRequirements[crew][positionId] = numValue;
+            
+            // Update display
+            document.getElementById(`required-display-${crew}-${positionId}`).textContent = numValue;
+            
+            // Update gap indicator
+            updateGapIndicator(crew, positionId);
+            
+            // Update summary
+            updateSummary();
+            
+            // Save to server
+            saveCoverageRequirement(crew, positionId, numValue);
+        }
+
+        // Update gap indicator for a position
+        function updateGapIndicator(crew, positionId) {
+            const current = parseInt(document.getElementById(`current-${crew}-${positionId}`).textContent) || 0;
+            const required = coverageRequirements[crew][positionId];
+            const gapEl = document.getElementById(`gap-${crew}-${positionId}`);
+            
+            if (required > 0) {
+                const gap = current - required;
+                if (gap < 0) {
+                    gapEl.textContent = gap;
+                    gapEl.className = 'gap-indicator shortage';
+                    gapEl.style.display = 'inline-block';
+                } else if (gap > 0) {
+                    gapEl.textContent = `+${gap}`;
+                    gapEl.className = 'gap-indicator adequate';
+                    gapEl.style.display = 'inline-block';
+                } else {
+                    gapEl.style.display = 'none';
+                }
+            } else {
+                gapEl.style.display = 'none';
+            }
+        }
+
+        // Update summary statistics
+        function updateSummary() {
+            let totalRequired = 0;
+            let totalGaps = 0;
+
+            {% for crew in ['A', 'B', 'C', 'D'] %}
+            {% for position in positions %}
+            {
+                const required = coverageRequirements['{{ crew }}'][{{ position.id }}];
+                const current = parseInt(document.getElementById('current-{{ crew }}-{{ position.id }}').textContent) || 0;
+                
+                totalRequired += required;
+                
+                if (required > current) {
+                    totalGaps += (required - current);
+                }
+            }
+            {% endfor %}
+            {% endfor %}
+
+            document.getElementById('totalRequired').textContent = totalRequired;
+            document.getElementById('totalGaps').textContent = totalGaps;
+            
+            // Update gap color
+            const gapElement = document.getElementById('totalGaps');
+            if (totalGaps > 0) {
+                gapElement.className = 'text-danger';
+            } else {
+                gapElement.className = 'text-success';
+            }
+        }
+
+        // Save coverage requirement to server
+        function saveCoverageRequirement(crew, positionId, value) {
             fetch('/api/coverage-needs', {
                 method: 'POST',
                 headers: {
@@ -337,22 +368,20 @@
                 body: JSON.stringify({
                     crew: crew,
                     position_id: positionId,
-                    min_coverage: parseInt(value) || 0
+                    min_coverage: value
                 })
             })
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
                     showSaveIndicator();
-                    updateStaffCounts();
-                    updateSummary();
                 } else {
-                    alert('Failed to update coverage requirement');
+                    alert('Failed to save coverage requirement');
                 }
             })
             .catch(error => {
                 console.error('Error:', error);
-                alert('Error updating coverage requirement');
+                alert('Error saving coverage requirement');
             });
         }
 
@@ -365,66 +394,8 @@
             }, 2000);
         }
 
-        // Update staff counts and highlight gaps
-        function updateStaffCounts() {
-            document.querySelectorAll('.position-row').forEach(row => {
-                const staffCount = row.querySelector('.staff-count');
-                if (staffCount) {
-                    const current = parseInt(staffCount.textContent);
-                    const required = parseInt(row.querySelector('.coverage-input').value);
-                    
-                    if (current < required) {
-                        staffCount.classList.add('insufficient');
-                        staffCount.classList.remove('sufficient');
-                    } else {
-                        staffCount.classList.remove('insufficient');
-                        staffCount.classList.add('sufficient');
-                    }
-                }
-            });
-        }
-
-        // Update summary statistics
-        function updateSummary() {
-            let totalRequired = 0;
-            let totalCurrent = 0;
-            let gaps = 0;
-
-            // Only count crew-specific requirements (not the global settings)
-            {% for crew in ['A', 'B', 'C', 'D'] %}
-            {% for position in positions %}
-            {
-                const requiredInput = document.getElementById('crew-{{ crew }}-{{ position.id }}');
-                const required = parseInt(requiredInput.value) || 0;
-                const currentEl = document.getElementById('current-{{ crew }}-{{ position.id }}');
-                const current = parseInt(currentEl.textContent) || 0;
-                
-                totalRequired += required;
-                totalCurrent += current;
-                
-                if (current < required) {
-                    gaps += (required - current);
-                }
-            }
-            {% endfor %}
-            {% endfor %}
-
-            document.getElementById('totalRequired').textContent = totalRequired;
-            document.getElementById('totalCurrent').textContent = totalCurrent;
-            document.getElementById('coverageGaps').textContent = gaps;
-            
-            // Update gap color
-            const gapElement = document.getElementById('coverageGaps');
-            if (gaps > 0) {
-                gapElement.className = 'text-danger';
-            } else {
-                gapElement.className = 'text-success';
-            }
-        }
-
         // Initialize on page load
         document.addEventListener('DOMContentLoaded', function() {
-            updateStaffCounts();
             updateSummary();
         });
 
