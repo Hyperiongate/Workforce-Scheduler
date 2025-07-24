@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crew Management - Workforce Scheduler</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
+    <style>
+        body {
+            background-color: #f5f7fa;
+        }
+        .crew-column {
+            border: 2px solid #dee2e6;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            min-height: 400px;
+            background: white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .crew-header {
+            background-color: #f8f9fa;
+            padding: 0.75rem;
+            border-radius: 4px;
+            margin-bottom: 1rem;
+            font-weight: bold;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .crew-header.crew-a { background-color: #667eea; color: white; }
+        .crew-header.crew-b { background-color: #764ba2; color: white; }
+        .crew-header.crew-c { background-color: #4facfe; color: white; }
+        .crew-header.crew-d { background-color: #00c9ff; color: white; }
+        .crew-header.unassigned { background-color: #ff6e7f; color: white; }
+        
+        .employee-card {
+            background: white;
+            border: 1px solid #e9ecef;
+            border-radius: 4px;
+            padding: 0.75rem;
+            margin-bottom: 0.5rem;
+            cursor: move;
+            transition: all 0.3s ease;
+        }
+        .employee-card:hover {
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            transform: translateY(-2px);
+        }
+        .employee-card.dragging {
+            opacity: 0.5;
+            transform: rotate(5deg);
+        }
+        .crew-column.drag-over {
+            background-color: #e7f3ff;
+            border-color: #4facfe;
+        }
+        .action-bar {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: white;
+            padding: 1rem 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 2rem;
+        }
+        .bulk-edit-panel {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: white;
+            padding: 1rem;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
+            transform: translateY(100%);
+            transition: transform 0.3s ease;
+            z-index: 1000;
+        }
+        .bulk-edit-panel.show {
+            transform: translateY(0);
+        }
+        .employee-position {
+            font-size: 0.85rem;
+            color: #6c757d;
+        }
+        .employee-info {
+            flex-grow: 1;
+        }
+        .employee-actions {
+            display: flex;
+            gap: 0.25rem;
+        }
+        .bulk-select-checkbox {
+            display: none;
+        }
+        .bulk-select-checkbox.show {
+            display: inline-block;
+            margin-right: 0.5rem;
+        }
+        .stats-card {
+            background: white;
+            border-radius: 8px;
+            padding: 1rem;
+            text-align: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .stats-card h3 {
+            margin: 0;
+            font-size: 2rem;
+            font-weight: bold;
+        }
+        .stats-card p {
+            margin: 0;
+            color: #6c757d;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/dashboard">
+                <i class="bi bi-arrow-left"></i> Back to Dashboard
+            </a>
+            <span class="navbar-text text-white">
+                Crew Management System
+            </span>
+        </div>
+    </nav>
+
+    <div class="container-fluid">
+        <!-- Action Bar -->
+        <div class="action-bar">
+            <div class="row align-items-center">
+                <div class="col-md-8">
+                    <div class="btn-group" role="group">
+                        <a href="{{ url_for('supervisor.download_employee_template') }}" class="btn btn-outline-primary">
+                            <i class="bi bi-download"></i> Download Template
+                        </a>
+                        <a href="{{ url_for('supervisor.employee_management') }}" class="btn btn-outline-primary">
+                            <i class="bi bi-upload"></i> Upload Employees
+                        </a>
+                        <a href="{{ url_for('supervisor.download_current_employees') }}" class="btn btn-outline-secondary">
+                            <i class="bi bi-file-earmark-excel"></i> Export Current
+                        </a>
+                        <button type="button" class="btn btn-outline-success" id="bulkEditBtn">
+                            <i class="bi bi-pencil-square"></i> Bulk Edit Mode
+                        </button>
+                        <button type="button" class="btn btn-outline-info" onclick="window.location.reload()">
+                            <i class="bi bi-arrow-clockwise"></i> Refresh
+                        </button>
+                    </div>
+                </div>
+                <div class="col-md-4 text-end">
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="bi bi-search"></i></span>
+                        <input type="text" class="form-control" id="searchInput" placeholder="Search employees...">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Statistics Row -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="stats-card">
+                    <h3>{{ employees|length }}</h3>
+                    <p>Total Employees</p>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stats-card">
+                    <h3>{{ employees|selectattr('crew', 'equalto', 'A')|list|length }}</h3>
+                    <p>Crew A</p>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stats-card">
+                    <h3>{{ employees|selectattr('crew', 'equalto', 'B')|list|length }}</h3>
+                    <p>Crew B</p>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stats-card">
+                    <h3>{{ employees|selectattr('crew', 'equalto', 'C')|list|length + employees|selectattr('crew', 'equalto', 'D')|list|length }}</h3>
+                    <p>Crews C & D</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Crew Columns -->
+        <div class="row">
+            {% for crew in ['A', 'B', 'C', 'D'] %}
+            <div class="col-md-3">
+                <div class="crew-column" data-crew="{{ crew }}">
+                    <div class="crew-header crew-{{ crew|lower }}">
+                        <span>Crew {{ crew }}</span>
+                        <span class="badge bg-light text-dark crew-count">
+                            {{ employees|selectattr('crew', 'equalto', crew)|list|length }}
+                        </span>
+                    </div>
+                    <div class="employee-list">
+                        {% for employee in employees|selectattr('crew', 'equalto', crew)|sort(attribute='name') %}
+                        <div class="employee-card" draggable="true" data-employee-id="{{ employee.id }}" data-employee-name="{{ employee.name|lower }}">
+                            <div class="d-flex align-items-center">
+                                <input type="checkbox" class="bulk-select-checkbox" value="{{ employee.id }}">
+                                <div class="employee-info">
+                                    <strong>{{ employee.name }}</strong>
+                                    <div class="employee-position">
+                                        {{ employee.position.name if employee.position else 'No Position' }}
+                                    </div>
+                                </div>
+                                <div class="employee-actions">
+                                    <button class="btn btn-sm btn-outline-primary" onclick="editEmployee({{ employee.id }})" title="Edit">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- Unassigned Employees -->
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="crew-column" data-crew="UNASSIGNED">
+                    <div class="crew-header unassigned">
+                        <span>Unassigned Employees</span>
+                        <span class="badge bg-light text-dark crew-count">
+                            {{ employees|rejectattr('crew', 'in', ['A', 'B', 'C', 'D'])|list|length }}
+                        </span>
+                    </div>
+                    <div class="employee-list d-flex flex-wrap gap-2">
+                        {% for employee in employees|rejectattr('crew', 'in', ['A', 'B', 'C', 'D'])|sort(attribute='name') %}
+                        <div class="employee-card" draggable="true" data-employee-id="{{ employee.id }}" data-employee-name="{{ employee.name|lower }}" style="width: calc(25% - 0.5rem);">
+                            <div class="d-flex align-items-center">
+                                <input type="checkbox" class="bulk-select-checkbox" value="{{ employee.id }}">
+                                <div class="employee-info">
+                                    <strong>{{ employee.name }}</strong>
+                                    <div class="employee-position">
+                                        {{ employee.position.name if employee.position else 'No Position' }}
+                                    </div>
+                                </div>
+                                <div class="employee-actions">
+                                    <button class="btn btn-sm btn-outline-primary" onclick="editEmployee({{ employee.id }})" title="Edit">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bulk Edit Panel -->
+    <div class="bulk-edit-panel" id="bulkEditPanel">
+        <form id="bulkEditForm" action="{{ url_for('supervisor.bulk_edit_employees') }}" method="POST">
+            <div class="container">
+                <div class="row align-items-center">
+                    <div class="col-md-3">
+                        <h6 class="mb-0"><span id="selectedCount">0</span> employees selected</h6>
+                    </div>
+                    <div class="col-md-4">
+                        <select name="new_crew" class="form-select" required>
+                            <option value="">Assign to Crew...</option>
+                            <option value="A">Crew A</option>
+                            <option value="B">Crew B</option>
+                            <option value="C">Crew C</option>
+                            <option value="D">Crew D</option>
+                        </select>
+                    </div>
+                    <div class="col-md-5 text-end">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-circle"></i> Apply Changes
+                        </button>
+                        <button type="button" class="btn btn-secondary" onclick="cancelBulkEdit()">
+                            <i class="bi bi-x-circle"></i> Cancel
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="position-fixed top-0 end-0 p-3" style="z-index: 1050;">
+                {% for category, message in messages %}
+                    <div class="toast show align-items-center text-white bg-{{ 'danger' if category == 'error' else category }} border-0" role="alert">
+                        <div class="d-flex">
+                            <div class="toast-body">
+                                {{ message }}
+                            </div>
+                            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Drag and Drop functionality
+        let draggedElement = null;
+        let bulkEditMode = false;
+
+        document.querySelectorAll('.employee-card').forEach(card => {
+            card.addEventListener('dragstart', (e) => {
+                if (!bulkEditMode) {
+                    draggedElement = e.target.closest('.employee-card');
+                    e.target.closest('.employee-card').classList.add('dragging');
+                }
+            });
+
+            card.addEventListener('dragend', (e) => {
+                e.target.closest('.employee-card').classList.remove('dragging');
+            });
+        });
+
+        document.querySelectorAll('.crew-column').forEach(column => {
+            column.addEventListener('dragover', (e) => {
+                if (!bulkEditMode) {
+                    e.preventDefault();
+                    column.classList.add('drag-over');
+                }
+            });
+
+            column.addEventListener('dragleave', (e) => {
+                if (e.target.classList.contains('crew-column')) {
+                    column.classList.remove('drag-over');
+                }
+            });
+
+            column.addEventListener('drop', (e) => {
+                if (!bulkEditMode) {
+                    e.preventDefault();
+                    column.classList.remove('drag-over');
+                    
+                    if (draggedElement && draggedElement !== e.target) {
+                        const employeeId = draggedElement.dataset.employeeId;
+                        const newCrew = column.dataset.crew;
+                        
+                        // Move the element visually
+                        column.querySelector('.employee-list').appendChild(draggedElement);
+                        
+                        // Send AJAX request to update crew
+                        fetch(`/api/employee/${employeeId}/crew`, {
+                            method: 'PUT',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({ crew: newCrew })
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.success) {
+                                updateCrewCounts();
+                                showNotification('Crew assignment updated successfully', 'success');
+                            } else {
+                                showNotification('Failed to update crew assignment', 'danger');
+                                location.reload();
+                            }
+                        })
+                        .catch(error => {
+                            showNotification('Error updating crew assignment', 'danger');
+                            location.reload();
+                        });
+                    }
+                }
+            });
+        });
+
+        // Edit employee function
+        function editEmployee(employeeId) {
+            window.location.href = `/employees/edit/${employeeId}`;
+        }
+
+        // Bulk edit functionality
+        document.getElementById('bulkEditBtn').addEventListener('click', () => {
+            bulkEditMode = !bulkEditMode;
+            document.querySelectorAll('.bulk-select-checkbox').forEach(cb => {
+                cb.classList.toggle('show');
+                cb.checked = false;
+            });
+            document.getElementById('bulkEditPanel').classList.toggle('show');
+            document.querySelectorAll('.employee-card').forEach(card => {
+                card.draggable = !bulkEditMode;
+            });
+            updateSelectedCount();
+        });
+
+        function cancelBulkEdit() {
+            bulkEditMode = false;
+            document.querySelectorAll('.bulk-select-checkbox').forEach(cb => {
+                cb.classList.remove('show');
+                cb.checked = false;
+            });
+            document.getElementById('bulkEditPanel').classList.remove('show');
+            document.querySelectorAll('.employee-card').forEach(card => {
+                card.draggable = true;
+            });
+        }
+
+        // Update selected count
+        document.addEventListener('change', (e) => {
+            if (e.target.classList.contains('bulk-select-checkbox')) {
+                updateSelectedCount();
+            }
+        });
+
+        function updateSelectedCount() {
+            const count = document.querySelectorAll('.bulk-select-checkbox:checked').length;
+            document.getElementById('selectedCount').textContent = count;
+        }
+
+        function updateCrewCounts() {
+            document.querySelectorAll('.crew-column').forEach(column => {
+                const count = column.querySelectorAll('.employee-card').length;
+                const badge = column.querySelector('.crew-count');
+                if (badge) {
+                    badge.textContent = count;
+                }
+            });
+        }
+
+        // Handle bulk edit form submission
+        document.getElementById('bulkEditForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const checkedBoxes = document.querySelectorAll('.bulk-select-checkbox:checked');
+            if (checkedBoxes.length === 0) {
+                showNotification('Please select at least one employee', 'warning');
+                return;
+            }
+            
+            // Clear any existing hidden inputs
+            const existingInputs = e.target.querySelectorAll('input[name="employee_ids"]');
+            existingInputs.forEach(input => input.remove());
+            
+            // Add selected employee IDs as hidden inputs
+            checkedBoxes.forEach(cb => {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'employee_ids';
+                input.value = cb.value;
+                e.target.appendChild(input);
+            });
+            
+            // Submit the form
+            e.target.submit();
+        });
+
+        // Search functionality
+        document.getElementById('searchInput').addEventListener('input', (e) => {
+            const searchTerm = e.target.value.toLowerCase();
+            document.querySelectorAll('.employee-card').forEach(card => {
+                const name = card.dataset.employeeName;
+                if (name.includes(searchTerm)) {
+                    card.style.display = 'block';
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+            
+            // Update counts after filtering
+            updateCrewCounts();
+        });
+
+        // Notification function
+        function showNotification(message, type = 'info') {
+            const toastHtml = `
+                <div class="toast show align-items-center text-white bg-${type} border-0" role="alert">
+                    <div class="d-flex">
+                        <div class="toast-body">
+                            ${message}
+                        </div>
+                        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+                    </div>
+                </div>
+            `;
+            
+            const container = document.querySelector('.position-fixed.top-0.end-0.p-3') || createToastContainer();
+            const toastElement = document.createElement('div');
+            toastElement.innerHTML = toastHtml;
+            container.appendChild(toastElement.firstChild);
+            
+            // Auto-hide after 3 seconds
+            setTimeout(() => {
+                const toast = container.lastChild;
+                if (toast) {
+                    toast.remove();
+                }
+            }, 3000);
+        }
+
+        function createToastContainer() {
+            const container = document.createElement('div');
+            container.className = 'position-fixed top-0 end-0 p-3';
+            container.style.zIndex = '1050';
+            document.body.appendChild(container);
+            return container;
+        }
+
+        // Auto-hide flash messages after 5 seconds
+        document.querySelectorAll('.toast').forEach(toast => {
+            setTimeout(() => {
+                toast.remove();
+            }, 5000);
+        });
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (e.ctrlKey || e.metaKey) {
+                switch(e.key) {
+                    case 'a':
+                        if (bulkEditMode) {
+                            e.preventDefault();
+                            document.querySelectorAll('.bulk-select-checkbox').forEach(cb => {
+                                cb.checked = true;
+                            });
+                            updateSelectedCount();
+                        }
+                        break;
+                    case 'e':
+                        e.preventDefault();
+                        document.getElementById('bulkEditBtn').click();
+                        break;
+                    case 'f':
+                        e.preventDefault();
+                        document.getElementById('searchInput').focus();
+                        break;
+                }
+            }
+        });
+    </script>
+</body>
+</html>
