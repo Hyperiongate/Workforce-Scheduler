@@ -1,145 +1,151 @@
-from models import db, Schedule, Employee, VacationCalendar, Position, ShiftTrade, OvertimeOpportunity
-from datetime import date, timedelta
-from sqlalchemy import func, or_
+# Add these functions to your utils/helpers.py file
 
-def get_coverage_gaps(crew='ALL', days_ahead=7):
-    """Get coverage gaps for the specified crew and time period"""
-    gaps = []
-    start_date = date.today()
-    end_date = start_date + timedelta(days=days_ahead)
+def calculate_overtime_trend(employee_id, weeks=13):
+    """
+    Calculate overtime trend for an employee over specified weeks.
+    Returns 'increasing', 'decreasing', or 'stable'
+    """
+    from models import OvertimeHistory
+    from datetime import date, timedelta
+    from sqlalchemy import func
     
-    current = start_date
-    while current <= end_date:
-        # Check each shift type
-        for shift_type in ['day', 'evening', 'night']:
-            scheduled_query = Schedule.query.filter(
-                Schedule.date == current,
-                Schedule.shift_type == shift_type
-            )
-            
-            if crew != 'ALL':
-                scheduled_query = scheduled_query.filter(Schedule.crew == crew)
-            
-            scheduled_count = scheduled_query.count()
-            
-            # Define minimum coverage requirements
-            min_coverage = {
-                'day': 4,
-                'evening': 3,
-                'night': 2
-            }
-            
-            if scheduled_count < min_coverage.get(shift_type, 2):
-                gaps.append({
-                    'date': current,
-                    'shift_type': shift_type,
-                    'scheduled': scheduled_count,
-                    'required': min_coverage.get(shift_type, 2),
-                    'gap': min_coverage.get(shift_type, 2) - scheduled_count,
-                    'crew': crew
-                })
+    end_date = date.today()
+    start_date = end_date - timedelta(weeks=weeks)
+    mid_date = start_date + timedelta(weeks=weeks//2)
     
-        current += timedelta(days=1)
-    
-    return gaps
-
-def get_overtime_opportunities():
-    """Get upcoming overtime opportunities"""
-    opportunities = []
-    gaps = get_coverage_gaps('ALL', 14)
-    
-    for gap in gaps:
-        if gap['gap'] > 0:
-            opportunities.append({
-                'id': f"{gap['date']}_{gap['shift_type']}",
-                'date': gap['date'],
-                'shift_type': gap['shift_type'],
-                'positions_needed': gap['gap'],
-                'start_time': datetime.strptime('07:00', '%H:%M').time() if gap['shift_type'] == 'day' else datetime.strptime('19:00', '%H:%M').time(),
-                'end_time': datetime.strptime('19:00', '%H:%M').time() if gap['shift_type'] == 'day' else datetime.strptime('07:00', '%H:%M').time(),
-                'hours': 12
-            })
-    
-    return opportunities[:10]  # Return first 10
-
-def get_overtime_eligible_employees():
-    """Get employees eligible for overtime"""
-    # Get employees with less than 60 hours this week
-    week_start = date.today() - timedelta(days=date.today().weekday())
-    week_end = week_start + timedelta(days=6)
-    
-    employees = Employee.query.filter_by(is_supervisor=False).all()
-    eligible = []
-    
-    for emp in employees:
-        week_hours = db.session.query(func.sum(Schedule.hours)).filter(
-            Schedule.employee_id == emp.id,
-            Schedule.date >= week_start,
-            Schedule.date <= week_end
+    try:
+        # Get first half total
+        first_half = db.session.query(
+            func.sum(OvertimeHistory.overtime_hours)
+        ).filter(
+            OvertimeHistory.employee_id == employee_id,
+            OvertimeHistory.week_start_date >= start_date,
+            OvertimeHistory.week_start_date < mid_date
         ).scalar() or 0
         
-        if week_hours < 60:  # Eligible if under 60 hours
-            eligible.append({
-                'employee': emp,
-                'current_hours': week_hours,
-                'available_hours': 60 - week_hours
-            })
-    
-    return eligible
+        # Get second half total
+        second_half = db.session.query(
+            func.sum(OvertimeHistory.overtime_hours)
+        ).filter(
+            OvertimeHistory.employee_id == employee_id,
+            OvertimeHistory.week_start_date >= mid_date,
+            OvertimeHistory.week_start_date <= end_date
+        ).scalar() or 0
+        
+        # Calculate trend
+        if second_half > first_half * 1.2:  # 20% increase
+            return 'increasing'
+        elif second_half < first_half * 0.8:  # 20% decrease
+            return 'decreasing'
+        else:
+            return 'stable'
+    except:
+        return 'stable'
 
-def calculate_trade_compatibility(user, trade_post):
-    """Calculate compatibility score for a trade"""
-    schedule = trade_post.schedule
+def get_overtime_statistics(crew=None, position_id=None):
+    """
+    Get overtime statistics for dashboard
+    """
+    from models import Employee, OvertimeHistory
+    from datetime import date, timedelta
+    from sqlalchemy import func, and_
     
-    # Check position match
-    if user.position_id == schedule.position_id:
-        return 'high'
+    end_date = date.today()
+    start_date = end_date - timedelta(weeks=13)
     
-    # Check skill match
-    if schedule.position:
-        required_skills = [s.id for s in schedule.position.required_skills]
-        user_skills = [s.id for s in user.skills]
-        if all(skill in user_skills for skill in required_skills):
-            return 'medium'
+    # Base query
+    query = db.session.query(
+        func.count(Employee.id).label('employee_count'),
+        func.sum(OvertimeHistory.overtime_hours).label('total_hours'),
+        func.avg(OvertimeHistory.overtime_hours).label('avg_hours')
+    ).join(
+        OvertimeHistory, Employee.id == OvertimeHistory.employee_id
+    ).filter(
+        Employee.is_active == True,
+        OvertimeHistory.week_start_date >= start_date,
+        OvertimeHistory.week_start_date <= end_date
+    )
     
-    return 'low'
+    # Apply filters
+    if crew:
+        query = query.filter(Employee.crew == crew)
+    if position_id:
+        query = query.filter(Employee.position_id == position_id)
+    
+    result = query.first()
+    
+    return {
+        'employee_count': result.employee_count or 0,
+        'total_hours': round(float(result.total_hours or 0)),
+        'avg_hours': round(float(result.avg_hours or 0))
+    }
 
-def get_trade_history(employee_id, limit=10):
-    """Get trade history for an employee"""
-    trades = ShiftTrade.query.filter(
-        or_(
-            ShiftTrade.employee1_id == employee_id,
-            ShiftTrade.employee2_id == employee_id
-        ),
-        ShiftTrade.status == 'completed'
-    ).order_by(ShiftTrade.completed_at.desc()).limit(limit).all()
+def format_overtime_for_display(overtime_hours):
+    """
+    Format overtime hours for display with appropriate styling
+    """
+    overtime_hours = round(float(overtime_hours))
     
-    return trades
-
-def calculate_time_ago(timestamp):
-    """Calculate how long ago a timestamp was"""
-    if not timestamp:
-        return "Unknown time"
-    
-    from datetime import datetime
-    now = datetime.now()
-    
-    if hasattr(timestamp, 'date'):
-        time_diff = now - timestamp
+    if overtime_hours >= 60:
+        return {
+            'value': overtime_hours,
+            'class': 'overtime-high',
+            'label': f'{overtime_hours}h (HIGH)'
+        }
+    elif overtime_hours >= 40:
+        return {
+            'value': overtime_hours,
+            'class': 'overtime-medium',
+            'label': f'{overtime_hours}h'
+        }
     else:
-        time_diff = now.date() - timestamp
-        return f"{time_diff.days} days ago" if time_diff.days > 0 else "Today"
+        return {
+            'value': overtime_hours,
+            'class': 'overtime-low',
+            'label': f'{overtime_hours}h'
+        }
+
+def build_overtime_query_filters(request_args):
+    """
+    Build filter conditions for overtime queries based on request arguments
+    """
+    filters = []
     
-    seconds = time_diff.total_seconds()
+    # Search filter
+    search_term = request_args.get('search', '')
+    if search_term:
+        from models import Employee
+        filters.append(
+            or_(
+                Employee.name.ilike(f'%{search_term}%'),
+                Employee.employee_id.ilike(f'%{search_term}%')
+            )
+        )
     
-    if seconds < 60:
-        return "Just now"
-    elif seconds < 3600:
-        minutes = int(seconds / 60)
-        return f"{minutes} minute{'s' if minutes != 1 else ''} ago"
-    elif seconds < 86400:
-        hours = int(seconds / 3600)
-        return f"{hours} hour{'s' if hours != 1 else ''} ago"
-    else:
-        days = int(seconds / 86400)
-        return f"{days} day{'s' if days != 1 else ''} ago"
+    # Crew filter
+    crew_filter = request_args.get('crew', '')
+    if crew_filter:
+        from models import Employee
+        filters.append(Employee.crew == crew_filter)
+    
+    # Position filter
+    position_filter = request_args.get('position', '')
+    if position_filter:
+        from models import Employee
+        filters.append(Employee.position_id == int(position_filter))
+    
+    return filters
+
+def apply_overtime_range_filter(query, ot_range, total_hours_column):
+    """
+    Apply overtime range filter to a query
+    """
+    if ot_range == '0-50':
+        return query.having(total_hours_column.between(0, 50))
+    elif ot_range == '50-100':
+        return query.having(total_hours_column.between(50, 100))
+    elif ot_range == '100-150':
+        return query.having(total_hours_column.between(100, 150))
+    elif ot_range == '150+':
+        return query.having(total_hours_column > 150)
+    return query
