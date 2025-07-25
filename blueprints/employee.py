@@ -74,39 +74,8 @@ def overtime_management():
         start_date = end_date - timedelta(weeks=13)
         current_week_start = end_date - timedelta(days=end_date.weekday())
         
-        # Build base query with overtime calculations
-        # Using subqueries for current week and 13-week totals
-        current_week_subquery = db.session.query(
-            OvertimeHistory.employee_id,
-            func.sum(OvertimeHistory.overtime_hours).label('current_week_hours')
-        ).filter(
-            OvertimeHistory.week_start_date >= current_week_start,
-            OvertimeHistory.week_start_date <= end_date
-        ).group_by(OvertimeHistory.employee_id).subquery()
-        
-        total_13week_subquery = db.session.query(
-            OvertimeHistory.employee_id,
-            func.sum(OvertimeHistory.overtime_hours).label('total_hours')
-        ).filter(
-            OvertimeHistory.week_start_date >= start_date,
-            OvertimeHistory.week_start_date <= end_date
-        ).group_by(OvertimeHistory.employee_id).subquery()
-        
-        # Main query
-        query = db.session.query(
-            Employee,
-            func.coalesce(current_week_subquery.c.current_week_hours, 0).label('current_week_overtime'),
-            func.coalesce(total_13week_subquery.c.total_hours, 0).label('last_13_weeks_overtime'),
-            Position.name.label('position_name')
-        ).outerjoin(
-            current_week_subquery, Employee.id == current_week_subquery.c.employee_id
-        ).outerjoin(
-            total_13week_subquery, Employee.id == total_13week_subquery.c.employee_id
-        ).outerjoin(
-            Position, Employee.position_id == Position.id
-        ).filter(
-            Employee.is_active == True
-        )
+        # Build query for employees
+        query = Employee.query.filter_by(is_active=True)
         
         # Apply search filter
         if search_term:
@@ -125,24 +94,32 @@ def overtime_management():
         if position_filter:
             query = query.filter(Employee.position_id == int(position_filter))
         
-        # Apply OT range filter using having clause
+        # Apply OT range filter if specified
+        # This will filter based on the Employee model's overtime properties
         if ot_range_filter:
-            if ot_range_filter == '0-50':
-                query = query.having(
-                    func.coalesce(total_13week_subquery.c.total_hours, 0).between(0, 50)
-                )
-            elif ot_range_filter == '50-100':
-                query = query.having(
-                    func.coalesce(total_13week_subquery.c.total_hours, 0).between(50, 100)
-                )
-            elif ot_range_filter == '100-150':
-                query = query.having(
-                    func.coalesce(total_13week_subquery.c.total_hours, 0).between(100, 150)
-                )
-            elif ot_range_filter == '150+':
-                query = query.having(
-                    func.coalesce(total_13week_subquery.c.total_hours, 0) > 150
-                )
+            # First get all employees to check their overtime
+            all_employees = query.all()
+            filtered_ids = []
+            
+            for emp in all_employees:
+                # Use the employee's 13-week overtime property
+                total_ot = emp.overtime_13_week_total or 0
+                
+                if ot_range_filter == '0-50' and 0 <= total_ot <= 50:
+                    filtered_ids.append(emp.id)
+                elif ot_range_filter == '50-100' and 50 < total_ot <= 100:
+                    filtered_ids.append(emp.id)
+                elif ot_range_filter == '100-150' and 100 < total_ot <= 150:
+                    filtered_ids.append(emp.id)
+                elif ot_range_filter == '150+' and total_ot > 150:
+                    filtered_ids.append(emp.id)
+            
+            # Filter query by IDs
+            if filtered_ids:
+                query = query.filter(Employee.id.in_(filtered_ids))
+            else:
+                # No employees match the filter
+                query = query.filter(Employee.id == -1)  # This will return no results
         
         # Apply multi-level sorting
         if sort_params:
@@ -154,6 +131,9 @@ def overtime_management():
                         query = query.order_by(Employee.crew.desc())
                 
                 elif sort['field'] == 'jobtitle':
+                    # Join with Position table if sorting by job title
+                    if not any(isinstance(entity, type(Position)) for entity in query.column_descriptions):
+                        query = query.outerjoin(Position, Employee.position_id == Position.id)
                     if sort['direction'] == 'asc':
                         query = query.order_by(Position.name.asc())
                     else:
@@ -166,28 +146,52 @@ def overtime_management():
                         query = query.order_by(Employee.hire_date.asc())   # Oldest first
                 
                 elif sort['field'] == 'overtime':
-                    if sort['direction'] == 'asc':
-                        query = query.order_by('last_13_weeks_overtime')
-                    else:
-                        query = query.order_by(db.desc('last_13_weeks_overtime'))
+                    # Sort by 13-week overtime total
+                    # Since this is a property, we need to sort after fetching
+                    pass  # Handle this after pagination
         else:
-            # Default sort by overtime descending
-            query = query.order_by(db.desc('last_13_weeks_overtime'))
+            # Default sort by name
+            query = query.order_by(Employee.name)
         
-        # Execute pagination
-        paginated_results = query.paginate(page=page, per_page=per_page, error_out=False)
+        # If sorting by overtime, we need to handle this differently
+        if any(sort['field'] == 'overtime' for sort in sort_params):
+            # Get all employees first
+            all_employees = query.all()
+            
+            # Sort by overtime
+            overtime_sort = next(sort for sort in sort_params if sort['field'] == 'overtime')
+            reverse = overtime_sort['direction'] == 'desc'
+            all_employees.sort(key=lambda e: e.overtime_13_week_total or 0, reverse=reverse)
+            
+            # Manual pagination
+            total_count = len(all_employees)
+            total_pages = (total_count + per_page - 1) // per_page
+            start_idx = (page - 1) * per_page
+            end_idx = start_idx + per_page
+            page_employees = all_employees[start_idx:end_idx]
+            
+            # Create a pagination-like object
+            class PaginationResult:
+                def __init__(self, items, page, pages):
+                    self.items = items
+                    self.page = page
+                    self.pages = pages
+            
+            paginated_results = PaginationResult(page_employees, page, total_pages)
+        else:
+            # Normal pagination
+            paginated_results = query.paginate(page=page, per_page=per_page, error_out=False)
         
         # Process results for display
         employees_data = []
         high_overtime_employees = []
         
-        for result in paginated_results.items:
-            employee = result.Employee if hasattr(result, 'Employee') else result[0]
-            
-            # Round overtime values to nearest whole number
-            current_week_ot = round(float(result.current_week_overtime))
-            total_13_week_ot = round(float(result.last_13_weeks_overtime))
-            avg_weekly_ot = round(total_13_week_ot / 13) if total_13_week_ot > 0 else 0
+        for employee in paginated_results.items:
+            # Use the Employee model's properties for overtime data
+            # These should be calculated from the uploaded data
+            current_week_ot = round(employee.overtime_current_week or 0)
+            total_13_week_ot = round(employee.overtime_13_week_total or 0)
+            avg_weekly_ot = round(employee.overtime_13_week_average or 0)
             
             # Calculate seniority in years
             if employee.hire_date:
@@ -195,7 +199,7 @@ def overtime_management():
             else:
                 years_employed = 0
             
-            # Determine overtime trend (simplified)
+            # Determine overtime trend based on the values
             if total_13_week_ot > 200:
                 trend = 'increasing'
             elif total_13_week_ot < 100:
@@ -228,42 +232,26 @@ def overtime_management():
         positions = Position.query.order_by(Position.name).all()
         
         # Calculate statistics for the dashboard
-        # Get all employees for statistics (not just current page)
-        all_employees_stats = db.session.query(
-            func.count(Employee.id).label('total_count'),
-            func.sum(func.coalesce(total_13week_subquery.c.total_hours, 0)).label('total_ot_hours')
-        ).outerjoin(
-            total_13week_subquery, Employee.id == total_13week_subquery.c.employee_id
-        ).filter(
-            Employee.is_active == True
-        ).first()
+        all_active_employees = Employee.query.filter_by(is_active=True).all()
         
-        total_overtime_hours = round(float(all_employees_stats.total_ot_hours or 0))
-        total_employees = all_employees_stats.total_count or 0
+        total_overtime_hours = sum(round(emp.overtime_13_week_total or 0) for emp in all_active_employees)
+        total_employees = len(all_active_employees)
         avg_overtime = round(total_overtime_hours / total_employees) if total_employees > 0 else 0
+        employees_with_overtime = len([emp for emp in all_active_employees if (emp.overtime_13_week_total or 0) > 0])
         
         # Calculate crew overtime data for charts
-        crew_stats = db.session.query(
-            Employee.crew,
-            func.sum(func.coalesce(total_13week_subquery.c.total_hours, 0)).label('crew_total')
-        ).outerjoin(
-            total_13week_subquery, Employee.id == total_13week_subquery.c.employee_id
-        ).filter(
-            Employee.is_active == True,
-            Employee.crew.in_(['A', 'B', 'C', 'D'])
-        ).group_by(Employee.crew).all()
-        
         crew_overtime_data = [0, 0, 0, 0]  # For crews A, B, C, D
         crew_map = {'A': 0, 'B': 1, 'C': 2, 'D': 3}
-        for crew_stat in crew_stats:
-            if crew_stat.crew in crew_map:
-                crew_overtime_data[crew_map[crew_stat.crew]] = round(float(crew_stat.crew_total))
+        
+        for emp in all_active_employees:
+            if emp.crew in crew_map:
+                crew_overtime_data[crew_map[emp.crew]] += round(emp.overtime_13_week_total or 0)
         
         return render_template('overtime_management.html',
                              employees=employees_data,
                              positions=positions,
-                             page=page,
-                             total_pages=paginated_results.pages,
+                             page=paginated_results.page if hasattr(paginated_results, 'page') else page,
+                             total_pages=paginated_results.pages if hasattr(paginated_results, 'pages') else 1,
                              start_date=start_date,
                              end_date=end_date,
                              current_date=datetime.now().date(),
@@ -276,7 +264,7 @@ def overtime_management():
                              sort_params=sort_params,
                              # Statistics
                              total_overtime_hours=total_overtime_hours,
-                             employees_with_overtime=len([e for e in employees_data if e['last_13_weeks_overtime'] > 0]),
+                             employees_with_overtime=employees_with_overtime,
                              avg_overtime=avg_overtime,
                              high_overtime_count=len(high_overtime_employees),
                              crew_overtime_data=crew_overtime_data)
@@ -287,19 +275,29 @@ def overtime_management():
         import traceback
         traceback.print_exc()
         
-        # Fallback to basic view if advanced features fail
+        # Fallback to show all employees with zero overtime
         try:
             employees = Employee.query.filter_by(is_active=True).order_by(Employee.crew, Employee.name).all()
+            employees_data = []
             
-            # Add basic overtime data
             for emp in employees:
-                emp.current_week_overtime = 0
-                emp.last_13_weeks_overtime = 0
-                emp.average_weekly_overtime = 0
-                emp.overtime_trend = 'stable'
+                employees_data.append({
+                    'id': emp.id,
+                    'name': emp.name,
+                    'employee_id': emp.employee_id or f'EMP{emp.id}',
+                    'crew': emp.crew,
+                    'position': emp.position,
+                    'position_id': emp.position_id if emp.position else None,
+                    'hire_date': emp.hire_date,
+                    'years_employed': 0,
+                    'current_week_overtime': 0,
+                    'last_13_weeks_overtime': 0,
+                    'average_weekly_overtime': 0,
+                    'overtime_trend': 'stable'
+                })
             
             return render_template('overtime_management.html',
-                                 employees=employees,
+                                 employees=employees_data,
                                  positions=Position.query.all(),
                                  page=1,
                                  total_pages=1,
@@ -317,7 +315,8 @@ def overtime_management():
                                  avg_overtime=0,
                                  high_overtime_count=0,
                                  crew_overtime_data=[0, 0, 0, 0])
-        except:
+        except Exception as fallback_error:
+            print(f"Fallback error: {str(fallback_error)}")
             flash('Error loading overtime data. Please try again later.', 'danger')
             return redirect(url_for('main.dashboard'))
 
@@ -351,41 +350,11 @@ def export_overtime_excel():
         # Calculate date range
         end_date = date.today()
         start_date = end_date - timedelta(weeks=13)
-        current_week_start = end_date - timedelta(days=end_date.weekday())
         
-        # Build the same query (without pagination)
-        current_week_subquery = db.session.query(
-            OvertimeHistory.employee_id,
-            func.sum(OvertimeHistory.overtime_hours).label('current_week_hours')
-        ).filter(
-            OvertimeHistory.week_start_date >= current_week_start,
-            OvertimeHistory.week_start_date <= end_date
-        ).group_by(OvertimeHistory.employee_id).subquery()
+        # Build query (same as main view but without pagination)
+        query = Employee.query.filter_by(is_active=True)
         
-        total_13week_subquery = db.session.query(
-            OvertimeHistory.employee_id,
-            func.sum(OvertimeHistory.overtime_hours).label('total_hours')
-        ).filter(
-            OvertimeHistory.week_start_date >= start_date,
-            OvertimeHistory.week_start_date <= end_date
-        ).group_by(OvertimeHistory.employee_id).subquery()
-        
-        query = db.session.query(
-            Employee,
-            func.coalesce(current_week_subquery.c.current_week_hours, 0).label('current_week_overtime'),
-            func.coalesce(total_13week_subquery.c.total_hours, 0).label('last_13_weeks_overtime'),
-            Position.name.label('position_name')
-        ).outerjoin(
-            current_week_subquery, Employee.id == current_week_subquery.c.employee_id
-        ).outerjoin(
-            total_13week_subquery, Employee.id == total_13week_subquery.c.employee_id
-        ).outerjoin(
-            Position, Employee.position_id == Position.id
-        ).filter(
-            Employee.is_active == True
-        )
-        
-        # Apply filters (same as main view)
+        # Apply filters
         if search_term:
             query = query.filter(
                 or_(
@@ -400,7 +369,29 @@ def export_overtime_excel():
         if position_filter:
             query = query.filter(Employee.position_id == int(position_filter))
         
-        # Apply sorting (same as main view)
+        # Apply OT range filter if specified
+        if ot_range_filter:
+            all_employees = query.all()
+            filtered_ids = []
+            
+            for emp in all_employees:
+                total_ot = emp.overtime_13_week_total or 0
+                
+                if ot_range_filter == '0-50' and 0 <= total_ot <= 50:
+                    filtered_ids.append(emp.id)
+                elif ot_range_filter == '50-100' and 50 < total_ot <= 100:
+                    filtered_ids.append(emp.id)
+                elif ot_range_filter == '100-150' and 100 < total_ot <= 150:
+                    filtered_ids.append(emp.id)
+                elif ot_range_filter == '150+' and total_ot > 150:
+                    filtered_ids.append(emp.id)
+            
+            if filtered_ids:
+                query = query.filter(Employee.id.in_(filtered_ids))
+            else:
+                query = query.filter(Employee.id == -1)
+        
+        # Apply sorting
         if sort_params:
             for sort in sort_params:
                 if sort['field'] == 'crew':
@@ -409,6 +400,7 @@ def export_overtime_excel():
                     else:
                         query = query.order_by(Employee.crew.desc())
                 elif sort['field'] == 'jobtitle':
+                    query = query.outerjoin(Position, Employee.position_id == Position.id)
                     if sort['direction'] == 'asc':
                         query = query.order_by(Position.name.asc())
                     else:
@@ -419,15 +411,19 @@ def export_overtime_excel():
                     else:
                         query = query.order_by(Employee.hire_date.asc())
                 elif sort['field'] == 'overtime':
-                    if sort['direction'] == 'asc':
-                        query = query.order_by('last_13_weeks_overtime')
-                    else:
-                        query = query.order_by(db.desc('last_13_weeks_overtime'))
+                    # Handle overtime sorting after fetching
+                    pass
         else:
-            query = query.order_by(db.desc('last_13_weeks_overtime'))
+            query = query.order_by(Employee.name)
         
         # Get all results
         results = query.all()
+        
+        # If sorting by overtime, sort the results
+        if any(sort['field'] == 'overtime' for sort in sort_params):
+            overtime_sort = next(sort for sort in sort_params if sort['field'] == 'overtime')
+            reverse = overtime_sort['direction'] == 'desc'
+            results.sort(key=lambda e: e.overtime_13_week_total or 0, reverse=reverse)
         
         # Create Excel workbook
         wb = Workbook()
@@ -453,13 +449,11 @@ def export_overtime_excel():
         
         # Data rows
         row_num = 4
-        for result in results:
-            employee = result.Employee if hasattr(result, 'Employee') else result[0]
-            
-            # Round overtime values
-            current_week_ot = round(float(result.current_week_overtime))
-            total_13_week_ot = round(float(result.last_13_weeks_overtime))
-            avg_weekly_ot = round(total_13_week_ot / 13) if total_13_week_ot > 0 else 0
+        for employee in results:
+            # Get overtime values
+            current_week_ot = round(employee.overtime_current_week or 0)
+            total_13_week_ot = round(employee.overtime_13_week_total or 0)
+            avg_weekly_ot = round(employee.overtime_13_week_average or 0)
             
             # Calculate seniority
             if employee.hire_date:
@@ -497,6 +491,8 @@ def export_overtime_excel():
         # Add summary row
         ws.cell(row=row_num + 1, column=1, value="TOTAL")
         ws.cell(row=row_num + 1, column=1).font = Font(bold=True)
+        ws.cell(row=row_num + 1, column=6, value=sum(round(e.overtime_current_week or 0) for e in results))
+        ws.cell(row=row_num + 1, column=7, value=sum(round(e.overtime_13_week_total or 0) for e in results))
         
         # Auto-fit columns
         for column in ws.columns:
@@ -505,10 +501,10 @@ def export_overtime_excel():
             for cell in column:
                 try:
                     if len(str(cell.value)) > max_length:
-                        max_length = len(cell.value)
+                        max_length = len(str(cell.value))
                 except:
                     pass
-            adjusted_width = (max_length + 2)
+            adjusted_width = min(max_length + 2, 50)
             ws.column_dimensions[column_letter].width = adjusted_width
         
         # Save to BytesIO object
