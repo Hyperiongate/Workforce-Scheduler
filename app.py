@@ -400,6 +400,16 @@ def overtime_management():
                              max_overtime=10,
                              crew_overtime_data=[0, 0, 0, 0],
                              overtime_history=[])
+
+@app.route('/test-overtime')
+def test_overtime():
+    """Simple test to see if overtime page loads"""
+    return """
+    <h1>Overtime Management Test Page</h1>
+    <p>If you can see this, the route is working!</p>
+    <p><a href="/dashboard">Back to Dashboard</a></p>
+    <p><a href="/overtime-management">Try Real Overtime Page</a></p>
+    """
                              
     except Exception as e:
         print(f"Error in overtime_management: {str(e)}")
