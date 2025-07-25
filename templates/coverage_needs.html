@@ -129,6 +129,37 @@
             color: #6c757d;
             font-size: 0.9rem;
         }
+        .crew-summary-card {
+            background: white;
+            border-radius: 8px;
+            padding: 1rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 1rem;
+            border-left: 4px solid;
+        }
+        .crew-summary-card.crew-a { border-left-color: #667eea; }
+        .crew-summary-card.crew-b { border-left-color: #764ba2; }
+        .crew-summary-card.crew-c { border-left-color: #4facfe; }
+        .crew-summary-card.crew-d { border-left-color: #00c9ff; }
+        .crew-summary-stats {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1rem;
+            align-items: center;
+        }
+        .crew-stat {
+            text-align: center;
+        }
+        .crew-stat-number {
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin: 0;
+        }
+        .crew-stat-label {
+            font-size: 0.8rem;
+            color: #6c757d;
+            margin: 0;
+        }
         .save-indicator {
             position: fixed;
             top: 80px;
@@ -144,6 +175,9 @@
             .position-row, .position-header {
                 grid-template-columns: 1fr;
                 text-align: center;
+            }
+            .crew-summary-stats {
+                grid-template-columns: repeat(2, 1fr);
             }
         }
     </style>
@@ -163,7 +197,7 @@
     <div class="coverage-container">
         <h1 class="mb-4">Set Coverage Requirements by Crew</h1>
         
-        <!-- Summary Statistics -->
+        <!-- Overall Summary Statistics -->
         <div class="summary-card">
             <div class="row">
                 <div class="col-md-3">
@@ -193,7 +227,32 @@
             </div>
         </div>
 
+        <!-- Crew-by-Crew Summary -->
+        <h3 class="mb-3">Crew Breakdown</h3>
+        {% for crew in ['A', 'B', 'C', 'D'] %}
+        <div class="crew-summary-card crew-{{ crew|lower }}">
+            <div class="crew-summary-stats">
+                <div class="crew-stat">
+                    <h4 class="mb-0" style="color: {% if crew == 'A' %}#667eea{% elif crew == 'B' %}#764ba2{% elif crew == 'C' %}#4facfe{% else %}#00c9ff{% endif %};">Crew {{ crew }}</h4>
+                </div>
+                <div class="crew-stat">
+                    <p class="crew-stat-number" id="crew-{{ crew }}-current">{{ crew_totals[crew] }}</p>
+                    <p class="crew-stat-label">Current Staff</p>
+                </div>
+                <div class="crew-stat">
+                    <p class="crew-stat-number" id="crew-{{ crew }}-required">0</p>
+                    <p class="crew-stat-label">Total Required</p>
+                </div>
+                <div class="crew-stat">
+                    <p class="crew-stat-number" id="crew-{{ crew }}-gap">0</p>
+                    <p class="crew-stat-label">Gap/Surplus</p>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+
         <!-- Crew-Specific Settings -->
+        <h3 class="mb-3 mt-4">Position Requirements by Crew</h3>
         {% for crew in ['A', 'B', 'C', 'D'] %}
         <div class="crew-card">
             <div class="crew-header crew-{{ crew|lower }}">
@@ -295,8 +354,9 @@
             // Update gap indicator
             updateGapIndicator(crew, positionId);
             
-            // Update summary
+            // Update summaries
             updateSummary();
+            updateCrewSummaries();
             
             // Save to server
             saveCoverageRequirement(crew, positionId, numValue);
@@ -358,6 +418,47 @@
             }
         }
 
+        // Update crew-specific summaries
+        function updateCrewSummaries() {
+            {% for crew in ['A', 'B', 'C', 'D'] %}
+            {
+                let crewRequired = 0;
+                let crewCurrent = {{ crew_totals[crew] }};
+                let crewGaps = 0;
+
+                {% for position in positions %}
+                {
+                    const required = coverageRequirements['{{ crew }}'][{{ position.id }}];
+                    const current = parseInt(document.getElementById('current-{{ crew }}-{{ position.id }}').textContent) || 0;
+                    
+                    crewRequired += required;
+                    
+                    if (required > current) {
+                        crewGaps += (required - current);
+                    }
+                }
+                {% endfor %}
+
+                document.getElementById('crew-{{ crew }}-required').textContent = crewRequired;
+                
+                const gapElement = document.getElementById('crew-{{ crew }}-gap');
+                if (crewGaps > 0) {
+                    gapElement.textContent = `-${crewGaps}`;
+                    gapElement.className = 'crew-stat-number text-danger';
+                } else {
+                    const surplus = crewCurrent - crewRequired;
+                    if (surplus > 0) {
+                        gapElement.textContent = `+${surplus}`;
+                        gapElement.className = 'crew-stat-number text-success';
+                    } else {
+                        gapElement.textContent = '0';
+                        gapElement.className = 'crew-stat-number text-muted';
+                    }
+                }
+            }
+            {% endfor %}
+        }
+
         // Save coverage requirement to server
         function saveCoverageRequirement(crew, positionId, value) {
             fetch('/api/coverage-needs', {
@@ -397,6 +498,7 @@
         // Initialize on page load
         document.addEventListener('DOMContentLoaded', function() {
             updateSummary();
+            updateCrewSummaries();
         });
 
         // Auto-hide flash messages
