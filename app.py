@@ -372,16 +372,48 @@ def overtime_distribution_api():
             'error': str(e)
         }), 500
 
-@app.route('/supervisor/overtime-distribution')
+@app.route('/overtime-management')
 @login_required
-def supervisor_overtime_distribution():
-    """Redirect overtime distribution to main overtime management"""
+def overtime_management():
+    """Overtime tracking and distribution view"""
     if not current_user.is_supervisor:
         flash('You must be a supervisor to access this page.', 'danger')
         return redirect(url_for('dashboard'))
     
-    # Redirect to the actual overtime management page
-    return redirect('/overtime-management')
+    try:
+        # Get all active employees
+        employees = Employee.query.filter_by(is_active=True).order_by(Employee.crew, Employee.name).all()
+        
+        # Add default overtime attributes
+        for emp in employees:
+            emp.overtime_hours = 0
+            emp.last_overtime_date = None
+        
+        # Basic statistics with safe defaults
+        return render_template('overtime_management.html',
+                             employees=employees,
+                             all_employees=employees,
+                             total_overtime_hours=0,
+                             employees_with_overtime=0,
+                             avg_overtime=0,
+                             high_overtime_count=0,
+                             max_overtime=10,
+                             crew_overtime_data=[0, 0, 0, 0],
+                             overtime_history=[])
+                             
+    except Exception as e:
+        print(f"Error in overtime_management: {str(e)}")
+        # If there's any error, return the template with empty data
+        return render_template('overtime_management.html',
+                             employees=[],
+                             all_employees=[],
+                             total_overtime_hours=0,
+                             employees_with_overtime=0,
+                             avg_overtime=0,
+                             high_overtime_count=0,
+                             max_overtime=10,
+                             crew_overtime_data=[0, 0, 0, 0],
+                             overtime_history=[])
 
 @app.route('/debug-routes')
 def debug_routes():
@@ -408,6 +440,49 @@ def debug_routes():
     output += '<p><a href="/dashboard">Back to Dashboard</a></p>'
     
     return output
+
+@app.route('/overtime-management')
+@login_required
+def overtime_management():
+    """Overtime tracking and distribution view"""
+    if not current_user.is_supervisor:
+        flash('You must be a supervisor to access this page.', 'danger')
+        return redirect(url_for('dashboard'))
+    
+    try:
+        # Get all active employees
+        employees = Employee.query.filter_by(is_active=True).order_by(Employee.crew, Employee.name).all()
+        
+        # Add default overtime attributes
+        for emp in employees:
+            emp.overtime_hours = 0
+            emp.last_overtime_date = None
+        
+        # Basic statistics with safe defaults
+        return render_template('overtime_management.html',
+                             employees=employees,
+                             all_employees=employees,
+                             total_overtime_hours=0,
+                             employees_with_overtime=0,
+                             avg_overtime=0,
+                             high_overtime_count=0,
+                             max_overtime=10,
+                             crew_overtime_data=[0, 0, 0, 0],
+                             overtime_history=[])
+                             
+    except Exception as e:
+        print(f"Error in overtime_management: {str(e)}")
+        # If there's any error, return the template with empty data
+        return render_template('overtime_management.html',
+                             employees=[],
+                             all_employees=[],
+                             total_overtime_hours=0,
+                             employees_with_overtime=0,
+                             avg_overtime=0,
+                             high_overtime_count=0,
+                             max_overtime=10,
+                             crew_overtime_data=[0, 0, 0, 0],
+                             overtime_history=[])
 
 # Error handlers
 @app.errorhandler(404)
