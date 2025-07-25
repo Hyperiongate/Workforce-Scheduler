@@ -380,7 +380,8 @@ def supervisor_overtime_distribution():
         flash('You must be a supervisor to access this page.', 'danger')
         return redirect(url_for('dashboard'))
     
-    return redirect(url_for('employee.overtime_management'))
+    # Redirect to the actual overtime management page
+    return redirect('/overtime-management')
 
 @app.route('/debug-routes')
 def debug_routes():
