@@ -213,40 +213,37 @@
         .trend-up { color: #dc3545; }
         .trend-down { color: #28a745; }
         .trend-stable { color: #6c757d; }
+        
+        .stats-card {
+            background: white;
+            border-radius: 8px;
+            padding: 1.5rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            margin-bottom: 2rem;
+        }
+        
+        .stat-item {
+            text-align: center;
+            padding: 1rem;
+        }
+        
+        .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #11998e;
+        }
+        
+        .stat-label {
+            font-size: 0.875rem;
+            color: #6c757d;
+            margin-top: 0.25rem;
+        }
     </style>
 </head>
 <body>
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
-        <div class="container-fluid">
-            <a class="navbar-brand" href="/dashboard">
-                <i class="bi bi-calendar-week"></i> Workforce Scheduler
-            </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav">
-                    <li class="nav-item">
-                        <a class="nav-link" href="/dashboard">Dashboard</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link active" href="/overtime-management">Overtime Management</a>
-                    </li>
-                </ul>
-                <ul class="navbar-nav ms-auto">
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown">
-                            <i class="bi bi-person-circle"></i> {{ current_user.name }}
-                        </a>
-                        <ul class="dropdown-menu dropdown-menu-end">
-                            <li><a class="dropdown-item" href="/logout">Logout</a></li>
-                        </ul>
-                    </li>
-                </ul>
-            </div>
-        </div>
-    </nav>
-
+    {% extends "base.html" %}
+    
+    {% block content %}
     <div class="page-header">
         <div class="container-fluid">
             <div class="row align-items-center">
@@ -255,9 +252,9 @@
                     <p class="text-muted mb-0">13-Week Rolling Overtime Summary</p>
                 </div>
                 <div class="col-auto">
-                    <button class="btn btn-primary" onclick="window.location.href='/overtime-management/import'">
+                    <a href="{{ url_for('employee_import.upload_employees') }}" class="btn btn-primary">
                         <i class="bi bi-upload"></i> Import OT Data
-                    </button>
+                    </a>
                 </div>
             </div>
         </div>
@@ -271,6 +268,36 @@
             {{ high_overtime_employees|length }} employee(s) are approaching or exceeding 60-hour weekly limit.
         </div>
         {% endif %}
+
+        <!-- Statistics Cards -->
+        <div class="stats-card">
+            <div class="row">
+                <div class="col-md-3">
+                    <div class="stat-item">
+                        <div class="stat-value">{{ total_overtime_hours }}</div>
+                        <div class="stat-label">Total OT Hours (13 weeks)</div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="stat-item">
+                        <div class="stat-value">{{ employees_with_overtime }}</div>
+                        <div class="stat-label">Employees with OT</div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="stat-item">
+                        <div class="stat-value">{{ avg_overtime }}</div>
+                        <div class="stat-label">Average OT Hours</div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="stat-item">
+                        <div class="stat-value">{{ high_overtime_count }}</div>
+                        <div class="stat-label">High OT Alerts</div>
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <!-- Multi-Level Sorter Section -->
         <div class="multi-sorter-section">
@@ -368,16 +395,16 @@
             <div class="row align-items-end">
                 <div class="col-md-3">
                     <label class="form-label">Search Employee</label>
-                    <input type="text" class="form-control" placeholder="Name or ID..." id="searchInput">
+                    <input type="text" class="form-control" placeholder="Name or ID..." id="searchInput" value="{{ search_term }}">
                 </div>
                 <div class="col-md-2">
                     <label class="form-label">Crew Filter</label>
                     <select class="form-select" id="crewFilter">
                         <option value="">All Crews</option>
-                        <option value="A">Crew A</option>
-                        <option value="B">Crew B</option>
-                        <option value="C">Crew C</option>
-                        <option value="D">Crew D</option>
+                        <option value="A" {% if crew_filter == 'A' %}selected{% endif %}>Crew A</option>
+                        <option value="B" {% if crew_filter == 'B' %}selected{% endif %}>Crew B</option>
+                        <option value="C" {% if crew_filter == 'C' %}selected{% endif %}>Crew C</option>
+                        <option value="D" {% if crew_filter == 'D' %}selected{% endif %}>Crew D</option>
                     </select>
                 </div>
                 <div class="col-md-2">
@@ -385,7 +412,7 @@
                     <select class="form-select" id="jobFilter">
                         <option value="">All Positions</option>
                         {% for position in positions %}
-                        <option value="{{ position.id }}">{{ position.name }}</option>
+                        <option value="{{ position.id }}" {% if position_filter == position.id|string %}selected{% endif %}>{{ position.name }}</option>
                         {% endfor %}
                     </select>
                 </div>
@@ -393,10 +420,10 @@
                     <label class="form-label">OT Range</label>
                     <select class="form-select" id="otRangeFilter">
                         <option value="">All Ranges</option>
-                        <option value="0-50">0-50 hours</option>
-                        <option value="50-100">50-100 hours</option>
-                        <option value="100-150">100-150 hours</option>
-                        <option value="150+">150+ hours</option>
+                        <option value="0-50" {% if ot_range_filter == '0-50' %}selected{% endif %}>0-50 hours</option>
+                        <option value="50-100" {% if ot_range_filter == '50-100' %}selected{% endif %}>50-100 hours</option>
+                        <option value="100-150" {% if ot_range_filter == '100-150' %}selected{% endif %}>100-150 hours</option>
+                        <option value="150+" {% if ot_range_filter == '150+' %}selected{% endif %}>150+ hours</option>
                     </select>
                 </div>
                 <div class="col-md-3">
@@ -411,6 +438,7 @@
         <div class="overtime-table-container">
             <h4 class="mb-3">Employee Overtime Summary ({{ start_date.strftime('%b %d') }} - {{ end_date.strftime('%b %d, %Y') }})</h4>
             
+            {% if employees %}
             <table class="overtime-table" id="overtimeTable">
                 <thead>
                     <tr>
@@ -440,7 +468,7 @@
                                 <span>{{ employee.name }}</span>
                             </div>
                         </td>
-                        <td>{{ employee.employee_id or 'EMP' ~ employee.id }}</td>
+                        <td>{{ employee.employee_id }}</td>
                         <td>
                             {% if employee.crew %}
                             <span class="crew-badge crew-{{ employee.crew|lower }}">Crew {{ employee.crew }}</span>
@@ -451,8 +479,7 @@
                         <td>{{ employee.position.name if employee.position else '-' }}</td>
                         <td>
                             {% if employee.hire_date %}
-                                {% set years = ((current_date - employee.hire_date).days / 365)|int %}
-                                {{ years }} year{{ 's' if years != 1 else '' }}
+                                {{ employee.years_employed }} year{{ 's' if employee.years_employed != 1 else '' }}
                             {% else %}
                                 -
                             {% endif %}
@@ -485,30 +512,42 @@
                     {% endfor %}
                 </tbody>
             </table>
+            {% else %}
+            <div class="alert alert-info">
+                <i class="bi bi-info-circle"></i> No employees found. Try adjusting your filters or <a href="{{ url_for('employee_import.upload_employees') }}">upload employee data</a>.
+            </div>
+            {% endif %}
             
             <!-- Pagination -->
+            {% if total_pages > 1 %}
             <nav>
                 <ul class="pagination justify-content-center">
                     {% set url_params = request.args.to_dict() %}
                     <li class="page-item {% if page == 1 %}disabled{% endif %}">
-                        {% set url_params_prev = url_params.copy() %}
-                        {% set _ = url_params_prev.update({'page': page - 1}) %}
-                        <a class="page-link" href="?{{ url_params_prev|urlencode }}">Previous</a>
+                        {% set _ = url_params.update({'page': page - 1}) %}
+                        <a class="page-link" href="?{{ url_params | urlencode }}">Previous</a>
                     </li>
+                    
                     {% for p in range(1, total_pages + 1) %}
-                    <li class="page-item {% if p == page %}active{% endif %}">
-                        {% set url_params_page = url_params.copy() %}
-                        {% set _ = url_params_page.update({'page': p}) %}
-                        <a class="page-link" href="?{{ url_params_page|urlencode }}">{{ p }}</a>
-                    </li>
+                        {% if p == 1 or p == total_pages or (p > page - 3 and p < page + 3) %}
+                            <li class="page-item {% if p == page %}active{% endif %}">
+                                {% set _ = url_params.update({'page': p}) %}
+                                <a class="page-link" href="?{{ url_params | urlencode }}">{{ p }}</a>
+                            </li>
+                        {% elif p == page - 3 or p == page + 3 %}
+                            <li class="page-item disabled">
+                                <span class="page-link">...</span>
+                            </li>
+                        {% endif %}
                     {% endfor %}
+                    
                     <li class="page-item {% if page == total_pages %}disabled{% endif %}">
-                        {% set url_params_next = url_params.copy() %}
-                        {% set _ = url_params_next.update({'page': page + 1}) %}
-                        <a class="page-link" href="?{{ url_params_next|urlencode }}">Next</a>
+                        {% set _ = url_params.update({'page': page + 1}) %}
+                        <a class="page-link" href="?{{ url_params | urlencode }}">Next</a>
                     </li>
                 </ul>
             </nav>
+            {% endif %}
         </div>
 
         <!-- Export Section -->
@@ -539,7 +578,6 @@
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         // Multi-level sorting configuration
         const sortOptions = {
@@ -606,19 +644,6 @@
                     }
                 }
             }
-            
-            // Restore filter values
-            const searchTerm = urlParams.get('search');
-            if (searchTerm) document.getElementById('searchInput').value = searchTerm;
-            
-            const crewFilter = urlParams.get('crew');
-            if (crewFilter) document.getElementById('crewFilter').value = crewFilter;
-            
-            const positionFilter = urlParams.get('position');
-            if (positionFilter) document.getElementById('jobFilter').value = positionFilter;
-            
-            const otRangeFilter = urlParams.get('ot_range');
-            if (otRangeFilter) document.getElementById('otRangeFilter').value = otRangeFilter;
             
             // Add event listeners to all sort level selects
             for (let i = 1; i <= 4; i++) {
@@ -752,63 +777,10 @@
         let sortDirections = {};
         
         function sortTable(columnIndex) {
-            const table = document.getElementById('overtimeTable');
-            const tbody = table.querySelector('tbody');
-            const rows = Array.from(tbody.querySelectorAll('tr'));
-            
-            // Toggle sort direction
-            sortDirections[columnIndex] = !sortDirections[columnIndex];
-            const isAscending = sortDirections[columnIndex];
-            
-            // Update arrow icons
-            const headers = table.querySelectorAll('th');
-            headers.forEach((header, index) => {
-                const icon = header.querySelector('i');
-                if (icon) {
-                    if (index === columnIndex) {
-                        icon.className = isAscending ? 'bi bi-arrow-up' : 'bi bi-arrow-down';
-                    } else {
-                        icon.className = 'bi bi-arrow-down-up';
-                    }
-                }
-            });
-            
-            rows.sort((a, b) => {
-                let aValue, bValue;
-                
-                if (columnIndex === 0) { // Employee name
-                    aValue = a.cells[columnIndex].textContent.trim().toLowerCase();
-                    bValue = b.cells[columnIndex].textContent.trim().toLowerCase();
-                } else if (columnIndex === 4) { // Seniority
-                    // Extract years from text
-                    const aText = a.cells[columnIndex].textContent.trim();
-                    const bText = b.cells[columnIndex].textContent.trim();
-                    aValue = parseInt(aText) || 0;
-                    bValue = parseInt(bText) || 0;
-                } else if (columnIndex >= 5 && columnIndex <= 7) { // Numeric OT columns
-                    aValue = parseFloat(a.cells[columnIndex].textContent) || 0;
-                    bValue = parseFloat(b.cells[columnIndex].textContent) || 0;
-                } else {
-                    aValue = a.cells[columnIndex].textContent.trim().toLowerCase();
-                    bValue = b.cells[columnIndex].textContent.trim().toLowerCase();
-                }
-                
-                if (isAscending) {
-                    return aValue > bValue ? 1 : -1;
-                } else {
-                    return aValue < bValue ? 1 : -1;
-                }
-            });
-            
-            // Re-append sorted rows
-            rows.forEach(row => tbody.appendChild(row));
+            // This function is kept for backwards compatibility
+            // but sorting should be done server-side
+            alert('Please use the Multi-Level Sorting feature above for better results');
         }
-
-        // Search function
-        document.getElementById('searchInput').addEventListener('input', function(e) {
-            // Don't apply filters immediately on typing
-            // User should click "Apply Filters" button
-        });
 
         // Apply all filters
         function applyFilters() {
@@ -853,24 +825,18 @@
         // Export functions - preserve current filters and sorting
         function exportToExcel() {
             const params = new URLSearchParams(window.location.search);
-            window.location.href = '/overtime-management/export/excel?' + params.toString();
+            window.location.href = '{{ url_for("employee.export_overtime_excel") }}?' + params.toString();
         }
         
         function generatePDF() {
             const params = new URLSearchParams(window.location.search);
-            window.location.href = '/overtime-management/export/pdf?' + params.toString();
+            alert('PDF export functionality coming soon');
         }
         
         function emailReport() {
-            // Implement email functionality
-            alert('Email report functionality to be implemented');
+            alert('Email report functionality coming soon');
         }
-        
-        // Sort by total OT on page load (descending)
-        window.addEventListener('load', function() {
-            sortDirections[6] = true; // Set to ascending first
-            sortTable(6); // This will toggle to descending and sort
-        });
     </script>
+    {% endblock %}
 </body>
 </html>
