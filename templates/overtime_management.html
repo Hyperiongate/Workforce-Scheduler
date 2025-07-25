@@ -64,14 +64,9 @@
             border-bottom: 1px solid #dee2e6;
         }
         
-        .week-column {
-            text-align: center;
-            min-width: 60px;
-        }
-        
         .total-column {
             font-weight: bold;
-            background: #f8f9fa;
+            text-align: center;
         }
         
         .employee-info {
@@ -141,6 +136,15 @@
         .pagination {
             margin-top: 1rem;
         }
+        
+        .trend-indicator {
+            font-size: 0.85rem;
+            margin-left: 0.5rem;
+        }
+        
+        .trend-up { color: #dc3545; }
+        .trend-down { color: #28a745; }
+        .trend-stable { color: #6c757d; }
     </style>
 </head>
 <body>
@@ -180,10 +184,10 @@
             <div class="row align-items-center">
                 <div class="col">
                     <h1><i class="bi bi-clock-history" style="color: #11998e;"></i> Overtime Management</h1>
-                    <p class="text-muted mb-0">13-Week Rolling Overtime Tracker</p>
+                    <p class="text-muted mb-0">13-Week Rolling Overtime Summary</p>
                 </div>
                 <div class="col-auto">
-                    <button class="btn btn-primary">
+                    <button class="btn btn-primary" onclick="window.location.href='/overtime-management/import'">
                         <i class="bi bi-upload"></i> Import OT Data
                     </button>
                 </div>
@@ -246,7 +250,7 @@
 
         <!-- Overtime Table -->
         <div class="overtime-table-container">
-            <h4 class="mb-3">13-Week Overtime History ({{ start_date.strftime('%b %d') }} - {{ end_date.strftime('%b %d, %Y') }})</h4>
+            <h4 class="mb-3">Employee Overtime Summary ({{ start_date.strftime('%b %d') }} - {{ end_date.strftime('%b %d, %Y') }})</h4>
             
             <table class="overtime-table" id="overtimeTable">
                 <thead>
@@ -256,10 +260,10 @@
                         <th onclick="sortTable(2)">Crew <i class="bi bi-arrow-down-up"></i></th>
                         <th onclick="sortTable(3)">Job Title <i class="bi bi-arrow-down-up"></i></th>
                         <th onclick="sortTable(4)">Seniority <i class="bi bi-arrow-down-up"></i></th>
-                        {% for week in weeks %}
-                        <th class="week-column">Wk {{ loop.index }}<br><small>{{ week.strftime('%-m/%-d') }}</small></th>
-                        {% endfor %}
-                        <th class="total-column" onclick="sortTable(18)">Total <i class="bi bi-arrow-down-up"></i></th>
+                        <th class="total-column" onclick="sortTable(5)">Current Week OT <i class="bi bi-arrow-down-up"></i></th>
+                        <th class="total-column" onclick="sortTable(6)">13-Week Total <i class="bi bi-arrow-down-up"></i></th>
+                        <th class="total-column" onclick="sortTable(7)">Weekly Average <i class="bi bi-arrow-down-up"></i></th>
+                        <th>Trend</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -267,7 +271,8 @@
                     <tr data-employee-id="{{ employee.id }}" 
                         data-crew="{{ employee.crew or '' }}" 
                         data-position="{{ employee.position_id or '' }}"
-                        data-total-ot="{{ employee.last_13_weeks_overtime }}">
+                        data-total-ot="{{ employee.last_13_weeks_overtime }}"
+                        data-current-week="{{ employee.current_week_overtime }}">
                         <td>
                             <div class="employee-info">
                                 <div class="employee-avatar" style="background: {{ loop.cycle('#11998e', '#e91e63', '#4caf50', '#ff9800', '#9c27b0') }};">
@@ -293,14 +298,29 @@
                                 -
                             {% endif %}
                         </td>
-                        {% for week in weeks %}
-                        {% set ot_hours = employee.get_overtime_for_week(week) %}
-                        <td class="week-column {% if ot_hours > 20 %}overtime-high{% elif ot_hours > 12 %}overtime-medium{% endif %}">
-                            {{ ot_hours or 0 }}
+                        <td class="total-column {% if employee.current_week_overtime >= 20 %}overtime-high{% elif employee.current_week_overtime >= 12 %}overtime-medium{% endif %}">
+                            {{ employee.current_week_overtime }}
                         </td>
-                        {% endfor %}
                         <td class="total-column {% if employee.last_13_weeks_overtime > 200 %}overtime-high{% elif employee.last_13_weeks_overtime > 150 %}overtime-medium{% endif %}">
                             {{ employee.last_13_weeks_overtime }}
+                        </td>
+                        <td class="total-column">
+                            {{ employee.average_weekly_overtime }}
+                        </td>
+                        <td>
+                            {% if employee.overtime_trend == 'increasing' %}
+                                <span class="trend-indicator trend-up">
+                                    <i class="bi bi-arrow-up-circle-fill"></i> Rising
+                                </span>
+                            {% elif employee.overtime_trend == 'decreasing' %}
+                                <span class="trend-indicator trend-down">
+                                    <i class="bi bi-arrow-down-circle-fill"></i> Falling
+                                </span>
+                            {% else %}
+                                <span class="trend-indicator trend-stable">
+                                    <i class="bi bi-dash-circle"></i> Stable
+                                </span>
+                            {% endif %}
                         </td>
                     </tr>
                     {% endfor %}
@@ -386,7 +406,13 @@
                 if (columnIndex === 0) { // Employee name
                     aValue = a.cells[columnIndex].textContent.trim().toLowerCase();
                     bValue = b.cells[columnIndex].textContent.trim().toLowerCase();
-                } else if (columnIndex === 4 || columnIndex >= 5) { // Numeric columns
+                } else if (columnIndex === 4) { // Seniority
+                    // Extract years from text
+                    const aText = a.cells[columnIndex].textContent.trim();
+                    const bText = b.cells[columnIndex].textContent.trim();
+                    aValue = parseInt(aText) || 0;
+                    bValue = parseInt(bText) || 0;
+                } else if (columnIndex >= 5 && columnIndex <= 7) { // Numeric OT columns
                     aValue = parseFloat(a.cells[columnIndex].textContent) || 0;
                     bValue = parseFloat(b.cells[columnIndex].textContent) || 0;
                 } else {
@@ -468,6 +494,12 @@
             // Implement email functionality
             alert('Email report functionality to be implemented');
         }
+        
+        // Sort by total OT on page load (descending)
+        window.addEventListener('load', function() {
+            sortDirections[6] = true; // Set to ascending first
+            sortTable(6); // This will toggle to descending and sort
+        });
     </script>
 </body>
 </html>
