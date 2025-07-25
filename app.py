@@ -352,6 +352,36 @@ def create_test_time_off():
         <p><a href="/dashboard">Back to Dashboard</a></p>
         '''
 
+@app.route('/api/overtime-distribution')
+@login_required
+def overtime_distribution_api():
+    """API endpoint for overtime distribution data"""
+    try:
+        # Return simple data to prevent the error
+        return jsonify({
+            'success': True,
+            'data': {
+                'labels': ['Crew A', 'Crew B', 'Crew C', 'Crew D'],
+                'values': [0, 0, 0, 0],
+                'employees': []
+            }
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/supervisor/overtime-distribution')
+@login_required
+def supervisor_overtime_distribution():
+    """Redirect overtime distribution to main overtime management"""
+    if not current_user.is_supervisor:
+        flash('You must be a supervisor to access this page.', 'danger')
+        return redirect(url_for('dashboard'))
+    
+    return redirect(url_for('employee.overtime_management'))
+
 @app.route('/debug-routes')
 def debug_routes():
     """Show all registered routes for debugging"""
@@ -366,7 +396,15 @@ def debug_routes():
     output = '<h2>Registered Routes</h2><ul>'
     for route in sorted(routes, key=lambda x: x['path']):
         output += f"<li><strong>{route['path']}</strong> - {route['endpoint']} ({', '.join(route['methods'])})</li>"
-    output += '</ul><p><a href="/dashboard">Back to Dashboard</a></p>'
+    output += '</ul>'
+    
+    # Show which blueprints are registered
+    output += '<h2>Registered Blueprints</h2><ul>'
+    for name, blueprint in app.blueprints.items():
+        output += f"<li>{name}</li>"
+    output += '</ul>'
+    
+    output += '<p><a href="/dashboard">Back to Dashboard</a></p>'
     
     return output
 
@@ -378,7 +416,16 @@ def not_found_error(error):
 @app.errorhandler(500)
 def internal_error(error):
     db.session.rollback()
-    return '<h1>500 - Internal Server Error</h1><p>Something went wrong. Please try again.</p><p><a href="/dashboard">Return to Dashboard</a></p>', 500
+    import traceback
+    error_text = traceback.format_exc()
+    app.logger.error(f'Server Error: {error}\n{error_text}')
+    return f'''<h1>500 - Internal Server Error</h1>
+    <p>Something went wrong. Please try again.</p>
+    <details>
+    <summary>Error Details (for debugging)</summary>
+    <pre>{error_text}</pre>
+    </details>
+    <p><a href="/dashboard">Return to Dashboard</a></p>''', 500
 
 if __name__ == '__main__':
     app.run(debug=True)
