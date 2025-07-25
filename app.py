@@ -34,42 +34,67 @@ migrate = Migrate(app, db)
 
 login_manager = LoginManager()
 login_manager.init_app(app)
-login_manager.login_view = 'login'
+login_manager.login_view = 'auth.login'
 
 @login_manager.user_loader
 def load_user(user_id):
     return Employee.query.get(int(user_id))
 
 # Import and register blueprints from the blueprints folder
+# IMPORT MAIN BLUEPRINT FIRST
+try:
+    from blueprints.main import main_bp
+    app.register_blueprint(main_bp)
+    print("Successfully imported main blueprint")
+except ImportError as e:
+    print(f"Warning: Could not import main blueprint: {e}")
+
+# IMPORT AUTH BLUEPRINT
+try:
+    from blueprints.auth import auth_bp
+    app.register_blueprint(auth_bp)
+    print("Successfully imported auth blueprint")
+except ImportError as e:
+    print(f"Warning: Could not import auth blueprint: {e}")
+    # If auth blueprint doesn't exist, set login view to the fallback
+    login_manager.login_view = 'login'
+
 try:
     from blueprints.supervisor import supervisor_bp
     app.register_blueprint(supervisor_bp)
-except ImportError:
-    print("Warning: Could not import supervisor blueprint")
+    print("Successfully imported supervisor blueprint")
+except ImportError as e:
+    print(f"Warning: Could not import supervisor blueprint: {e}")
 
 try:
     from blueprints.employee import employee_bp
     app.register_blueprint(employee_bp)
-except ImportError:
-    print("Warning: Could not import employee blueprint")
+    print("Successfully imported employee blueprint")
+except ImportError as e:
+    print(f"Warning: Could not import employee blueprint: {e}")
 
 try:
     from blueprints.schedule import schedule_bp
     app.register_blueprint(schedule_bp, url_prefix='/schedule')
-except ImportError:
-    print("Warning: Could not import schedule blueprint")
+    print("Successfully imported schedule blueprint")
+except ImportError as e:
+    print(f"Warning: Could not import schedule blueprint: {e}")
 
 try:
     from blueprints.employee_import import employee_import_bp
     app.register_blueprint(employee_import_bp)
-except ImportError:
-    print("Warning: Could not import employee_import blueprint")
+    print("Successfully imported employee_import blueprint")
+except ImportError as e:
+    print(f"Warning: Could not import employee_import blueprint: {e}")
 
-# Basic auth routes (since auth blueprint is missing)
+# Basic auth routes (fallback if auth blueprint is missing)
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if current_user.is_authenticated:
-        return redirect(url_for('dashboard'))
+        if current_user.is_supervisor:
+            return redirect(url_for('main.dashboard'))
+        else:
+            return redirect(url_for('main.employee_dashboard'))
     
     if request.method == 'POST':
         email = request.form.get('email')
@@ -80,7 +105,12 @@ def login():
         if employee and employee.check_password(password):
             login_user(employee)
             next_page = request.args.get('next')
-            return redirect(next_page) if next_page else redirect(url_for('dashboard'))
+            if next_page:
+                return redirect(next_page)
+            elif employee.is_supervisor:
+                return redirect(url_for('main.dashboard'))
+            else:
+                return redirect(url_for('main.employee_dashboard'))
         else:
             flash('Invalid email or password', 'danger')
     
@@ -92,29 +122,31 @@ def logout():
     logout_user()
     return redirect(url_for('login'))
 
-# Main routes
-@app.route('/')
-def index():
-    return redirect(url_for('login'))
+# Remove the duplicate dashboard and index routes since they're now in main blueprint
+# Only keep these if main blueprint fails to load
+if 'main' not in app.blueprints:
+    @app.route('/')
+    def index():
+        return redirect(url_for('login'))
 
-@app.route('/dashboard')
-@login_required
-def dashboard():
-    if current_user.is_supervisor:
-        # Supervisor dashboard - using the fixed dashboard.html
-        stats = {
-            'pending_time_off': TimeOffRequest.query.filter_by(status='pending').count(),
-            'pending_swaps': ShiftSwapRequest.query.filter_by(status='pending').count(),
-            'total_employees': Employee.query.filter_by(crew=current_user.crew).count(),
-            'employees_off_today': 0,
-            'coverage_gaps': 0,
-            'pending_suggestions': 0,
-            'critical_maintenance': 0
-        }
-        return render_template('dashboard.html', **stats)
-    else:
-        # Employee dashboard
-        return render_template('employee_dashboard.html')
+    @app.route('/dashboard')
+    @login_required
+    def dashboard():
+        if current_user.is_supervisor:
+            # Supervisor dashboard - using the fixed dashboard.html
+            stats = {
+                'pending_time_off': TimeOffRequest.query.filter_by(status='pending').count(),
+                'pending_swaps': ShiftSwapRequest.query.filter_by(status='pending').count(),
+                'total_employees': Employee.query.filter_by(crew=current_user.crew).count(),
+                'employees_off_today': 0,
+                'coverage_gaps': 0,
+                'pending_suggestions': 0,
+                'critical_maintenance': 0
+            }
+            return render_template('dashboard.html', **stats)
+        else:
+            # Employee dashboard
+            return render_template('employee_dashboard.html')
 
 # API endpoints
 @app.route('/api/dashboard-stats')
@@ -140,17 +172,7 @@ def dashboard_stats():
             'error': str(e)
         })
 
-# FIXED OVERTIME MANAGEMENT ROUTE - SIMPLE AND WORKING
-@app.route('/overtime-management')
-@login_required
-def overtime_management():
-    """Overtime tracking and distribution view"""
-    if not current_user.is_supervisor:
-        flash('You must be a supervisor to access this page.', 'danger')
-        return redirect(url_for('dashboard'))
-    
-    # Just render the template - it has hardcoded data
-    return render_template('overtime_management.html')
+# Remove the duplicate overtime-management route since it should be in main blueprint
 
 # API endpoints to handle any AJAX calls that might exist
 @app.route('/api/overtime-data')
@@ -240,6 +262,27 @@ def init_db():
             <li>Password: admin123</li>
         </ul>
         <p><a href="/login">Go to login</a></p>
+        '''
+
+@app.route('/add-overtime-tables')
+def add_overtime_tables():
+    """Add the OvertimeHistory table to existing database"""
+    try:
+        with app.app_context():
+            # Create only the OvertimeHistory table
+            db.create_all()
+            
+        return '''
+        <h2>✅ Overtime Tables Added!</h2>
+        <p>The OvertimeHistory table has been added to your database.</p>
+        <p><a href="/dashboard">Go to Dashboard</a></p>
+        <p><a href="/overtime-management">Go to Overtime Management</a></p>
+        '''
+    except Exception as e:
+        return f'''
+        <h2>❌ Error Adding Tables</h2>
+        <p>{str(e)}</p>
+        <p><a href="/dashboard">Back to Dashboard</a></p>
         '''
 
 @app.route('/populate-crews')
@@ -358,7 +401,7 @@ def create_test_time_off():
             if not existing:
                 time_off = TimeOffRequest(
                     employee_id=employee.id,
-                    type=request_type,
+                    request_type=request_type,  # Changed from 'type' to 'request_type'
                     start_date=start_date,
                     end_date=end_date,
                     reason=random.choice(reasons) if random.random() > 0.3 else None,
