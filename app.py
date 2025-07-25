@@ -40,9 +40,30 @@ login_manager.login_view = 'login'
 def load_user(user_id):
     return Employee.query.get(int(user_id))
 
-# Import and register supervisor blueprint
-from supervisor_routes import supervisor_bp
-app.register_blueprint(supervisor_bp)
+# Import and register blueprints from the blueprints folder
+try:
+    from blueprints.supervisor import supervisor_bp
+    app.register_blueprint(supervisor_bp)
+except ImportError:
+    print("Warning: Could not import supervisor blueprint")
+
+try:
+    from blueprints.employee import employee_bp
+    app.register_blueprint(employee_bp)
+except ImportError:
+    print("Warning: Could not import employee blueprint")
+
+try:
+    from blueprints.schedule import schedule_bp
+    app.register_blueprint(schedule_bp, url_prefix='/schedule')
+except ImportError:
+    print("Warning: Could not import schedule blueprint")
+
+try:
+    from blueprints.employee_import import employee_import_bp
+    app.register_blueprint(employee_import_bp)
+except ImportError:
+    print("Warning: Could not import employee_import blueprint")
 
 # Basic auth routes (since auth blueprint is missing)
 @app.route('/login', methods=['GET', 'POST'])
@@ -80,26 +101,20 @@ def index():
 @login_required
 def dashboard():
     if current_user.is_supervisor:
-        # Supervisor dashboard
+        # Supervisor dashboard - using the fixed dashboard.html
         stats = {
             'pending_time_off': TimeOffRequest.query.filter_by(status='pending').count(),
             'pending_swaps': ShiftSwapRequest.query.filter_by(status='pending').count(),
             'total_employees': Employee.query.filter_by(crew=current_user.crew).count(),
-            'employees_off_today': 0
+            'employees_off_today': 0,
+            'coverage_gaps': 0,
+            'pending_suggestions': 0,
+            'critical_maintenance': 0
         }
-        return render_template('supervisor_dashboard.html', stats=stats)
+        return render_template('dashboard.html', **stats)
     else:
         # Employee dashboard
         return render_template('employee_dashboard.html')
-
-@app.route('/overtime-management')
-@login_required
-def overtime_management():
-    if not current_user.is_supervisor:
-        flash('You must be a supervisor to access this page.', 'danger')
-        return redirect(url_for('dashboard'))
-    
-    return render_template('overtime_management.html')
 
 # API endpoints
 @app.route('/api/dashboard-stats')
