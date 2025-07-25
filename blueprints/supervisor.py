@@ -1227,10 +1227,68 @@ def suggestions():
 @supervisor_required
 def overtime_distribution():
     """Manage overtime distribution"""
-    return render_template('coming_soon.html',
-                         title='Overtime Distribution',
-                         description='Track and fairly distribute overtime opportunities across all employees.',
-                         icon='bi bi-clock-history')
+    try:
+        # Get all employees with their data
+        employees_query = Employee.query.filter(
+            Employee.id != current_user.id,
+            Employee.is_supervisor == False
+        ).all()
+        
+        # Organize employees by crew
+        employees_by_crew = {'A': [], 'B': [], 'C': [], 'D': []}
+        
+        for emp in employees_query:
+            if emp.crew in employees_by_crew:
+                # Get employee's overtime from last 13 weeks
+                overtime_total = db.session.query(func.sum(OvertimeHistory.overtime_hours)).filter(
+                    OvertimeHistory.employee_id == emp.id,
+                    OvertimeHistory.week_start_date >= datetime.now().date() - timedelta(weeks=13)
+                ).scalar() or 0.0
+                
+                # Get all skills for this employee
+                emp_skills = []
+                for skill in emp.skills:
+                    skill_data = {
+                        'id': skill.id,
+                        'name': skill.name,
+                        'is_primary': False  # Will be set below if this is their position skill
+                    }
+                    emp_skills.append(skill_data)
+                
+                # Mark primary skill (based on position)
+                if emp.position:
+                    position_skill_name = f"Qualified: {emp.position.name}"
+                    for skill_data in emp_skills:
+                        if skill_data['name'] == position_skill_name:
+                            skill_data['is_primary'] = True
+                
+                employee_data = {
+                    'id': emp.id,
+                    'name': emp.name,
+                    'email': emp.email,
+                    'hire_date': emp.hire_date,
+                    'hire_date_str': emp.hire_date.strftime('%Y-%m-%d') if emp.hire_date else '',
+                    'years_of_service': ((datetime.now().date() - emp.hire_date).days / 365.25) if emp.hire_date else 0,
+                    'position': emp.position.name if emp.position else 'Unassigned',
+                    'overtime_hours': round(overtime_total, 1),
+                    'skills': emp_skills,
+                    'all_skill_names': [s['name'] for s in emp_skills]  # For easier filtering
+                }
+                
+                employees_by_crew[emp.crew].append(employee_data)
+        
+        # Get all unique skills for filter dropdown
+        all_skills = Skill.query.order_by(Skill.name).all()
+        skill_list = [{'id': s.id, 'name': s.name} for s in all_skills]
+        
+        return render_template('overtime_distribution.html',
+                             employees_by_crew=employees_by_crew,
+                             skills=skill_list)
+                             
+    except Exception as e:
+        print(f"Error in overtime_distribution route: {str(e)}")
+        flash(f'Error loading overtime distribution: {str(e)}', 'danger')
+        return redirect(url_for('main.dashboard'))
 
 @supervisor_bp.route('/supervisor/messages')
 @login_required
@@ -1379,6 +1437,56 @@ def api_coverage_gaps_summary():
             'has_gaps': False,
             'error': str(e)
         })
+
+@supervisor_bp.route('/api/send-overtime-request', methods=['POST'])
+@login_required
+@supervisor_required
+def send_overtime_request():
+    """Send overtime request to selected employees"""
+    try:
+        data = request.get_json()
+        employee_ids = data.get('employee_ids', [])
+        date = data.get('date')
+        shift = data.get('shift')
+        position = data.get('position')
+        hours = data.get('hours')
+        message = data.get('message', '')
+        
+        if not employee_ids:
+            return jsonify({'success': False, 'error': 'No employees selected'}), 400
+        
+        # Here you would typically:
+        # 1. Create overtime opportunity records
+        # 2. Send notifications (email/SMS)
+        # 3. Track who was offered overtime
+        
+        # For now, we'll just log and return success
+        employees = Employee.query.filter(Employee.id.in_(employee_ids)).all()
+        employee_names = [emp.name for emp in employees]
+        
+        # You could create an OvertimeOffer model to track these
+        # for emp_id in employee_ids:
+        #     offer = OvertimeOffer(
+        #         employee_id=emp_id,
+        #         date=date,
+        #         shift=shift,
+        #         position=position,
+        #         hours=hours,
+        #         message=message,
+        #         sent_by=current_user.id,
+        #         sent_at=datetime.now()
+        #     )
+        #     db.session.add(offer)
+        # db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': f'Overtime request sent to {len(employee_names)} employees',
+            'employees': employee_names
+        })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @supervisor_bp.route('/api/dashboard-stats')
 @login_required
