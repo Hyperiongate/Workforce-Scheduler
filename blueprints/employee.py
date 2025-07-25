@@ -44,61 +44,96 @@ def view_employees_crews():
 @login_required
 def overtime_management():
     """View and manage overtime tracking"""
-    # Get employees with overtime data
-    employees = Employee.query.filter_by(is_supervisor=False).order_by(Employee.name).all()
+    # Check if user is supervisor
+    if not current_user.is_supervisor:
+        flash('You must be a supervisor to access this page.', 'danger')
+        return redirect(url_for('dashboard'))
     
-    # Calculate overtime for last 13 weeks
-    overtime_data = []
-    end_date = date.today()
-    start_date = end_date - timedelta(weeks=13)
-    
-    for employee in employees:
-        # Get weekly overtime hours
-        weekly_data = []
-        current = start_date
-        total_ot = 0
+    try:
+        # Get all active employees
+        employees = Employee.query.filter_by(is_active=True).order_by(Employee.crew, Employee.name).all()
         
-        for week_num in range(13):
-            week_start = current - timedelta(days=current.weekday())
-            week_end = week_start + timedelta(days=6)
-            
-            # Try to get from OvertimeHistory first
-            ot_record = OvertimeHistory.query.filter_by(
-                employee_id=employee.id,
-                week_start_date=week_start
-            ).first()
-            
-            if ot_record:
-                ot_hours = ot_record.overtime_hours
-            else:
-                # Calculate from schedules if no history record
-                ot_hours = db.session.query(func.sum(Schedule.hours)).filter(
-                    Schedule.employee_id == employee.id,
-                    Schedule.date >= week_start,
-                    Schedule.date <= week_end,
-                    Schedule.is_overtime == True
-                ).scalar() or 0
-            
-            weekly_data.append({
-                'week_start': week_start,
-                'hours': ot_hours
-            })
-            total_ot += ot_hours
-            
-            current += timedelta(weeks=1)
+        # Initialize overtime data for each employee
+        for emp in employees:
+            # Add default overtime attributes for template
+            emp.overtime_hours = 0
+            emp.last_overtime_date = None
         
-        overtime_data.append({
-            'employee': employee,
-            'employee_id': employee.id,  # Include employee ID
-            'weekly_data': weekly_data,
-            'total_overtime': total_ot,
-            'average_weekly': total_ot / 13 if total_ot > 0 else 0
-        })
-    
-    return render_template('overtime_management.html',
-                         overtime_data=overtime_data,
-                         start_date=start_date,
-                         end_date=end_date)
+        # Calculate basic statistics
+        total_overtime_hours = 0
+        employees_with_overtime = 0
+        high_overtime_count = 0
+        
+        # Try to get overtime data if OvertimeHistory table exists
+        try:
+            # Get overtime data for the last 13 weeks
+            end_date = date.today()
+            start_date = end_date - timedelta(weeks=13)
+            
+            # Get overtime records
+            overtime_records = db.session.query(
+                OvertimeHistory.employee_id,
+                func.sum(OvertimeHistory.overtime_hours).label('total_hours')
+            ).filter(
+                OvertimeHistory.week_start_date >= start_date
+            ).group_by(OvertimeHistory.employee_id).all()
+            
+            # Create a dictionary for quick lookup
+            overtime_dict = {record.employee_id: record.total_hours for record in overtime_records}
+            
+            # Update employee overtime data
+            for emp in employees:
+                if emp.id in overtime_dict:
+                    emp.overtime_hours = overtime_dict[emp.id]
+                    total_overtime_hours += emp.overtime_hours
+                    employees_with_overtime += 1
+                    if emp.overtime_hours > 10:
+                        high_overtime_count += 1
+                    
+                    # Get last overtime date
+                    last_ot = OvertimeHistory.query.filter_by(
+                        employee_id=emp.id
+                    ).order_by(OvertimeHistory.week_start_date.desc()).first()
+                    if last_ot:
+                        emp.last_overtime_date = last_ot.week_start_date.strftime('%m/%d/%Y')
+        except Exception as e:
+            # If OvertimeHistory doesn't exist or has issues, use default values
+            print(f"Could not load overtime history: {str(e)}")
+        
+        # Calculate averages
+        avg_overtime = round(total_overtime_hours / len(employees), 1) if employees else 0
+        max_overtime = max([emp.overtime_hours for emp in employees]) if employees else 10
+        
+        # Calculate crew overtime data for chart
+        crew_overtime_data = [0, 0, 0, 0]  # For crews A, B, C, D
+        crew_map = {'A': 0, 'B': 1, 'C': 2, 'D': 3}
+        
+        for emp in employees:
+            if emp.crew in crew_map:
+                crew_overtime_data[crew_map[emp.crew]] += emp.overtime_hours
+        
+        # Round crew data
+        crew_overtime_data = [round(hours, 1) for hours in crew_overtime_data]
+        
+        # Prepare overtime history (empty for now)
+        overtime_history = []
+        
+        return render_template('overtime_management.html',
+                             employees=employees,
+                             all_employees=employees,
+                             total_overtime_hours=round(total_overtime_hours, 1),
+                             employees_with_overtime=employees_with_overtime,
+                             avg_overtime=avg_overtime,
+                             high_overtime_count=high_overtime_count,
+                             max_overtime=max_overtime,
+                             crew_overtime_data=crew_overtime_data,
+                             overtime_history=overtime_history)
+                             
+    except Exception as e:
+        # Log error and show user-friendly message
+        print(f"Error in overtime_management: {str(e)}")
+        flash('Error loading overtime data. Please try again later.', 'danger')
+        return redirect(url_for('dashboard'))
 
 @employee_bp.route('/vacation/request', methods=['GET', 'POST'])
 @login_required
