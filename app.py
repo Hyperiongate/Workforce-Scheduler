@@ -1,18 +1,13 @@
-
-from flask import Flask, render_template, request, jsonify
-from flask_login import LoginManager, login_required
+from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
+from flask_login import LoginManager, login_required, login_user, logout_user, current_user
 from flask_migrate import Migrate
-from models import db, Employee, TimeOffRequest, ShiftSwapRequest, ScheduleSuggestion, CoverageRequest, MaintenanceIssue
+from models import db, Employee, TimeOffRequest, ShiftSwapRequest, ScheduleSuggestion, VacationCalendar, Position, Skill, OvertimeHistory
+from werkzeug.security import check_password_hash
 import os
+from datetime import datetime, timedelta
+import random
 
-# Import blueprints
-from blueprints.auth import auth_bp
-from blueprints.employee_import import employee_import_bp
-from blueprints.main import main_bp
-from blueprints.schedule import schedule_bp
-from blueprints.supervisor import supervisor_bp
-from blueprints.employee import employee_bp
-
+# Create Flask app
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key-here')
 
@@ -39,19 +34,72 @@ migrate = Migrate(app, db)
 
 login_manager = LoginManager()
 login_manager.init_app(app)
-login_manager.login_view = 'auth.login'
+login_manager.login_view = 'login'
 
 @login_manager.user_loader
 def load_user(user_id):
     return Employee.query.get(int(user_id))
 
-# Register blueprints
-app.register_blueprint(auth_bp)
-app.register_blueprint(employee_import_bp)
-app.register_blueprint(main_bp)
-app.register_blueprint(schedule_bp)
+# Import and register supervisor blueprint
+from supervisor_routes import supervisor_bp
 app.register_blueprint(supervisor_bp)
-app.register_blueprint(employee_bp)
+
+# Basic auth routes (since auth blueprint is missing)
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if current_user.is_authenticated:
+        return redirect(url_for('dashboard'))
+    
+    if request.method == 'POST':
+        email = request.form.get('email')
+        password = request.form.get('password')
+        
+        employee = Employee.query.filter_by(email=email).first()
+        
+        if employee and employee.check_password(password):
+            login_user(employee)
+            next_page = request.args.get('next')
+            return redirect(next_page) if next_page else redirect(url_for('dashboard'))
+        else:
+            flash('Invalid email or password', 'danger')
+    
+    return render_template('login.html')
+
+@app.route('/logout')
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for('login'))
+
+# Main routes
+@app.route('/')
+def index():
+    return redirect(url_for('login'))
+
+@app.route('/dashboard')
+@login_required
+def dashboard():
+    if current_user.is_supervisor:
+        # Supervisor dashboard
+        stats = {
+            'pending_time_off': TimeOffRequest.query.filter_by(status='pending').count(),
+            'pending_swaps': ShiftSwapRequest.query.filter_by(status='pending').count(),
+            'total_employees': Employee.query.filter_by(crew=current_user.crew).count(),
+            'employees_off_today': 0
+        }
+        return render_template('supervisor_dashboard.html', stats=stats)
+    else:
+        # Employee dashboard
+        return render_template('employee_dashboard.html')
+
+@app.route('/overtime-management')
+@login_required
+def overtime_management():
+    if not current_user.is_supervisor:
+        flash('You must be a supervisor to access this page.', 'danger')
+        return redirect(url_for('dashboard'))
+    
+    return render_template('overtime_management.html')
 
 # API endpoints
 @app.route('/api/dashboard-stats')
@@ -62,23 +110,12 @@ def dashboard_stats():
         stats = {
             'pending_time_off': TimeOffRequest.query.filter_by(status='pending').count(),
             'pending_swaps': ShiftSwapRequest.query.filter_by(status='pending').count(),
-            'coverage_gaps': CoverageRequest.query.filter_by(status='open').count(),
-            'pending_suggestions': ScheduleSuggestion.query.filter_by(status='new').count(),
+            'coverage_gaps': 0,
+            'pending_suggestions': ScheduleSuggestion.query.filter_by(status='pending').count() if hasattr(ScheduleSuggestion, 'status') else 0,
             'new_critical_items': 0
         }
-        
-        # Add any critical maintenance issues
-        critical_maintenance = MaintenanceIssue.query.filter_by(
-            priority='critical',
-            status='open'
-        ).count()
-        
-        if critical_maintenance > 0:
-            stats['new_critical_items'] += critical_maintenance
-        
         return jsonify(stats)
     except Exception as e:
-        # Return zeros if tables don't exist or other errors
         return jsonify({
             'pending_time_off': 0,
             'pending_swaps': 0,
@@ -88,7 +125,7 @@ def dashboard_stats():
             'error': str(e)
         })
 
-# Database initialization routes
+# Database initialization route
 @app.route('/init-db')
 def init_db():
     """Initialize database with all tables"""
@@ -98,8 +135,6 @@ def init_db():
         # Check if admin exists
         admin = Employee.query.filter_by(email='admin@workforce.com').first()
         if not admin:
-            from models import Position, Skill
-            
             admin = Employee(
                 name='Admin User',
                 email='admin@workforce.com',
@@ -115,24 +150,29 @@ def init_db():
             
             # Create default positions
             positions = [
-                Position(name='Nurse', department='Healthcare', min_coverage=2),
-                Position(name='Security Officer', department='Security', min_coverage=1),
-                Position(name='Technician', department='Operations', min_coverage=3),
-                Position(name='Customer Service', department='Support', min_coverage=2)
+                Position(name='Operator', min_coverage=2),
+                Position(name='Technician', min_coverage=1),
+                Position(name='Lead Operator', min_coverage=1),
+                Position(name='Lead Technician', min_coverage=1),
+                Position(name='Supervisor', min_coverage=1)
             ]
             for pos in positions:
-                db.session.add(pos)
+                existing = Position.query.filter_by(name=pos.name).first()
+                if not existing:
+                    db.session.add(pos)
             
             # Create default skills
             skills = [
-                Skill(name='CPR Certified', category='Medical', requires_certification=True),
-                Skill(name='First Aid', category='Medical', requires_certification=True),
-                Skill(name='Security Clearance', category='Security', requires_certification=True),
-                Skill(name='Emergency Response', category='General'),
-                Skill(name='Equipment Operation', category='Technical')
+                Skill(name='Qualified: Operator'),
+                Skill(name='Qualified: Technician'),
+                Skill(name='Qualified: Lead Operator'),
+                Skill(name='Qualified: Lead Technician'),
+                Skill(name='Qualified: Supervisor')
             ]
             for skill in skills:
-                db.session.add(skill)
+                existing = Skill.query.filter_by(name=skill.name).first()
+                if not existing:
+                    db.session.add(skill)
             
             db.session.commit()
         
@@ -145,127 +185,6 @@ def init_db():
         </ul>
         <p><a href="/login">Go to login</a></p>
         '''
-
-@app.route('/fix-database-emergency')
-def fix_database():
-    """Emergency database fix - remove this after running once"""
-    try:
-        from sqlalchemy import text
-        
-        results = []
-        results.append("<h2>🔧 Database Fix Results</h2>")
-        
-        # Check current column names
-        check_query = text("""
-            SELECT column_name 
-            FROM information_schema.columns 
-            WHERE table_name = 'time_off_request'
-        """)
-        
-        try:
-            current_columns = db.session.execute(check_query).fetchall()
-            column_names = [col[0] for col in current_columns]
-            results.append(f"<p><strong>Current columns:</strong> {', '.join(column_names)}</p>")
-        except:
-            results.append("<p>Could not check current columns</p>")
-        
-        # List of SQL commands to fix the table
-        fixes = [
-            # Try to rename columns first
-            ("ALTER TABLE time_off_request RENAME COLUMN submitted_date TO created_at", "Rename submitted_date to created_at"),
-            ("ALTER TABLE time_off_request RENAME COLUMN reviewed_by_id TO approved_by", "Rename reviewed_by_id to approved_by"),
-            ("ALTER TABLE time_off_request RENAME COLUMN reviewed_date TO approved_date", "Rename reviewed_date to approved_date"),
-            ("ALTER TABLE time_off_request RENAME COLUMN reviewer_notes TO notes", "Rename reviewer_notes to notes"),
-        ]
-        
-        # Try to add columns if they don't exist
-        adds = [
-            ("ALTER TABLE time_off_request ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP", "Add created_at column"),
-            ("ALTER TABLE time_off_request ADD COLUMN approved_by INTEGER", "Add approved_by column"),
-            ("ALTER TABLE time_off_request ADD COLUMN approved_date TIMESTAMP", "Add approved_date column"),
-            ("ALTER TABLE time_off_request ADD COLUMN notes TEXT", "Add notes column"),
-        ]
-        
-        results.append("<h3>Attempting column renames:</h3><ul>")
-        
-        # Try renaming first
-        for fix_sql, description in fixes:
-            try:
-                db.session.execute(text(fix_sql))
-                db.session.commit()
-                results.append(f"<li>✅ Success: {description}</li>")
-            except Exception as e:
-                db.session.rollback()
-                error_msg = str(e).split('\n')[0]  # Get first line of error
-                results.append(f"<li>❌ Failed: {description}<br><small>{error_msg}</small></li>")
-        
-        results.append("</ul><h3>Attempting to add missing columns:</h3><ul>")
-        
-        # Then try adding
-        for add_sql, description in adds:
-            try:
-                db.session.execute(text(add_sql))
-                db.session.commit()
-                results.append(f"<li>✅ Success: {description}</li>")
-            except Exception as e:
-                db.session.rollback()
-                error_msg = str(e).split('\n')[0]  # Get first line of error
-                results.append(f"<li>❌ Failed: {description}<br><small>{error_msg}</small></li>")
-        
-        results.append("</ul>")
-        
-        # Check final column names
-        try:
-            final_columns = db.session.execute(check_query).fetchall()
-            column_names = [col[0] for col in final_columns]
-            results.append(f"<p><strong>Final columns:</strong> {', '.join(column_names)}</p>")
-        except:
-            pass
-        
-        results.append('<hr><p><a href="/dashboard" class="btn btn-primary">Go to Dashboard</a></p>')
-        results.append('<p><small>Note: This fix route should be removed after successful repair.</small></p>')
-        
-        return "".join(results)
-        
-    except Exception as e:
-        return f"""
-        <h2>❌ Database Fix Error</h2>
-        <p>An error occurred while trying to fix the database:</p>
-        <pre>{str(e)}</pre>
-        <p><a href="/dashboard">Try Dashboard Anyway</a></p>
-        """
-
-@app.route('/add-overtime-tables')
-def add_overtime_tables():
-    """Add the new overtime and skill tracking tables"""
-    if request.args.get('confirm') != 'yes':
-        return '''
-        <h2>Add Overtime and Skill Tracking Tables</h2>
-        <p>This will add the following new tables to your database:</p>
-        <ul>
-            <li><strong>OvertimeHistory</strong> - Track weekly overtime hours for each employee</li>
-            <li><strong>SkillRequirement</strong> - Define skill requirements for shifts</li>
-            <li><strong>FileUpload</strong> - Track uploaded Excel files</li>
-        </ul>
-        <p><a href="/add-overtime-tables?confirm=yes" class="btn btn-primary">Click here to add tables</a></p>
-        '''
-    
-    try:
-        db.create_all()
-        return '''
-        <h2>✅ Success!</h2>
-        <p>Overtime and skill tracking tables have been added to the database.</p>
-        <p>You can now:</p>
-        <ul>
-            <li>Upload Excel files with overtime data</li>
-            <li>Track 13-week overtime history</li>
-            <li>Manage employee skill certifications</li>
-            <li>Define skill requirements for different shifts</li>
-        </ul>
-        <p><a href="/dashboard">Return to Dashboard</a></p>
-        '''
-    except Exception as e:
-        return f'<h2>❌ Error</h2><p>Failed to add tables: {str(e)}</p>'
 
 @app.route('/populate-crews')
 def populate_crews():
@@ -287,7 +206,6 @@ def populate_crews():
     
     try:
         # Create test employees
-        from models import Position, Skill
         positions = Position.query.all()
         skills = Skill.query.all()
         
@@ -295,10 +213,14 @@ def populate_crews():
             return '<h2>Error</h2><p>Please run /init-db first to create positions.</p>'
         
         crew_names = {
-            'A': ['Alice Anderson', 'Adam Martinez', 'Angela Brown', 'Andrew Wilson'],
-            'B': ['Barbara Bennett', 'Brian Clark', 'Betty Rodriguez', 'Benjamin Lewis'],
-            'C': ['Carol Campbell', 'Charles Parker', 'Christine Evans', 'Christopher Turner'],
-            'D': ['Diana Davidson', 'David Foster', 'Deborah Murphy', 'Daniel Rivera']
+            'A': ['Alice Anderson', 'Adam Martinez', 'Angela Brown', 'Andrew Wilson', 
+                  'Amy Chen', 'Aaron Davis', 'Anna Garcia', 'Alex Thompson', 'Abigail Lee', 'Anthony Moore'],
+            'B': ['Barbara Bennett', 'Brian Clark', 'Betty Rodriguez', 'Benjamin Lewis',
+                  'Brenda White', 'Bruce Harris', 'Bethany Martin', 'Brandon Jackson', 'Brittany Taylor', 'Blake Anderson'],
+            'C': ['Carol Campbell', 'Charles Parker', 'Christine Evans', 'Christopher Turner',
+                  'Catherine Phillips', 'Carl Roberts', 'Cindy Walker', 'Craig Hall', 'Chelsea Allen', 'Curtis Young'],
+            'D': ['Diana Davidson', 'David Foster', 'Deborah Murphy', 'Daniel Rivera',
+                  'Donna Scott', 'Derek King', 'Denise Wright', 'Douglas Lopez', 'Dorothy Hill', 'Dean Green']
         }
         
         created = 0
@@ -310,7 +232,7 @@ def populate_crews():
                     emp = Employee(
                         name=name,
                         email=email,
-                        employee_id=f'{crew}{str(i+1).zfill(2)}',
+                        employee_id=f'{crew}{str(i+1).zfill(3)}',
                         phone=f'555-{crew}{str(i).zfill(3)}',
                         is_supervisor=(i == 0),  # First in each crew is supervisor
                         crew=crew,
@@ -336,12 +258,9 @@ def populate_crews():
 @app.route('/create-test-time-off')
 def create_test_time_off():
     """Create test time off requests"""
-    from datetime import datetime, timedelta
-    import random
-    
     try:
         # Get some employees
-        employees = Employee.query.limit(5).all()
+        employees = Employee.query.limit(10).all()
         
         if not employees:
             return '''
@@ -352,9 +271,6 @@ def create_test_time_off():
                 <li><a href="/populate-crews">Populate Crews</a></li>
             </ul>
             '''
-        
-        # Import TimeOffRequest model
-        from models import TimeOffRequest
         
         # Create some test requests
         request_types = ['vacation', 'sick', 'personal']
@@ -386,13 +302,12 @@ def create_test_time_off():
             if not existing:
                 time_off = TimeOffRequest(
                     employee_id=employee.id,
-                    request_type=request_type,
+                    type=request_type,
                     start_date=start_date,
                     end_date=end_date,
                     reason=random.choice(reasons) if random.random() > 0.3 else None,
                     status='pending' if i < 5 else random.choice(['approved', 'denied']),
-                    created_at=datetime.now() - timedelta(days=random.randint(1, 10)),
-                    days_requested=duration
+                    created_at=datetime.now() - timedelta(days=random.randint(1, 10))
                 )
                 
                 # Add approval info for non-pending requests
@@ -419,75 +334,7 @@ def create_test_time_off():
         return f'''
         <h2>❌ Error Creating Test Data</h2>
         <p>{str(e)}</p>
-        <p><a href="/fix-database-emergency">Try fixing database first</a></p>
-        '''
-
-@app.route('/add-employee-id-column')
-def add_employee_id_column():
-    """Add employee_id column to Employee table"""
-    if request.args.get('confirm') != 'yes':
-        return '''
-        <h2>Add Employee ID Column</h2>
-        <p>This will add an employee_id column to the Employee table.</p>
-        <p>This is required for the Excel import functionality to work properly.</p>
-        <p><a href="/add-employee-id-column?confirm=yes" class="btn btn-primary">Click here to add employee_id column</a></p>
-        '''
-    
-    try:
-        from sqlalchemy import text
-        
-        # First, check if column already exists
-        check_query = text("""
-            SELECT column_name 
-            FROM information_schema.columns 
-            WHERE table_name = 'employee' 
-            AND column_name = 'employee_id'
-        """)
-        
-        result = db.session.execute(check_query).fetchone()
-        
-        if result:
-            return '''
-            <h2>✅ Column Already Exists</h2>
-            <p>The employee_id column already exists in the Employee table.</p>
-            <p><a href="/dashboard">Return to Dashboard</a></p>
-            '''
-        
-        # Add the column
-        alter_query = text("""
-            ALTER TABLE employee 
-            ADD COLUMN employee_id VARCHAR(20) UNIQUE
-        """)
-        
-        db.session.execute(alter_query)
-        db.session.commit()
-        
-        # Update existing employees with default employee IDs if needed
-        employees = Employee.query.all()
-        for emp in employees:
-            if not emp.employee_id:
-                # Check if this employee was created from app init
-                if emp.email == 'admin@workforce.com':
-                    emp.employee_id = 'ADMIN001'
-                else:
-                    # Generate employee ID based on existing pattern or use ID
-                    emp.employee_id = f"EMP{str(emp.id).zfill(5)}"
-        db.session.commit()
-        
-        return f'''
-        <h2>✅ Success!</h2>
-        <p>Added employee_id column to Employee table.</p>
-        <p>Updated {len(employees)} existing employees with employee IDs.</p>
-        <p><a href="/upload-employees" class="btn btn-primary">Go to Import Employees</a></p>
-        <p><a href="/dashboard">Return to Dashboard</a></p>
-        '''
-        
-    except Exception as e:
-        db.session.rollback()
-        return f'''
-        <h2>❌ Error</h2>
-        <p>Failed to add employee_id column: {str(e)}</p>
-        <p><a href="/dashboard">Return to Dashboard</a></p>
+        <p><a href="/dashboard">Back to Dashboard</a></p>
         '''
 
 @app.route('/debug-routes')
@@ -511,12 +358,12 @@ def debug_routes():
 # Error handlers
 @app.errorhandler(404)
 def not_found_error(error):
-    return render_template('404.html'), 404
+    return '<h1>404 - Page Not Found</h1><p>The page you are looking for does not exist.</p><p><a href="/dashboard">Return to Dashboard</a></p>', 404
 
 @app.errorhandler(500)
 def internal_error(error):
     db.session.rollback()
-    return render_template('500.html'), 500
+    return '<h1>500 - Internal Server Error</h1><p>Something went wrong. Please try again.</p><p><a href="/dashboard">Return to Dashboard</a></p>', 500
 
 if __name__ == '__main__':
     app.run(debug=True)
