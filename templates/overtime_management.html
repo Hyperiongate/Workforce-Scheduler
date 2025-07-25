@@ -26,33 +26,6 @@
             box-shadow: 0 2px 4px rgba(0,0,0,0.05);
         }
         
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 1rem;
-            margin-bottom: 2rem;
-        }
-        
-        .stat-card {
-            background: white;
-            padding: 1.5rem;
-            border-radius: 8px;
-            text-align: center;
-            border: 2px solid #11998e;
-            transition: all 0.3s ease;
-        }
-        
-        .stat-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-        }
-        
-        .stat-number {
-            font-size: 2.5rem;
-            font-weight: bold;
-            color: #11998e;
-        }
-        
         .overtime-table-container {
             background: white;
             border-radius: 8px;
@@ -149,15 +122,12 @@
         .crew-c { background: #e8f5e9; color: #2e7d32; }
         .crew-d { background: #fff3e0; color: #e65100; }
         
-        .sort-controls {
-            display: flex;
-            gap: 0.5rem;
-            margin-bottom: 1rem;
-        }
-        
-        .week-header {
-            font-size: 0.75rem;
-            color: #6c757d;
+        .alert-section {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 2rem;
         }
         
         .export-section {
@@ -168,21 +138,8 @@
             box-shadow: 0 2px 4px rgba(0,0,0,0.05);
         }
         
-        .alert-section {
-            background: #fff3cd;
-            border: 1px solid #ffeaa7;
-            border-radius: 8px;
-            padding: 1rem;
-            margin-bottom: 2rem;
-        }
-        
         .pagination {
             margin-top: 1rem;
-        }
-        
-        .search-highlight {
-            background: #ffeb3b;
-            padding: 0 2px;
         }
     </style>
 </head>
@@ -236,30 +193,12 @@
 
     <div class="container-fluid">
         <!-- Alert Section -->
+        {% if high_overtime_employees %}
         <div class="alert-section">
             <i class="bi bi-exclamation-triangle-fill"></i> <strong>Overtime Alerts:</strong>
-            3 employees are approaching 60-hour weekly limit. 5 employees exceed 200 hours in 13-week period.
+            {{ high_overtime_employees|length }} employee(s) are approaching or exceeding 60-hour weekly limit.
         </div>
-
-        <!-- Statistics -->
-        <div class="stats-grid">
-            <div class="stat-card">
-                <div class="stat-number">2,847</div>
-                <p class="mb-0">Total OT Hours<br><small>13-Week Period</small></p>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number">$142,350</div>
-                <p class="mb-0">Total OT Cost<br><small>13-Week Period</small></p>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number">59.3</div>
-                <p class="mb-0">Avg Hours/Employee<br><small>13-Week Period</small></p>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number">48</div>
-                <p class="mb-0">Active Employees<br><small>With Overtime</small></p>
-            </div>
-        </div>
+        {% endif %}
 
         <!-- Filters Section -->
         <div class="filters-section">
@@ -282,15 +221,14 @@
                     <label class="form-label">Job Title</label>
                     <select class="form-select" id="jobFilter">
                         <option value="">All Positions</option>
-                        <option value="operator">Operator</option>
-                        <option value="technician">Technician</option>
-                        <option value="lead">Lead Tech</option>
-                        <option value="supervisor">Supervisor</option>
+                        {% for position in positions %}
+                        <option value="{{ position.id }}">{{ position.name }}</option>
+                        {% endfor %}
                     </select>
                 </div>
                 <div class="col-md-2">
                     <label class="form-label">OT Range</label>
-                    <select class="form-select">
+                    <select class="form-select" id="otRangeFilter">
                         <option value="">All Ranges</option>
                         <option value="0-50">0-50 hours</option>
                         <option value="50-100">50-100 hours</option>
@@ -299,7 +237,7 @@
                     </select>
                 </div>
                 <div class="col-md-3">
-                    <button class="btn btn-primary w-100">
+                    <button class="btn btn-primary w-100" onclick="applyFilters()">
                         <i class="bi bi-funnel"></i> Apply Filters
                     </button>
                 </div>
@@ -308,7 +246,7 @@
 
         <!-- Overtime Table -->
         <div class="overtime-table-container">
-            <h4 class="mb-3">13-Week Overtime History (April 20 - July 18, 2025)</h4>
+            <h4 class="mb-3">13-Week Overtime History ({{ start_date.strftime('%b %d') }} - {{ end_date.strftime('%b %d, %Y') }})</h4>
             
             <table class="overtime-table" id="overtimeTable">
                 <thead>
@@ -318,173 +256,71 @@
                         <th onclick="sortTable(2)">Crew <i class="bi bi-arrow-down-up"></i></th>
                         <th onclick="sortTable(3)">Job Title <i class="bi bi-arrow-down-up"></i></th>
                         <th onclick="sortTable(4)">Seniority <i class="bi bi-arrow-down-up"></i></th>
-                        <th class="week-column">Wk 1<br><small>4/20</small></th>
-                        <th class="week-column">Wk 2<br><small>4/27</small></th>
-                        <th class="week-column">Wk 3<br><small>5/4</small></th>
-                        <th class="week-column">Wk 4<br><small>5/11</small></th>
-                        <th class="week-column">Wk 5<br><small>5/18</small></th>
-                        <th class="week-column">Wk 6<br><small>5/25</small></th>
-                        <th class="week-column">Wk 7<br><small>6/1</small></th>
-                        <th class="week-column">Wk 8<br><small>6/8</small></th>
-                        <th class="week-column">Wk 9<br><small>6/15</small></th>
-                        <th class="week-column">Wk 10<br><small>6/22</small></th>
-                        <th class="week-column">Wk 11<br><small>6/29</small></th>
-                        <th class="week-column">Wk 12<br><small>7/6</small></th>
-                        <th class="week-column">Wk 13<br><small>7/13</small></th>
+                        {% for week in weeks %}
+                        <th class="week-column">Wk {{ loop.index }}<br><small>{{ week.strftime('%-m/%-d') }}</small></th>
+                        {% endfor %}
                         <th class="total-column" onclick="sortTable(18)">Total <i class="bi bi-arrow-down-up"></i></th>
                     </tr>
                 </thead>
                 <tbody>
-                    <!-- Employee 1 - High OT -->
-                    <tr>
+                    {% for employee in employees %}
+                    <tr data-employee-id="{{ employee.id }}" 
+                        data-crew="{{ employee.crew or '' }}" 
+                        data-position="{{ employee.position_id or '' }}"
+                        data-total-ot="{{ employee.last_13_weeks_overtime }}">
                         <td>
                             <div class="employee-info">
-                                <div class="employee-avatar">JD</div>
-                                <span>John Doe</span>
+                                <div class="employee-avatar" style="background: {{ loop.cycle('#11998e', '#e91e63', '#4caf50', '#ff9800', '#9c27b0') }};">
+                                    {{ employee.name[:2].upper() }}
+                                </div>
+                                <span>{{ employee.name }}</span>
                             </div>
                         </td>
-                        <td>EMP001</td>
-                        <td><span class="crew-badge crew-a">Crew A</span></td>
-                        <td>Lead Operator</td>
-                        <td>8 years</td>
-                        <td class="week-column">12</td>
-                        <td class="week-column">16</td>
-                        <td class="week-column">20</td>
-                        <td class="week-column overtime-high">24</td>
-                        <td class="week-column">18</td>
-                        <td class="week-column">14</td>
-                        <td class="week-column">16</td>
-                        <td class="week-column">20</td>
-                        <td class="week-column overtime-high">22</td>
-                        <td class="week-column">18</td>
-                        <td class="week-column">16</td>
-                        <td class="week-column">14</td>
-                        <td class="week-column">12</td>
-                        <td class="total-column overtime-high">222</td>
-                    </tr>
-                    
-                    <!-- Employee 2 - Medium OT -->
-                    <tr>
+                        <td>{{ employee.employee_id or 'EMP' ~ employee.id }}</td>
                         <td>
-                            <div class="employee-info">
-                                <div class="employee-avatar" style="background: #e91e63;">SM</div>
-                                <span>Sarah Miller</span>
-                            </div>
+                            {% if employee.crew %}
+                            <span class="crew-badge crew-{{ employee.crew|lower }}">Crew {{ employee.crew }}</span>
+                            {% else %}
+                            -
+                            {% endif %}
                         </td>
-                        <td>EMP002</td>
-                        <td><span class="crew-badge crew-b">Crew B</span></td>
-                        <td>Technician</td>
-                        <td>5 years</td>
-                        <td class="week-column">8</td>
-                        <td class="week-column">10</td>
-                        <td class="week-column">12</td>
-                        <td class="week-column">8</td>
-                        <td class="week-column">10</td>
-                        <td class="week-column">14</td>
-                        <td class="week-column">12</td>
-                        <td class="week-column">10</td>
-                        <td class="week-column">8</td>
-                        <td class="week-column">12</td>
-                        <td class="week-column">10</td>
-                        <td class="week-column">8</td>
-                        <td class="week-column">10</td>
-                        <td class="total-column overtime-medium">132</td>
-                    </tr>
-                    
-                    <!-- Employee 3 - Low OT -->
-                    <tr>
+                        <td>{{ employee.position.name if employee.position else '-' }}</td>
                         <td>
-                            <div class="employee-info">
-                                <div class="employee-avatar" style="background: #4caf50;">RJ</div>
-                                <span>Robert Johnson</span>
-                            </div>
+                            {% if employee.hire_date %}
+                                {% set years = ((current_date - employee.hire_date).days / 365)|int %}
+                                {{ years }} year{{ 's' if years != 1 else '' }}
+                            {% else %}
+                                -
+                            {% endif %}
                         </td>
-                        <td>EMP003</td>
-                        <td><span class="crew-badge crew-c">Crew C</span></td>
-                        <td>Operator</td>
-                        <td>2 years</td>
-                        <td class="week-column">4</td>
-                        <td class="week-column">6</td>
-                        <td class="week-column">4</td>
-                        <td class="week-column">8</td>
-                        <td class="week-column">6</td>
-                        <td class="week-column">4</td>
-                        <td class="week-column">6</td>
-                        <td class="week-column">8</td>
-                        <td class="week-column">4</td>
-                        <td class="week-column">6</td>
-                        <td class="week-column">4</td>
-                        <td class="week-column">6</td>
-                        <td class="week-column">8</td>
-                        <td class="total-column overtime-low">74</td>
-                    </tr>
-                    
-                    <!-- Employee 4 -->
-                    <tr>
-                        <td>
-                            <div class="employee-info">
-                                <div class="employee-avatar" style="background: #ff9800;">EW</div>
-                                <span>Emily Wilson</span>
-                            </div>
+                        {% for week in weeks %}
+                        {% set ot_hours = employee.get_overtime_for_week(week) %}
+                        <td class="week-column {% if ot_hours > 20 %}overtime-high{% elif ot_hours > 12 %}overtime-medium{% endif %}">
+                            {{ ot_hours or 0 }}
                         </td>
-                        <td>EMP004</td>
-                        <td><span class="crew-badge crew-d">Crew D</span></td>
-                        <td>Supervisor</td>
-                        <td>10 years</td>
-                        <td class="week-column">10</td>
-                        <td class="week-column">12</td>
-                        <td class="week-column">14</td>
-                        <td class="week-column">16</td>
-                        <td class="week-column">12</td>
-                        <td class="week-column">10</td>
-                        <td class="week-column">14</td>
-                        <td class="week-column">16</td>
-                        <td class="week-column">18</td>
-                        <td class="week-column">14</td>
-                        <td class="week-column">12</td>
-                        <td class="week-column">10</td>
-                        <td class="week-column">8</td>
-                        <td class="total-column overtime-medium">166</td>
-                    </tr>
-                    
-                    <!-- Employee 5 -->
-                    <tr>
-                        <td>
-                            <div class="employee-info">
-                                <div class="employee-avatar" style="background: #9c27b0;">TC</div>
-                                <span>Tom Chen</span>
-                            </div>
+                        {% endfor %}
+                        <td class="total-column {% if employee.last_13_weeks_overtime > 200 %}overtime-high{% elif employee.last_13_weeks_overtime > 150 %}overtime-medium{% endif %}">
+                            {{ employee.last_13_weeks_overtime }}
                         </td>
-                        <td>EMP005</td>
-                        <td><span class="crew-badge crew-a">Crew A</span></td>
-                        <td>Lead Technician</td>
-                        <td>15 years</td>
-                        <td class="week-column">6</td>
-                        <td class="week-column">8</td>
-                        <td class="week-column">10</td>
-                        <td class="week-column">12</td>
-                        <td class="week-column">8</td>
-                        <td class="week-column">6</td>
-                        <td class="week-column">8</td>
-                        <td class="week-column">10</td>
-                        <td class="week-column">12</td>
-                        <td class="week-column">10</td>
-                        <td class="week-column">8</td>
-                        <td class="week-column">6</td>
-                        <td class="week-column">4</td>
-                        <td class="total-column">108</td>
                     </tr>
+                    {% endfor %}
                 </tbody>
             </table>
             
             <!-- Pagination -->
             <nav>
                 <ul class="pagination justify-content-center">
-                    <li class="page-item disabled"><a class="page-link" href="#">Previous</a></li>
-                    <li class="page-item active"><a class="page-link" href="#">1</a></li>
-                    <li class="page-item"><a class="page-link" href="#">2</a></li>
-                    <li class="page-item"><a class="page-link" href="#">3</a></li>
-                    <li class="page-item"><a class="page-link" href="#">Next</a></li>
+                    <li class="page-item {% if page == 1 %}disabled{% endif %}">
+                        <a class="page-link" href="?page={{ page - 1 }}">Previous</a>
+                    </li>
+                    {% for p in range(1, total_pages + 1) %}
+                    <li class="page-item {% if p == page %}active{% endif %}">
+                        <a class="page-link" href="?page={{ p }}">{{ p }}</a>
+                    </li>
+                    {% endfor %}
+                    <li class="page-item {% if page == total_pages %}disabled{% endif %}">
+                        <a class="page-link" href="?page={{ page + 1 }}">Next</a>
+                    </li>
                 </ul>
             </nav>
         </div>
@@ -494,22 +330,22 @@
             <h5>Export & Reports</h5>
             <div class="row mt-3">
                 <div class="col-md-3">
-                    <button class="btn btn-success w-100">
+                    <button class="btn btn-success w-100" onclick="exportToExcel()">
                         <i class="bi bi-file-earmark-excel"></i> Export to Excel
                     </button>
                 </div>
                 <div class="col-md-3">
-                    <button class="btn btn-primary w-100">
+                    <button class="btn btn-primary w-100" onclick="generatePDF()">
                         <i class="bi bi-file-earmark-pdf"></i> Generate PDF Report
                     </button>
                 </div>
                 <div class="col-md-3">
-                    <button class="btn btn-info w-100">
+                    <button class="btn btn-info w-100" onclick="emailReport()">
                         <i class="bi bi-envelope"></i> Email Report
                     </button>
                 </div>
                 <div class="col-md-3">
-                    <button class="btn btn-secondary w-100">
+                    <button class="btn btn-secondary w-100" onclick="window.print()">
                         <i class="bi bi-printer"></i> Print
                     </button>
                 </div>
@@ -520,26 +356,42 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         // Sort table function
+        let sortDirections = {};
+        
         function sortTable(columnIndex) {
             const table = document.getElementById('overtimeTable');
             const tbody = table.querySelector('tbody');
             const rows = Array.from(tbody.querySelectorAll('tr'));
             
             // Toggle sort direction
-            const isAscending = table.querySelector('thead tr').children[columnIndex].classList.toggle('sort-asc');
+            sortDirections[columnIndex] = !sortDirections[columnIndex];
+            const isAscending = sortDirections[columnIndex];
+            
+            // Update arrow icons
+            const headers = table.querySelectorAll('th');
+            headers.forEach((header, index) => {
+                const icon = header.querySelector('i');
+                if (icon) {
+                    if (index === columnIndex) {
+                        icon.className = isAscending ? 'bi bi-arrow-up' : 'bi bi-arrow-down';
+                    } else {
+                        icon.className = 'bi bi-arrow-down-up';
+                    }
+                }
+            });
             
             rows.sort((a, b) => {
                 let aValue, bValue;
                 
                 if (columnIndex === 0) { // Employee name
-                    aValue = a.cells[columnIndex].textContent.trim();
-                    bValue = b.cells[columnIndex].textContent.trim();
+                    aValue = a.cells[columnIndex].textContent.trim().toLowerCase();
+                    bValue = b.cells[columnIndex].textContent.trim().toLowerCase();
                 } else if (columnIndex === 4 || columnIndex >= 5) { // Numeric columns
-                    aValue = parseInt(a.cells[columnIndex].textContent) || 0;
-                    bValue = parseInt(b.cells[columnIndex].textContent) || 0;
+                    aValue = parseFloat(a.cells[columnIndex].textContent) || 0;
+                    bValue = parseFloat(b.cells[columnIndex].textContent) || 0;
                 } else {
-                    aValue = a.cells[columnIndex].textContent.trim();
-                    bValue = b.cells[columnIndex].textContent.trim();
+                    aValue = a.cells[columnIndex].textContent.trim().toLowerCase();
+                    bValue = b.cells[columnIndex].textContent.trim().toLowerCase();
                 }
                 
                 if (isAscending) {
@@ -555,36 +407,67 @@
 
         // Search function
         document.getElementById('searchInput').addEventListener('input', function(e) {
-            const searchTerm = e.target.value.toLowerCase();
+            applyFilters();
+        });
+
+        // Apply all filters
+        function applyFilters() {
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+            const selectedCrew = document.getElementById('crewFilter').value;
+            const selectedPosition = document.getElementById('jobFilter').value;
+            const selectedOTRange = document.getElementById('otRangeFilter').value;
+            
             const rows = document.querySelectorAll('#overtimeTable tbody tr');
             
             rows.forEach(row => {
                 const name = row.cells[0].textContent.toLowerCase();
                 const id = row.cells[1].textContent.toLowerCase();
+                const crew = row.getAttribute('data-crew');
+                const position = row.getAttribute('data-position');
+                const totalOT = parseFloat(row.getAttribute('data-total-ot'));
                 
-                if (name.includes(searchTerm) || id.includes(searchTerm)) {
-                    row.style.display = '';
-                } else {
-                    row.style.display = 'none';
+                let showRow = true;
+                
+                // Search filter
+                if (searchTerm && !name.includes(searchTerm) && !id.includes(searchTerm)) {
+                    showRow = false;
                 }
+                
+                // Crew filter
+                if (selectedCrew && crew !== selectedCrew) {
+                    showRow = false;
+                }
+                
+                // Position filter
+                if (selectedPosition && position !== selectedPosition) {
+                    showRow = false;
+                }
+                
+                // OT Range filter
+                if (selectedOTRange) {
+                    if (selectedOTRange === '0-50' && (totalOT < 0 || totalOT > 50)) showRow = false;
+                    else if (selectedOTRange === '50-100' && (totalOT < 50 || totalOT > 100)) showRow = false;
+                    else if (selectedOTRange === '100-150' && (totalOT < 100 || totalOT > 150)) showRow = false;
+                    else if (selectedOTRange === '150+' && totalOT < 150) showRow = false;
+                }
+                
+                row.style.display = showRow ? '' : 'none';
             });
-        });
+        }
 
-        // Crew filter
-        document.getElementById('crewFilter').addEventListener('change', function(e) {
-            const selectedCrew = e.target.value;
-            const rows = document.querySelectorAll('#overtimeTable tbody tr');
-            
-            rows.forEach(row => {
-                const crewCell = row.cells[2].textContent;
-                
-                if (!selectedCrew || crewCell.includes('Crew ' + selectedCrew)) {
-                    row.style.display = '';
-                } else {
-                    row.style.display = 'none';
-                }
-            });
-        });
+        // Export functions (placeholders - implement based on your backend)
+        function exportToExcel() {
+            window.location.href = '/overtime-management/export/excel';
+        }
+        
+        function generatePDF() {
+            window.location.href = '/overtime-management/export/pdf';
+        }
+        
+        function emailReport() {
+            // Implement email functionality
+            alert('Email report functionality to be implemented');
+        }
     </script>
 </body>
 </html>
