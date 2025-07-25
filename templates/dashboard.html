@@ -27,10 +27,10 @@ FILE STRUCTURE:
 
 /blueprints/
   auth.py              - Login/logout functionality
-  main.py              - Routes: /, /dashboard (supervisor), /employee-dashboard
+  main.py              - Routes: /, /dashboard (supervisor), /employee-dashboard, /overtime-management
   schedule.py          - Routes: /schedule/view, /schedule/create, /schedule/wizard/<pattern>
   supervisor.py        - Routes: /supervisor/*, /vacation-calendar, /api/vacation-calendar
-  employee.py          - Routes: /overtime-management, /vacation/request, /shift-marketplace, /maintenance/*
+  employee.py          - Routes: /vacation/request, /shift-marketplace, /maintenance/*
   employee_import.py   - Routes: /upload-employees, /download-employee-template, /export-current-employees
 
 /templates/
@@ -40,7 +40,8 @@ FILE STRUCTURE:
   vacation_request.html   - Time-off request form (vacation/sick/personal)
   shift_marketplace.html  - Shift trading marketplace
   upload_employees.html   - Employee import/export interface
-  [others...]          - overtime_management, maintenance_issues, position_messages, etc.
+  overtime_management.html - Overtime tracking and management
+  [others...]          - maintenance_issues, position_messages, etc.
 
 /utils/
   helpers.py           - Functions: get_coverage_gaps(), get_overtime_opportunities(), calculate_trade_compatibility()
@@ -540,7 +541,7 @@ PENDING IMPLEMENTATION:
                 </a>
                 
                 <!-- Overtime Management -->
-                <a href="/overtime-management" class="access-card card-overtime">
+                <a href="{{ url_for('main.overtime_management') }}" class="access-card card-overtime">
                     <i class="bi bi-clock-history"></i>
                     <div class="access-card-content">
                         <h3>Overtime Management</h3>
@@ -548,15 +549,14 @@ PENDING IMPLEMENTATION:
                     </div>
                 </a>
                 
-                <!-- View Employees and Crews -->
                 <!-- Manage Crews -->
-<a href="/employees/crew-management" class="access-card card-employees">
-    <i class="bi bi-people-fill"></i>
-    <div class="access-card-content">
-        <h3>Manage Crews</h3>
-        <p>View & edit crew assignments</p>
-    </div>
-</a>
+                <a href="/employees/crew-management" class="access-card card-employees">
+                    <i class="bi bi-people-fill"></i>
+                    <div class="access-card-content">
+                        <h3>Manage Crews</h3>
+                        <p>View & edit crew assignments</p>
+                    </div>
+                </a>
                 
                 <!-- Import/Export Employees -->
                 <a href="/upload-employees" class="access-card card-import">
@@ -751,7 +751,8 @@ PENDING IMPLEMENTATION:
             });
         });
 
-        // Auto-refresh dashboard stats every 30 seconds
+        // Comment out the auto-refresh for now to avoid errors
+        /*
         setInterval(() => {
             fetch('/api/dashboard-stats')
                 .then(response => response.json())
@@ -774,6 +775,7 @@ PENDING IMPLEMENTATION:
                 })
                 .catch(error => console.error('Error fetching dashboard stats:', error));
         }, 30000);
+        */
 
         function updateNumber(elementId, newValue) {
             const element = document.getElementById(elementId);
@@ -856,46 +858,20 @@ PENDING IMPLEMENTATION:
             const form = document.getElementById('quickScheduleForm');
             const formData = new FormData(form);
             
-            fetch('/api/quick-schedule', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    showNotification('Schedule entry created successfully!', 'success');
-                    bootstrap.Modal.getInstance(document.getElementById('quickScheduleModal')).hide();
-                    form.reset();
-                } else {
-                    showNotification('Error creating schedule: ' + data.message, 'danger');
-                }
-            })
-            .catch(error => {
-                showNotification('Error creating schedule', 'danger');
-            });
+            // For now, just show a message since the API endpoint doesn't exist
+            showNotification('Quick schedule functionality coming soon!', 'info');
+            bootstrap.Modal.getInstance(document.getElementById('quickScheduleModal')).hide();
+            form.reset();
         }
 
         function sendQuickAlert() {
             const form = document.getElementById('quickAlertForm');
             const formData = new FormData(form);
             
-            fetch('/api/quick-alert', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    showNotification('Alert sent successfully!', 'success');
-                    bootstrap.Modal.getInstance(document.getElementById('quickAlertModal')).hide();
-                    form.reset();
-                } else {
-                    showNotification('Error sending alert: ' + data.message, 'danger');
-                }
-            })
-            .catch(error => {
-                showNotification('Error sending alert', 'danger');
-            });
+            // For now, just show a message since the API endpoint doesn't exist
+            showNotification('Quick alert functionality coming soon!', 'info');
+            bootstrap.Modal.getInstance(document.getElementById('quickAlertModal')).hide();
+            form.reset();
         }
 
         // Toast notification function
