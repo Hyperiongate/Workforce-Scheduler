@@ -400,36 +400,6 @@ def overtime_management():
                              max_overtime=10,
                              crew_overtime_data=[0, 0, 0, 0],
                              overtime_history=[])
-
-@app.route('/api/overtime-distribution')
-@login_required
-def overtime_distribution_api():
-    """API endpoint for overtime distribution data"""
-    try:
-        # Return simple data to prevent the error
-        return jsonify({
-            'success': True,
-            'data': {
-                'labels': ['Crew A', 'Crew B', 'Crew C', 'Crew D'],
-                'values': [0, 0, 0, 0],
-                'employees': []
-            }
-        })
-    except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
-
-@app.route('/test-overtime')
-def test_overtime():
-    """Simple test to see if overtime page loads"""
-    return """
-    <h1>Overtime Management Test Page</h1>
-    <p>If you can see this, the route is working!</p>
-    <p><a href="/dashboard">Back to Dashboard</a></p>
-    <p><a href="/overtime-management">Try Real Overtime Page</a></p>
-    """
                              
     except Exception as e:
         print(f"Error in overtime_management: {str(e)}")
@@ -444,6 +414,16 @@ def test_overtime():
                              max_overtime=10,
                              crew_overtime_data=[0, 0, 0, 0],
                              overtime_history=[])
+
+@app.route('/test-overtime')
+def test_overtime():
+    """Simple test to see if overtime page loads"""
+    return """
+    <h1>Overtime Management Test Page</h1>
+    <p>If you can see this, the route is working!</p>
+    <p><a href="/dashboard">Back to Dashboard</a></p>
+    <p><a href="/overtime-management">Try Real Overtime Page</a></p>
+    """
 
 @app.route('/debug-routes')
 def debug_routes():
@@ -470,49 +450,6 @@ def debug_routes():
     output += '<p><a href="/dashboard">Back to Dashboard</a></p>'
     
     return output
-
-@app.route('/overtime-management')
-@login_required
-def overtime_management():
-    """Overtime tracking and distribution view"""
-    if not current_user.is_supervisor:
-        flash('You must be a supervisor to access this page.', 'danger')
-        return redirect(url_for('dashboard'))
-    
-    try:
-        # Get all active employees
-        employees = Employee.query.filter_by(is_active=True).order_by(Employee.crew, Employee.name).all()
-        
-        # Add default overtime attributes
-        for emp in employees:
-            emp.overtime_hours = 0
-            emp.last_overtime_date = None
-        
-        # Basic statistics with safe defaults
-        return render_template('overtime_management.html',
-                             employees=employees,
-                             all_employees=employees,
-                             total_overtime_hours=0,
-                             employees_with_overtime=0,
-                             avg_overtime=0,
-                             high_overtime_count=0,
-                             max_overtime=10,
-                             crew_overtime_data=[0, 0, 0, 0],
-                             overtime_history=[])
-                             
-    except Exception as e:
-        print(f"Error in overtime_management: {str(e)}")
-        # If there's any error, return the template with empty data
-        return render_template('overtime_management.html',
-                             employees=[],
-                             all_employees=[],
-                             total_overtime_hours=0,
-                             employees_with_overtime=0,
-                             avg_overtime=0,
-                             high_overtime_count=0,
-                             max_overtime=10,
-                             crew_overtime_data=[0, 0, 0, 0],
-                             overtime_history=[])
 
 # Error handlers
 @app.errorhandler(404)
