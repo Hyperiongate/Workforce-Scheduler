@@ -489,16 +489,23 @@
             <!-- Pagination -->
             <nav>
                 <ul class="pagination justify-content-center">
+                    {% set url_params = request.args.to_dict() %}
                     <li class="page-item {% if page == 1 %}disabled{% endif %}">
-                        <a class="page-link" href="?page={{ page - 1 }}">Previous</a>
+                        {% set url_params_prev = url_params.copy() %}
+                        {% set _ = url_params_prev.update({'page': page - 1}) %}
+                        <a class="page-link" href="?{{ url_params_prev|urlencode }}">Previous</a>
                     </li>
                     {% for p in range(1, total_pages + 1) %}
                     <li class="page-item {% if p == page %}active{% endif %}">
-                        <a class="page-link" href="?page={{ p }}">{{ p }}</a>
+                        {% set url_params_page = url_params.copy() %}
+                        {% set _ = url_params_page.update({'page': p}) %}
+                        <a class="page-link" href="?{{ url_params_page|urlencode }}">{{ p }}</a>
                     </li>
                     {% endfor %}
                     <li class="page-item {% if page == total_pages %}disabled{% endif %}">
-                        <a class="page-link" href="?page={{ page + 1 }}">Next</a>
+                        {% set url_params_next = url_params.copy() %}
+                        {% set _ = url_params_next.update({'page': page + 1}) %}
+                        <a class="page-link" href="?{{ url_params_next|urlencode }}">Next</a>
                     </li>
                 </ul>
             </nav>
@@ -547,6 +554,72 @@
 
         // Initialize multi-level sorter
         document.addEventListener('DOMContentLoaded', function() {
+            // Restore sort selections from URL parameters
+            const urlParams = new URLSearchParams(window.location.search);
+            const selectedValues = [];
+            
+            for (let i = 1; i <= 4; i++) {
+                const sortValue = urlParams.get(`sort${i}`);
+                const dirValue = urlParams.get(`dir${i}`) || 'asc';
+                
+                if (sortValue) {
+                    selectedValues.push(sortValue);
+                    const select = document.getElementById(`sortLevel${i}`);
+                    
+                    // Enable this level
+                    if (i > 1) {
+                        const level = document.querySelector(`.sorter-level[data-level="${i}"]`);
+                        level.classList.remove('disabled');
+                        select.disabled = false;
+                    }
+                    
+                    // Populate options excluding already selected values
+                    select.innerHTML = '<option value="">-- Select --</option>';
+                    for (const [value, label] of Object.entries(sortOptions)) {
+                        if (!selectedValues.slice(0, i-1).includes(value)) {
+                            select.innerHTML += `<option value="${value}" ${value === sortValue ? 'selected' : ''}>${label}</option>`;
+                        }
+                    }
+                    
+                    // Set direction
+                    const dirButtons = document.querySelectorAll(`.sorter-level[data-level="${i}"] .sort-direction-toggle button`);
+                    dirButtons.forEach(btn => {
+                        btn.classList.remove('active');
+                        if (btn.dataset.direction === dirValue) {
+                            btn.classList.add('active');
+                        }
+                    });
+                    
+                    // Update next level options if this level has a value
+                    if (i < 4 && sortValue) {
+                        const nextSelect = document.getElementById(`sortLevel${i + 1}`);
+                        const nextLevel = document.querySelector(`.sorter-level[data-level="${i + 1}"]`);
+                        nextLevel.classList.remove('disabled');
+                        nextSelect.disabled = false;
+                        
+                        nextSelect.innerHTML = '<option value="">-- Select --</option>';
+                        for (const [value, label] of Object.entries(sortOptions)) {
+                            if (!selectedValues.includes(value)) {
+                                nextSelect.innerHTML += `<option value="${value}">${label}</option>`;
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Restore filter values
+            const searchTerm = urlParams.get('search');
+            if (searchTerm) document.getElementById('searchInput').value = searchTerm;
+            
+            const crewFilter = urlParams.get('crew');
+            if (crewFilter) document.getElementById('crewFilter').value = crewFilter;
+            
+            const positionFilter = urlParams.get('position');
+            if (positionFilter) document.getElementById('jobFilter').value = positionFilter;
+            
+            const otRangeFilter = urlParams.get('ot_range');
+            if (otRangeFilter) document.getElementById('otRangeFilter').value = otRangeFilter;
+            
             // Add event listeners to all sort level selects
             for (let i = 1; i <= 4; i++) {
                 const select = document.getElementById(`sortLevel${i}`);
@@ -613,114 +686,66 @@
 
         // Apply multi-level sort
         function applyMultiLevelSort() {
-            const table = document.getElementById('overtimeTable');
-            const tbody = table.querySelector('tbody');
-            const rows = Array.from(tbody.querySelectorAll('tr'));
+            // Build sort parameters for URL
+            const params = new URLSearchParams(window.location.search);
             
-            // Build sort criteria array
-            const sortCriteria = [];
+            // Clear existing sort parameters
+            for (let i = 1; i <= 4; i++) {
+                params.delete(`sort${i}`);
+                params.delete(`dir${i}`);
+            }
+            
+            // Add new sort parameters
+            let hasSort = false;
             for (let i = 1; i <= 4; i++) {
                 const select = document.getElementById(`sortLevel${i}`);
                 if (select.value) {
                     const directionBtn = document.querySelector(`.sorter-level[data-level="${i}"] .sort-direction-toggle button.active`);
-                    sortCriteria.push({
-                        field: select.value,
-                        ascending: directionBtn.dataset.direction === 'asc'
-                    });
+                    params.set(`sort${i}`, select.value);
+                    params.set(`dir${i}`, directionBtn.dataset.direction);
+                    hasSort = true;
                 }
             }
             
-            if (sortCriteria.length === 0) {
+            if (!hasSort) {
                 alert('Please select at least one sorting criterion');
                 return;
             }
             
-            // Sort rows based on multiple criteria
-            rows.sort((a, b) => {
-                for (const criterion of sortCriteria) {
-                    let comparison = 0;
-                    
-                    switch (criterion.field) {
-                        case 'crew':
-                            const aCrew = a.getAttribute('data-crew') || 'Z';
-                            const bCrew = b.getAttribute('data-crew') || 'Z';
-                            comparison = aCrew.localeCompare(bCrew);
-                            break;
-                            
-                        case 'jobtitle':
-                            const aTitle = a.cells[3].textContent.trim();
-                            const bTitle = b.cells[3].textContent.trim();
-                            comparison = aTitle.localeCompare(bTitle);
-                            break;
-                            
-                        case 'seniority':
-                            const aSeniorityText = a.cells[4].textContent.trim();
-                            const bSeniorityText = b.cells[4].textContent.trim();
-                            const aSeniority = parseInt(aSeniorityText) || 0;
-                            const bSeniority = parseInt(bSeniorityText) || 0;
-                            comparison = aSeniority - bSeniority;
-                            break;
-                            
-                        case 'overtime':
-                            const aOT = parseFloat(a.getAttribute('data-total-ot')) || 0;
-                            const bOT = parseFloat(b.getAttribute('data-total-ot')) || 0;
-                            comparison = aOT - bOT;
-                            break;
-                    }
-                    
-                    if (!criterion.ascending) {
-                        comparison = -comparison;
-                    }
-                    
-                    if (comparison !== 0) {
-                        return comparison;
-                    }
-                }
-                return 0;
-            });
+            // Preserve other filters
+            const searchInput = document.getElementById('searchInput').value;
+            const crewFilter = document.getElementById('crewFilter').value;
+            const jobFilter = document.getElementById('jobFilter').value;
+            const otRangeFilter = document.getElementById('otRangeFilter').value;
             
-            // Re-append sorted rows
-            rows.forEach(row => tbody.appendChild(row));
+            if (searchInput) params.set('search', searchInput);
+            if (crewFilter) params.set('crew', crewFilter);
+            if (jobFilter) params.set('position', jobFilter);
+            if (otRangeFilter) params.set('ot_range', otRangeFilter);
             
-            // Visual feedback
-            const sortBtn = document.querySelector('.apply-sort-btn');
-            sortBtn.innerHTML = '<i class="bi bi-check-circle-fill"></i> Sorted!';
-            setTimeout(() => {
-                sortBtn.innerHTML = '<i class="bi bi-check-circle"></i> Apply Sort';
-            }, 2000);
+            // Reset to page 1 when sorting changes
+            params.set('page', '1');
+            
+            // Reload page with new parameters
+            window.location.href = `${window.location.pathname}?${params.toString()}`;
         }
 
         // Reset sort
         function resetSort() {
-            // Reset all selects
+            // Clear URL parameters related to sorting
+            const params = new URLSearchParams(window.location.search);
+            
+            // Remove all sort parameters
             for (let i = 1; i <= 4; i++) {
-                const select = document.getElementById(`sortLevel${i}`);
-                select.value = '';
-                
-                // Disable all except first level
-                if (i > 1) {
-                    const level = document.querySelector(`.sorter-level[data-level="${i}"]`);
-                    level.classList.add('disabled');
-                    select.disabled = true;
-                }
+                params.delete(`sort${i}`);
+                params.delete(`dir${i}`);
             }
             
-            // Reset direction buttons to ascending
-            document.querySelectorAll('.sort-direction-toggle').forEach(toggle => {
-                toggle.querySelectorAll('button').forEach(btn => {
-                    btn.classList.remove('active');
-                    if (btn.dataset.direction === 'asc') {
-                        btn.classList.add('active');
-                    }
-                });
-            });
+            // Keep other filters
+            params.set('page', '1');
             
-            // Reset selected sorts
-            selectedSorts = [];
-            
-            // Sort by default (total OT descending)
-            sortDirections[6] = true;
-            sortTable(6);
+            // Reload page
+            window.location.href = `${window.location.pathname}?${params.toString()}`;
         }
 
         // Original sort table function (for single column sorting)
@@ -781,61 +806,59 @@
 
         // Search function
         document.getElementById('searchInput').addEventListener('input', function(e) {
-            applyFilters();
+            // Don't apply filters immediately on typing
+            // User should click "Apply Filters" button
         });
 
         // Apply all filters
         function applyFilters() {
-            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+            const params = new URLSearchParams(window.location.search);
+            
+            // Get filter values
+            const searchTerm = document.getElementById('searchInput').value;
             const selectedCrew = document.getElementById('crewFilter').value;
             const selectedPosition = document.getElementById('jobFilter').value;
             const selectedOTRange = document.getElementById('otRangeFilter').value;
             
-            const rows = document.querySelectorAll('#overtimeTable tbody tr');
+            // Update URL parameters
+            if (searchTerm) params.set('search', searchTerm);
+            else params.delete('search');
             
-            rows.forEach(row => {
-                const name = row.cells[0].textContent.toLowerCase();
-                const id = row.cells[1].textContent.toLowerCase();
-                const crew = row.getAttribute('data-crew');
-                const position = row.getAttribute('data-position');
-                const totalOT = parseFloat(row.getAttribute('data-total-ot'));
-                
-                let showRow = true;
-                
-                // Search filter
-                if (searchTerm && !name.includes(searchTerm) && !id.includes(searchTerm)) {
-                    showRow = false;
+            if (selectedCrew) params.set('crew', selectedCrew);
+            else params.delete('crew');
+            
+            if (selectedPosition) params.set('position', selectedPosition);
+            else params.delete('position');
+            
+            if (selectedOTRange) params.set('ot_range', selectedOTRange);
+            else params.delete('ot_range');
+            
+            // Reset to page 1 when filters change
+            params.set('page', '1');
+            
+            // Preserve sort parameters
+            for (let i = 1; i <= 4; i++) {
+                const sortValue = document.getElementById(`sortLevel${i}`).value;
+                if (sortValue) {
+                    const dirBtn = document.querySelector(`.sorter-level[data-level="${i}"] .sort-direction-toggle button.active`);
+                    params.set(`sort${i}`, sortValue);
+                    params.set(`dir${i}`, dirBtn.dataset.direction);
                 }
-                
-                // Crew filter
-                if (selectedCrew && crew !== selectedCrew) {
-                    showRow = false;
-                }
-                
-                // Position filter
-                if (selectedPosition && position !== selectedPosition) {
-                    showRow = false;
-                }
-                
-                // OT Range filter
-                if (selectedOTRange) {
-                    if (selectedOTRange === '0-50' && (totalOT < 0 || totalOT > 50)) showRow = false;
-                    else if (selectedOTRange === '50-100' && (totalOT < 50 || totalOT > 100)) showRow = false;
-                    else if (selectedOTRange === '100-150' && (totalOT < 100 || totalOT > 150)) showRow = false;
-                    else if (selectedOTRange === '150+' && totalOT < 150) showRow = false;
-                }
-                
-                row.style.display = showRow ? '' : 'none';
-            });
+            }
+            
+            // Reload page with new parameters
+            window.location.href = `${window.location.pathname}?${params.toString()}`;
         }
 
-        // Export functions (placeholders - implement based on your backend)
+        // Export functions - preserve current filters and sorting
         function exportToExcel() {
-            window.location.href = '/overtime-management/export/excel';
+            const params = new URLSearchParams(window.location.search);
+            window.location.href = '/overtime-management/export/excel?' + params.toString();
         }
         
         function generatePDF() {
-            window.location.href = '/overtime-management/export/pdf';
+            const params = new URLSearchParams(window.location.search);
+            window.location.href = '/overtime-management/export/pdf?' + params.toString();
         }
         
         function emailReport() {
