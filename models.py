@@ -73,7 +73,8 @@ class Employee(UserMixin, db.Model):
         required_skills = set(skill.id for skill in position.required_skills)
         employee_skills = set(skill.id for skill in self.skills)
         return required_skills.issubset(employee_skills)
-        # ==================== OVERTIME PROPERTIES ====================
+        
+    # ==================== OVERTIME PROPERTIES ====================
     # Add these new properties to the Employee class
     
     @property
@@ -872,7 +873,8 @@ class MaintenanceManager(db.Model):
     
     # Relationships
     employee = db.relationship('Employee', backref=db.backref('maintenance_manager_role', uselist=False))
-    # ==================== OVERTIME TRACKING ====================
+    
+# ==================== OVERTIME TRACKING ====================
 
 class OvertimeHistory(db.Model):
     """Track weekly overtime hours for employees"""
@@ -904,6 +906,7 @@ class SkillRequirement(db.Model):
     shift_type = db.Column(db.String(50), nullable=False)  # day, evening, night
     minimum_required = db.Column(db.Integer, default=1)
     position_id = db.Column(db.Integer, db.ForeignKey('position.id'))
+
 # Add this to the end of your models.py file, after the SkillRequirement class
 
 class FileUpload(db.Model):
