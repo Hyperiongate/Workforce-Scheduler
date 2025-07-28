@@ -148,7 +148,7 @@ def test_dashboard():
 
 @main_bp.route('/overtime-management')
 @login_required
-def overtime_management():
+def overtime_management_main():  # Changed function name to be unique
     """Enhanced overtime management page with multi-level sorting"""
     # Check if user is supervisor
     if not current_user.is_supervisor:
