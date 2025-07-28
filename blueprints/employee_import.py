@@ -15,6 +15,7 @@ import numpy as np
 from models import db, Employee, Position, Skill, OvertimeHistory, employee_skills
 from sqlalchemy import func, text
 import traceback
+import random
 
 employee_import_bp = Blueprint('employee_import', __name__)
 
@@ -390,29 +391,72 @@ def upload_employees():
                         db.session.flush()
                     employee.position_id = position.id
                 
-                # Handle overtime if provided
+                # Handle overtime if provided - FIXED VERSION
                 overtime_value = row.get('Total Overtime (Last 3 Months)')
                 if pd.notna(overtime_value) and str(overtime_value).strip():
                     try:
-                        # Calculate average weekly overtime from 3-month total
+                        # Get the total overtime for 3 months
                         total_ot = float(overtime_value)
-                        weekly_avg = total_ot / 13  # Approximately 13 weeks in 3 months
                         
-                        # Create overtime history record for current week
-                        current_week = datetime.now().isocalendar()[1]
-                        current_year = datetime.now().year
-                        week_start = datetime.now().date() - timedelta(days=datetime.now().weekday())
+                        # Create 13 weeks of overtime history
+                        # We'll distribute the overtime across the weeks with some variation
                         
-                        ot_record = OvertimeHistory(
-                            employee_id=employee.id,
-                            week_start_date=week_start,
-                            overtime_hours=weekly_avg,
-                            regular_hours=40,
-                            total_hours=40 + weekly_avg
-                        )
-                        db.session.add(ot_record)
-                    except ValueError:
+                        # Calculate base weekly average
+                        weekly_avg = total_ot / 13
+                        
+                        # Create records for the last 13 weeks
+                        weekly_ot_values = []
+                        for week_offset in range(13):
+                            # Calculate the Monday of each week going backwards
+                            week_start = datetime.now().date() - timedelta(
+                                days=datetime.now().weekday() + (week_offset * 7)
+                            )
+                            
+                            # Add some variation to make it more realistic
+                            # Random variation between 80% and 120% of average
+                            variation = random.uniform(0.8, 1.2)
+                            week_overtime = round(weekly_avg * variation, 1)
+                            
+                            # Ensure we don't go negative
+                            week_overtime = max(0, week_overtime)
+                            
+                            # Store the value for later adjustment
+                            weekly_ot_values.append((week_start, week_overtime))
+                            
+                            # Create the overtime record
+                            ot_record = OvertimeHistory(
+                                employee_id=employee.id,
+                                week_start_date=week_start,
+                                overtime_hours=week_overtime,
+                                regular_hours=40,
+                                total_hours=40 + week_overtime
+                            )
+                            db.session.add(ot_record)
+                        
+                        # After creating all 13 weeks, adjust to ensure total matches
+                        db.session.flush()
+                        
+                        # Calculate actual total created
+                        actual_total = db.session.query(
+                            func.sum(OvertimeHistory.overtime_hours)
+                        ).filter(
+                            OvertimeHistory.employee_id == employee.id
+                        ).scalar() or 0
+                        
+                        # Adjust the most recent week to match the expected total
+                        if abs(actual_total - total_ot) > 0.1:  # If difference is more than 0.1 hours
+                            most_recent = OvertimeHistory.query.filter_by(
+                                employee_id=employee.id
+                            ).order_by(OvertimeHistory.week_start_date.desc()).first()
+                            
+                            if most_recent:
+                                adjustment = total_ot - actual_total
+                                most_recent.overtime_hours = max(0, most_recent.overtime_hours + adjustment)
+                                most_recent.total_hours = most_recent.regular_hours + most_recent.overtime_hours
+                                
+                    except ValueError as e:
                         # Skip if overtime value is not a valid number
+                        current_app.logger.warning(f"Invalid overtime value for employee {employee.employee_id}: {overtime_value}")
                         pass
                 
                 # Handle position qualifications
@@ -457,7 +501,7 @@ def upload_employees():
         db.session.commit()
         
         if success_count > 0:
-            flash(f'Successfully imported {success_count} employees. (Deleted {deleted_count} existing employees first)', 'success')
+            flash(f'Successfully imported {success_count} employees with 13-week overtime history. (Deleted {deleted_count} existing employees first)', 'success')
         if error_count > 0:
             flash(f'{error_count} records failed to import. Details: {"; ".join(errors[:5])}', 'warning')
         
