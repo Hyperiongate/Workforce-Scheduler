@@ -195,6 +195,7 @@ def overtime_management():
         # Sort by total overtime descending
         employees_data.sort(key=lambda x: x['last_13_weeks_overtime'], reverse=True)
         
+        # Simple HTML response
         html = f"""
         <!DOCTYPE html>
         <html>
@@ -453,30 +454,6 @@ def view_crews():
     
     return html
 
-# API endpoints for any AJAX calls
-@main_bp.route('/api/dashboard-stats')
-@login_required
-def api_dashboard_stats():
-    """Get real-time dashboard statistics"""
-    try:
-        stats = {
-            'pending_time_off': TimeOffRequest.query.filter_by(status='pending').count(),
-            'pending_swaps': ShiftSwapRequest.query.filter_by(status='pending').count(),
-            'coverage_gaps': 0,
-            'pending_suggestions': ScheduleSuggestion.query.filter_by(status='pending').count() if hasattr(ScheduleSuggestion, 'status') else 0,
-            'new_critical_items': 0
-        }
-        return jsonify(stats)
-    except Exception as e:
-        return jsonify({
-            'pending_time_off': 0,
-            'pending_swaps': 0,
-            'coverage_gaps': 0,
-            'pending_suggestions': 0,
-            'new_critical_items': 0,
-            'error': str(e)
-        })
-
 @main_bp.route('/fix-employees-active')
 @login_required
 def fix_employees_active():
@@ -487,7 +464,11 @@ def fix_employees_active():
     
     try:
         # Update all employees to be active
-        updated = Employee.query.update({Employee.is_active: True})
+        employees = Employee.query.all()
+        count = 0
+        for emp in employees:
+            emp.is_active = True
+            count += 1
         db.session.commit()
         
         return f"""
@@ -495,7 +476,7 @@ def fix_employees_active():
         <head><title>Fixed Employees</title></head>
         <body style="font-family: Arial; margin: 50px;">
             <h1>Employee Status Fixed</h1>
-            <p>Updated {updated} employees to active status.</p>
+            <p>Updated {count} employees to active status.</p>
             <p><a href="/overtime-management">Go to Overtime Management</a></p>
             <p><a href="/dashboard">Back to Dashboard</a></p>
         </body>
@@ -578,6 +559,30 @@ def debug_employees():
     """
     
     return html
+
+# API endpoints for any AJAX calls
+@main_bp.route('/api/dashboard-stats')
+@login_required
+def api_dashboard_stats():
+    """Get real-time dashboard statistics"""
+    try:
+        stats = {
+            'pending_time_off': TimeOffRequest.query.filter_by(status='pending').count(),
+            'pending_swaps': ShiftSwapRequest.query.filter_by(status='pending').count(),
+            'coverage_gaps': 0,
+            'pending_suggestions': ScheduleSuggestion.query.filter_by(status='pending').count() if hasattr(ScheduleSuggestion, 'status') else 0,
+            'new_critical_items': 0
+        }
+        return jsonify(stats)
+    except Exception as e:
+        return jsonify({
+            'pending_time_off': 0,
+            'pending_swaps': 0,
+            'coverage_gaps': 0,
+            'pending_suggestions': 0,
+            'new_critical_items': 0,
+            'error': str(e)
+        })
 
 # Error handlers
 @main_bp.errorhandler(404)
