@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, send_file
 from flask_login import login_required, current_user
-from models import db, Schedule, VacationCalendar, Employee, Position, Skill, TimeOffRequest, ShiftSwapRequest, CircadianProfile, CoverageNotification, OvertimeHistory
+from models import db, Schedule, VacationCalendar, Employee, Position, Skill, TimeOffRequest, ShiftSwapRequest, CircadianProfile, CoverageNotification, OvertimeHistory, SleepLog, PositionMessage, PositionMessageRead, MaintenanceIssue, MaintenanceUpdate, ShiftTradePost, ShiftTradeProposal, ShiftTrade
 from datetime import date, timedelta, datetime
 from sqlalchemy import or_, func, case, and_
 
@@ -41,284 +41,7 @@ def view_employees_crews():
                          skills=skills,
                          stats=stats)
 
-@employee_bp.route('/overtime-management')
-@login_required
-def overtime_management():
-    """View and manage overtime tracking with multi-level sorting"""
-    # Check if user is supervisor
-    if not current_user.is_supervisor:
-        flash('You must be a supervisor to access this page.', 'danger')
-        return redirect(url_for('main.dashboard'))
-    
-    try:
-        # Get pagination parameters
-        page = request.args.get('page', 1, type=int)
-        per_page = 25  # Show 25 employees per page
-        
-        # Get filter parameters
-        search_term = request.args.get('search', '')
-        crew_filter = request.args.get('crew', '')
-        position_filter = request.args.get('position', '')
-        ot_range_filter = request.args.get('ot_range', '')
-        
-        # Get sorting parameters
-        sort_params = []
-        for i in range(1, 5):
-            sort_field = request.args.get(f'sort{i}', '')
-            sort_dir = request.args.get(f'dir{i}', 'asc')
-            if sort_field:
-                sort_params.append({'field': sort_field, 'direction': sort_dir})
-        
-        # Calculate date range for 13-week period
-        end_date = date.today()
-        start_date = end_date - timedelta(weeks=13)
-        current_week_start = end_date - timedelta(days=end_date.weekday())
-        
-        # Build query for employees
-        query = Employee.query.filter_by(is_active=True)
-        
-        # Apply search filter
-        if search_term:
-            query = query.filter(
-                or_(
-                    Employee.name.ilike(f'%{search_term}%'),
-                    Employee.employee_id.ilike(f'%{search_term}%')
-                )
-            )
-        
-        # Apply crew filter
-        if crew_filter:
-            query = query.filter(Employee.crew == crew_filter)
-        
-        # Apply position filter
-        if position_filter:
-            query = query.filter(Employee.position_id == int(position_filter))
-        
-        # Apply OT range filter if specified
-        # This will filter based on the Employee model's overtime properties
-        if ot_range_filter:
-            # First get all employees to check their overtime
-            all_employees = query.all()
-            filtered_ids = []
-            
-            for emp in all_employees:
-                # Use the employee's 13-week overtime property
-                total_ot = emp.overtime_13_week_total or 0
-                
-                if ot_range_filter == '0-50' and 0 <= total_ot <= 50:
-                    filtered_ids.append(emp.id)
-                elif ot_range_filter == '50-100' and 50 < total_ot <= 100:
-                    filtered_ids.append(emp.id)
-                elif ot_range_filter == '100-150' and 100 < total_ot <= 150:
-                    filtered_ids.append(emp.id)
-                elif ot_range_filter == '150+' and total_ot > 150:
-                    filtered_ids.append(emp.id)
-            
-            # Filter query by IDs
-            if filtered_ids:
-                query = query.filter(Employee.id.in_(filtered_ids))
-            else:
-                # No employees match the filter
-                query = query.filter(Employee.id == -1)  # This will return no results
-        
-        # Apply multi-level sorting
-        if sort_params:
-            for sort in sort_params:
-                if sort['field'] == 'crew':
-                    if sort['direction'] == 'asc':
-                        query = query.order_by(Employee.crew.asc())
-                    else:
-                        query = query.order_by(Employee.crew.desc())
-                
-                elif sort['field'] == 'jobtitle':
-                    # Join with Position table if sorting by job title
-                    if not any(isinstance(entity, type(Position)) for entity in query.column_descriptions):
-                        query = query.outerjoin(Position, Employee.position_id == Position.id)
-                    if sort['direction'] == 'asc':
-                        query = query.order_by(Position.name.asc())
-                    else:
-                        query = query.order_by(Position.name.desc())
-                
-                elif sort['field'] == 'seniority':
-                    if sort['direction'] == 'asc':
-                        query = query.order_by(Employee.hire_date.desc())  # Newest first
-                    else:
-                        query = query.order_by(Employee.hire_date.asc())   # Oldest first
-                
-                elif sort['field'] == 'overtime':
-                    # Sort by 13-week overtime total
-                    # Since this is a property, we need to sort after fetching
-                    pass  # Handle this after pagination
-        else:
-            # Default sort by name
-            query = query.order_by(Employee.name)
-        
-        # If sorting by overtime, we need to handle this differently
-        if any(sort['field'] == 'overtime' for sort in sort_params):
-            # Get all employees first
-            all_employees = query.all()
-            
-            # Sort by overtime
-            overtime_sort = next(sort for sort in sort_params if sort['field'] == 'overtime')
-            reverse = overtime_sort['direction'] == 'desc'
-            all_employees.sort(key=lambda e: e.overtime_13_week_total or 0, reverse=reverse)
-            
-            # Manual pagination
-            total_count = len(all_employees)
-            total_pages = (total_count + per_page - 1) // per_page
-            start_idx = (page - 1) * per_page
-            end_idx = start_idx + per_page
-            page_employees = all_employees[start_idx:end_idx]
-            
-            # Create a pagination-like object
-            class PaginationResult:
-                def __init__(self, items, page, pages):
-                    self.items = items
-                    self.page = page
-                    self.pages = pages
-            
-            paginated_results = PaginationResult(page_employees, page, total_pages)
-        else:
-            # Normal pagination
-            paginated_results = query.paginate(page=page, per_page=per_page, error_out=False)
-        
-        # Process results for display
-        employees_data = []
-        high_overtime_employees = []
-        
-        for employee in paginated_results.items:
-            # Use the Employee model's properties for overtime data
-            # These should be calculated from the uploaded data
-            current_week_ot = round(employee.overtime_current_week or 0)
-            total_13_week_ot = round(employee.overtime_13_week_total or 0)
-            avg_weekly_ot = round(employee.overtime_13_week_average or 0)
-            
-            # Calculate seniority in years
-            if employee.hire_date:
-                years_employed = (datetime.now().date() - employee.hire_date).days / 365.25
-            else:
-                years_employed = 0
-            
-            # Determine overtime trend based on the values
-            if total_13_week_ot > 200:
-                trend = 'increasing'
-            elif total_13_week_ot < 100:
-                trend = 'decreasing'
-            else:
-                trend = 'stable'
-            
-            employee_data = {
-                'id': employee.id,
-                'name': employee.name,
-                'employee_id': employee.employee_id or f'EMP{employee.id}',
-                'crew': employee.crew,
-                'position': employee.position,
-                'position_id': employee.position_id if employee.position else None,
-                'hire_date': employee.hire_date,
-                'years_employed': int(years_employed),
-                'current_week_overtime': current_week_ot,
-                'last_13_weeks_overtime': total_13_week_ot,
-                'average_weekly_overtime': avg_weekly_ot,
-                'overtime_trend': trend
-            }
-            
-            employees_data.append(employee_data)
-            
-            # Track high overtime employees
-            if current_week_ot > 60:
-                high_overtime_employees.append(employee_data)
-        
-        # Get all positions for filter dropdown
-        positions = Position.query.order_by(Position.name).all()
-        
-        # Calculate statistics for the dashboard
-        all_active_employees = Employee.query.filter_by(is_active=True).all()
-        
-        total_overtime_hours = sum(round(emp.overtime_13_week_total or 0) for emp in all_active_employees)
-        total_employees = len(all_active_employees)
-        avg_overtime = round(total_overtime_hours / total_employees) if total_employees > 0 else 0
-        employees_with_overtime = len([emp for emp in all_active_employees if (emp.overtime_13_week_total or 0) > 0])
-        
-        # Calculate crew overtime data for charts
-        crew_overtime_data = [0, 0, 0, 0]  # For crews A, B, C, D
-        crew_map = {'A': 0, 'B': 1, 'C': 2, 'D': 3}
-        
-        for emp in all_active_employees:
-            if emp.crew in crew_map:
-                crew_overtime_data[crew_map[emp.crew]] += round(emp.overtime_13_week_total or 0)
-        
-        return render_template('overtime_management.html',
-                             employees=employees_data,
-                             positions=positions,
-                             page=paginated_results.page if hasattr(paginated_results, 'page') else page,
-                             total_pages=paginated_results.pages if hasattr(paginated_results, 'pages') else 1,
-                             start_date=start_date,
-                             end_date=end_date,
-                             current_date=datetime.now().date(),
-                             high_overtime_employees=high_overtime_employees,
-                             # Pass current filter/sort values back to template
-                             search_term=search_term,
-                             crew_filter=crew_filter,
-                             position_filter=position_filter,
-                             ot_range_filter=ot_range_filter,
-                             sort_params=sort_params,
-                             # Statistics
-                             total_overtime_hours=total_overtime_hours,
-                             employees_with_overtime=employees_with_overtime,
-                             avg_overtime=avg_overtime,
-                             high_overtime_count=len(high_overtime_employees),
-                             crew_overtime_data=crew_overtime_data)
-                             
-    except Exception as e:
-        # Log error and show user-friendly message
-        print(f"Error in overtime_management: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        
-        # Fallback to show all employees with zero overtime
-        try:
-            employees = Employee.query.filter_by(is_active=True).order_by(Employee.crew, Employee.name).all()
-            employees_data = []
-            
-            for emp in employees:
-                employees_data.append({
-                    'id': emp.id,
-                    'name': emp.name,
-                    'employee_id': emp.employee_id or f'EMP{emp.id}',
-                    'crew': emp.crew,
-                    'position': emp.position,
-                    'position_id': emp.position_id if emp.position else None,
-                    'hire_date': emp.hire_date,
-                    'years_employed': 0,
-                    'current_week_overtime': 0,
-                    'last_13_weeks_overtime': 0,
-                    'average_weekly_overtime': 0,
-                    'overtime_trend': 'stable'
-                })
-            
-            return render_template('overtime_management.html',
-                                 employees=employees_data,
-                                 positions=Position.query.all(),
-                                 page=1,
-                                 total_pages=1,
-                                 start_date=date.today() - timedelta(weeks=13),
-                                 end_date=date.today(),
-                                 current_date=date.today(),
-                                 high_overtime_employees=[],
-                                 search_term='',
-                                 crew_filter='',
-                                 position_filter='',
-                                 ot_range_filter='',
-                                 sort_params=[],
-                                 total_overtime_hours=0,
-                                 employees_with_overtime=0,
-                                 avg_overtime=0,
-                                 high_overtime_count=0,
-                                 crew_overtime_data=[0, 0, 0, 0])
-        except Exception as fallback_error:
-            print(f"Fallback error: {str(fallback_error)}")
-            flash('Error loading overtime data. Please try again later.', 'danger')
-            return redirect(url_for('main.dashboard'))
+# REMOVED THE DUPLICATE /overtime-management ROUTE - IT'S NOW IN main.py
 
 @employee_bp.route('/overtime-management/export/excel')
 @login_required
@@ -352,7 +75,7 @@ def export_overtime_excel():
         start_date = end_date - timedelta(weeks=13)
         
         # Build query (same as main view but without pagination)
-        query = Employee.query.filter_by(is_active=True)
+        query = Employee.query.filter(Employee.id != current_user.id)
         
         # Apply filters
         if search_term:
@@ -369,521 +92,337 @@ def export_overtime_excel():
         if position_filter:
             query = query.filter(Employee.position_id == int(position_filter))
         
+        # Get all employees
+        employees = query.all()
+        
         # Apply OT range filter if specified
         if ot_range_filter:
-            all_employees = query.all()
-            filtered_ids = []
+            filtered_employees = []
+            thirteen_weeks_ago = datetime.now().date() - timedelta(weeks=13)
             
-            for emp in all_employees:
-                total_ot = emp.overtime_13_week_total or 0
+            for emp in employees:
+                overtime_total = db.session.query(func.sum(OvertimeHistory.overtime_hours)).filter(
+                    OvertimeHistory.employee_id == emp.id,
+                    OvertimeHistory.week_start_date >= thirteen_weeks_ago
+                ).scalar() or 0.0
                 
-                if ot_range_filter == '0-50' and 0 <= total_ot <= 50:
-                    filtered_ids.append(emp.id)
-                elif ot_range_filter == '50-100' and 50 < total_ot <= 100:
-                    filtered_ids.append(emp.id)
-                elif ot_range_filter == '100-150' and 100 < total_ot <= 150:
-                    filtered_ids.append(emp.id)
-                elif ot_range_filter == '150+' and total_ot > 150:
-                    filtered_ids.append(emp.id)
+                if ot_range_filter == '0-50' and 0 <= overtime_total <= 50:
+                    filtered_employees.append(emp)
+                elif ot_range_filter == '50-100' and 50 < overtime_total <= 100:
+                    filtered_employees.append(emp)
+                elif ot_range_filter == '100-150' and 100 < overtime_total <= 150:
+                    filtered_employees.append(emp)
+                elif ot_range_filter == '150-200' and 150 < overtime_total <= 200:
+                    filtered_employees.append(emp)
+                elif ot_range_filter == '200+' and overtime_total > 200:
+                    filtered_employees.append(emp)
             
-            if filtered_ids:
-                query = query.filter(Employee.id.in_(filtered_ids))
-            else:
-                query = query.filter(Employee.id == -1)
+            employees = filtered_employees
         
-        # Apply sorting
-        if sort_params:
-            for sort in sort_params:
-                if sort['field'] == 'crew':
-                    if sort['direction'] == 'asc':
-                        query = query.order_by(Employee.crew.asc())
-                    else:
-                        query = query.order_by(Employee.crew.desc())
-                elif sort['field'] == 'jobtitle':
-                    query = query.outerjoin(Position, Employee.position_id == Position.id)
-                    if sort['direction'] == 'asc':
-                        query = query.order_by(Position.name.asc())
-                    else:
-                        query = query.order_by(Position.name.desc())
-                elif sort['field'] == 'seniority':
-                    if sort['direction'] == 'asc':
-                        query = query.order_by(Employee.hire_date.desc())
-                    else:
-                        query = query.order_by(Employee.hire_date.asc())
-                elif sort['field'] == 'overtime':
-                    # Handle overtime sorting after fetching
-                    pass
-        else:
-            query = query.order_by(Employee.name)
-        
-        # Get all results
-        results = query.all()
-        
-        # If sorting by overtime, sort the results
-        if any(sort['field'] == 'overtime' for sort in sort_params):
-            overtime_sort = next(sort for sort in sort_params if sort['field'] == 'overtime')
-            reverse = overtime_sort['direction'] == 'desc'
-            results.sort(key=lambda e: e.overtime_13_week_total or 0, reverse=reverse)
-        
-        # Create Excel workbook
+        # Create workbook
         wb = Workbook()
         ws = wb.active
         ws.title = "Overtime Report"
         
-        # Add title row
-        ws.merge_cells('A1:I1')
-        title_cell = ws['A1']
-        title_cell.value = f"Overtime Report ({start_date.strftime('%b %d')} - {end_date.strftime('%b %d, %Y')})"
-        title_cell.font = Font(size=16, bold=True)
-        title_cell.alignment = Alignment(horizontal="center")
-        
         # Headers
-        headers = ['Employee Name', 'Employee ID', 'Crew', 'Position', 'Seniority (Years)', 
-                   'Current Week OT', '13-Week Total OT', 'Weekly Average', 'Trend']
+        headers = ['Employee ID', 'Name', 'Crew', 'Position', 'Date of Hire', 
+                  'Current Week OT', '13-Week Total', 'Weekly Average']
         
+        # Style for headers
+        header_font = Font(bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="11998e", end_color="11998e", fill_type="solid")
+        header_alignment = Alignment(horizontal="center", vertical="center")
+        
+        # Write headers
         for col, header in enumerate(headers, 1):
-            cell = ws.cell(row=3, column=col, value=header)
-            cell.font = Font(bold=True, color="FFFFFF")
-            cell.fill = PatternFill(start_color="11998e", end_color="11998e", fill_type="solid")
-            cell.alignment = Alignment(horizontal="center")
+            cell = ws.cell(row=1, column=col, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = header_alignment
         
-        # Data rows
-        row_num = 4
-        for employee in results:
-            # Get overtime values
-            current_week_ot = round(employee.overtime_current_week or 0)
-            total_13_week_ot = round(employee.overtime_13_week_total or 0)
-            avg_weekly_ot = round(employee.overtime_13_week_average or 0)
+        # Get overtime data and write rows
+        row_num = 2
+        thirteen_weeks_ago = datetime.now().date() - timedelta(weeks=13)
+        
+        for emp in employees:
+            # Get overtime data
+            overtime_total = db.session.query(func.sum(OvertimeHistory.overtime_hours)).filter(
+                OvertimeHistory.employee_id == emp.id,
+                OvertimeHistory.week_start_date >= thirteen_weeks_ago
+            ).scalar() or 0.0
             
-            # Calculate seniority
-            if employee.hire_date:
-                years_employed = int((datetime.now().date() - employee.hire_date).days / 365.25)
-            else:
-                years_employed = 0
+            current_week_start = datetime.now().date() - timedelta(days=datetime.now().weekday())
+            current_week_ot = db.session.query(func.sum(OvertimeHistory.overtime_hours)).filter(
+                OvertimeHistory.employee_id == emp.id,
+                OvertimeHistory.week_start_date == current_week_start
+            ).scalar() or 0.0
             
-            # Determine trend
-            if total_13_week_ot > 200:
-                trend = 'Increasing'
-            elif total_13_week_ot < 100:
-                trend = 'Decreasing'
-            else:
-                trend = 'Stable'
+            # Write row
+            ws.cell(row=row_num, column=1, value=emp.employee_id or f'EMP{emp.id}')
+            ws.cell(row=row_num, column=2, value=emp.name)
+            ws.cell(row=row_num, column=3, value=emp.crew or 'Unassigned')
+            ws.cell(row=row_num, column=4, value=emp.position.name if emp.position else 'No Position')
+            ws.cell(row=row_num, column=5, value=emp.hire_date.strftime('%Y-%m-%d') if emp.hire_date else 'N/A')
+            ws.cell(row=row_num, column=6, value=round(current_week_ot, 1))
+            ws.cell(row=row_num, column=7, value=round(overtime_total, 1))
+            ws.cell(row=row_num, column=8, value=round(overtime_total / 13, 1))
             
-            ws.cell(row=row_num, column=1, value=employee.name)
-            ws.cell(row=row_num, column=2, value=employee.employee_id or f'EMP{employee.id}')
-            ws.cell(row=row_num, column=3, value=employee.crew or '-')
-            ws.cell(row=row_num, column=4, value=employee.position.name if employee.position else '-')
-            ws.cell(row=row_num, column=5, value=years_employed)
-            ws.cell(row=row_num, column=6, value=current_week_ot)
-            ws.cell(row=row_num, column=7, value=total_13_week_ot)
-            ws.cell(row=row_num, column=8, value=avg_weekly_ot)
-            ws.cell(row=row_num, column=9, value=trend)
-            
-            # Highlight high overtime
-            if current_week_ot > 60:
-                for col in range(1, 10):
+            # Apply conditional formatting for high overtime
+            if overtime_total > 200:
+                for col in range(1, 9):
                     ws.cell(row=row_num, column=col).fill = PatternFill(
-                        start_color="FFCCCC", end_color="FFCCCC", fill_type="solid"
+                        start_color="FFEBEE", end_color="FFEBEE", fill_type="solid"
+                    )
+            elif overtime_total > 150:
+                for col in range(1, 9):
+                    ws.cell(row=row_num, column=col).fill = PatternFill(
+                        start_color="FFF8E1", end_color="FFF8E1", fill_type="solid"
                     )
             
             row_num += 1
         
-        # Add summary row
-        ws.cell(row=row_num + 1, column=1, value="TOTAL")
-        ws.cell(row=row_num + 1, column=1).font = Font(bold=True)
-        ws.cell(row=row_num + 1, column=6, value=sum(round(e.overtime_current_week or 0) for e in results))
-        ws.cell(row=row_num + 1, column=7, value=sum(round(e.overtime_13_week_total or 0) for e in results))
-        
-        # Auto-fit columns
-        for column in ws.columns:
+        # Adjust column widths
+        for col in ws.columns:
             max_length = 0
-            column_letter = column[0].column_letter
-            for cell in column:
+            column = col[0].column_letter
+            for cell in col:
                 try:
                     if len(str(cell.value)) > max_length:
                         max_length = len(str(cell.value))
                 except:
                     pass
             adjusted_width = min(max_length + 2, 50)
-            ws.column_dimensions[column_letter].width = adjusted_width
+            ws.column_dimensions[column].width = adjusted_width
         
         # Save to BytesIO object
-        excel_file = io.BytesIO()
-        wb.save(excel_file)
-        excel_file.seek(0)
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
         
-        # Return as download
+        filename = f'overtime_report_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
+        
         return send_file(
-            excel_file,
+            output,
             mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             as_attachment=True,
-            download_name=f'overtime_report_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
+            download_name=filename
         )
         
     except Exception as e:
-        print(f"Error exporting to Excel: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        flash('Error exporting data. Please try again.', 'danger')
-        return redirect(url_for('employee.overtime_management'))
+        flash(f'Error exporting data: {str(e)}', 'danger')
+        return redirect(url_for('main.overtime_management'))
 
 @employee_bp.route('/vacation/request', methods=['GET', 'POST'])
 @login_required
 def vacation_request():
-    """Request time off"""
+    """Handle vacation/time-off requests"""
     if request.method == 'POST':
         request_type = request.form.get('request_type')
         start_date = datetime.strptime(request.form.get('start_date'), '%Y-%m-%d').date()
         end_date = datetime.strptime(request.form.get('end_date'), '%Y-%m-%d').date()
-        reason = request.form.get('reason', '')
+        reason = request.form.get('reason')
         
-        # Calculate days (excluding weekends)
-        days_requested = 0
-        current = start_date
-        while current <= end_date:
-            if current.weekday() < 5:  # Monday = 0, Friday = 4
-                days_requested += 1
-            current += timedelta(days=1)
+        # Validate dates
+        if start_date < date.today():
+            flash('Start date cannot be in the past', 'danger')
+            return redirect(url_for('employee.vacation_request'))
         
-        # Check balance
+        if end_date < start_date:
+            flash('End date must be after start date', 'danger')
+            return redirect(url_for('employee.vacation_request'))
+        
+        # Calculate days requested
+        days_requested = (end_date - start_date).days + 1
+        
+        # Check available balance
         if request_type == 'vacation' and days_requested > current_user.vacation_days:
-            flash('Insufficient vacation days available.', 'danger')
+            flash(f'Insufficient vacation days. You have {current_user.vacation_days} days available.', 'danger')
             return redirect(url_for('employee.vacation_request'))
         elif request_type == 'sick' and days_requested > current_user.sick_days:
-            flash('Insufficient sick days available.', 'danger')
+            flash(f'Insufficient sick days. You have {current_user.sick_days} days available.', 'danger')
             return redirect(url_for('employee.vacation_request'))
         elif request_type == 'personal' and days_requested > current_user.personal_days:
-            flash('Insufficient personal days available.', 'danger')
+            flash(f'Insufficient personal days. You have {current_user.personal_days} days available.', 'danger')
             return redirect(url_for('employee.vacation_request'))
         
         # Create request
-        time_off = TimeOffRequest(
+        time_off_request = TimeOffRequest(
             employee_id=current_user.id,
             request_type=request_type,
             start_date=start_date,
             end_date=end_date,
-            days_requested=days_requested,
             reason=reason,
-            status='pending'
+            status='pending',
+            created_at=datetime.now()
         )
         
-        db.session.add(time_off)
+        db.session.add(time_off_request)
         db.session.commit()
         
         flash('Time off request submitted successfully!', 'success')
         return redirect(url_for('main.employee_dashboard'))
     
+    # GET request - show form
     return render_template('vacation_request.html',
                          vacation_days=current_user.vacation_days,
                          sick_days=current_user.sick_days,
                          personal_days=current_user.personal_days)
 
-@employee_bp.route('/swap-request', methods=['POST'])
+@employee_bp.route('/shift-marketplace')
 @login_required
-def create_swap_request():
-    """Create a shift swap request"""
-    schedule_id = request.form.get('schedule_id')
-    reason = request.form.get('reason', '')
+def shift_marketplace():
+    """Shift trading marketplace"""
+    # Get active trade posts
+    active_posts = ShiftTradePost.query.filter(
+        ShiftTradePost.status == 'active',
+        ShiftTradePost.shift_date >= date.today()
+    ).order_by(ShiftTradePost.shift_date).all()
     
-    schedule = Schedule.query.get_or_404(schedule_id)
+    # Get user's posts
+    my_posts = ShiftTradePost.query.filter(
+        ShiftTradePost.employee_id == current_user.id,
+        ShiftTradePost.shift_date >= date.today()
+    ).order_by(ShiftTradePost.shift_date).all()
     
-    if schedule.employee_id != current_user.id:
-        flash('You can only request swaps for your own shifts.', 'danger')
-        return redirect(url_for('main.employee_dashboard'))
+    # Get proposals for user's posts
+    my_proposals = ShiftTradeProposal.query.join(ShiftTradePost).filter(
+        ShiftTradePost.employee_id == current_user.id,
+        ShiftTradeProposal.status == 'pending'
+    ).all()
     
-    # Create swap request
-    swap_request = ShiftSwapRequest(
-        requester_id=current_user.id,
-        original_schedule_id=schedule_id,
-        reason=reason,
-        status='pending'
-    )
+    # Get user's pending proposals
+    pending_proposals = ShiftTradeProposal.query.filter(
+        ShiftTradeProposal.proposer_id == current_user.id,
+        ShiftTradeProposal.status == 'pending'
+    ).all()
     
-    db.session.add(swap_request)
-    db.session.commit()
-    
-    flash('Shift swap request submitted! Both supervisors will need to approve.', 'success')
-    return redirect(url_for('main.employee_dashboard'))
+    return render_template('shift_marketplace.html',
+                         active_posts=active_posts,
+                         my_posts=my_posts,
+                         my_proposals=my_proposals,
+                         pending_proposals=pending_proposals)
 
 @employee_bp.route('/sleep-dashboard')
 @login_required
 def sleep_dashboard():
-    """Main sleep health dashboard"""
+    """Sleep health dashboard"""
     # Get or create circadian profile
     profile = CircadianProfile.query.filter_by(employee_id=current_user.id).first()
+    
     if not profile:
+        # Redirect to profile creation
         return redirect(url_for('employee.sleep_profile'))
     
     # Get recent sleep logs
-    from models import SleepLog, SleepRecommendation
-    recent_logs = SleepLog.query.filter_by(
+    sleep_logs = SleepLog.query.filter_by(
         employee_id=current_user.id
     ).order_by(SleepLog.date.desc()).limit(7).all()
     
-    # Get active recommendations
-    recommendations = SleepRecommendation.query.filter_by(
-        employee_id=current_user.id,
-        is_active=True
-    ).order_by(SleepRecommendation.priority).all()
-    
-    # Get upcoming shift changes
-    upcoming_schedules = Schedule.query.filter(
-        Schedule.employee_id == current_user.id,
-        Schedule.date >= date.today(),
-        Schedule.date <= date.today() + timedelta(days=14)
-    ).order_by(Schedule.date).all()
+    # Calculate sleep metrics
+    if sleep_logs:
+        avg_duration = sum(log.sleep_duration or 0 for log in sleep_logs) / len(sleep_logs)
+        avg_quality = sum(log.sleep_quality or 0 for log in sleep_logs) / len(sleep_logs)
+    else:
+        avg_duration = 0
+        avg_quality = 0
     
     return render_template('sleep_dashboard.html',
                          profile=profile,
-                         recent_logs=recent_logs,
-                         recommendations=recommendations,
-                         upcoming_schedules=upcoming_schedules)
+                         sleep_logs=sleep_logs,
+                         avg_duration=avg_duration,
+                         avg_quality=avg_quality)
 
 @employee_bp.route('/sleep-profile', methods=['GET', 'POST'])
 @login_required
 def sleep_profile():
-    """Complete chronotype assessment"""
+    """Create or update circadian profile"""
+    profile = CircadianProfile.query.filter_by(employee_id=current_user.id).first()
+    
     if request.method == 'POST':
-        # Create or update circadian profile
-        profile = CircadianProfile.query.filter_by(employee_id=current_user.id).first()
-        if not profile:
-            profile = CircadianProfile(employee_id=current_user.id)
+        chronotype = request.form.get('chronotype')
+        preferred_shift = request.form.get('preferred_shift')
+        sleep_goal = int(request.form.get('sleep_goal', 8))
         
-        profile.chronotype = request.form.get('chronotype')
-        profile.preferred_sleep_time = datetime.strptime(request.form.get('preferred_sleep_time'), '%H:%M').time()
-        profile.preferred_wake_time = datetime.strptime(request.form.get('preferred_wake_time'), '%H:%M').time()
+        if profile:
+            profile.chronotype = chronotype
+            profile.preferred_shift_type = preferred_shift
+            profile.sleep_goal = sleep_goal
+            profile.updated_at = datetime.now()
+        else:
+            profile = CircadianProfile(
+                employee_id=current_user.id,
+                chronotype=chronotype,
+                preferred_shift_type=preferred_shift,
+                sleep_goal=sleep_goal,
+                assessment_completed=datetime.now()
+            )
+            db.session.add(profile)
         
-        db.session.add(profile)
         db.session.commit()
-        
         flash('Sleep profile updated successfully!', 'success')
         return redirect(url_for('employee.sleep_dashboard'))
     
-    profile = CircadianProfile.query.filter_by(employee_id=current_user.id).first()
     return render_template('sleep_profile_form.html', profile=profile)
 
 @employee_bp.route('/position/messages')
 @login_required
 def position_messages():
-    """View messages for employee's position"""
+    """View messages for your position"""
     if not current_user.position_id:
-        flash('You must be assigned to a position to view position messages.', 'warning')
+        flash('You must have a position assigned to view position messages.', 'warning')
         return redirect(url_for('main.employee_dashboard'))
     
-    from models import PositionMessage
-    
     # Get messages for user's position
-    messages_query = PositionMessage.query.filter_by(
+    messages = PositionMessage.query.filter_by(
         position_id=current_user.position_id
-    ).filter(
-        or_(
-            PositionMessage.expires_at.is_(None),
-            PositionMessage.expires_at > datetime.now()
-        )
-    )
-    
-    # Filter by shift if specified
-    shift_filter = request.args.get('shift', 'all')
-    if shift_filter != 'all':
-        messages_query = messages_query.filter(
-            or_(
-                PositionMessage.target_shifts == 'all',
-                PositionMessage.target_shifts.contains(shift_filter)
-            )
-        )
-    
-    # Get pinned messages first, then others by date
-    pinned_messages = messages_query.filter_by(pinned=True).all()
-    recent_messages = messages_query.filter_by(pinned=False).order_by(
-        PositionMessage.sent_at.desc()
-    ).limit(50).all()
+    ).order_by(PositionMessage.sent_at.desc()).all()
     
     # Mark messages as read
-    for message in pinned_messages + recent_messages:
-        if not message.is_read_by(current_user.id):
-            message.mark_read_by(current_user.id)
+    for message in messages:
+        read_receipt = PositionMessageRead.query.filter_by(
+            message_id=message.id,
+            reader_id=current_user.id
+        ).first()
+        
+        if not read_receipt:
+            read_receipt = PositionMessageRead(
+                message_id=message.id,
+                reader_id=current_user.id,
+                read_at=datetime.now()
+            )
+            db.session.add(read_receipt)
     
     db.session.commit()
     
-    # Get colleagues in same position but different shifts
-    colleagues = Employee.query.filter(
-        Employee.position_id == current_user.position_id,
-        Employee.id != current_user.id,
-        Employee.crew != current_user.crew
-    ).all()
-    
-    return render_template('position_messages.html',
-                         pinned_messages=pinned_messages,
-                         recent_messages=recent_messages,
-                         colleagues=colleagues,
-                         current_position=current_user.position,
-                         shift_filter=shift_filter)
-
-@employee_bp.route('/shift-marketplace')
-@login_required
-def shift_marketplace():
-    """Main shift trade marketplace view"""
-    from models import ShiftTradePost, ShiftTrade, ShiftTradeProposal
-    
-    # Get filters from query params
-    filters = {
-        'start_date': request.args.get('start_date', date.today().strftime('%Y-%m-%d')),
-        'end_date': request.args.get('end_date', (date.today() + timedelta(days=30)).strftime('%Y-%m-%d')),
-        'shift_type': request.args.get('shift_type', ''),
-        'position': request.args.get('position', ''),
-        'compatibility': request.args.get('compatibility', '')
-    }
-    
-    # Get available trades (exclude user's own posts)
-    available_trades_query = ShiftTradePost.query.filter(
-        ShiftTradePost.status == 'active',
-        ShiftTradePost.poster_id != current_user.id
-    ).join(Schedule)
-    
-    # Apply filters
-    if filters['start_date']:
-        available_trades_query = available_trades_query.filter(
-            Schedule.date >= datetime.strptime(filters['start_date'], '%Y-%m-%d').date()
-        )
-    if filters['end_date']:
-        available_trades_query = available_trades_query.filter(
-            Schedule.date <= datetime.strptime(filters['end_date'], '%Y-%m-%d').date()
-        )
-    if filters['shift_type']:
-        available_trades_query = available_trades_query.filter(
-            Schedule.shift_type == filters['shift_type']
-        )
-    if filters['position']:
-        available_trades_query = available_trades_query.filter(
-            Schedule.position_id == int(filters['position'])
-        )
-    
-    available_trades = available_trades_query.order_by(Schedule.date).all()
-    
-    # Calculate compatibility for each trade
-    from utils.helpers import calculate_trade_compatibility
-    for trade in available_trades:
-        trade.compatibility = calculate_trade_compatibility(current_user, trade)
-    
-    # Filter by compatibility if specified
-    if filters['compatibility']:
-        available_trades = [t for t in available_trades if t.compatibility == filters['compatibility']]
-    
-    # Get user's posted shifts
-    my_posts = ShiftTradePost.query.filter_by(
-        poster_id=current_user.id,
-        status='active'
-    ).all()
-    
-    # Get user's active trades
-    my_trades = ShiftTrade.query.filter(
-        or_(
-            ShiftTrade.employee1_id == current_user.id,
-            ShiftTrade.employee2_id == current_user.id
-        ),
-        ShiftTrade.status.in_(['pending', 'approved'])
-    ).all()
-    
-    # Get trade history
-    from utils.helpers import get_trade_history
-    trade_history = get_trade_history(current_user.id)
-    
-    # Get upcoming shifts for posting
-    my_upcoming_shifts = Schedule.query.filter(
-        Schedule.employee_id == current_user.id,
-        Schedule.date >= date.today(),
-        Schedule.date <= date.today() + timedelta(days=60)
-    ).order_by(Schedule.date).all()
-    
-    # Get positions for filter
-    positions = Position.query.all()
-    
-    # Calculate statistics
-    stats = {
-        'available_trades': len(available_trades),
-        'my_posted_shifts': len(my_posts),
-        'my_active_trades': len(my_trades),
-        'pending_trades': len([t for t in my_trades if t.status == 'pending']),
-        'completed_trades': ShiftTrade.query.filter(
-            or_(
-                ShiftTrade.employee1_id == current_user.id,
-                ShiftTrade.employee2_id == current_user.id
-            ),
-            ShiftTrade.status == 'completed'
-        ).count()
-    }
-    
-    return render_template('shift_marketplace.html',
-                         available_trades=available_trades,
-                         my_posts=my_posts,
-                         my_trades=my_trades,
-                         trade_history=trade_history,
-                         my_upcoming_shifts=my_upcoming_shifts,
-                         positions=positions,
-                         filters=filters,
-                         stats=stats)
+    return render_template('position_messages.html', messages=messages)
 
 @employee_bp.route('/maintenance/report', methods=['GET', 'POST'])
 @login_required
 def report_maintenance():
     """Report a maintenance issue"""
     if request.method == 'POST':
-        try:
-            from models import MaintenanceIssue, MaintenanceUpdate, MaintenanceManager
-            
-            title = request.form.get('title')
-            description = request.form.get('description')
-            location = request.form.get('location')
-            category = request.form.get('category', 'general')
-            priority = request.form.get('priority', 'normal')
-            safety_issue = request.form.get('safety_issue') == 'on'
-            
-            # Create issue
-            issue = MaintenanceIssue(
-                reporter_id=current_user.id,
-                title=title,
-                description=description,
-                location=location,
-                category=category,
-                priority=priority,
-                safety_issue=safety_issue,
-                status='open',
-                reported_at=datetime.now()
-            )
-            
-            # Try to auto-assign to primary maintenance manager if exists
-            try:
-                primary_manager = MaintenanceManager.query.filter_by(is_primary=True).first()
-                if primary_manager:
-                    issue.assigned_to_id = primary_manager.employee_id
-            except:
-                pass
-            
-            db.session.add(issue)
-            db.session.flush()
-            
-            # Create initial update
-            try:
-                update = MaintenanceUpdate(
-                    issue_id=issue.id,
-                    author_id=current_user.id,
-                    update_type='comment',
-                    message=f"Issue reported: {description}",
-                    created_at=datetime.now()
-                )
-                db.session.add(update)
-            except:
-                pass
-            
-            db.session.commit()
-            
-            flash('Maintenance issue reported successfully!', 'success')
-            return redirect(url_for('employee.maintenance_issues'))
-            
-        except Exception as e:
-            db.session.rollback()
-            flash(f'Error reporting issue: {str(e)}', 'danger')
-            return redirect(url_for('employee.report_maintenance'))
+        title = request.form.get('title')
+        description = request.form.get('description')
+        location = request.form.get('location')
+        category = request.form.get('category', 'equipment')
+        priority = request.form.get('priority', 'medium')
+        
+        issue = MaintenanceIssue(
+            reporter_id=current_user.id,
+            title=title,
+            description=description,
+            location=location,
+            category=category,
+            priority=priority,
+            status='new',
+            created_at=datetime.now()
+        )
+        
+        db.session.add(issue)
+        db.session.commit()
+        
+        flash('Maintenance issue reported successfully!', 'success')
+        return redirect(url_for('employee.maintenance_issues'))
     
     return render_template('report_maintenance.html')
 
@@ -891,64 +430,239 @@ def report_maintenance():
 @login_required
 def maintenance_issues():
     """View maintenance issues"""
-    from models import MaintenanceIssue, MaintenanceManager
-    
-    # Check if user is a maintenance manager
-    is_manager = False
-    try:
-        manager_check = MaintenanceManager.query.filter_by(employee_id=current_user.id).first()
-        is_manager = manager_check is not None
-    except:
-        is_manager = False
-    
-    # Base query
-    if is_manager:
-        # Managers see all issues
-        issues_query = MaintenanceIssue.query
-    else:
-        # Regular employees see only their reported issues
-        issues_query = MaintenanceIssue.query.filter_by(reporter_id=current_user.id)
-    
-    # Apply filters
-    status_filter = request.args.get('status', 'active')
-    if status_filter == 'active':
-        issues_query = issues_query.filter(
-            MaintenanceIssue.status.in_(['open', 'acknowledged', 'in_progress'])
-        )
-    elif status_filter != 'all':
-        issues_query = issues_query.filter_by(status=status_filter)
-    
-    # Sort by priority and date
-    from sqlalchemy import case
-    issues = issues_query.order_by(
+    # Get all open issues
+    open_issues = MaintenanceIssue.query.filter(
+        MaintenanceIssue.status.in_(['new', 'in_progress'])
+    ).order_by(
         case(
             (MaintenanceIssue.priority == 'critical', 1),
             (MaintenanceIssue.priority == 'high', 2),
-            (MaintenanceIssue.priority == 'normal', 3),
+            (MaintenanceIssue.priority == 'medium', 3),
             (MaintenanceIssue.priority == 'low', 4)
-        ),
-        MaintenanceIssue.reported_at.desc()
+        )
     ).all()
     
-    # Get statistics for managers
-    stats = {
-        'open': 0,
-        'in_progress': 0,
-        'resolved': 0,
-        'critical': 0
-    }
-    
-    if is_manager:
-        try:
-            stats['open'] = MaintenanceIssue.query.filter_by(status='open').count()
-            stats['in_progress'] = MaintenanceIssue.query.filter_by(status='in_progress').count()
-            stats['resolved'] = MaintenanceIssue.query.filter_by(status='resolved').count()
-            stats['critical'] = MaintenanceIssue.query.filter_by(priority='critical', status='open').count()
-        except:
-            pass
+    # Get user's reported issues
+    my_issues = MaintenanceIssue.query.filter_by(
+        reporter_id=current_user.id
+    ).order_by(MaintenanceIssue.created_at.desc()).limit(10).all()
     
     return render_template('maintenance_issues.html',
-                         issues=issues,
-                         is_manager=is_manager,
-                         stats=stats,
-                         status_filter=status_filter)
+                         open_issues=open_issues,
+                         my_issues=my_issues)
+
+@employee_bp.route('/swap-request', methods=['POST'])
+@login_required
+def create_swap_request():
+    """Create a shift swap request"""
+    requester_shift_id = request.form.get('requester_shift_id')
+    target_shift_id = request.form.get('target_shift_id')
+    reason = request.form.get('reason')
+    
+    # Get the shifts
+    requester_shift = Schedule.query.get(requester_shift_id)
+    target_shift = Schedule.query.get(target_shift_id)
+    
+    if not requester_shift or not target_shift:
+        flash('Invalid shift selection', 'danger')
+        return redirect(url_for('employee.shift_marketplace'))
+    
+    # Verify requester owns the shift
+    if requester_shift.employee_id != current_user.id:
+        flash('You can only swap your own shifts', 'danger')
+        return redirect(url_for('employee.shift_marketplace'))
+    
+    # Create swap request
+    swap_request = ShiftSwapRequest(
+        requester_id=current_user.id,
+        requested_with_id=target_shift.employee_id,
+        requester_shift_date=requester_shift.date,
+        requested_shift_date=target_shift.date,
+        reason=reason,
+        status='pending',
+        created_at=datetime.now()
+    )
+    
+    db.session.add(swap_request)
+    db.session.commit()
+    
+    flash('Shift swap request submitted successfully!', 'success')
+    return redirect(url_for('employee.shift_marketplace'))
+
+@employee_bp.route('/employees/crew-management')
+@login_required
+def crew_management():
+    """Crew management page - for supervisors"""
+    if not current_user.is_supervisor:
+        flash('You must be a supervisor to access this page.', 'danger')
+        return redirect(url_for('main.dashboard'))
+    
+    # Get all employees grouped by crew
+    crews = {'A': [], 'B': [], 'C': [], 'D': [], 'Unassigned': []}
+    employees = Employee.query.order_by(Employee.crew, Employee.name).all()
+    
+    for employee in employees:
+        crew = employee.crew if employee.crew in ['A', 'B', 'C', 'D'] else 'Unassigned'
+        crews[crew].append(employee)
+    
+    # Get statistics
+    stats = {
+        'total_employees': len(employees),
+        'crew_a': len(crews['A']),
+        'crew_b': len(crews['B']),
+        'crew_c': len(crews['C']),
+        'crew_d': len(crews['D']),
+        'unassigned': len(crews['Unassigned'])
+    }
+    
+    return render_template('crew_management.html', crews=crews, stats=stats)
+
+@employee_bp.route('/shift-trade/post', methods=['POST'])
+@login_required
+def post_shift_trade():
+    """Post a shift for trade"""
+    shift_date = datetime.strptime(request.form.get('shift_date'), '%Y-%m-%d').date()
+    shift_type = request.form.get('shift_type')
+    reason = request.form.get('reason')
+    
+    # Validate future date
+    if shift_date <= date.today():
+        flash('You can only post future shifts for trade', 'danger')
+        return redirect(url_for('employee.shift_marketplace'))
+    
+    # Create trade post
+    post = ShiftTradePost(
+        employee_id=current_user.id,
+        shift_date=shift_date,
+        shift_type=shift_type,
+        reason=reason,
+        status='active',
+        posted_at=datetime.now()
+    )
+    
+    db.session.add(post)
+    db.session.commit()
+    
+    flash('Shift posted for trade successfully!', 'success')
+    return redirect(url_for('employee.shift_marketplace'))
+
+@employee_bp.route('/shift-trade/propose/<int:post_id>', methods=['POST'])
+@login_required
+def propose_trade(post_id):
+    """Propose a trade for a posted shift"""
+    post = ShiftTradePost.query.get_or_404(post_id)
+    proposed_date = datetime.strptime(request.form.get('proposed_date'), '%Y-%m-%d').date()
+    message = request.form.get('message')
+    
+    # Validate
+    if post.employee_id == current_user.id:
+        flash('You cannot propose a trade for your own shift', 'danger')
+        return redirect(url_for('employee.shift_marketplace'))
+    
+    if proposed_date <= date.today():
+        flash('Proposed date must be in the future', 'danger')
+        return redirect(url_for('employee.shift_marketplace'))
+    
+    # Create proposal
+    proposal = ShiftTradeProposal(
+        post_id=post_id,
+        proposer_id=current_user.id,
+        proposed_date=proposed_date,
+        message=message,
+        status='pending',
+        proposed_at=datetime.now()
+    )
+    
+    db.session.add(proposal)
+    db.session.commit()
+    
+    flash('Trade proposal submitted successfully!', 'success')
+    return redirect(url_for('employee.shift_marketplace'))
+
+@employee_bp.route('/shift-trade/accept/<int:proposal_id>', methods=['POST'])
+@login_required
+def accept_trade_proposal(proposal_id):
+    """Accept a trade proposal"""
+    proposal = ShiftTradeProposal.query.get_or_404(proposal_id)
+    post = proposal.post
+    
+    # Validate ownership
+    if post.employee_id != current_user.id:
+        flash('You can only accept proposals for your own posts', 'danger')
+        return redirect(url_for('employee.shift_marketplace'))
+    
+    # Create the trade
+    trade = ShiftTrade(
+        employee1_id=post.employee_id,
+        employee2_id=proposal.proposer_id,
+        shift1_date=post.shift_date,
+        shift2_date=proposal.proposed_date,
+        status='pending_approval',
+        created_at=datetime.now()
+    )
+    
+    db.session.add(trade)
+    
+    # Update proposal and post status
+    proposal.status = 'accepted'
+    post.status = 'matched'
+    
+    # Reject other proposals for this post
+    other_proposals = ShiftTradeProposal.query.filter(
+        ShiftTradeProposal.post_id == post_id,
+        ShiftTradeProposal.id != proposal_id,
+        ShiftTradeProposal.status == 'pending'
+    ).all()
+    
+    for other in other_proposals:
+        other.status = 'rejected'
+    
+    db.session.commit()
+    
+    flash('Trade proposal accepted! Awaiting supervisor approval.', 'success')
+    return redirect(url_for('employee.shift_marketplace'))
+
+# API endpoints for AJAX functionality
+@employee_bp.route('/api/overtime-week-details/<int:employee_id>')
+@login_required
+def overtime_week_details(employee_id):
+    """Get detailed overtime data for an employee"""
+    if not current_user.is_supervisor and current_user.id != employee_id:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    # Get 13 weeks of data
+    weeks = []
+    for i in range(13):
+        week_start = date.today() - timedelta(weeks=i, days=date.today().weekday())
+        week_end = week_start + timedelta(days=6)
+        
+        overtime = OvertimeHistory.query.filter_by(
+            employee_id=employee_id,
+            week_start_date=week_start
+        ).first()
+        
+        weeks.append({
+            'week': f'Week of {week_start.strftime("%b %d")}',
+            'hours': overtime.overtime_hours if overtime else 0
+        })
+    
+    return jsonify({'weeks': list(reversed(weeks))})
+
+@employee_bp.route('/api/position-colleagues')
+@login_required
+def get_position_colleagues():
+    """Get colleagues in same position but different crews"""
+    if not current_user.position_id:
+        return jsonify([])
+    
+    colleagues = Employee.query.filter(
+        Employee.position_id == current_user.position_id,
+        Employee.id != current_user.id,
+        Employee.crew != current_user.crew
+    ).all()
+    
+    return jsonify([{
+        'id': c.id,
+        'name': c.name,
+        'crew': c.crew
+    } for c in colleagues])
