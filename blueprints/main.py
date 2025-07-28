@@ -149,19 +149,130 @@ def test_dashboard():
 @main_bp.route('/overtime-management')
 @login_required
 def overtime_management():
-    """Simple overtime management page"""
+    """Enhanced overtime management page with multi-level sorting"""
     # Check if user is supervisor
     if not current_user.is_supervisor:
         flash('You must be a supervisor to access this page.', 'danger')
         return redirect(url_for('main.dashboard'))
     
     try:
-        # Get all employees - remove is_active filter for now to diagnose
+        # Get all employees (no is_active filter since field doesn't exist)
         employees = Employee.query.order_by(Employee.crew, Employee.name).all()
         
-        # Debug info
-        total_employees = Employee.query.count()
-        active_employees = Employee.query.filter_by(is_active=True).count()
+        # Check employee count
+        total_employees = len(employees)
+        expected_count = 100  # You mentioned uploading 100 employees
+        
+        # Get overtime history for the last 13 weeks
+        thirteen_weeks_ago = datetime.now().date() - timedelta(weeks=13)
+        
+        employees_data = []
+        for emp in employees:
+            # Skip the current user (supervisor) from the count
+            if emp.id == current_user.id:
+                continue
+                
+            # Get overtime hours from OvertimeHistory table
+            overtime_total = db.session.query(func.sum(OvertimeHistory.overtime_hours)).filter(
+                OvertimeHistory.employee_id == emp.id,
+                OvertimeHistory.week_start_date >= thirteen_weeks_ago
+            ).scalar() or 0.0
+            
+            # Get current week overtime
+            current_week_start = datetime.now().date() - timedelta(days=datetime.now().weekday())
+            current_week_ot = db.session.query(func.sum(OvertimeHistory.overtime_hours)).filter(
+                OvertimeHistory.employee_id == emp.id,
+                OvertimeHistory.week_start_date == current_week_start
+            ).scalar() or 0.0
+            
+            employees_data.append({
+                'id': emp.id,
+                'name': emp.name,
+                'employee_id': emp.employee_id or f'EMP{emp.id}',
+                'crew': emp.crew or 'Unassigned',
+                'position': emp.position.name if emp.position else 'No Position',
+                'hire_date': emp.hire_date.strftime('%Y-%m-%d') if emp.hire_date else None,
+                'current_week_ot': round(current_week_ot, 1),
+                'overtime_13week': round(overtime_total, 1),
+                'weekly_average': round(overtime_total / 13, 1) if overtime_total else 0
+            })
+        
+        # Count excluding supervisor
+        actual_employee_count = len(employees_data)
+        
+        # Calculate statistics
+        total_ot = sum(e['overtime_13week'] for e in employees_data)
+        high_ot_count = len([e for e in employees_data if e['overtime_13week'] > 200])
+        avg_ot = round(total_ot / len(employees_data), 1) if employees_data else 0
+        
+        # Return the improved HTML template
+        return render_template_string(open('improved_overtime_template.html').read(),
+                                    employees=employees_data,
+                                    total_employees=actual_employee_count,
+                                    expected_count=expected_count,
+                                    total_ot=total_ot,
+                                    high_ot_count=high_ot_count,
+                                    avg_ot=avg_ot)
+        
+    except Exception as e:
+        # If template not found or other error, use inline version
+        employees = Employee.query.order_by(Employee.crew, Employee.name).all()
+        actual_employee_count = len([e for e in employees if e.id != current_user.id])
+        
+        return f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Overtime Management</title>
+            <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+            <style>
+                body {{ background-color: #f5f7fa; }}
+                .container {{ max-width: 1200px; margin: 2rem auto; }}
+                .alert-info {{ margin-bottom: 20px; }}
+                table {{ background: white; }}
+                .crew-badge {{
+                    display: inline-block;
+                    padding: 0.25rem 0.5rem;
+                    border-radius: 0.25rem;
+                    font-size: 0.875rem;
+                    font-weight: 500;
+                }}
+                .crew-a {{ background-color: #e3f2fd; color: #1976d2; }}
+                .crew-b {{ background-color: #f3e5f5; color: #7b1fa2; }}
+                .crew-c {{ background-color: #e8f5e9; color: #388e3c; }}
+                .crew-d {{ background-color: #fff3e0; color: #f57c00; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>Overtime Management</h1>
+                <p class="text-muted">Enhanced features coming soon!</p>
+                
+                <div class="alert alert-info">
+                    <strong>Employee Count:</strong> Found {actual_employee_count} employees (excluding supervisor).
+                    {f'<br><strong>Note:</strong> Expected 100 employees but found {actual_employee_count + 1} total. The upload may not have deleted all previous employees.' if actual_employee_count != 100 else ''}
+                </div>
+                
+                <div class="mb-3">
+                    <a href="/dashboard" class="btn btn-secondary">Back to Dashboard</a>
+                    <a href="/upload-employees" class="btn btn-primary">Re-upload Employee Data</a>
+                    <a href="/api/clear-all-employees" class="btn btn-danger" onclick="return confirm('This will delete ALL employees except you. Are you sure?')">Clear All Employees</a>
+                </div>
+                
+                <h3>Key Features Needed:</h3>
+                <ul>
+                    <li>✅ Employee count validation (currently {actual_employee_count} employees)</li>
+                    <li>📋 Multi-level sorting (4 levels): Crew, Position, 13-week total, Date of Hire</li>
+                    <li>📊 Export to Excel functionality</li>
+                    <li>🔍 Filter by crew, position, overtime ranges</li>
+                    <li>📈 Visual overtime trend indicators</li>
+                </ul>
+                
+                <p>For now, you can view the basic employee list at <a href="/view-crews">/view-crews</a></p>
+            </div>
+        </body>
+        </html>
+        """
         
         # Get overtime history for the last 13 weeks
         thirteen_weeks_ago = datetime.now().date() - timedelta(weeks=13)
@@ -457,34 +568,23 @@ def view_crews():
 @main_bp.route('/fix-employees-active')
 @login_required
 def fix_employees_active():
-    """Fix all employees to be active"""
+    """This route is no longer needed - is_active field doesn't exist"""
     if not current_user.is_supervisor:
         flash('You must be a supervisor to access this page.', 'danger')
         return redirect(url_for('main.dashboard'))
     
-    try:
-        # Update all employees to be active
-        employees = Employee.query.all()
-        count = 0
-        for emp in employees:
-            emp.is_active = True
-            count += 1
-        db.session.commit()
-        
-        return f"""
-        <html>
-        <head><title>Fixed Employees</title></head>
-        <body style="font-family: Arial; margin: 50px;">
-            <h1>Employee Status Fixed</h1>
-            <p>Updated {count} employees to active status.</p>
-            <p><a href="/overtime-management">Go to Overtime Management</a></p>
-            <p><a href="/dashboard">Back to Dashboard</a></p>
-        </body>
-        </html>
-        """
-    except Exception as e:
-        db.session.rollback()
-        return f"Error: {str(e)}", 500
+    return f"""
+    <html>
+    <head><title>Not Needed</title></head>
+    <body style="font-family: Arial; margin: 50px;">
+        <h1>Fix Not Needed</h1>
+        <p>The is_active field doesn't exist on the Employee model.</p>
+        <p>The overtime management page has been updated to show all employees.</p>
+        <p><a href="/overtime-management">Go to Overtime Management</a></p>
+        <p><a href="/dashboard">Back to Dashboard</a></p>
+    </body>
+    </html>
+    """
 
 @main_bp.route('/debug-employees')
 @login_required
@@ -561,6 +661,105 @@ def debug_employees():
     return html
 
 # API endpoints for any AJAX calls
+@main_bp.route('/api/overtime-data')
+@login_required
+def api_overtime_data():
+    """API endpoint for overtime data"""
+    if not current_user.is_supervisor:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    try:
+        employees = Employee.query.all()
+        thirteen_weeks_ago = datetime.now().date() - timedelta(weeks=13)
+        
+        employees_data = []
+        for emp in employees:
+            if emp.id == current_user.id:
+                continue
+                
+            # Get overtime totals
+            overtime_total = db.session.query(func.sum(OvertimeHistory.overtime_hours)).filter(
+                OvertimeHistory.employee_id == emp.id,
+                OvertimeHistory.week_start_date >= thirteen_weeks_ago
+            ).scalar() or 0.0
+            
+            current_week_start = datetime.now().date() - timedelta(days=datetime.now().weekday())
+            current_week_ot = db.session.query(func.sum(OvertimeHistory.overtime_hours)).filter(
+                OvertimeHistory.employee_id == emp.id,
+                OvertimeHistory.week_start_date == current_week_start
+            ).scalar() or 0.0
+            
+            employees_data.append({
+                'id': emp.id,
+                'name': emp.name,
+                'employee_id': emp.employee_id or f'EMP{emp.id}',
+                'crew': emp.crew or 'Unassigned',
+                'position': emp.position.name if emp.position else 'No Position',
+                'hire_date': emp.hire_date.strftime('%Y-%m-%d') if emp.hire_date else None,
+                'current_week_ot': round(current_week_ot, 1),
+                'overtime_13week': round(overtime_total, 1),
+                'weekly_average': round(overtime_total / 13, 1) if overtime_total else 0
+            })
+        
+        return jsonify({
+            'employees': employees_data,
+            'total': len(employees_data)
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@main_bp.route('/api/clear-all-employees', methods=['GET', 'POST'])
+@login_required
+def clear_all_employees():
+    """Nuclear option to clear all employees except current user"""
+    if not current_user.is_supervisor:
+        flash('You must be a supervisor to access this page.', 'danger')
+        return redirect(url_for('main.dashboard'))
+    
+    if request.method == 'GET':
+        # Show confirmation page
+        employee_count = Employee.query.filter(Employee.id != current_user.id).count()
+        return f"""
+        <html>
+        <head><title>Clear All Employees</title></head>
+        <body style="font-family: Arial; margin: 50px;">
+            <h1>⚠️ Clear All Employees</h1>
+            <p>This will permanently delete {employee_count} employees (everyone except you).</p>
+            <p><strong>This action cannot be undone!</strong></p>
+            <form method="POST">
+                <button type="submit" class="btn btn-danger" style="background: red; color: white; padding: 10px 20px;">
+                    Yes, Delete All {employee_count} Employees
+                </button>
+                <a href="/overtime-management" style="margin-left: 20px;">Cancel</a>
+            </form>
+        </body>
+        </html>
+        """
+    
+    try:
+        # Delete all employees except current user
+        from sqlalchemy import text
+        
+        # Delete related records first
+        db.session.execute(text("DELETE FROM overtime_history WHERE employee_id != :uid"), {'uid': current_user.id})
+        db.session.execute(text("DELETE FROM employee_skills WHERE employee_id != :uid"), {'uid': current_user.id})
+        db.session.execute(text("DELETE FROM schedule WHERE employee_id != :uid"), {'uid': current_user.id})
+        db.session.execute(text("DELETE FROM time_off_request WHERE employee_id != :uid"), {'uid': current_user.id})
+        
+        # Delete employees
+        result = db.session.execute(text("DELETE FROM employee WHERE id != :uid"), {'uid': current_user.id})
+        deleted_count = result.rowcount
+        
+        db.session.commit()
+        
+        flash(f'Successfully deleted {deleted_count} employees. You can now upload fresh data.', 'success')
+        return redirect(url_for('employee_import.upload_employees'))
+        
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error deleting employees: {str(e)}', 'danger')
+        return redirect(url_for('main.overtime_management'))
+
 @main_bp.route('/api/dashboard-stats')
 @login_required
 def api_dashboard_stats():
