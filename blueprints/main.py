@@ -1,20 +1,83 @@
-# ========================================
-# main.py - Complete Overtime Management Route
-# ========================================
+# blueprints/main.py
+"""
+Main blueprint for general routes and dashboard
+"""
 
-from flask import Blueprint, render_template, request, jsonify, flash, redirect, url_for, send_file
+from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, send_file
 from flask_login import login_required, current_user
+from models import db, Employee, Schedule, TimeOffRequest, ShiftSwapRequest, CoverageRequest, MaintenanceIssue, Position, OvertimeHistory, VacationCalendar, CircadianProfile, SleepLog, PositionMessage, CasualWorker
+from datetime import date, timedelta, datetime
 from sqlalchemy import or_, and_, func
-from datetime import datetime, timedelta
 import pandas as pd
 from io import BytesIO
-from models import db, Employee, Position, OvertimeHistory
 
-main = Blueprint('main', __name__)
+# Create the blueprint - MUST be named 'main_bp' to match the import
+main_bp = Blueprint('main', __name__)
 
-@main.route('/overtime-management')
+@main_bp.route('/')
+def index():
+    """Landing page"""
+    if current_user.is_authenticated:
+        return redirect(url_for('main.dashboard'))
+    return render_template('index.html')
+
+@main_bp.route('/dashboard')
+@login_required
+def dashboard():
+    """Main dashboard - redirect based on user role"""
+    if current_user.is_supervisor:
+        return redirect(url_for('supervisor.dashboard'))
+    else:
+        return redirect(url_for('main.employee_dashboard'))
+
+@main_bp.route('/employee-dashboard')
+@login_required
+def employee_dashboard():
+    """Employee dashboard"""
+    # Get upcoming schedules
+    upcoming_schedules = Schedule.query.filter(
+        Schedule.employee_id == current_user.id,
+        Schedule.date >= date.today(),
+        Schedule.date <= date.today() + timedelta(days=14)
+    ).order_by(Schedule.date).all()
+    
+    # Get pending requests
+    pending_time_off = TimeOffRequest.query.filter_by(
+        employee_id=current_user.id,
+        status='pending'
+    ).all()
+    
+    pending_swaps = ShiftSwapRequest.query.filter_by(
+        requester_id=current_user.id,
+        status='pending'
+    ).all()
+    
+    # Get open coverage requests
+    open_coverage = CoverageRequest.query.filter_by(
+        status='open'
+    ).order_by(CoverageRequest.created_at.desc()).limit(5).all()
+    
+    # Get recent maintenance issues
+    recent_issues = MaintenanceIssue.query.filter_by(
+        reporter_id=current_user.id
+    ).order_by(MaintenanceIssue.reported_at.desc()).limit(5).all()
+    
+    return render_template('employee_dashboard.html',
+                         upcoming_schedules=upcoming_schedules,
+                         pending_time_off=pending_time_off,
+                         pending_swaps=pending_swaps,
+                         open_coverage=open_coverage,
+                         recent_issues=recent_issues)
+
+@main_bp.route('/overtime-management')
 @login_required
 def overtime_management():
+    """Overtime management page"""
+    # Check if user is supervisor
+    if not current_user.is_supervisor:
+        flash('You must be a supervisor to access this page.', 'danger')
+        return redirect(url_for('main.dashboard'))
+    
     # Get filter parameters
     search_term = request.args.get('search', '')
     crew_filter = request.args.get('crew', '')
@@ -133,6 +196,31 @@ def overtime_management():
     end_idx = start_idx + per_page
     employees = all_employees[start_idx:end_idx]
     
+    # Prepare employee data for template
+    employees_data = []
+    for emp in employees:
+        # Calculate years employed
+        years_employed = 0
+        if emp.hire_date:
+            delta = datetime.now().date() - emp.hire_date
+            years_employed = delta.days // 365
+        
+        employee_data = {
+            'id': emp.id,
+            'name': emp.name,
+            'employee_id': emp.employee_id,
+            'crew': emp.crew,
+            'position': emp.position,
+            'position_id': emp.position_id if emp.position else None,
+            'hire_date': emp.hire_date,
+            'years_employed': years_employed,
+            'current_week_overtime': emp.current_week_overtime,
+            'last_13_weeks_overtime': emp.last_13_weeks_overtime,
+            'average_weekly_overtime': emp.average_weekly_overtime,
+            'overtime_trend': emp.overtime_trend
+        }
+        employees_data.append(employee_data)
+    
     # Calculate statistics
     total_overtime_hours = 0
     employees_with_overtime = 0
@@ -155,21 +243,30 @@ def overtime_management():
     
     high_overtime_count = len(high_overtime_employees)
     
+    # Calculate crew overtime data for charts
+    crew_overtime_data = [0, 0, 0, 0]  # For crews A, B, C, D
+    crew_map = {'A': 0, 'B': 1, 'C': 2, 'D': 3}
+    
+    for emp in all_employees:
+        if emp.crew in crew_map:
+            crew_overtime_data[crew_map[emp.crew]] += round(emp.last_13_weeks_overtime or 0)
+    
     # Get all positions
     positions = Position.query.order_by(Position.name).all()
     
     # Date range
-    end_date = datetime.now()
+    end_date = datetime.now().date()
     start_date = end_date - timedelta(weeks=13)
     
     return render_template('overtime_management.html',
-        employees=employees,
+        employees=employees_data,
         positions=positions,
         total_overtime_hours=int(total_overtime_hours),
         employees_with_overtime=employees_with_overtime,
         avg_overtime=avg_overtime,
         high_overtime_count=high_overtime_count,
         high_overtime_employees=high_overtime_employees,
+        crew_overtime_data=crew_overtime_data,
         start_date=start_date,
         end_date=end_date,
         total_pages=total_pages,
@@ -177,13 +274,19 @@ def overtime_management():
         search_term=search_term,
         crew_filter=crew_filter,
         position_filter=position_filter,
-        ot_range_filter=ot_range_filter
+        ot_range_filter=ot_range_filter,
+        sort_params=sort_params,
+        current_date=datetime.now().date()
     )
 
-@main.route('/export-overtime-excel')
+@main_bp.route('/export-overtime-excel')
 @login_required
 def export_overtime_excel():
     """Export overtime data to Excel"""
+    if not current_user.is_supervisor:
+        flash('You must be a supervisor to export data.', 'danger')
+        return redirect(url_for('main.dashboard'))
+    
     try:
         # Get filter parameters
         search_term = request.args.get('search', '')
@@ -297,314 +400,361 @@ def export_overtime_excel():
         flash(f'Error exporting data: {str(e)}', 'error')
         return redirect(url_for('main.overtime_management'))
 
-
-# ========================================
-# employee_import.py - Employee Import with Overtime
-# ========================================
-
-from flask import Blueprint, render_template, request, flash, redirect, url_for, send_file
-from flask_login import login_required, current_user
-from werkzeug.security import generate_password_hash
-import pandas as pd
-from datetime import datetime, timedelta
-import io
-
-employee_import = Blueprint('employee_import', __name__)
-
-@employee_import.route('/upload-employees', methods=['GET', 'POST'])
+@main_bp.route('/view-crews')
 @login_required
-def upload_employees():
-    if request.method == 'POST':
-        if 'file' not in request.files:
-            flash('No file uploaded', 'error')
-            return redirect(request.url)
-        
-        file = request.files['file']
-        
-        if file.filename == '':
-            flash('No file selected', 'error')
-            return redirect(request.url)
-        
-        if file and file.filename.endswith(('.xlsx', '.xls')):
-            try:
-                # Read Excel file
-                df = pd.read_excel(file)
-                
-                # Validate required columns
-                required_columns = ['Employee ID', 'Name', 'Email', 'Crew']
-                missing_columns = [col for col in required_columns if col not in df.columns]
-                
-                if missing_columns:
-                    flash(f'Missing required columns: {", ".join(missing_columns)}', 'error')
-                    return redirect(request.url)
-                
-                # Get or create positions
-                position_map = {}
-                if 'Position' in df.columns:
-                    unique_positions = df['Position'].dropna().unique()
-                    for pos_name in unique_positions:
-                        position = Position.query.filter_by(name=pos_name).first()
-                        if not position:
-                            position = Position(name=pos_name)
-                            db.session.add(position)
-                            db.session.flush()
-                        position_map[pos_name] = position.id
-                
-                # Process employees
-                employees_added = 0
-                employees_updated = 0
-                
-                for _, row in df.iterrows():
-                    # Skip invalid rows
-                    if pd.isna(row['Employee ID']) or pd.isna(row['Name']) or pd.isna(row['Email']):
-                        continue
-                    
-                    # Check if employee exists
-                    employee = Employee.query.filter_by(employee_id=str(row['Employee ID'])).first()
-                    
-                    if not employee:
-                        employee = Employee(
-                            employee_id=str(row['Employee ID']),
-                            name=row['Name'],
-                            email=row['Email'].lower(),
-                            password_hash=generate_password_hash('password123')
-                        )
-                        employees_added += 1
-                    else:
-                        employee.name = row['Name']
-                        employee.email = row['Email'].lower()
-                        employees_updated += 1
-                    
-                    # Update crew
-                    if 'Crew' in df.columns and not pd.isna(row['Crew']):
-                        employee.crew = str(row['Crew']).upper()
-                    
-                    # Update position
-                    if 'Position' in df.columns and not pd.isna(row['Position']):
-                        employee.position_id = position_map.get(row['Position'])
-                    
-                    # Update hire date
-                    if 'Hire Date' in df.columns and not pd.isna(row['Hire Date']):
-                        try:
-                            if isinstance(row['Hire Date'], str):
-                                employee.hire_date = datetime.strptime(row['Hire Date'], '%Y-%m-%d').date()
-                            else:
-                                employee.hire_date = pd.to_datetime(row['Hire Date']).date()
-                        except:
-                            pass
-                    
-                    # Update supervisor status
-                    if 'Is Supervisor' in df.columns:
-                        employee.is_supervisor = bool(row['Is Supervisor'])
-                    
-                    db.session.add(employee)
-                    db.session.flush()
-                    
-                    # PROCESS OVERTIME DATA
-                    # Map overtime columns to OvertimeHistory records
-                    
-                    # Current week overtime
-                    current_week_start = datetime.now().date() - timedelta(days=datetime.now().weekday())
-                    if 'Current Week OT' in df.columns and not pd.isna(row['Current Week OT']):
-                        update_overtime_record(employee.id, current_week_start, float(row['Current Week OT']))
-                    
-                    # Process weekly overtime columns
-                    for week_num in range(1, 14):
-                        col_names = [f'Week {week_num} OT', f'Week{week_num}OT', f'Week {week_num} Overtime']
-                        week_start = current_week_start - timedelta(weeks=week_num)
-                        
-                        for col_name in col_names:
-                            if col_name in df.columns and not pd.isna(row[col_name]):
-                                update_overtime_record(employee.id, week_start, float(row[col_name]))
-                                break
-                
-                db.session.commit()
-                
-                flash(f'Successfully processed {employees_added} new employees and updated {employees_updated} existing employees', 'success')
-                return redirect(url_for('main.overtime_management'))
-                
-            except Exception as e:
-                db.session.rollback()
-                flash(f'Error processing file: {str(e)}', 'error')
-                return redirect(request.url)
-        else:
-            flash('Please upload a valid Excel file (.xlsx or .xls)', 'error')
-            return redirect(request.url)
+def view_crews():
+    """View all crews and their members"""
+    crews = {}
+    employees = Employee.query.order_by(Employee.crew, Employee.name).all()
     
-    # GET request
-    employee_count = Employee.query.filter(Employee.id != current_user.id).count()
-    return render_template('upload_employees.html', employee_count=employee_count)
-
-def update_overtime_record(employee_id, week_start_date, overtime_hours):
-    """Update or create overtime record"""
-    ot_record = OvertimeHistory.query.filter_by(
-        employee_id=employee_id,
-        week_start_date=week_start_date
-    ).first()
+    for employee in employees:
+        crew_name = employee.crew or 'Unassigned'
+        if crew_name not in crews:
+            crews[crew_name] = []
+        crews[crew_name].append(employee)
     
-    if ot_record:
-        ot_record.overtime_hours = overtime_hours
-        ot_record.total_hours = ot_record.regular_hours + overtime_hours
-    else:
-        ot_record = OvertimeHistory(
-            employee_id=employee_id,
-            week_start_date=week_start_date,
-            regular_hours=40,  # Default regular hours
-            overtime_hours=overtime_hours,
-            total_hours=40 + overtime_hours
-        )
-        db.session.add(ot_record)
-
-@employee_import.route('/download-employee-template')
-@login_required
-def download_employee_template():
-    # Create template
-    template_data = {
-        'Employee ID': ['EMP001', 'EMP002', 'EMP003'],
-        'Name': ['John Smith', 'Jane Doe', 'Bob Johnson'],
-        'Email': ['john.smith@company.com', 'jane.doe@company.com', 'bob.johnson@company.com'],
-        'Crew': ['A', 'B', 'C'],
-        'Position': ['Operator', 'Technician', 'Supervisor'],
-        'Hire Date': ['2020-01-15', '2019-05-20', '2018-11-10'],
-        'Is Supervisor': [False, False, True],
-        'Current Week OT': [8.5, 12.0, 0],
-        'Week 1 OT': [10.0, 8.0, 5.5],
-        'Week 2 OT': [7.5, 15.0, 3.0],
-        'Week 3 OT': [9.0, 11.5, 4.0],
-        'Week 4 OT': [8.0, 13.0, 3.5],
-        'Week 5 OT': [11.0, 10.5, 4.5],
-        'Week 6 OT': [7.0, 14.0, 2.5],
-        'Week 7 OT': [9.5, 12.5, 5.0],
-        'Week 8 OT': [8.5, 11.0, 3.5],
-        'Week 9 OT': [10.0, 13.5, 4.0],
-        'Week 10 OT': [7.5, 12.0, 3.0],
-        'Week 11 OT': [9.0, 11.0, 4.5],
-        'Week 12 OT': [5.0, 12.0, 2.5],
-        'Week 13 OT': [8.5, 12.0, 0]
+    # Get positions for each crew
+    positions = Position.query.all()
+    
+    # Calculate statistics
+    stats = {
+        'total_employees': len(employees),
+        'total_crews': len([c for c in crews if c != 'Unassigned']),
+        'total_supervisors': len([e for e in employees if e.is_supervisor]),
+        'unassigned': len(crews.get('Unassigned', []))
     }
     
-    df = pd.DataFrame(template_data)
-    
-    # Create Excel file
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        df.to_excel(writer, sheet_name='Employees', index=False)
-        
-        workbook = writer.book
-        worksheet = writer.sheets['Employees']
-        
-        header_format = workbook.add_format({
-            'bold': True,
-            'text_wrap': True,
-            'valign': 'top',
-            'fg_color': '#4472C4',
-            'font_color': '#FFFFFF',
-            'border': 1
-        })
-        
-        for col_num, value in enumerate(df.columns.values):
-            worksheet.write(0, col_num, value, header_format)
-        
-        worksheet.set_column('A:A', 12)
-        worksheet.set_column('B:B', 20)
-        worksheet.set_column('C:C', 25)
-        worksheet.set_column('D:D', 8)
-        worksheet.set_column('E:E', 15)
-        worksheet.set_column('F:F', 12)
-        worksheet.set_column('G:G', 12)
-        worksheet.set_column('H:U', 10)
-    
-    output.seek(0)
-    
-    return send_file(
-        output,
-        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        as_attachment=True,
-        download_name='employee_upload_template.xlsx'
-    )
+    return render_template('view_crews.html',
+                         crews=crews,
+                         positions=positions,
+                         stats=stats)
 
-@employee_import.route('/export-current-employees')
+@main_bp.route('/schedule-selection')
 @login_required
-def export_current_employees():
-    employees = Employee.query.filter(Employee.id != current_user.id).all()
+def schedule_selection():
+    """Schedule viewing selection page"""
+    return render_template('schedule_selection.html')
+
+@main_bp.route('/crew-schedule/<crew>')
+@login_required
+def crew_schedule(crew):
+    """View schedule for a specific crew"""
+    # Get date range from query params or default to current week
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
     
-    data = []
-    for emp in employees:
-        row = {
-            'Employee ID': emp.employee_id,
-            'Name': emp.name,
-            'Email': emp.email,
-            'Crew': emp.crew or '',
-            'Position': emp.position.name if emp.position else '',
-            'Hire Date': emp.hire_date.strftime('%Y-%m-%d') if emp.hire_date else '',
-            'Is Supervisor': emp.is_supervisor,
-            'Current Week OT': emp.current_week_overtime
-        }
+    if not start_date:
+        start_date = date.today() - timedelta(days=date.today().weekday())
+    else:
+        start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
+    
+    if not end_date:
+        end_date = start_date + timedelta(days=6)
+    else:
+        end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
+    
+    # Get all employees in the crew
+    crew_employees = Employee.query.filter_by(crew=crew).order_by(Employee.name).all()
+    
+    # Get schedules for the crew in the date range
+    schedules = Schedule.query.join(Employee).filter(
+        Employee.crew == crew,
+        Schedule.date >= start_date,
+        Schedule.date <= end_date
+    ).all()
+    
+    # Organize schedules by date and employee
+    schedule_grid = {}
+    current_date = start_date
+    while current_date <= end_date:
+        schedule_grid[current_date] = {}
+        current_date += timedelta(days=1)
+    
+    for schedule in schedules:
+        schedule_grid[schedule.date][schedule.employee_id] = schedule
+    
+    return render_template('crew_schedule.html',
+                         crew=crew,
+                         crew_employees=crew_employees,
+                         schedule_grid=schedule_grid,
+                         start_date=start_date,
+                         end_date=end_date)
+
+@main_bp.route('/view-schedule')
+@login_required
+def view_schedule():
+    """View personal schedule"""
+    # Get date range from query params or default to current month
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    
+    if not start_date:
+        start_date = date.today().replace(day=1)
+    else:
+        start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
+    
+    if not end_date:
+        # Last day of the month
+        if start_date.month == 12:
+            end_date = start_date.replace(year=start_date.year + 1, month=1, day=1) - timedelta(days=1)
+        else:
+            end_date = start_date.replace(month=start_date.month + 1, day=1) - timedelta(days=1)
+    else:
+        end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
+    
+    # Get schedules for the employee
+    schedules = Schedule.query.filter(
+        Schedule.employee_id == current_user.id,
+        Schedule.date >= start_date,
+        Schedule.date <= end_date
+    ).order_by(Schedule.date).all()
+    
+    # Get time off requests
+    time_off_requests = TimeOffRequest.query.filter(
+        TimeOffRequest.employee_id == current_user.id,
+        TimeOffRequest.start_date <= end_date,
+        TimeOffRequest.end_date >= start_date
+    ).all()
+    
+    # Calculate statistics
+    total_hours = sum(s.hours for s in schedules if s.hours)
+    overtime_hours = sum(s.hours - 8 for s in schedules if s.hours and s.hours > 8)
+    days_off = sum(1 for d in pd.date_range(start_date, end_date) 
+                   if not any(s.date == d.date() for s in schedules))
+    
+    stats = {
+        'total_hours': total_hours,
+        'overtime_hours': overtime_hours,
+        'days_worked': len(schedules),
+        'days_off': days_off
+    }
+    
+    return render_template('view_schedule.html',
+                         schedules=schedules,
+                         time_off_requests=time_off_requests,
+                         start_date=start_date,
+                         end_date=end_date,
+                         stats=stats)
+
+@main_bp.route('/vacation-calendar')
+@login_required
+def vacation_calendar():
+    """View vacation calendar"""
+    # Get month from query params or default to current month
+    month = request.args.get('month', type=int)
+    year = request.args.get('year', type=int)
+    
+    if not month or not year:
+        today = date.today()
+        month = today.month
+        year = today.year
+    
+    # Get first and last day of the month
+    first_day = date(year, month, 1)
+    if month == 12:
+        last_day = date(year + 1, 1, 1) - timedelta(days=1)
+    else:
+        last_day = date(year, month + 1, 1) - timedelta(days=1)
+    
+    # Get all vacation calendar entries for the month
+    calendar_entries = VacationCalendar.query.filter(
+        VacationCalendar.date >= first_day,
+        VacationCalendar.date <= last_day
+    ).all()
+    
+    # Organize by date
+    calendar_data = {}
+    current_date = first_day
+    while current_date <= last_day:
+        calendar_data[current_date] = []
+        current_date += timedelta(days=1)
+    
+    for entry in calendar_entries:
+        calendar_data[entry.date].append(entry)
+    
+    # Get crew statistics
+    crew_stats = {}
+    if current_user.is_supervisor:
+        crews = ['A', 'B', 'C', 'D']
+        for crew in crews:
+            crew_employees = Employee.query.filter_by(crew=crew).all()
+            crew_stats[crew] = {
+                'total': len(crew_employees),
+                'on_vacation': 0
+            }
+    
+    return render_template('vacation_calendar.html',
+                         calendar_data=calendar_data,
+                         month=month,
+                         year=year,
+                         first_day=first_day,
+                         last_day=last_day,
+                         crew_stats=crew_stats)
+
+@main_bp.route('/time-off-requests')
+@login_required
+def time_off_requests():
+    """View time off requests"""
+    if current_user.is_supervisor:
+        # Supervisors see all pending requests
+        requests = TimeOffRequest.query.filter_by(status='pending').order_by(TimeOffRequest.created_at.desc()).all()
+    else:
+        # Employees see only their own requests
+        requests = TimeOffRequest.query.filter_by(employee_id=current_user.id).order_by(TimeOffRequest.created_at.desc()).all()
+    
+    # Group by status
+    pending_requests = [r for r in requests if r.status == 'pending']
+    approved_requests = [r for r in requests if r.status == 'approved']
+    denied_requests = [r for r in requests if r.status == 'denied']
+    
+    return render_template('time_off_requests.html',
+                         pending_requests=pending_requests,
+                         approved_requests=approved_requests,
+                         denied_requests=denied_requests)
+
+@main_bp.route('/swap-requests')
+@login_required
+def swap_requests():
+    """View shift swap requests"""
+    if current_user.is_supervisor:
+        # Get requests for employees in supervisor's crews
+        employee_ids = [e.id for e in Employee.query.filter_by(crew=current_user.crew).all()]
+        requests = ShiftSwapRequest.query.filter(
+            or_(
+                ShiftSwapRequest.requester_id.in_(employee_ids),
+                ShiftSwapRequest.target_employee_id.in_(employee_ids)
+            )
+        ).order_by(ShiftSwapRequest.created_at.desc()).all()
+    else:
+        # Employees see requests they're involved in
+        requests = ShiftSwapRequest.query.filter(
+            or_(
+                ShiftSwapRequest.requester_id == current_user.id,
+                ShiftSwapRequest.target_employee_id == current_user.id
+            )
+        ).order_by(ShiftSwapRequest.created_at.desc()).all()
+    
+    # Group by status
+    pending_requests = [r for r in requests if r.status == 'pending']
+    approved_requests = [r for r in requests if r.status == 'approved']
+    denied_requests = [r for r in requests if r.status == 'denied']
+    
+    return render_template('swap_requests.html',
+                         pending_requests=pending_requests,
+                         approved_requests=approved_requests,
+                         denied_requests=denied_requests)
+
+@main_bp.route('/suggestions')
+@login_required
+def suggestions():
+    """View and submit schedule suggestions"""
+    from models import ScheduleSuggestion
+    
+    # Get user's suggestions
+    my_suggestions = ScheduleSuggestion.query.filter_by(
+        employee_id=current_user.id
+    ).order_by(ScheduleSuggestion.submitted_date.desc()).all()
+    
+    # If supervisor, also get suggestions from their crew
+    crew_suggestions = []
+    if current_user.is_supervisor:
+        crew_suggestions = ScheduleSuggestion.query.join(Employee).filter(
+            Employee.crew == current_user.crew,
+            Employee.id != current_user.id
+        ).order_by(ScheduleSuggestion.submitted_date.desc()).all()
+    
+    return render_template('suggestions.html',
+                         my_suggestions=my_suggestions,
+                         crew_suggestions=crew_suggestions)
+
+@main_bp.route('/casual-workers')
+@login_required
+def casual_workers():
+    """View and manage casual workers"""
+    if not current_user.is_supervisor:
+        flash('Only supervisors can manage casual workers.', 'danger')
+        return redirect(url_for('main.dashboard'))
+    
+    # Get all active casual workers
+    workers = CasualWorker.query.filter_by(is_active=True).order_by(CasualWorker.name).all()
+    
+    # Get statistics
+    stats = {
+        'total_workers': len(workers),
+        'available_today': len([w for w in workers if w.is_active]),
+        'high_rated': len([w for w in workers if w.rating >= 4.5]),
+        'total_hours': sum(w.total_hours_worked for w in workers)
+    }
+    
+    return render_template('casual_workers.html',
+                         workers=workers,
+                         stats=stats)
+
+@main_bp.route('/coverage-gaps')
+@login_required
+def coverage_gaps():
+    """View coverage gaps"""
+    if not current_user.is_supervisor:
+        flash('Only supervisors can view coverage gaps.', 'danger')
+        return redirect(url_for('main.dashboard'))
+    
+    # Get date range
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    
+    if not start_date:
+        start_date = date.today()
+    else:
+        start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
+    
+    if not end_date:
+        end_date = start_date + timedelta(days=6)
+    else:
+        end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
+    
+    # Get coverage requirements and actual coverage
+    coverage_data = []
+    current_date = start_date
+    
+    while current_date <= end_date:
+        # Get scheduled employees for each position
+        for position in Position.query.all():
+            scheduled = Schedule.query.filter(
+                Schedule.date == current_date,
+                Schedule.position_id == position.id
+            ).count()
+            
+            gap = position.min_coverage - scheduled
+            
+            if gap > 0:
+                coverage_data.append({
+                    'date': current_date,
+                    'position': position,
+                    'required': position.min_coverage,
+                    'scheduled': scheduled,
+                    'gap': gap
+                })
         
-        # Add 13 weeks of overtime data
-        current_week_start = datetime.now().date() - timedelta(days=datetime.now().weekday())
-        for week_num in range(1, 14):
-            week_start = current_week_start - timedelta(weeks=week_num)
-            week_ot = emp.get_overtime_for_week(week_start)
-            row[f'Week {week_num} OT'] = week_ot
-        
-        data.append(row)
+        current_date += timedelta(days=1)
     
-    df = pd.DataFrame(data)
-    
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        df.to_excel(writer, sheet_name='Current Employees', index=False)
-    
-    output.seek(0)
-    
-    filename = f'current_employees_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
-    
-    return send_file(
-        output,
-        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        as_attachment=True,
-        download_name=filename
-    )
+    return render_template('coverage_gaps.html',
+                         coverage_data=coverage_data,
+                         start_date=start_date,
+                         end_date=end_date)
 
+@main_bp.route('/coming-soon')
+@login_required
+def coming_soon():
+    """Coming soon page for features under development"""
+    feature = request.args.get('feature', 'This feature')
+    return render_template('coming_soon.html', feature=feature)
 
-# ========================================
-# app.py - Main Flask Application
-# ========================================
+# Error handlers
+@main_bp.app_errorhandler(404)
+def not_found_error(error):
+    return render_template('404.html'), 404
 
-from flask import Flask
-from flask_login import LoginManager
-from flask_migrate import Migrate
-
-def create_app():
-    app = Flask(__name__)
-    
-    # Configuration
-    app.config['SECRET_KEY'] = 'your-secret-key-here'
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://username:password@localhost/workforce_db'
-    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-    
-    # Initialize extensions
-    db.init_app(app)
-    migrate = Migrate(app, db)
-    
-    login_manager = LoginManager()
-    login_manager.init_app(app)
-    login_manager.login_view = 'auth.login'
-    
-    @login_manager.user_loader
-    def load_user(user_id):
-        return Employee.query.get(int(user_id))
-    
-    # Register blueprints
-    app.register_blueprint(main)
-    app.register_blueprint(employee_import)
-    
-    with app.app_context():
-        db.create_all()
-    
-    return app
-
-if __name__ == '__main__':
-    app = create_app()
-    app.run(debug=True)
+@main_bp.app_errorhandler(500)
+def internal_error(error):
+    db.session.rollback()
+    return render_template('500.html'), 500
