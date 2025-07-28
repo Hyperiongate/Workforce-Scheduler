@@ -219,17 +219,75 @@ def overtime_management():
         employees = Employee.query.order_by(Employee.crew, Employee.name).all()
         actual_employee_count = len([e for e in employees if e.id != current_user.id])
         
-        return f"""
+@main_bp.route('/overtime-management')
+@login_required
+def overtime_management():
+    """Enhanced overtime management page with multi-level sorting"""
+    # Check if user is supervisor
+    if not current_user.is_supervisor:
+        flash('You must be a supervisor to access this page.', 'danger')
+        return redirect(url_for('main.dashboard'))
+    
+    try:
+        # Get all employees (no is_active filter since field doesn't exist)
+        employees = Employee.query.order_by(Employee.crew, Employee.name).all()
+        
+        # Get overtime history for the last 13 weeks
+        thirteen_weeks_ago = datetime.now().date() - timedelta(weeks=13)
+        
+        employees_data = []
+        for emp in employees:
+            # Skip the current user (supervisor) from the list
+            if emp.id == current_user.id:
+                continue
+                
+            # Get overtime hours from OvertimeHistory table
+            overtime_total = db.session.query(func.sum(OvertimeHistory.overtime_hours)).filter(
+                OvertimeHistory.employee_id == emp.id,
+                OvertimeHistory.week_start_date >= thirteen_weeks_ago
+            ).scalar() or 0.0
+            
+            # Get current week overtime
+            current_week_start = datetime.now().date() - timedelta(days=datetime.now().weekday())
+            current_week_ot = db.session.query(func.sum(OvertimeHistory.overtime_hours)).filter(
+                OvertimeHistory.employee_id == emp.id,
+                OvertimeHistory.week_start_date == current_week_start
+            ).scalar() or 0.0
+            
+            employees_data.append({
+                'id': emp.id,
+                'name': emp.name,
+                'employee_id': emp.employee_id or f'EMP{emp.id}',
+                'crew': emp.crew or 'Unassigned',
+                'position': emp.position.name if emp.position else 'No Position',
+                'hire_date': emp.hire_date.strftime('%Y-%m-%d') if emp.hire_date else 'N/A',
+                'hire_date_sort': emp.hire_date if emp.hire_date else datetime(2099, 12, 31).date(),
+                'current_week_ot': round(current_week_ot, 1),
+                'overtime_13week': round(overtime_total, 1),
+                'weekly_average': round(overtime_total / 13, 1) if overtime_total else 0
+            })
+        
+        # Calculate statistics
+        total_ot = sum(e['overtime_13week'] for e in employees_data)
+        high_ot_count = len([e for e in employees_data if e['overtime_13week'] > 200])
+        avg_ot = round(total_ot / len(employees_data), 1) if employees_data else 0
+        
+        # Full HTML with multi-level sorting
+        html = f"""
         <!DOCTYPE html>
         <html>
         <head>
             <title>Overtime Management</title>
             <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+            <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
             <style>
                 body {{ background-color: #f5f7fa; }}
-                .container {{ max-width: 1200px; margin: 2rem auto; }}
-                .alert-info {{ margin-bottom: 20px; }}
-                table {{ background: white; }}
+                .container {{ max-width: 1400px; margin: 2rem auto; }}
+                .header {{ margin-bottom: 2rem; }}
+                table {{ background: white; font-size: 0.9rem; }}
+                .high-ot {{ background-color: #ffebee !important; }}
+                .medium-ot {{ background-color: #fff8e1 !important; }}
+                .low-ot {{ background-color: #e8f5e9 !important; }}
                 .crew-badge {{
                     display: inline-block;
                     padding: 0.25rem 0.5rem;
@@ -241,38 +299,423 @@ def overtime_management():
                 .crew-b {{ background-color: #f3e5f5; color: #7b1fa2; }}
                 .crew-c {{ background-color: #e8f5e9; color: #388e3c; }}
                 .crew-d {{ background-color: #fff3e0; color: #f57c00; }}
+                .sort-controls {{
+                    background: white;
+                    padding: 20px;
+                    border-radius: 8px;
+                    margin-bottom: 20px;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                }}
+                .sort-level {{
+                    margin-bottom: 10px;
+                    padding: 10px;
+                    background: #f8f9fa;
+                    border-radius: 5px;
+                }}
+                .stats-card {{
+                    background: white;
+                    border-radius: 8px;
+                    padding: 20px;
+                    text-align: center;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                    height: 100%;
+                }}
+                .stat-value {{
+                    font-size: 2rem;
+                    font-weight: bold;
+                    color: #11998e;
+                }}
+                .clickable {{ cursor: pointer; }}
+                .clickable:hover {{ background-color: #e9ecef; }}
+                .filters {{
+                    background: white;
+                    padding: 15px;
+                    border-radius: 8px;
+                    margin-bottom: 20px;
+                }}
+                .table-container {{
+                    background: white;
+                    padding: 20px;
+                    border-radius: 8px;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                    overflow-x: auto;
+                }}
             </style>
         </head>
         <body>
             <div class="container">
-                <h1>Overtime Management</h1>
-                <p class="text-muted">Enhanced features coming soon!</p>
-                
-                <div class="alert alert-info">
-                    <strong>Employee Count:</strong> Found {actual_employee_count} employees (excluding supervisor).
-                    {f'<br><strong>Note:</strong> Expected 100 employees but found {actual_employee_count + 1} total. The upload may not have deleted all previous employees.' if actual_employee_count != 100 else ''}
+                <div class="header">
+                    <h1><i class="bi bi-clock-history"></i> Overtime Management</h1>
+                    <p class="text-muted">13-Week Rolling Overtime Summary with Multi-Level Sorting</p>
                 </div>
-                
+
+                <!-- Action Buttons -->
                 <div class="mb-3">
-                    <a href="/dashboard" class="btn btn-secondary">Back to Dashboard</a>
-                    <a href="/upload-employees" class="btn btn-primary">Re-upload Employee Data</a>
-                    <a href="/api/clear-all-employees" class="btn btn-danger" onclick="return confirm('This will delete ALL employees except you. Are you sure?')">Clear All Employees</a>
+                    <a href="/dashboard" class="btn btn-secondary">
+                        <i class="bi bi-arrow-left"></i> Back to Dashboard
+                    </a>
+                    <a href="/upload-employees" class="btn btn-primary">
+                        <i class="bi bi-upload"></i> Re-upload Employee Data
+                    </a>
+                    <button class="btn btn-success" onclick="exportData()">
+                        <i class="bi bi-download"></i> Export to Excel
+                    </button>
                 </div>
-                
-                <h3>Key Features Needed:</h3>
-                <ul>
-                    <li>✅ Employee count validation (currently {actual_employee_count} employees)</li>
-                    <li>📋 Multi-level sorting (4 levels): Crew, Position, 13-week total, Date of Hire</li>
-                    <li>📊 Export to Excel functionality</li>
-                    <li>🔍 Filter by crew, position, overtime ranges</li>
-                    <li>📈 Visual overtime trend indicators</li>
-                </ul>
-                
-                <p>For now, you can view the basic employee list at <a href="/view-crews">/view-crews</a></p>
+
+                <!-- Statistics Cards -->
+                <div class="row mb-4">
+                    <div class="col-md-3">
+                        <div class="stats-card">
+                            <div class="stat-value">{len(employees_data)}</div>
+                            <div class="text-muted">Total Employees</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="stats-card">
+                            <div class="stat-value">{total_ot:.0f}h</div>
+                            <div class="text-muted">Total OT (13 weeks)</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="stats-card">
+                            <div class="stat-value">{avg_ot}h</div>
+                            <div class="text-muted">Average OT/Employee</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="stats-card">
+                            <div class="stat-value">{high_ot_count}</div>
+                            <div class="text-muted">High OT (>200h)</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Filters -->
+                <div class="filters">
+                    <h5>Filters</h5>
+                    <div class="row">
+                        <div class="col-md-3">
+                            <select class="form-select" id="crewFilter" onchange="applyFilters()">
+                                <option value="">All Crews</option>
+                                <option value="A">Crew A</option>
+                                <option value="B">Crew B</option>
+                                <option value="C">Crew C</option>
+                                <option value="D">Crew D</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <select class="form-select" id="positionFilter" onchange="applyFilters()">
+                                <option value="">All Positions</option>
+                                {"".join(f'<option value="{p}">{p}</option>' for p in sorted(set(e['position'] for e in employees_data if e['position'] != 'No Position')))}
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <select class="form-select" id="otFilter" onchange="applyFilters()">
+                                <option value="">All OT Ranges</option>
+                                <option value="0-50">0-50 hours</option>
+                                <option value="50-100">50-100 hours</option>
+                                <option value="100-150">100-150 hours</option>
+                                <option value="150-200">150-200 hours</option>
+                                <option value="200+">200+ hours</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <button class="btn btn-secondary" onclick="resetFilters()">
+                                <i class="bi bi-arrow-counterclockwise"></i> Reset Filters
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sort Controls -->
+                <div class="sort-controls">
+                    <h5>Multi-Level Sorting</h5>
+                    <div class="row">
+                        <div class="col-md-3">
+                            <div class="sort-level">
+                                <label>Sort Level 1:</label>
+                                <select class="form-select" id="sort1" onchange="applySort()">
+                                    <option value="">None</option>
+                                    <option value="crew">Crew</option>
+                                    <option value="position">Position</option>
+                                    <option value="overtime">13-Week Total</option>
+                                    <option value="hire_date">Date of Hire</option>
+                                    <option value="name">Name</option>
+                                </select>
+                                <select class="form-select mt-1" id="dir1" onchange="applySort()">
+                                    <option value="asc">Ascending</option>
+                                    <option value="desc">Descending</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="sort-level">
+                                <label>Sort Level 2:</label>
+                                <select class="form-select" id="sort2" onchange="applySort()">
+                                    <option value="">None</option>
+                                    <option value="crew">Crew</option>
+                                    <option value="position">Position</option>
+                                    <option value="overtime">13-Week Total</option>
+                                    <option value="hire_date">Date of Hire</option>
+                                    <option value="name">Name</option>
+                                </select>
+                                <select class="form-select mt-1" id="dir2" onchange="applySort()">
+                                    <option value="asc">Ascending</option>
+                                    <option value="desc">Descending</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="sort-level">
+                                <label>Sort Level 3:</label>
+                                <select class="form-select" id="sort3" onchange="applySort()">
+                                    <option value="">None</option>
+                                    <option value="crew">Crew</option>
+                                    <option value="position">Position</option>
+                                    <option value="overtime">13-Week Total</option>
+                                    <option value="hire_date">Date of Hire</option>
+                                    <option value="name">Name</option>
+                                </select>
+                                <select class="form-select mt-1" id="dir3" onchange="applySort()">
+                                    <option value="asc">Ascending</option>
+                                    <option value="desc">Descending</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="sort-level">
+                                <label>Sort Level 4:</label>
+                                <select class="form-select" id="sort4" onchange="applySort()">
+                                    <option value="">None</option>
+                                    <option value="crew">Crew</option>
+                                    <option value="position">Position</option>
+                                    <option value="overtime">13-Week Total</option>
+                                    <option value="hire_date">Date of Hire</option>
+                                    <option value="name">Name</option>
+                                </select>
+                                <select class="form-select mt-1" id="dir4" onchange="applySort()">
+                                    <option value="asc">Ascending</option>
+                                    <option value="desc">Descending</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Employee Table -->
+                <div class="table-container">
+                    <table class="table table-hover" id="employeeTable">
+                        <thead>
+                            <tr>
+                                <th class="clickable" onclick="quickSort('name')">Employee <i class="bi bi-arrow-down-up"></i></th>
+                                <th>Employee ID</th>
+                                <th class="clickable" onclick="quickSort('crew')">Crew <i class="bi bi-arrow-down-up"></i></th>
+                                <th class="clickable" onclick="quickSort('position')">Position <i class="bi bi-arrow-down-up"></i></th>
+                                <th class="clickable" onclick="quickSort('hire_date')">Date of Hire <i class="bi bi-arrow-down-up"></i></th>
+                                <th>Current Week</th>
+                                <th class="clickable" onclick="quickSort('overtime')">13-Week Total <i class="bi bi-arrow-down-up"></i></th>
+                                <th>Weekly Avg</th>
+                                <th>Trend</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tableBody">
+        """
+        
+        # Add employee rows
+        for emp in sorted(employees_data, key=lambda x: (-x['overtime_13week'])):
+            row_class = ''
+            if emp['overtime_13week'] > 200:
+                row_class = 'high-ot'
+            elif emp['overtime_13week'] > 150:
+                row_class = 'medium-ot'
+            elif emp['overtime_13week'] < 50:
+                row_class = 'low-ot'
+            
+            crew_badge = f'<span class="crew-badge crew-{emp["crew"].lower()}">{emp["crew"]}</span>' if emp['crew'] != 'Unassigned' else emp['crew']
+            
+            # Simple trend indicator
+            trend = '→'
+            trend_color = 'text-muted'
+            if emp['current_week_ot'] > emp['weekly_average'] * 1.2:
+                trend = '↑'
+                trend_color = 'text-danger'
+            elif emp['current_week_ot'] < emp['weekly_average'] * 0.8:
+                trend = '↓'
+                trend_color = 'text-success'
+            
+            html += f"""
+                <tr class="{row_class}" data-crew="{emp['crew']}" data-position="{emp['position']}" 
+                    data-overtime="{emp['overtime_13week']}" data-hire-date="{emp['hire_date_sort']}"
+                    data-name="{emp['name']}">
+                    <td>{emp['name']}</td>
+                    <td>{emp['employee_id']}</td>
+                    <td>{crew_badge}</td>
+                    <td>{emp['position']}</td>
+                    <td>{emp['hire_date']}</td>
+                    <td>{emp['current_week_ot']}h</td>
+                    <td><strong>{emp['overtime_13week']}h</strong></td>
+                    <td>{emp['weekly_average']}h</td>
+                    <td class="{trend_color}">{trend}</td>
+                </tr>
+            """
+        
+        html += """
+                        </tbody>
+                    </table>
+                </div>
             </div>
+
+            <script>
+                let allRows = [];
+                let filteredRows = [];
+                
+                // Store all rows on load
+                document.addEventListener('DOMContentLoaded', function() {
+                    allRows = Array.from(document.querySelectorAll('#tableBody tr'));
+                    filteredRows = [...allRows];
+                });
+                
+                function applyFilters() {
+                    const crewFilter = document.getElementById('crewFilter').value;
+                    const positionFilter = document.getElementById('positionFilter').value;
+                    const otFilter = document.getElementById('otFilter').value;
+                    
+                    filteredRows = allRows.filter(row => {
+                        const crew = row.getAttribute('data-crew');
+                        const position = row.getAttribute('data-position');
+                        const overtime = parseFloat(row.getAttribute('data-overtime'));
+                        
+                        let show = true;
+                        
+                        if (crewFilter && crew !== crewFilter) show = false;
+                        if (positionFilter && position !== positionFilter) show = false;
+                        
+                        if (otFilter) {
+                            switch(otFilter) {
+                                case '0-50': if (overtime > 50) show = false; break;
+                                case '50-100': if (overtime <= 50 || overtime > 100) show = false; break;
+                                case '100-150': if (overtime <= 100 || overtime > 150) show = false; break;
+                                case '150-200': if (overtime <= 150 || overtime > 200) show = false; break;
+                                case '200+': if (overtime <= 200) show = false; break;
+                            }
+                        }
+                        
+                        return show;
+                    });
+                    
+                    applySort();
+                }
+                
+                function resetFilters() {
+                    document.getElementById('crewFilter').value = '';
+                    document.getElementById('positionFilter').value = '';
+                    document.getElementById('otFilter').value = '';
+                    filteredRows = [...allRows];
+                    applySort();
+                }
+                
+                function applySort() {
+                    const sortLevels = [];
+                    for (let i = 1; i <= 4; i++) {
+                        const field = document.getElementById(`sort${i}`).value;
+                        const dir = document.getElementById(`dir${i}`).value;
+                        if (field) {
+                            sortLevels.push({ field, dir });
+                        }
+                    }
+                    
+                    if (sortLevels.length === 0) {
+                        // Default sort by overtime descending
+                        sortLevels.push({ field: 'overtime', dir: 'desc' });
+                    }
+                    
+                    const sortedRows = [...filteredRows].sort((a, b) => {
+                        for (const level of sortLevels) {
+                            let aVal, bVal;
+                            
+                            switch(level.field) {
+                                case 'crew':
+                                    aVal = a.getAttribute('data-crew');
+                                    bVal = b.getAttribute('data-crew');
+                                    break;
+                                case 'position':
+                                    aVal = a.getAttribute('data-position');
+                                    bVal = b.getAttribute('data-position');
+                                    break;
+                                case 'overtime':
+                                    aVal = parseFloat(a.getAttribute('data-overtime'));
+                                    bVal = parseFloat(b.getAttribute('data-overtime'));
+                                    break;
+                                case 'hire_date':
+                                    aVal = a.getAttribute('data-hire-date');
+                                    bVal = b.getAttribute('data-hire-date');
+                                    break;
+                                case 'name':
+                                    aVal = a.getAttribute('data-name');
+                                    bVal = b.getAttribute('data-name');
+                                    break;
+                            }
+                            
+                            if (aVal < bVal) return level.dir === 'asc' ? -1 : 1;
+                            if (aVal > bVal) return level.dir === 'asc' ? 1 : -1;
+                        }
+                        return 0;
+                    });
+                    
+                    // Update table
+                    const tbody = document.getElementById('tableBody');
+                    tbody.innerHTML = '';
+                    
+                    // Show filtered and sorted rows
+                    sortedRows.forEach(row => {
+                        tbody.appendChild(row.cloneNode(true));
+                    });
+                    
+                    // Hide non-filtered rows
+                    allRows.forEach(row => {
+                        if (!filteredRows.includes(row)) {
+                            row.style.display = 'none';
+                        }
+                    });
+                }
+                
+                function quickSort(field) {
+                    // Set first sort level to this field
+                    document.getElementById('sort1').value = field;
+                    document.getElementById('dir1').value = field === 'hire_date' ? 'asc' : 'desc';
+                    
+                    // Clear other sort levels
+                    for (let i = 2; i <= 4; i++) {
+                        document.getElementById(`sort${i}`).value = '';
+                    }
+                    
+                    applySort();
+                }
+                
+                function exportData() {
+                    alert('Export functionality will be implemented to download current view as Excel file');
+                    // In production, this would POST current filters/sort to an export endpoint
+                }
+            </script>
         </body>
         </html>
         """
+        
+        return html
+        
+    except Exception as e:
+        return f"""
+        <html>
+        <head><title>Error - Overtime Management</title></head>
+        <body>
+            <div style="max-width: 800px; margin: 50px auto; padding: 20px;">
+                <h1>Error Loading Overtime Data</h1>
+                <p>Error: {str(e)}</p>
+                <p><a href="/dashboard">Back to Dashboard</a></p>
+            </div>
+        </body>
+        </html>
+        """, 500
         
         # Get overtime history for the last 13 weeks
         thirteen_weeks_ago = datetime.now().date() - timedelta(weeks=13)
