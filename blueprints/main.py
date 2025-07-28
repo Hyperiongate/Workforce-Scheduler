@@ -149,19 +149,203 @@ def test_dashboard():
 @main_bp.route('/overtime-management')
 @login_required
 def overtime_management():
-    """Overtime management page"""
+    """Simple overtime management page"""
     # Check if user is supervisor
     if not current_user.is_supervisor:
         flash('You must be a supervisor to access this page.', 'danger')
         return redirect(url_for('main.dashboard'))
     
     try:
-        # This should be handled by employee blueprint, but provide fallback
-        return redirect(url_for('employee.overtime_management'))
-    except:
-        # If employee blueprint not available, show simple version
-        employees = Employee.query.filter_by(crew=current_user.crew).all()
-        return render_template('overtime_management.html', employees=employees)
+        # Get all employees with basic info
+        employees = Employee.query.filter_by(is_active=True).order_by(Employee.crew, Employee.name).all()
+        
+        # Get overtime history for the last 13 weeks
+        thirteen_weeks_ago = datetime.now().date() - timedelta(weeks=13)
+        
+        employees_data = []
+        for emp in employees:
+            # Get overtime hours from OvertimeHistory table
+            overtime_total = db.session.query(func.sum(OvertimeHistory.overtime_hours)).filter(
+                OvertimeHistory.employee_id == emp.id,
+                OvertimeHistory.week_start_date >= thirteen_weeks_ago
+            ).scalar() or 0.0
+            
+            # Get current week overtime
+            current_week_start = datetime.now().date() - timedelta(days=datetime.now().weekday())
+            current_week_ot = db.session.query(func.sum(OvertimeHistory.overtime_hours)).filter(
+                OvertimeHistory.employee_id == emp.id,
+                OvertimeHistory.week_start_date == current_week_start
+            ).scalar() or 0.0
+            
+            employees_data.append({
+                'id': emp.id,
+                'name': emp.name,
+                'employee_id': emp.employee_id or f'EMP{emp.id}',
+                'crew': emp.crew or 'Unassigned',
+                'position': emp.position.name if emp.position else 'No Position',
+                'current_week_overtime': round(current_week_ot, 1),
+                'last_13_weeks_overtime': round(overtime_total, 1),
+                'average_weekly_overtime': round(overtime_total / 13, 1) if overtime_total else 0
+            })
+        
+        # Sort by total overtime descending
+        employees_data.sort(key=lambda x: x['last_13_weeks_overtime'], reverse=True)
+        
+        # Simple HTML response
+        html = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Overtime Management</title>
+            <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+            <style>
+                body { background-color: #f5f7fa; }
+                .container { max-width: 1200px; margin: 2rem auto; }
+                .header { margin-bottom: 2rem; }
+                .alert-warning { margin-bottom: 2rem; }
+                table { background: white; }
+                .high-ot { background-color: #fee; }
+                .medium-ot { background-color: #ffd; }
+                .crew-badge {
+                    display: inline-block;
+                    padding: 0.25rem 0.5rem;
+                    border-radius: 0.25rem;
+                    font-size: 0.875rem;
+                    font-weight: 500;
+                }
+                .crew-a { background-color: #e3f2fd; color: #1976d2; }
+                .crew-b { background-color: #f3e5f5; color: #7b1fa2; }
+                .crew-c { background-color: #e8f5e9; color: #388e3c; }
+                .crew-d { background-color: #fff3e0; color: #f57c00; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h1>Overtime Management</h1>
+                    <p class="text-muted">13-Week Rolling Overtime Summary</p>
+                    <a href="/dashboard" class="btn btn-secondary">Back to Dashboard</a>
+                    <a href="/upload-employees" class="btn btn-primary">Upload New Data</a>
+                </div>
+        """
+        
+        if not employees_data:
+            html += """
+                <div class="alert alert-warning">
+                    <h4>No Employee Data Found</h4>
+                    <p>Please <a href="/upload-employees">upload employee data</a> to view overtime information.</p>
+                </div>
+            """
+        else:
+            # Statistics
+            total_ot = sum(e['last_13_weeks_overtime'] for e in employees_data)
+            high_ot_count = len([e for e in employees_data if e['last_13_weeks_overtime'] > 200])
+            
+            html += f"""
+                <div class="row mb-4">
+                    <div class="col-md-3">
+                        <div class="card">
+                            <div class="card-body text-center">
+                                <h3>{len(employees_data)}</h3>
+                                <p class="text-muted mb-0">Total Employees</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card">
+                            <div class="card-body text-center">
+                                <h3>{total_ot:.1f}</h3>
+                                <p class="text-muted mb-0">Total OT Hours</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card">
+                            <div class="card-body text-center">
+                                <h3>{total_ot/len(employees_data) if employees_data else 0:.1f}</h3>
+                                <p class="text-muted mb-0">Avg OT/Employee</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card">
+                            <div class="card-body text-center">
+                                <h3>{high_ot_count}</h3>
+                                <p class="text-muted mb-0">High OT (&gt;200h)</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-body">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Employee</th>
+                                    <th>ID</th>
+                                    <th>Crew</th>
+                                    <th>Position</th>
+                                    <th>Current Week OT</th>
+                                    <th>13-Week Total</th>
+                                    <th>Weekly Average</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+            """
+            
+            for emp in employees_data:
+                row_class = ''
+                if emp['last_13_weeks_overtime'] > 200:
+                    row_class = 'high-ot'
+                elif emp['last_13_weeks_overtime'] > 150:
+                    row_class = 'medium-ot'
+                
+                crew_badge = f'<span class="crew-badge crew-{emp["crew"].lower()}">{emp["crew"]}</span>' if emp['crew'] != 'Unassigned' else emp['crew']
+                
+                html += f"""
+                    <tr class="{row_class}">
+                        <td>{emp['name']}</td>
+                        <td>{emp['employee_id']}</td>
+                        <td>{crew_badge}</td>
+                        <td>{emp['position']}</td>
+                        <td>{emp['current_week_overtime']}h</td>
+                        <td><strong>{emp['last_13_weeks_overtime']}h</strong></td>
+                        <td>{emp['average_weekly_overtime']}h</td>
+                    </tr>
+                """
+            
+            html += """
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            """
+        
+        html += """
+            </div>
+        </body>
+        </html>
+        """
+        
+        return html
+        
+    except Exception as e:
+        # If there's any error, show a simple error page
+        return f"""
+        <html>
+        <head><title>Error - Overtime Management</title></head>
+        <body>
+            <div style="max-width: 800px; margin: 50px auto; padding: 20px;">
+                <h1>Error Loading Overtime Data</h1>
+                <p>There was an error loading the overtime management page.</p>
+                <p>Error details: {str(e)}</p>
+                <p><a href="/dashboard">Back to Dashboard</a></p>
+                <p><a href="/upload-employees">Upload Employee Data</a></p>
+            </div>
+        </body>
+        </html>
+        """, 500
 
 @main_bp.route('/diagnostic')
 @login_required
