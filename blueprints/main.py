@@ -156,8 +156,12 @@ def overtime_management():
         return redirect(url_for('main.dashboard'))
     
     try:
-        # Get all employees with basic info
-        employees = Employee.query.filter_by(is_active=True).order_by(Employee.crew, Employee.name).all()
+        # Get all employees - remove is_active filter for now to diagnose
+        employees = Employee.query.order_by(Employee.crew, Employee.name).all()
+        
+        # Debug info
+        total_employees = Employee.query.count()
+        active_employees = Employee.query.filter_by(is_active=True).count()
         
         # Get overtime history for the last 13 weeks
         thirteen_weeks_ago = datetime.now().date() - timedelta(weeks=13)
@@ -191,32 +195,32 @@ def overtime_management():
         # Sort by total overtime descending
         employees_data.sort(key=lambda x: x['last_13_weeks_overtime'], reverse=True)
         
-        # Simple HTML response
-        html = """
+        html = f"""
         <!DOCTYPE html>
         <html>
         <head>
             <title>Overtime Management</title>
             <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
             <style>
-                body { background-color: #f5f7fa; }
-                .container { max-width: 1200px; margin: 2rem auto; }
-                .header { margin-bottom: 2rem; }
-                .alert-warning { margin-bottom: 2rem; }
-                table { background: white; }
-                .high-ot { background-color: #fee; }
-                .medium-ot { background-color: #ffd; }
-                .crew-badge {
+                body {{ background-color: #f5f7fa; }}
+                .container {{ max-width: 1200px; margin: 2rem auto; }}
+                .header {{ margin-bottom: 2rem; }}
+                .alert-warning {{ margin-bottom: 2rem; }}
+                table {{ background: white; }}
+                .high-ot {{ background-color: #fee; }}
+                .medium-ot {{ background-color: #ffd; }}
+                .crew-badge {{
                     display: inline-block;
                     padding: 0.25rem 0.5rem;
                     border-radius: 0.25rem;
                     font-size: 0.875rem;
                     font-weight: 500;
-                }
-                .crew-a { background-color: #e3f2fd; color: #1976d2; }
-                .crew-b { background-color: #f3e5f5; color: #7b1fa2; }
-                .crew-c { background-color: #e8f5e9; color: #388e3c; }
-                .crew-d { background-color: #fff3e0; color: #f57c00; }
+                }}
+                .crew-a {{ background-color: #e3f2fd; color: #1976d2; }}
+                .crew-b {{ background-color: #f3e5f5; color: #7b1fa2; }}
+                .crew-c {{ background-color: #e8f5e9; color: #388e3c; }}
+                .crew-d {{ background-color: #fff3e0; color: #f57c00; }}
+                .debug-info {{ background: #f0f0f0; padding: 10px; margin-bottom: 20px; border-radius: 5px; }}
             </style>
         </head>
         <body>
@@ -227,6 +231,14 @@ def overtime_management():
                     <a href="/dashboard" class="btn btn-secondary">Back to Dashboard</a>
                     <a href="/upload-employees" class="btn btn-primary">Upload New Data</a>
                 </div>
+                
+                <div class="debug-info">
+                    <strong>Debug Info:</strong><br>
+                    Total employees in database: {total_employees}<br>
+                    Active employees: {active_employees}<br>
+                    Employees found by query: {len(employees)}<br>
+                    OvertimeHistory records: {OvertimeHistory.query.count()}
+                </div>
         """
         
         if not employees_data:
@@ -234,6 +246,22 @@ def overtime_management():
                 <div class="alert alert-warning">
                     <h4>No Employee Data Found</h4>
                     <p>Please <a href="/upload-employees">upload employee data</a> to view overtime information.</p>
+                </div>
+                
+                <div class="debug-info">
+                    <strong>Additional Debug:</strong><br>
+            """
+            
+            # Show first few employees if any exist
+            sample_employees = Employee.query.limit(5).all()
+            if sample_employees:
+                html += "Sample employees in database:<br>"
+                for emp in sample_employees:
+                    html += f"- {emp.name} (ID: {emp.id}, Active: {getattr(emp, 'is_active', 'N/A')}, Crew: {emp.crew})<br>"
+            else:
+                html += "No employees found in database at all!<br>"
+                
+            html += """
                 </div>
             """
         else:
@@ -448,6 +476,108 @@ def api_dashboard_stats():
             'new_critical_items': 0,
             'error': str(e)
         })
+
+@main_bp.route('/fix-employees-active')
+@login_required
+def fix_employees_active():
+    """Fix all employees to be active"""
+    if not current_user.is_supervisor:
+        flash('You must be a supervisor to access this page.', 'danger')
+        return redirect(url_for('main.dashboard'))
+    
+    try:
+        # Update all employees to be active
+        updated = Employee.query.update({Employee.is_active: True})
+        db.session.commit()
+        
+        return f"""
+        <html>
+        <head><title>Fixed Employees</title></head>
+        <body style="font-family: Arial; margin: 50px;">
+            <h1>Employee Status Fixed</h1>
+            <p>Updated {updated} employees to active status.</p>
+            <p><a href="/overtime-management">Go to Overtime Management</a></p>
+            <p><a href="/dashboard">Back to Dashboard</a></p>
+        </body>
+        </html>
+        """
+    except Exception as e:
+        db.session.rollback()
+        return f"Error: {str(e)}", 500
+
+@main_bp.route('/debug-employees')
+@login_required
+def debug_employees():
+    """Debug route to check employee data"""
+    employees = Employee.query.all()
+    overtime_records = OvertimeHistory.query.all()
+    
+    html = """
+    <html>
+    <head><title>Employee Debug Info</title></head>
+    <body style="font-family: Arial; margin: 20px;">
+        <h1>Employee Database Debug</h1>
+        <a href="/dashboard">Back to Dashboard</a>
+        
+        <h2>Employees (Total: {0})</h2>
+        <table border="1" cellpadding="5">
+            <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Crew</th>
+                <th>Position</th>
+                <th>is_active</th>
+                <th>is_supervisor</th>
+            </tr>
+    """.format(len(employees))
+    
+    for emp in employees:
+        html += f"""
+            <tr>
+                <td>{emp.id}</td>
+                <td>{emp.name}</td>
+                <td>{emp.email}</td>
+                <td>{emp.crew or 'None'}</td>
+                <td>{emp.position.name if emp.position else 'None'}</td>
+                <td>{getattr(emp, 'is_active', 'N/A')}</td>
+                <td>{emp.is_supervisor}</td>
+            </tr>
+        """
+    
+    html += f"""
+        </table>
+        
+        <h2>Overtime History Records (Total: {len(overtime_records)})</h2>
+        <table border="1" cellpadding="5">
+            <tr>
+                <th>ID</th>
+                <th>Employee ID</th>
+                <th>Week Start</th>
+                <th>Overtime Hours</th>
+            </tr>
+    """
+    
+    for ot in overtime_records[:20]:  # Show first 20 records
+        html += f"""
+            <tr>
+                <td>{ot.id}</td>
+                <td>{ot.employee_id}</td>
+                <td>{ot.week_start_date}</td>
+                <td>{ot.overtime_hours}</td>
+            </tr>
+        """
+    
+    if len(overtime_records) > 20:
+        html += f"<tr><td colspan='4'>... and {len(overtime_records) - 20} more records</td></tr>"
+    
+    html += """
+        </table>
+    </body>
+    </html>
+    """
+    
+    return html
 
 # Error handlers
 @main_bp.errorhandler(404)
