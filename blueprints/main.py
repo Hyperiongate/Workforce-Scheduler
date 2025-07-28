@@ -368,7 +368,7 @@ def overtime_management_main():  # Changed function name to be unique
                         <div class="col-md-3">
                             <div class="sort-level">
                                 <label>Sort Level 1:</label>
-                                <select class="form-select" id="sort1" onchange="applySort()">
+                                <select class="form-select" id="sort1">
                                     <option value="">None</option>
                                     <option value="crew">Crew</option>
                                     <option value="position">Position</option>
@@ -376,7 +376,7 @@ def overtime_management_main():  # Changed function name to be unique
                                     <option value="hire_date">Date of Hire</option>
                                     <option value="name">Name</option>
                                 </select>
-                                <select class="form-select mt-1" id="dir1" onchange="applySort()">
+                                <select class="form-select mt-1" id="dir1">
                                     <option value="asc">Ascending</option>
                                     <option value="desc">Descending</option>
                                 </select>
@@ -385,7 +385,7 @@ def overtime_management_main():  # Changed function name to be unique
                         <div class="col-md-3">
                             <div class="sort-level">
                                 <label>Sort Level 2:</label>
-                                <select class="form-select" id="sort2" onchange="applySort()">
+                                <select class="form-select" id="sort2">
                                     <option value="">None</option>
                                     <option value="crew">Crew</option>
                                     <option value="position">Position</option>
@@ -393,7 +393,7 @@ def overtime_management_main():  # Changed function name to be unique
                                     <option value="hire_date">Date of Hire</option>
                                     <option value="name">Name</option>
                                 </select>
-                                <select class="form-select mt-1" id="dir2" onchange="applySort()">
+                                <select class="form-select mt-1" id="dir2">
                                     <option value="asc">Ascending</option>
                                     <option value="desc">Descending</option>
                                 </select>
@@ -402,7 +402,7 @@ def overtime_management_main():  # Changed function name to be unique
                         <div class="col-md-3">
                             <div class="sort-level">
                                 <label>Sort Level 3:</label>
-                                <select class="form-select" id="sort3" onchange="applySort()">
+                                <select class="form-select" id="sort3">
                                     <option value="">None</option>
                                     <option value="crew">Crew</option>
                                     <option value="position">Position</option>
@@ -410,7 +410,7 @@ def overtime_management_main():  # Changed function name to be unique
                                     <option value="hire_date">Date of Hire</option>
                                     <option value="name">Name</option>
                                 </select>
-                                <select class="form-select mt-1" id="dir3" onchange="applySort()">
+                                <select class="form-select mt-1" id="dir3">
                                     <option value="asc">Ascending</option>
                                     <option value="desc">Descending</option>
                                 </select>
@@ -419,7 +419,7 @@ def overtime_management_main():  # Changed function name to be unique
                         <div class="col-md-3">
                             <div class="sort-level">
                                 <label>Sort Level 4:</label>
-                                <select class="form-select" id="sort4" onchange="applySort()">
+                                <select class="form-select" id="sort4">
                                     <option value="">None</option>
                                     <option value="crew">Crew</option>
                                     <option value="position">Position</option>
@@ -427,11 +427,21 @@ def overtime_management_main():  # Changed function name to be unique
                                     <option value="hire_date">Date of Hire</option>
                                     <option value="name">Name</option>
                                 </select>
-                                <select class="form-select mt-1" id="dir4" onchange="applySort()">
+                                <select class="form-select mt-1" id="dir4">
                                     <option value="asc">Ascending</option>
                                     <option value="desc">Descending</option>
                                 </select>
                             </div>
+                        </div>
+                    </div>
+                    <div class="row mt-3">
+                        <div class="col-12 text-center">
+                            <button class="btn btn-primary btn-lg" onclick="applySort()">
+                                <i class="bi bi-sort-down"></i> Apply Sort
+                            </button>
+                            <button class="btn btn-secondary btn-lg ms-2" onclick="resetSort()">
+                                <i class="bi bi-arrow-counterclockwise"></i> Reset Sort
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -611,6 +621,20 @@ def overtime_management_main():  # Changed function name to be unique
                             row.style.display = 'none';
                         }
                     });
+                }
+                
+                function resetSort() {
+                    // Clear all sort levels
+                    for (let i = 1; i <= 4; i++) {
+                        document.getElementById(`sort${i}`).value = '';
+                        document.getElementById(`dir${i}`).value = 'asc';
+                    }
+                    
+                    // Apply default sort (by overtime descending)
+                    document.getElementById('sort1').value = 'overtime';
+                    document.getElementById('dir1').value = 'desc';
+                    
+                    applySort();
                 }
                 
                 function quickSort(field) {
