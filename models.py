@@ -48,7 +48,7 @@ class Employee(UserMixin, db.Model):
     # Relationships
     position = db.relationship('Position', backref='employees')
     skills = db.relationship('Skill', secondary=employee_skills, backref='employees')
-    schedules = db.relationship('Schedule', backref='employee', lazy='dynamic')
+    schedules = db.relationship('Schedule', foreign_keys='Schedule.employee_id', backref='employee', lazy='dynamic')
     availability = db.relationship('Availability', backref='employee', lazy='dynamic')
     coverage_requests = db.relationship('CoverageRequest', backref='requester', lazy='dynamic', 
                                       foreign_keys='CoverageRequest.requester_id')
