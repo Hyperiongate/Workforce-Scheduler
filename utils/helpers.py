@@ -1,3 +1,7 @@
+from flask import current_app
+from models import db
+from sqlalchemy import or_, and_, func
+
 # Add these functions to your utils/helpers.py file
 
 def calculate_overtime_trend(employee_id, weeks=13):
@@ -149,3 +153,54 @@ def apply_overtime_range_filter(query, ot_range, total_hours_column):
     elif ot_range == '150+':
         return query.having(total_hours_column > 150)
     return query
+
+def get_coverage_gaps(start_date=None, end_date=None):
+    """
+    Identify coverage gaps in the schedule
+    Returns a list of gaps with details
+    """
+    from models import db, Schedule, Position, Employee, CrewCoverageRequirement
+    from datetime import date, timedelta
+    from sqlalchemy import func
+    
+    if not start_date:
+        start_date = date.today()
+    if not end_date:
+        end_date = start_date + timedelta(days=14)  # Look 2 weeks ahead by default
+    
+    gaps = []
+    
+    # Check each day in the range
+    current_date = start_date
+    while current_date <= end_date:
+        # Get all positions and their requirements
+        positions = Position.query.all()
+        
+        for position in positions:
+            # Count scheduled employees for this position on this date
+            scheduled_count = db.session.query(func.count(Schedule.id)).join(
+                Employee, Schedule.employee_id == Employee.id
+            ).filter(
+                Schedule.date == current_date,
+                Employee.position_id == position.id
+            ).scalar() or 0
+            
+            # Get minimum coverage requirement
+            min_required = position.min_coverage or 1
+            
+            # Check if there's a gap
+            if scheduled_count < min_required:
+                gap = {
+                    'date': current_date,
+                    'position_id': position.id,
+                    'position_name': position.name,
+                    'scheduled': scheduled_count,
+                    'required': min_required,
+                    'shortage': min_required - scheduled_count,
+                    'shift_type': 'day'  # You can enhance this to check actual shift types
+                }
+                gaps.append(gap)
+        
+        current_date += timedelta(days=1)
+    
+    return gaps
