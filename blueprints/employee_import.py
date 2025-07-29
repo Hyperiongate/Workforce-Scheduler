@@ -1,5 +1,15 @@
 # blueprints/employee_import.py - Enhanced version with new upload system
 
+# At the top of blueprints/employee_import.py
+import sys
+sys.path.append('..')  # If the files are in parent directory
+from excel_templates_generator import (
+    create_employee_import_template,
+    create_overtime_history_template,
+    create_bulk_update_template
+)
+from excel_upload_handler import ExcelUploadValidator, ExcelUploadProcessor
+
 from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file, jsonify, current_app
 from flask_login import login_required, current_user
 from functools import wraps
