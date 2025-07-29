@@ -36,8 +36,8 @@ def dashboard():
         # Get real-time staffing data
         today = date.today()
         
-        # Current staffing levels
-        scheduled_today = Schedule.query.filter_by(date=today).count()
+        # Current staffing levels - FIXED QUERY
+        scheduled_today = db.session.query(Schedule).filter_by(date=today).count()
         
         # Calculate total required positions
         total_positions = db.session.query(func.sum(Position.min_coverage)).scalar() or 0
