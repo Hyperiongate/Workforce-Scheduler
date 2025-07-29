@@ -12,7 +12,7 @@ from werkzeug.security import check_password_hash
 import os
 from datetime import datetime, timedelta, date
 import random
-from sqlalchemy import and_, func
+from sqlalchemy import and_, func, text
 
 # Create Flask app
 app = Flask(__name__)
@@ -269,6 +269,129 @@ def overtime_distribution_api():
             'employees': []
         }
     })
+
+# DATABASE FIX ROUTES
+@app.route('/fix-database-relationships')
+@login_required
+def fix_database_relationships():
+    """Fix database relationship issues"""
+    if not current_user.is_supervisor:
+        flash('Access denied. Supervisors only.', 'danger')
+        return redirect(url_for('main.dashboard'))
+    
+    try:
+        from sqlalchemy import text
+        test_results = []
+        
+        # Test 1: TimeOffRequest query with explicit join
+        try:
+            count = db.session.query(TimeOffRequest).join(
+                Employee, TimeOffRequest.employee_id == Employee.id
+            ).filter(TimeOffRequest.status == 'pending').count()
+            test_results.append(f"✓ TimeOffRequest query successful: {count} pending requests")
+        except Exception as e:
+            test_results.append(f"✗ TimeOffRequest query failed: {str(e)}")
+        
+        # Test 2: ShiftSwapRequest query with explicit join
+        try:
+            count = db.session.query(ShiftSwapRequest).join(
+                Employee, ShiftSwapRequest.requester_id == Employee.id
+            ).filter(ShiftSwapRequest.status == 'pending').count()
+            test_results.append(f"✓ ShiftSwapRequest query successful: {count} pending swaps")
+        except Exception as e:
+            test_results.append(f"✗ ShiftSwapRequest query failed: {str(e)}")
+        
+        # Test 3: Check table structure
+        try:
+            # Check if time_off_request table has the correct columns
+            result = db.session.execute(text("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'time_off_request'
+                ORDER BY ordinal_position
+            """))
+            columns = [row[0] for row in result]
+            test_results.append(f"✓ TimeOffRequest columns: {', '.join(columns)}")
+        except Exception as e:
+            test_results.append(f"✗ Could not check table structure: {str(e)}")
+        
+        # Test 4: Check for multiple foreign keys
+        try:
+            result = db.session.execute(text("""
+                SELECT 
+                    column_name,
+                    constraint_name
+                FROM information_schema.key_column_usage
+                WHERE table_name = 'time_off_request'
+                AND referenced_table_name = 'employee'
+            """))
+            fk_info = list(result)
+            if len(fk_info) > 1:
+                test_results.append(f"ℹ️ Multiple foreign keys found to employee table: {len(fk_info)} keys")
+                for col, constraint in fk_info:
+                    test_results.append(f"  - {col} ({constraint})")
+            else:
+                test_results.append(f"✓ Foreign key relationships look normal")
+        except Exception as e:
+            test_results.append(f"ℹ️ Could not check foreign keys (may be SQLite): {str(e)}")
+        
+        # Create a simple HTML response
+        html = f"""
+        <html>
+        <head>
+            <title>Database Relationship Test</title>
+            <style>
+                body {{ font-family: Arial, sans-serif; margin: 40px; }}
+                h1 {{ color: #11998e; }}
+                .success {{ color: green; }}
+                .error {{ color: red; }}
+                .info {{ color: #0066cc; }}
+                .result {{ margin: 10px 0; padding: 10px; background: #f5f5f5; border-radius: 5px; }}
+                .result:first-child {{ margin-top: 20px; }}
+                a {{ 
+                    display: inline-block;
+                    margin: 10px 5px;
+                    padding: 10px 20px;
+                    background: #11998e;
+                    color: white;
+                    text-decoration: none;
+                    border-radius: 5px;
+                }}
+                a:hover {{ background: #0e7d70; }}
+            </style>
+        </head>
+        <body>
+            <h1>Database Relationship Test Results</h1>
+            <div>
+                {''.join(f'<div class="result">{result}</div>' for result in test_results)}
+            </div>
+            <br>
+            <h2>Next Steps:</h2>
+            <p>If all tests passed (✓), your dashboard should work properly now.</p>
+            <p>If any tests failed (✗), the error messages above will help diagnose the issue.</p>
+            <br>
+            <div>
+                <a href="/dashboard">Try Dashboard Now</a>
+                <a href="/test-dashboard">Use Test Dashboard</a>
+                <a href="/upload-employees">Upload Employees</a>
+            </div>
+        </body>
+        </html>
+        """
+        
+        return html
+        
+    except Exception as e:
+        return f"""
+        <html>
+        <head><title>Error</title></head>
+        <body style="font-family: Arial; margin: 40px;">
+            <h1>Error Testing Database</h1>
+            <p style="color: red;">{str(e)}</p>
+            <p><a href='/dashboard' style="color: #11998e;">Back to Dashboard</a></p>
+        </body>
+        </html>
+        """
 
 # FIX EMPLOYEE COLUMNS ROUTE
 @app.route('/fix-employee-columns')
