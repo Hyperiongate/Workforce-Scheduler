@@ -1,6 +1,6 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
 from flask_login import LoginManager, login_required, login_user, logout_user, current_user
-from flask_migrate import Migrate
+from flask_migrate import Migrate, stamp
 from models import (
     db, Employee, TimeOffRequest, ShiftSwapRequest, ScheduleSuggestion, VacationCalendar, 
     Position, Skill, OvertimeHistory, Schedule, PositionCoverage,
@@ -46,6 +46,52 @@ login_manager.login_view = 'auth.login'
 @login_manager.user_loader
 def load_user(user_id):
     return Employee.query.get(int(user_id))
+
+# NEW FUNCTION: Initialize database with migration fix
+def init_db_with_migration_fix():
+    """Initialize database with migration fix for multiple heads"""
+    with app.app_context():
+        try:
+            # Try to create tables if they don't exist
+            db.create_all()
+            
+            # Check if we need to stamp the database
+            from alembic import command
+            from alembic.config import Config
+            
+            # Get alembic config - check if migrations folder exists
+            if os.path.exists('migrations/alembic.ini'):
+                config = Config("migrations/alembic.ini")
+                
+                try:
+                    # Try to get current revision
+                    from alembic.runtime.migration import MigrationContext
+                    from sqlalchemy import create_engine
+                    
+                    engine = create_engine(app.config['SQLALCHEMY_DATABASE_URI'])
+                    conn = engine.connect()
+                    context = MigrationContext.configure(conn)
+                    current_rev = context.get_current_revision()
+                    
+                    if current_rev is None:
+                        # No revision set, stamp with latest
+                        stamp(revision='head')
+                        print("Database stamped with initial revision")
+                        
+                except Exception as e:
+                    print(f"Migration check error: {e}")
+                    # If there's an error, try to stamp anyway
+                    try:
+                        stamp(revision='head')
+                    except:
+                        pass
+                    
+        except Exception as e:
+            print(f"Database initialization error: {e}")
+
+# Initialize the database with migration fix
+with app.app_context():
+    init_db_with_migration_fix()
 
 # Import and register blueprints from the blueprints folder
 # IMPORT MAIN BLUEPRINT FIRST
@@ -965,6 +1011,12 @@ def debug_routes():
     
     return output
 
+# Health check endpoint for Render
+@app.route('/health')
+def health_check():
+    """Health check endpoint"""
+    return {'status': 'healthy', 'timestamp': datetime.utcnow().isoformat()}
+
 # Error handlers
 @app.errorhandler(404)
 def not_found_error(error):
@@ -985,4 +1037,6 @@ def internal_error(error):
     <p><a href="/dashboard">Return to Dashboard</a></p>''', 500
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    # Use PORT from environment variable for Render
+    port = int(os.environ.get('PORT', 10000))
+    app.run(host='0.0.0.0', port=port, debug=False)
