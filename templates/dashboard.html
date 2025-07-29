@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Supervisor Operations Center</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
+    <style>
+        body {
+            background-color: #f4f6f9;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        
+        .ops-header {
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            color: white;
+            padding: 1.5rem 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .ops-container {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 0 1rem;
+        }
+        
+        /* Status Cards */
+        .status-card {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            margin-bottom: 1.5rem;
+            transition: transform 0.2s;
+        }
+        
+        .status-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+        }
+        
+        .status-critical {
+            border-left: 4px solid #e74c3c;
+        }
+        
+        .status-warning {
+            border-left: 4px solid #f39c12;
+        }
+        
+        .status-good {
+            border-left: 4px solid #27ae60;
+        }
+        
+        /* Shift Timeline */
+        .shift-timeline {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            overflow-x: auto;
+        }
+        
+        .timeline-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1rem;
+        }
+        
+        .crew-row {
+            display: flex;
+            align-items: center;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        .crew-label {
+            width: 80px;
+            font-weight: 600;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            text-align: center;
+            font-size: 0.875rem;
+        }
+        
+        .crew-a { background: #3498db; color: white; }
+        .crew-b { background: #e74c3c; color: white; }
+        .crew-c { background: #f39c12; color: white; }
+        .crew-d { background: #27ae60; color: white; }
+        
+        .shift-blocks {
+            display: flex;
+            flex: 1;
+            margin-left: 1rem;
+            gap: 0.25rem;
+        }
+        
+        .shift-block {
+            flex: 1;
+            padding: 0.5rem;
+            border-radius: 6px;
+            text-align: center;
+            font-size: 0.75rem;
+            position: relative;
+        }
+        
+        .shift-day { background: #fff3cd; border: 1px solid #ffeaa7; }
+        .shift-night { background: #cfe2ff; border: 1px solid #6c757d; }
+        .shift-off { background: #f8f9fa; border: 1px solid #dee2e6; }
+        
+        .shortage-indicator {
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            background: #e74c3c;
+            color: white;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            font-weight: bold;
+        }
+        
+        /* Action Panel */
+        .action-panel {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-top: 1.5rem;
+        }
+        
+        .action-item {
+            background: white;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border: 1px solid #e9ecef;
+        }
+        
+        .action-priority-high {
+            border-left: 3px solid #e74c3c;
+        }
+        
+        .action-priority-medium {
+            border-left: 3px solid #f39c12;
+        }
+        
+        .action-priority-low {
+            border-left: 3px solid #3498db;
+        }
+        
+        /* Quick Actions */
+        .quick-action-btn {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 1rem;
+            background: white;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            text-decoration: none;
+            color: #495057;
+            transition: all 0.2s;
+        }
+        
+        .quick-action-btn:hover {
+            border-color: #3498db;
+            color: #3498db;
+            transform: translateY(-2px);
+        }
+        
+        .quick-action-btn i {
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        /* Real-time indicator */
+        .live-indicator {
+            display: inline-flex;
+            align-items: center;
+            font-size: 0.875rem;
+            color: #28a745;
+        }
+        
+        .live-dot {
+            width: 8px;
+            height: 8px;
+            background: #28a745;
+            border-radius: 50%;
+            margin-right: 0.5rem;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <div class="ops-header">
+        <div class="ops-container">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h1 class="h2 mb-0">Supervisor Operations Center</h1>
+                    <div class="live-indicator mt-1">
+                        <span class="live-dot"></span>
+                        <span>Live Status • Monday, July 28, 2025 • 07:32 AM</span>
+                    </div>
+                </div>
+                <div class="d-flex gap-3">
+                    <select class="form-select" style="width: auto;">
+                        <option>All Crews</option>
+                        <option>Crew A</option>
+                        <option>Crew B</option>
+                        <option>Crew C</option>
+                        <option>Crew D</option>
+                    </select>
+                    <button class="btn btn-light">
+                        <i class="bi bi-arrow-clockwise"></i> Refresh
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="ops-container mt-4">
+        <!-- Critical Status Row -->
+        <div class="row">
+            <div class="col-md-3">
+                <div class="status-card status-critical">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <h6 class="text-muted mb-1">Current Staffing</h6>
+                            <h3 class="mb-0">45/48</h3>
+                            <small class="text-danger">3 positions unfilled</small>
+                        </div>
+                        <i class="bi bi-exclamation-triangle-fill text-danger" style="font-size: 1.5rem;"></i>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="status-card status-warning">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <h6 class="text-muted mb-1">Today's Absences</h6>
+                            <h3 class="mb-0">2</h3>
+                            <small class="text-warning">1 sick call, 1 no-show</small>
+                        </div>
+                        <i class="bi bi-person-x-fill text-warning" style="font-size: 1.5rem;"></i>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="status-card status-good">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <h6 class="text-muted mb-1">Overtime Volunteers</h6>
+                            <h3 class="mb-0">5</h3>
+                            <small class="text-success">Available for today</small>
+                        </div>
+                        <i class="bi bi-clock-history text-success" style="font-size: 1.5rem;"></i>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="status-card status-warning">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <h6 class="text-muted mb-1">Future Gaps</h6>
+                            <h3 class="mb-0">8</h3>
+                            <small class="text-warning">Next 7 days</small>
+                        </div>
+                        <i class="bi bi-calendar-x text-warning" style="font-size: 1.5rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Today's Shift Overview -->
+        <div class="shift-timeline mt-4">
+            <div class="timeline-header">
+                <h4 class="mb-0">Today's Coverage Status</h4>
+                <div>
+                    <span class="badge bg-warning">Day Shift</span>
+                    <span class="text-muted mx-2">06:00 - 18:00</span>
+                </div>
+            </div>
+            
+            <div class="crew-row">
+                <span class="crew-label crew-a">Crew A</span>
+                <div class="shift-blocks">
+                    <div class="shift-block shift-day">
+                        ON - Control Room (11/12)
+                        <span class="shortage-indicator">1</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="crew-row">
+                <span class="crew-label crew-b">Crew B</span>
+                <div class="shift-blocks">
+                    <div class="shift-block shift-off">OFF</div>
+                </div>
+            </div>
+            
+            <div class="crew-row">
+                <span class="crew-label crew-c">Crew C</span>
+                <div class="shift-blocks">
+                    <div class="shift-block shift-day">
+                        ON - Maintenance (12/12)
+                    </div>
+                </div>
+            </div>
+            
+            <div class="crew-row">
+                <span class="crew-label crew-d">Crew D</span>
+                <div class="shift-blocks">
+                    <div class="shift-block shift-off">OFF</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Priority Actions -->
+        <div class="action-panel">
+            <h4 class="mb-3">Priority Actions Required</h4>
+            
+            <div class="action-item action-priority-high">
+                <div>
+                    <h6 class="mb-1">Fill Control Room Operator Position</h6>
+                    <small class="text-muted">Crew A - Day Shift - Critical Position</small>
+                </div>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-sm btn-danger">Post Overtime</button>
+                    <button class="btn btn-sm btn-outline-danger">Mandate</button>
+                </div>
+            </div>
+            
+            <div class="action-item action-priority-medium">
+                <div>
+                    <h6 class="mb-1">Review Time-Off Request</h6>
+                    <small class="text-muted">John Smith - Aug 15-17 (Would create shortage)</small>
+                </div>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-sm btn-success">Approve</button>
+                    <button class="btn btn-sm btn-outline-secondary">Deny</button>
+                    <button class="btn btn-sm btn-outline-primary">View Impact</button>
+                </div>
+            </div>
+            
+            <div class="action-item action-priority-low">
+                <div>
+                    <h6 class="mb-1">Shift Swap Pending</h6>
+                    <small class="text-muted">Mary Johnson ↔ Bob Wilson - Aug 5</small>
+                </div>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-sm btn-primary">Review</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Actions Grid -->
+        <div class="row mt-4">
+            <div class="col-12">
+                <h4 class="mb-3">Quick Actions</h4>
+            </div>
+            <div class="col-md-2 col-sm-4 col-6 mb-3">
+                <a href="#" class="quick-action-btn">
+                    <i class="bi bi-megaphone"></i>
+                    <span>Post Overtime</span>
+                </a>
+            </div>
+            <div class="col-md-2 col-sm-4 col-6 mb-3">
+                <a href="#" class="quick-action-btn">
+                    <i class="bi bi-person-plus"></i>
+                    <span>Call Casual</span>
+                </a>
+            </div>
+            <div class="col-md-2 col-sm-4 col-6 mb-3">
+                <a href="#" class="quick-action-btn">
+                    <i class="bi bi-arrow-left-right"></i>
+                    <span>Reassign Staff</span>
+                </a>
+            </div>
+            <div class="col-md-2 col-sm-4 col-6 mb-3">
+                <a href="#" class="quick-action-btn">
+                    <i class="bi bi-calendar-week"></i>
+                    <span>View Schedule</span>
+                </a>
+            </div>
+            <div class="col-md-2 col-sm-4 col-6 mb-3">
+                <a href="#" class="quick-action-btn">
+                    <i class="bi bi-bar-chart"></i>
+                    <span>OT Report</span>
+                </a>
+            </div>
+            <div class="col-md-2 col-sm-4 col-6 mb-3">
+                <a href="#" class="quick-action-btn">
+                    <i class="bi bi-chat-dots"></i>
+                    <span>Message Crew</span>
+                </a>
+            </div>
+        </div>
+
+        <!-- Future Planning Section -->
+        <div class="row mt-4">
+            <div class="col-md-6">
+                <div class="status-card">
+                    <h5 class="mb-3">Upcoming Coverage Gaps</h5>
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Shift</th>
+                                    <th>Position</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>Jul 30</td>
+                                    <td><span class="badge bg-dark">Night</span></td>
+                                    <td>Technician</td>
+                                    <td><button class="btn btn-sm btn-primary">Post</button></td>
+                                </tr>
+                                <tr>
+                                    <td>Aug 2</td>
+                                    <td><span class="badge bg-warning text-dark">Day</span></td>
+                                    <td>Operator</td>
+                                    <td><button class="btn btn-sm btn-primary">Post</button></td>
+                                </tr>
+                                <tr>
+                                    <td>Aug 5</td>
+                                    <td><span class="badge bg-warning text-dark">Day</span></td>
+                                    <td>Lead</td>
+                                    <td><button class="btn btn-sm btn-primary">Post</button></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-6">
+                <div class="status-card">
+                    <h5 class="mb-3">Overtime Distribution (Current Week)</h5>
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Employee</th>
+                                    <th>Crew</th>
+                                    <th>OT Hours</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>J. Smith</td>
+                                    <td><span class="badge bg-primary">A</span></td>
+                                    <td>8</td>
+                                    <td><span class="badge bg-success">Available</span></td>
+                                </tr>
+                                <tr>
+                                    <td>M. Johnson</td>
+                                    <td><span class="badge bg-danger">B</span></td>
+                                    <td>16</td>
+                                    <td><span class="badge bg-warning text-dark">Near Limit</span></td>
+                                </tr>
+                                <tr>
+                                    <td>R. Davis</td>
+                                    <td><span class="badge bg-warning text-dark">C</span></td>
+                                    <td>4</td>
+                                    <td><span class="badge bg-success">Available</span></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Auto-refresh every 60 seconds
+        setInterval(() => {
+            console.log('Refreshing dashboard data...');
+            // In production, this would fetch real-time data
+        }, 60000);
+        
+        // Quick action handlers
+        document.querySelectorAll('.quick-action-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                console.log('Quick action clicked:', btn.textContent);
+            });
+        });
+    </script>
+</body>
+</html>
