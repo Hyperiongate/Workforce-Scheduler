@@ -1,11 +1,18 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
 from flask_login import LoginManager, login_required, login_user, logout_user, current_user
 from flask_migrate import Migrate
-from models import db, Employee, TimeOffRequest, ShiftSwapRequest, ScheduleSuggestion, VacationCalendar, Position, Skill, OvertimeHistory
+from models import (
+    db, Employee, TimeOffRequest, ShiftSwapRequest, ScheduleSuggestion, VacationCalendar, 
+    Position, Skill, OvertimeHistory, Schedule, PositionCoverage,
+    # New models for staffing management
+    OvertimeOpportunity, OvertimeResponse, CoverageGap, EmployeeSkill,
+    FatigueTracking, MandatoryOvertimeLog, ShiftPattern, CoverageNotificationResponse
+)
 from werkzeug.security import check_password_hash
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 import random
+from sqlalchemy import and_, func
 
 # Create Flask app
 app = Flask(__name__)
@@ -95,6 +102,14 @@ try:
 except ImportError as e:
     print(f"Warning: Could not import overtime blueprint: {e}")
 
+# IMPORT NEW STAFFING API BLUEPRINT
+try:
+    from blueprints.staffing_api import staffing_api_bp
+    app.register_blueprint(staffing_api_bp)
+    print("Successfully imported staffing API blueprint")
+except ImportError as e:
+    print(f"Warning: Could not import staffing API blueprint: {e}")
+
 # Basic auth routes (fallback if auth blueprint is missing)
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -180,8 +195,6 @@ def dashboard_stats():
             'error': str(e)
         })
 
-# Remove the duplicate overtime-management route since it should be in main blueprint
-
 # API endpoints to handle any AJAX calls that might exist
 @app.route('/api/overtime-data')
 @login_required
@@ -229,18 +242,19 @@ def init_db():
                 crew='A',
                 vacation_days=20,
                 sick_days=10,
-                personal_days=5
+                personal_days=5,
+                hire_date=date.today()  # Add hire date for seniority tracking
             )
             admin.set_password('admin123')
             db.session.add(admin)
             
             # Create default positions
             positions = [
-                Position(name='Operator', min_coverage=2),
-                Position(name='Technician', min_coverage=1),
-                Position(name='Lead Operator', min_coverage=1),
-                Position(name='Lead Technician', min_coverage=1),
-                Position(name='Supervisor', min_coverage=1)
+                Position(name='Operator', min_coverage=2, requires_coverage=True),
+                Position(name='Technician', min_coverage=1, requires_coverage=True),
+                Position(name='Lead Operator', min_coverage=1, requires_coverage=True, critical_position=True),
+                Position(name='Lead Technician', min_coverage=1, requires_coverage=True, critical_position=True),
+                Position(name='Supervisor', min_coverage=1, requires_coverage=True, critical_position=True)
             ]
             for pos in positions:
                 existing = Position.query.filter_by(name=pos.name).first()
@@ -293,6 +307,96 @@ def add_overtime_tables():
         <p><a href="/dashboard">Back to Dashboard</a></p>
         '''
 
+# NEW ROUTE FOR STAFFING MANAGEMENT TABLES
+@app.route('/add-staffing-tables')
+def add_staffing_tables():
+    """Create new tables for staffing management system"""
+    try:
+        # Create tables
+        db.create_all()
+        
+        # Add sample shift patterns
+        patterns = [
+            {
+                'name': 'Pitman 2-2-3',
+                'pattern_type': 'pitman',
+                'cycle_days': 14,
+                'pattern_data': {
+                    'A': [1,1,0,0,1,1,1,0,0,1,1,0,0,0],
+                    'B': [0,0,1,1,0,0,0,1,1,0,0,1,1,1],
+                    'C': [0,0,1,1,0,0,0,1,1,0,0,1,1,1],
+                    'D': [1,1,0,0,1,1,1,0,0,1,1,0,0,0]
+                },
+                'description': 'Standard 2-2-3 rotation with every other weekend off'
+            },
+            {
+                'name': '4-on-4-off',
+                'pattern_type': 'fixed',
+                'cycle_days': 8,
+                'pattern_data': {
+                    'A': [1,1,1,1,0,0,0,0],
+                    'B': [0,0,0,0,1,1,1,1],
+                    'C': [1,1,1,1,0,0,0,0],
+                    'D': [0,0,0,0,1,1,1,1]
+                },
+                'description': '4 days on, 4 days off rotation'
+            }
+        ]
+        
+        for pattern_data in patterns:
+            pattern = ShiftPattern.query.filter_by(name=pattern_data['name']).first()
+            if not pattern:
+                pattern = ShiftPattern(**pattern_data)
+                db.session.add(pattern)
+        
+        # Add position coverage requirements
+        positions = Position.query.all()
+        for position in positions:
+            for shift_type in ['day', 'night']:
+                existing = PositionCoverage.query.filter_by(
+                    position_id=position.id,
+                    shift_type=shift_type
+                ).first()
+                if not existing:
+                    coverage = PositionCoverage(
+                        position_id=position.id,
+                        shift_type=shift_type,
+                        min_required=position.min_coverage or 1
+                    )
+                    db.session.add(coverage)
+        
+        db.session.commit()
+        
+        return '''
+        <h2>✅ Staffing Management Tables Created!</h2>
+        <p>Successfully created the following tables:</p>
+        <ul>
+            <li>overtime_opportunities</li>
+            <li>overtime_responses</li>
+            <li>coverage_gaps</li>
+            <li>employee_skills_new</li>
+            <li>fatigue_tracking</li>
+            <li>mandatory_overtime_logs</li>
+            <li>shift_patterns</li>
+            <li>coverage_notification_responses</li>
+            <li>position_coverage</li>
+        </ul>
+        <p>Also added:</p>
+        <ul>
+            <li>2 shift patterns (Pitman 2-2-3 and 4-on-4-off)</li>
+            <li>Position coverage requirements for all positions</li>
+        </ul>
+        <p><a href="/dashboard">Go to Dashboard</a></p>
+        '''
+        
+    except Exception as e:
+        return f'''
+        <h2>❌ Error Creating Tables</h2>
+        <p>{str(e)}</p>
+        <p>Please check the console for details.</p>
+        <p><a href="/dashboard">Back to Dashboard</a></p>
+        '''
+
 @app.route('/populate-crews')
 def populate_crews():
     """Quick link to populate demo data"""
@@ -336,6 +440,9 @@ def populate_crews():
                 email = name.lower().replace(' ', '.') + '@company.com'
                 existing = Employee.query.filter_by(email=email).first()
                 if not existing:
+                    # Vary hire dates for seniority testing
+                    hire_date = date.today() - timedelta(days=random.randint(30, 3650))
+                    
                     emp = Employee(
                         name=name,
                         email=email,
@@ -346,7 +453,9 @@ def populate_crews():
                         position_id=positions[i % len(positions)].id,
                         vacation_days=10,
                         sick_days=5,
-                        personal_days=3
+                        personal_days=3,
+                        hire_date=hire_date,
+                        default_shift='day' if crew in ['A', 'B'] else 'night'
                     )
                     emp.set_password('password123')
                     db.session.add(emp)
@@ -409,12 +518,13 @@ def create_test_time_off():
             if not existing:
                 time_off = TimeOffRequest(
                     employee_id=employee.id,
-                    request_type=request_type,  # Changed from 'type' to 'request_type'
+                    request_type=request_type,
                     start_date=start_date,
                     end_date=end_date,
                     reason=random.choice(reasons) if random.random() > 0.3 else None,
                     status='pending' if i < 5 else random.choice(['approved', 'denied']),
-                    created_at=datetime.now() - timedelta(days=random.randint(1, 10))
+                    created_at=datetime.now() - timedelta(days=random.randint(1, 10)),
+                    days_requested=duration
                 )
                 
                 # Add approval info for non-pending requests
@@ -425,6 +535,21 @@ def create_test_time_off():
                         time_off.notes = "Insufficient coverage during this period"
                 
                 db.session.add(time_off)
+                
+                # Create VacationCalendar entries for approved requests
+                if time_off.status == 'approved':
+                    current_date = start_date
+                    while current_date <= end_date:
+                        cal_entry = VacationCalendar(
+                            employee_id=employee.id,
+                            date=current_date,
+                            request_id=time_off.id,
+                            type=request_type,
+                            status='approved'
+                        )
+                        db.session.add(cal_entry)
+                        current_date += timedelta(days=1)
+                
                 created_count += 1
         
         db.session.commit()
@@ -443,6 +568,102 @@ def create_test_time_off():
         <p>{str(e)}</p>
         <p><a href="/dashboard">Back to Dashboard</a></p>
         '''
+
+@app.route('/create-test-schedules')
+def create_test_schedules():
+    """Create test schedules for coverage gap testing"""
+    try:
+        employees = Employee.query.all()
+        if not employees:
+            return '<h2>No employees found. Please populate crews first.</h2>'
+        
+        # Create schedules for the next 30 days
+        start_date = date.today()
+        created = 0
+        
+        for day_offset in range(30):
+            current_date = start_date + timedelta(days=day_offset)
+            
+            # Determine which crews work this day (simplified pattern)
+            day_num = day_offset % 4
+            if day_num in [0, 1]:
+                working_crews = ['A', 'B']
+                shift_type = 'day'
+            else:
+                working_crews = ['C', 'D']
+                shift_type = 'night'
+            
+            # Schedule most employees from working crews
+            for emp in employees:
+                if emp.crew in working_crews and not emp.is_supervisor:
+                    # Skip some employees randomly to create gaps
+                    if random.random() > 0.1:  # 90% chance of being scheduled
+                        schedule = Schedule(
+                            employee_id=emp.id,
+                            date=current_date,
+                            shift_type=shift_type,
+                            start_time='06:00' if shift_type == 'day' else '18:00',
+                            end_time='18:00' if shift_type == 'day' else '06:00',
+                            position_id=emp.position_id,
+                            hours=12.0,
+                            crew=emp.crew,
+                            status='scheduled'
+                        )
+                        db.session.add(schedule)
+                        created += 1
+        
+        db.session.commit()
+        
+        return f'''
+        <h2>✅ Test Schedules Created!</h2>
+        <p>Created {created} schedule entries for the next 30 days.</p>
+        <p>Some gaps were intentionally created for testing.</p>
+        <p><a href="/dashboard">Go to Dashboard</a></p>
+        '''
+        
+    except Exception as e:
+        db.session.rollback()
+        return f'<h2>Error</h2><p>{str(e)}</p>'
+
+@app.route('/create-test-overtime-history')
+def create_test_overtime_history():
+    """Create test overtime history for employees"""
+    try:
+        employees = Employee.query.filter_by(is_supervisor=False).all()
+        if not employees:
+            return '<h2>No employees found. Please populate crews first.</h2>'
+        
+        created = 0
+        # Create overtime history for the last 13 weeks
+        for week_offset in range(13):
+            week_start = date.today() - timedelta(weeks=week_offset, days=date.today().weekday())
+            
+            # Give random employees overtime each week
+            for emp in random.sample(employees, k=min(15, len(employees))):
+                ot_hours = random.uniform(4, 24)  # Random OT between 4-24 hours
+                regular_hours = 40.0
+                
+                history = OvertimeHistory(
+                    employee_id=emp.id,
+                    week_start_date=week_start,
+                    regular_hours=regular_hours,
+                    overtime_hours=ot_hours,
+                    total_hours=regular_hours + ot_hours
+                )
+                db.session.add(history)
+                created += 1
+        
+        db.session.commit()
+        
+        return f'''
+        <h2>✅ Test Overtime History Created!</h2>
+        <p>Created {created} overtime history records for the last 13 weeks.</p>
+        <p><a href="/dashboard">Go to Dashboard</a></p>
+        '''
+        
+    except Exception as e:
+        db.session.rollback()
+        return f'<h2>Error</h2><p>{str(e)}</p>'
 
 @app.route('/test-overtime')
 def test_overtime():
