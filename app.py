@@ -6,7 +6,8 @@ from models import (
     Position, Skill, OvertimeHistory, Schedule, PositionCoverage,
     # New models for staffing management
     OvertimeOpportunity, OvertimeResponse, CoverageGap, EmployeeSkill,
-    FatigueTracking, MandatoryOvertimeLog, ShiftPattern, CoverageNotificationResponse
+    FatigueTracking, MandatoryOvertimeLog, ShiftPattern, CoverageNotificationResponse,
+    FileUpload  # Added FileUpload model
 )
 from werkzeug.security import check_password_hash
 import os
@@ -30,6 +31,7 @@ else:
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['ALLOWED_EXTENSIONS'] = {'xlsx', 'xls', 'csv'}
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 
 # Create upload folder if it doesn't exist
 if not os.path.exists(app.config['UPLOAD_FOLDER']):
@@ -644,6 +646,7 @@ def simple_dashboard():
         <ul>
             <li><a href="/fix-all-columns">Fix Database Columns</a></li>
             <li><a href="/add-staffing-tables">Add Staffing Tables</a></li>
+            <li><a href="/add-fileupload-table">Add FileUpload Table</a></li>
             <li><a href="/debug-routes">View All Routes</a></li>
             <li><a href="/logout">Logout</a></li>
         </ul>
@@ -736,6 +739,36 @@ def add_overtime_tables():
     except Exception as e:
         return f'''
         <h2>❌ Error Adding Tables</h2>
+        <p>{str(e)}</p>
+        <p><a href="/dashboard">Back to Dashboard</a></p>
+        '''
+
+# NEW ROUTE FOR FILEUPLOAD TABLE
+@app.route('/add-fileupload-table')
+def add_fileupload_table():
+    """Add the FileUpload table to track upload history"""
+    try:
+        with app.app_context():
+            # Create the FileUpload table
+            db.create_all()
+            
+        return '''
+        <h2>✅ FileUpload Table Added!</h2>
+        <p>The FileUpload table has been added to your database.</p>
+        <p>This table will track:</p>
+        <ul>
+            <li>Upload filename and type</li>
+            <li>Upload date and uploader</li>
+            <li>Processing status</li>
+            <li>Records processed/failed</li>
+            <li>Error details</li>
+        </ul>
+        <p><a href="/dashboard">Go to Dashboard</a></p>
+        <p><a href="/upload-employees">Go to Upload Employees</a></p>
+        '''
+    except Exception as e:
+        return f'''
+        <h2>❌ Error Adding FileUpload Table</h2>
         <p>{str(e)}</p>
         <p><a href="/dashboard">Back to Dashboard</a></p>
         '''
