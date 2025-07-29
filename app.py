@@ -224,6 +224,59 @@ def overtime_distribution_api():
         }
     })
 
+# FIX EMPLOYEE COLUMNS ROUTE
+@app.route('/fix-employee-columns')
+def fix_employee_columns():
+    """Add missing columns to employee table"""
+    try:
+        with app.app_context():
+            # Add missing columns one by one
+            from sqlalchemy import text
+            
+            # Get database connection
+            with db.engine.connect() as conn:
+                # Try to add each column - if it already exists, it will fail silently
+                columns_to_add = [
+                    "ALTER TABLE employee ADD COLUMN default_shift VARCHAR(20) DEFAULT 'day'",
+                    "ALTER TABLE employee ADD COLUMN max_consecutive_days INTEGER DEFAULT 14",
+                    "ALTER TABLE employee ADD COLUMN is_on_call BOOLEAN DEFAULT FALSE",
+                    "ALTER TABLE employee ADD COLUMN is_active BOOLEAN DEFAULT TRUE"
+                ]
+                
+                added_columns = []
+                failed_columns = []
+                
+                for sql in columns_to_add:
+                    try:
+                        conn.execute(text(sql))
+                        conn.commit()
+                        column_name = sql.split('ADD COLUMN ')[1].split(' ')[0]
+                        added_columns.append(column_name)
+                    except Exception as e:
+                        column_name = sql.split('ADD COLUMN ')[1].split(' ')[0]
+                        failed_columns.append(f"{column_name}: {str(e)}")
+                
+        return f'''
+        <h2>Employee Table Column Fix</h2>
+        <h3>✅ Successfully Added Columns:</h3>
+        <ul>
+            {''.join(f'<li>{col}</li>' for col in added_columns) if added_columns else '<li>None - all columns may already exist</li>'}
+        </ul>
+        <h3>❌ Failed/Already Exist:</h3>
+        <ul>
+            {''.join(f'<li>{col}</li>' for col in failed_columns) if failed_columns else '<li>None</li>'}
+        </ul>
+        <p><a href="/">Try Homepage Again</a></p>
+        <p><a href="/login">Go to Login</a></p>
+        '''
+        
+    except Exception as e:
+        return f'''
+        <h2>❌ Error Fixing Columns</h2>
+        <p>{str(e)}</p>
+        <p><a href="/dashboard">Back to Dashboard</a></p>
+        '''
+
 # Database initialization route
 @app.route('/init-db')
 def init_db():
