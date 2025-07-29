@@ -386,55 +386,66 @@ def fix_position_columns():
 def fix_all_columns():
     """Fix all missing columns in all tables"""
     try:
-        with app.app_context():
-            from sqlalchemy import text
-            results = []
+        from sqlalchemy import text
+        results = []
+        
+        # Define all columns to add
+        tables_and_columns = {
+            'employee': [
+                ("default_shift", "VARCHAR(20) DEFAULT 'day'"),
+                ("max_consecutive_days", "INTEGER DEFAULT 14"),
+                ("is_on_call", "BOOLEAN DEFAULT FALSE"),
+                ("is_active", "BOOLEAN DEFAULT TRUE")
+            ],
+            'schedule': [
+                ("is_overtime", "BOOLEAN DEFAULT FALSE"),
+                ("overtime_reason", "VARCHAR(200)"),
+                ("original_employee_id", "INTEGER")
+            ],
+            'position': [
+                ("skills_required", "TEXT"),
+                ("requires_coverage", "BOOLEAN DEFAULT TRUE"),
+                ("critical_position", "BOOLEAN DEFAULT FALSE")
+            ]
+        }
+        
+        # Process each table
+        for table_name, columns in tables_and_columns.items():
+            results.append(f'<h3>{table_name.capitalize()} Table:</h3><ul>')
             
-            # Get database connection
-            with db.engine.connect() as conn:
-                # Employee table columns
-                employee_columns = [
-                    "ALTER TABLE employee ADD COLUMN default_shift VARCHAR(20) DEFAULT 'day'",
-                    "ALTER TABLE employee ADD COLUMN max_consecutive_days INTEGER DEFAULT 14",
-                    "ALTER TABLE employee ADD COLUMN is_on_call BOOLEAN DEFAULT FALSE",
-                    "ALTER TABLE employee ADD COLUMN is_active BOOLEAN DEFAULT TRUE"
-                ]
-                
-                # Schedule table columns
-                schedule_columns = [
-                    "ALTER TABLE schedule ADD COLUMN is_overtime BOOLEAN DEFAULT FALSE",
-                    "ALTER TABLE schedule ADD COLUMN overtime_reason VARCHAR(200)",
-                    "ALTER TABLE schedule ADD COLUMN original_employee_id INTEGER"
-                ]
-                
-                # Position table columns
-                position_columns = [
-                    "ALTER TABLE position ADD COLUMN skills_required TEXT",
-                    "ALTER TABLE position ADD COLUMN requires_coverage BOOLEAN DEFAULT TRUE",
-                    "ALTER TABLE position ADD COLUMN critical_position BOOLEAN DEFAULT FALSE"
-                ]
-                
-                # Try to add all columns
-                for table_name, columns in [
-                    ('employee', employee_columns),
-                    ('schedule', schedule_columns),
-                    ('position', position_columns)
-                ]:
-                    results.append(f'<h3>{table_name.capitalize()} Table:</h3><ul>')
-                    for sql in columns:
-                        try:
-                            conn.execute(text(sql))
-                            conn.commit()
-                            column_name = sql.split('ADD COLUMN ')[1].split(' ')[0]
+            for column_name, column_type in columns:
+                # Create a new connection for each column
+                try:
+                    with db.engine.begin() as conn:
+                        # First check if column exists
+                        check_sql = text(f"""
+                            SELECT column_name 
+                            FROM information_schema.columns 
+                            WHERE table_name = :table_name 
+                            AND column_name = :column_name
+                        """)
+                        result = conn.execute(check_sql, {
+                            'table_name': table_name,
+                            'column_name': column_name
+                        })
+                        
+                        if result.fetchone():
+                            results.append(f'<li>✓ Already exists: {column_name}</li>')
+                        else:
+                            # Add the column
+                            alter_sql = text(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
+                            conn.execute(alter_sql)
                             results.append(f'<li>✅ Added: {column_name}</li>')
-                        except Exception as e:
-                            column_name = sql.split('ADD COLUMN ')[1].split(' ')[0]
-                            if 'already exists' in str(e).lower():
-                                results.append(f'<li>✓ Already exists: {column_name}</li>')
-                            else:
-                                results.append(f'<li>❌ Failed: {column_name} - {str(e)}</li>')
-                    results.append('</ul>')
-                
+                            
+                except Exception as e:
+                    error_msg = str(e)
+                    if 'already exists' in error_msg.lower():
+                        results.append(f'<li>✓ Already exists: {column_name}</li>')
+                    else:
+                        results.append(f'<li>❌ Failed: {column_name} - {error_msg}</li>')
+            
+            results.append('</ul>')
+        
         return f'''
         <h2>Database Column Fix - All Tables</h2>
         {''.join(results)}
@@ -450,6 +461,32 @@ def fix_all_columns():
         <p>{str(e)}</p>
         <p><a href="/dashboard">Back to Dashboard</a></p>
         '''
+
+# SIMPLE DASHBOARD ROUTE FOR TESTING
+@app.route('/simple-dashboard')
+@login_required
+def simple_dashboard():
+    """Simple dashboard that should work even with missing columns"""
+    try:
+        return f'''
+        <h2>Simple Dashboard - {current_user.name}</h2>
+        <p>Welcome! You are logged in as a {'Supervisor' if current_user.is_supervisor else 'Employee'}</p>
+        <h3>Quick Links:</h3>
+        <ul>
+            <li><a href="/fix-all-columns">Fix Database Columns</a></li>
+            <li><a href="/add-staffing-tables">Add Staffing Tables</a></li>
+            <li><a href="/debug-routes">View All Routes</a></li>
+            <li><a href="/logout">Logout</a></li>
+        </ul>
+        <h3>Test Data Creation:</h3>
+        <ul>
+            <li><a href="/populate-crews?confirm=yes">Create Test Employees</a></li>
+            <li><a href="/create-test-schedules">Create Test Schedules</a></li>
+            <li><a href="/create-test-overtime-history">Create Overtime History</a></li>
+        </ul>
+        '''
+    except Exception as e:
+        return f'<h2>Error</h2><p>{str(e)}</p><p><a href="/logout">Logout</a></p>'
 
 # Database initialization route
 @app.route('/init-db')
