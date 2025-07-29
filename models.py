@@ -45,13 +45,15 @@ class Employee(UserMixin, db.Model):
     sick_days = db.Column(db.Float, default=5.0)
     personal_days = db.Column(db.Float, default=3.0)
     
-    # Relationships
+    # Relationships - FIXED VERSION
     position = db.relationship('Position', backref='employees')
     skills = db.relationship('Skill', secondary=employee_skills, backref='employees')
-    schedules = db.relationship('Schedule', foreign_keys='Schedule.employee_id', backref='employee', lazy='dynamic')
+    schedules = db.relationship('Schedule', foreign_keys='[Schedule.employee_id]', backref='employee', lazy='dynamic')
     availability = db.relationship('Availability', backref='employee', lazy='dynamic')
-    coverage_requests = db.relationship('CoverageRequest', backref='requester', lazy='dynamic', 
-                                      foreign_keys='CoverageRequest.requester_id')
+    coverage_requests = db.relationship('CoverageRequest', 
+                                      foreign_keys='[CoverageRequest.requester_id]',
+                                      backref='requester', 
+                                      lazy='dynamic')
     circadian_profile = db.relationship('CircadianProfile', backref='employee', uselist=False, 
                                       cascade='all, delete-orphan')
     sleep_logs = db.relationship('SleepLog', backref='employee', lazy='dynamic', 
@@ -232,8 +234,8 @@ class Schedule(db.Model):
     employee_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=False)
     date = db.Column(db.Date, nullable=False)
     shift_type = db.Column(db.String(20))  # day, evening, night, etc.
-    start_time = db.Column(db.Time)
-    end_time = db.Column(db.Time)
+    start_time = db.Column(db.String(10))  # Changed to String
+    end_time = db.Column(db.String(10))    # Changed to String
     position_id = db.Column(db.Integer, db.ForeignKey('position.id'))
     hours = db.Column(db.Float)
     crew = db.Column(db.String(1))  # A, B, C, or D
@@ -605,7 +607,7 @@ class EmployeeSkill(db.Model):
     employee = db.relationship('Employee', backref='employee_skills')
     
     __table_args__ = (
-        db.UniqueConstraint('employee_id', 'skill_name', name='_employee_skill_uc'),
+        db.UniqueConstraint('employee_id', 'skill_name', name='_employee_skill_new_uc'),
     )
 
 class FatigueTracking(db.Model):
