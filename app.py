@@ -87,6 +87,14 @@ try:
 except ImportError as e:
     print(f"Warning: Could not import employee_import blueprint: {e}")
 
+# IMPORT OVERTIME BLUEPRINT
+try:
+    from blueprints.overtime import overtime_bp
+    app.register_blueprint(overtime_bp)
+    print("Successfully imported overtime blueprint")
+except ImportError as e:
+    print(f"Warning: Could not import overtime blueprint: {e}")
+
 # Basic auth routes (fallback if auth blueprint is missing)
 @app.route('/login', methods=['GET', 'POST'])
 def login():
