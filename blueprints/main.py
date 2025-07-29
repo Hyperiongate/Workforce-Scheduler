@@ -36,194 +36,21 @@ def dashboard():
         # Get real-time staffing data
         today = date.today()
         
-        # Current staffing levels - FIXED QUERY
-        scheduled_today = db.session.query(Schedule).filter_by(date=today).count()
+        # Get pending counts - REQUIRED by template
+        pending_time_off = TimeOffRequest.query.filter_by(status='pending').count()
+        pending_swaps = ShiftSwapRequest.query.filter_by(status='pending').count()
+        total_employees = Employee.query.count()
         
-        # Calculate total required positions
-        total_positions = db.session.query(func.sum(Position.min_coverage)).scalar() or 0
-        
-        # Today's absences
-        absences = db.session.query(Employee).join(TimeOffRequest).filter(
-            TimeOffRequest.status == 'approved',
-            TimeOffRequest.start_date <= today,
-            TimeOffRequest.end_date >= today
-        ).count()
-        
-        # No-shows (scheduled but not checked in - placeholder for now)
-        no_shows = 0  # Would need attendance tracking system
-        
-        # Get current shift info
-        current_hour = datetime.now().hour
-        if 6 <= current_hour < 18:
-            current_shift = 'day'
-            shift_start = '06:00'
-            shift_end = '18:00'
-        else:
-            current_shift = 'night'
-            shift_start = '18:00'
-            shift_end = '06:00'
-        
-        # Get crews on duty today
-        crews_on_duty = {}
-        for crew in ['A', 'B', 'C', 'D']:
-            crew_schedules = db.session.query(Schedule).join(Employee).filter(
-                Employee.crew == crew,
-                Schedule.date == today,
-                Schedule.shift_type == current_shift
-            ).count()
-            
-            # Get required positions for this crew
-            crew_positions = db.session.query(
-                func.sum(CrewCoverageRequirement.min_coverage)
-            ).filter(
-                CrewCoverageRequirement.crew == crew
-            ).scalar() or 0
-            
-            crews_on_duty[crew] = {
-                'scheduled': crew_schedules,
-                'required': crew_positions,
-                'status': 'on' if crew_schedules > 0 else 'off',
-                'shortage': max(0, crew_positions - crew_schedules)
-            }
-        
-        # Get coverage gaps using helper function
+        # Calculate coverage gaps for today - REQUIRED by template
         all_gaps = get_coverage_gaps()
+        coverage_gaps = len([g for g in all_gaps if g['date'] == today])
         
-        # Format gaps for display (next 7 days)
-        coverage_gaps = []
-        for gap in all_gaps:
-            if gap['date'] <= today + timedelta(days=7):
-                coverage_gaps.append({
-                    'date': gap['date'],
-                    'date_str': gap['date'].strftime('%b %d'),
-                    'shift': gap['shift_type'],
-                    'position': gap['position_name'],
-                    'shortage': gap['shortage']
-                })
-        
-        # Limit to top 5 most urgent gaps
-        coverage_gaps = sorted(coverage_gaps, key=lambda x: (x['date'], x['shortage']), reverse=True)[:5]
-        future_gaps_count = len([g for g in all_gaps if g['date'] > today and g['date'] <= today + timedelta(days=7)])
-        
-        # Get overtime volunteers available today
-        off_duty_crews = [c for c, info in crews_on_duty.items() if info['status'] == 'off']
-        overtime_volunteers = Employee.query.filter(
-            Employee.is_supervisor == False,
-            Employee.crew.in_(off_duty_crews) if off_duty_crews else Employee.crew.isnot(None)
-        ).count()
-        
-        # Get pending actions
-        pending_time_off = TimeOffRequest.query.filter_by(status='pending').limit(5).all()
-        pending_swaps = ShiftSwapRequest.query.filter_by(status='pending').limit(5).all()
-        
-        # Build priority actions list
-        priority_actions = []
-        
-        # Add critical staffing shortages
-        total_shortage = max(0, total_positions - scheduled_today)
-        if total_shortage > 0:
-            for crew, info in crews_on_duty.items():
-                if info['shortage'] > 0 and info['status'] == 'on':
-                    # Find which positions are short
-                    crew_positions = db.session.query(Position).join(
-                        CrewCoverageRequirement
-                    ).filter(
-                        CrewCoverageRequirement.crew == crew
-                    ).all()
-                    
-                    for position in crew_positions:
-                        scheduled_for_position = db.session.query(Schedule).join(Employee).filter(
-                            Employee.crew == crew,
-                            Employee.position_id == position.id,
-                            Schedule.date == today,
-                            Schedule.shift_type == current_shift
-                        ).count()
-                        
-                        required = position.min_coverage
-                        if scheduled_for_position < required:
-                            priority_actions.append({
-                                'priority': 'high',
-                                'title': f'Fill {position.name} Position',
-                                'subtitle': f'Crew {crew} - {current_shift.title()} Shift - Critical Position',
-                                'crew': crew,
-                                'position_id': position.id,
-                                'actions': ['post_overtime', 'mandate']
-                            })
-        
-        # Add pending time-off that would create shortage
-        for time_off in pending_time_off[:2]:  # Show top 2
-            # Check if approving would create a shortage
-            would_create_shortage = False  # Simplified - implement actual check
-            priority_actions.append({
-                'priority': 'medium' if would_create_shortage else 'low',
-                'title': 'Review Time-Off Request',
-                'subtitle': f'{time_off.employee.name} - {time_off.start_date.strftime("%b %d")}-{time_off.end_date.strftime("%b %d")}',
-                'actions': ['approve', 'deny', 'view_impact'],
-                'request_id': time_off.id,
-                'would_create_shortage': would_create_shortage
-            })
-        
-        # Add pending swaps
-        for swap in pending_swaps[:1]:  # Show top 1
-            priority_actions.append({
-                'priority': 'low',
-                'title': 'Shift Swap Pending',
-                'subtitle': f'{swap.requesting_employee.name} ↔ {swap.target_employee.name if swap.target_employee else "Open"}',
-                'actions': ['review'],
-                'swap_id': swap.id
-            })
-        
-        # Get overtime distribution for current week
-        week_start = today - timedelta(days=today.weekday())
-        overtime_distribution = db.session.query(
-            Employee.id,
-            Employee.name,
-            Employee.crew,
-            func.coalesce(func.sum(OvertimeHistory.overtime_hours), 0).label('ot_hours')
-        ).outerjoin(
-            OvertimeHistory,
-            and_(
-                OvertimeHistory.employee_id == Employee.id,
-                OvertimeHistory.week_start_date == week_start
-            )
-        ).filter(
-            Employee.is_supervisor == False
-        ).group_by(Employee.id, Employee.name, Employee.crew).order_by(
-            func.sum(OvertimeHistory.overtime_hours).desc().nullslast()
-        ).limit(10).all()
-        
-        # Calculate staffing percentage
-        staffing_percentage = int((scheduled_today / total_positions * 100)) if total_positions > 0 else 0
-        
+        # Return with EXACTLY what the template expects
         return render_template('dashboard.html',
-            # Current status
-            current_staffing=scheduled_today,
-            total_required=total_positions,
-            staffing_shortage=total_shortage,
-            staffing_percentage=staffing_percentage,
-            absences_count=absences,
-            no_shows_count=no_shows,
-            overtime_volunteers=overtime_volunteers,
-            future_gaps_count=future_gaps_count,
-            
-            # Shift info
-            current_shift=current_shift,
-            shift_start=shift_start,
-            shift_end=shift_end,
-            crews_on_duty=crews_on_duty,
-            
-            # Actions needed
-            priority_actions=priority_actions,
-            coverage_gaps=coverage_gaps,
-            overtime_distribution=overtime_distribution,
-            
-            # Pending counts
-            pending_time_off_count=len(pending_time_off),
-            pending_swaps_count=len(pending_swaps),
-            
-            # Time info
-            current_time=datetime.now(),
-            current_date=today
+            pending_time_off=pending_time_off,
+            pending_swaps=pending_swaps,
+            total_employees=total_employees,
+            coverage_gaps=coverage_gaps
         )
         
     except Exception as e:
@@ -233,25 +60,10 @@ def dashboard():
         
         # Return a basic dashboard on error
         return render_template('dashboard.html',
-            current_staffing=0,
-            total_required=0,
-            staffing_shortage=0,
-            staffing_percentage=0,
-            absences_count=0,
-            no_shows_count=0,
-            overtime_volunteers=0,
-            future_gaps_count=0,
-            current_shift='day',
-            shift_start='06:00',
-            shift_end='18:00',
-            crews_on_duty={},
-            priority_actions=[],
-            coverage_gaps=[],
-            overtime_distribution=[],
-            pending_time_off_count=0,
-            pending_swaps_count=0,
-            current_time=datetime.now(),
-            current_date=date.today()
+            pending_time_off=0,
+            pending_swaps=0,
+            total_employees=0,
+            coverage_gaps=0
         )
 
 @main_bp.route('/employee-dashboard')
