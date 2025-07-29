@@ -2,7 +2,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
 from datetime import datetime, date, timedelta
 from werkzeug.security import generate_password_hash, check_password_hash
-from sqlalchemy import func
+from sqlalchemy import func, JSON
 
 db = SQLAlchemy()
 
@@ -33,6 +33,12 @@ class Employee(UserMixin, db.Model):
     phone = db.Column(db.String(20))
     crew = db.Column(db.String(1))  # A, B, C, or D for 24/7 operations
     shift_pattern = db.Column(db.String(20))  # day, night, rotating, etc.
+    
+    # NEW FIELDS FOR STAFFING MANAGEMENT
+    default_shift = db.Column(db.String(20), default='day')
+    max_consecutive_days = db.Column(db.Integer, default=14)
+    is_on_call = db.Column(db.Boolean, default=False)
+    is_active = db.Column(db.Boolean, default=True)
     
     # Time off balances
     vacation_days = db.Column(db.Float, default=10.0)
@@ -206,6 +212,11 @@ class Position(db.Model):
     department = db.Column(db.String(50))
     min_coverage = db.Column(db.Integer, default=1)  # Minimum people needed
     
+    # NEW FIELDS FOR STAFFING MANAGEMENT
+    skills_required = db.Column(db.Text)  # Comma-separated list of required skills
+    requires_coverage = db.Column(db.Boolean, default=True)
+    critical_position = db.Column(db.Boolean, default=False)
+    
     # Relationships
     required_skills = db.relationship('Skill', secondary=position_skills, backref='positions')
 
@@ -225,12 +236,17 @@ class Schedule(db.Model):
     end_time = db.Column(db.Time)
     position_id = db.Column(db.Integer, db.ForeignKey('position.id'))
     hours = db.Column(db.Float)
-    is_overtime = db.Column(db.Boolean, default=False)
     crew = db.Column(db.String(1))  # A, B, C, or D
     status = db.Column(db.String(20), default='scheduled')  # scheduled, worked, absent, covered
     
+    # NEW FIELDS FOR STAFFING MANAGEMENT
+    is_overtime = db.Column(db.Boolean, default=False)
+    overtime_reason = db.Column(db.String(200))
+    original_employee_id = db.Column(db.Integer, db.ForeignKey('employee.id'))
+    
     # Relationships
     position = db.relationship('Position', backref='schedules')
+    original_employee = db.relationship('Employee', foreign_keys=[original_employee_id])
     
     # Indexes for better query performance
     __table_args__ = (
@@ -272,6 +288,7 @@ class VacationCalendar(db.Model):
     date = db.Column(db.Date, nullable=False)
     request_id = db.Column(db.Integer, db.ForeignKey('time_off_request.id'))
     type = db.Column(db.String(20))  # vacation, sick, personal, holiday
+    status = db.Column(db.String(20), default='approved')  # For tracking
     
     # Relationships
     employee = db.relationship('Employee', backref='calendar_entries')
@@ -495,23 +512,166 @@ class CoverageNotification(db.Model):
     sent_to_employee = db.relationship('Employee', foreign_keys=[sent_to_employee_id])
     sent_by = db.relationship('Employee', foreign_keys=[sent_by_id])
 
-class OvertimeOpportunity(db.Model):
-    """Track overtime opportunities that need to be filled"""
+# ==================== POSITION COVERAGE REQUIREMENT ====================
+class PositionCoverage(db.Model):
+    """Define minimum coverage requirements for positions by shift type"""
+    __tablename__ = 'position_coverage'
+    
     id = db.Column(db.Integer, primary_key=True)
-    schedule_id = db.Column(db.Integer, db.ForeignKey('schedule.id'))
-    position_id = db.Column(db.Integer, db.ForeignKey('position.id'))
-    date = db.Column(db.Date, nullable=False)
-    shift_type = db.Column(db.String(20))
-    start_time = db.Column(db.Time)
-    end_time = db.Column(db.Time)
-    hours = db.Column(db.Float)
-    positions_needed = db.Column(db.Integer, default=1)
-    status = db.Column(db.String(20), default='open')  # open, partially_filled, filled
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    position_id = db.Column(db.Integer, db.ForeignKey('position.id'), nullable=False)
+    shift_type = db.Column(db.String(20), nullable=False)  # day, night
+    min_required = db.Column(db.Integer, default=1)
     
     # Relationships
-    schedule = db.relationship('Schedule', backref='overtime_opportunity')
+    position = db.relationship('Position', backref='coverage_requirements')
+    
+    # Unique constraint
+    __table_args__ = (
+        db.UniqueConstraint('position_id', 'shift_type', name='_position_shift_uc'),
+    )
+
+# ==========================================
+# NEW STAFFING MANAGEMENT MODELS
+# ==========================================
+
+class OvertimeOpportunity(db.Model):
+    """Track overtime opportunities posted to employees"""
+    __tablename__ = 'overtime_opportunities'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    position_id = db.Column(db.Integer, db.ForeignKey('position.id'), nullable=False)
+    date = db.Column(db.Date, nullable=False)
+    shift_type = db.Column(db.String(20), nullable=False)
+    posted_by_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=False)
+    posted_at = db.Column(db.DateTime, default=datetime.now)
+    response_deadline = db.Column(db.DateTime, nullable=False)
+    status = db.Column(db.String(20), default='open')
+    urgency = db.Column(db.String(20), default='standard')
+    notes = db.Column(db.Text)
+    filled_by_id = db.Column(db.Integer, db.ForeignKey('employee.id'))
+    filled_at = db.Column(db.DateTime)
+    notified_employees = db.Column(JSON)
+    
     position = db.relationship('Position', backref='overtime_opportunities')
+    posted_by = db.relationship('Employee', foreign_keys=[posted_by_id], backref='posted_overtime')
+    filled_by = db.relationship('Employee', foreign_keys=[filled_by_id], backref='overtime_taken')
+
+class OvertimeResponse(db.Model):
+    """Track employee responses to overtime opportunities"""
+    __tablename__ = 'overtime_responses'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    opportunity_id = db.Column(db.Integer, db.ForeignKey('overtime_opportunities.id'), nullable=False)
+    employee_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=False)
+    response = db.Column(db.String(20), nullable=False)
+    responded_at = db.Column(db.DateTime, default=datetime.now)
+    reason = db.Column(db.String(200))
+    
+    opportunity = db.relationship('OvertimeOpportunity', backref='responses')
+    employee = db.relationship('Employee', backref='overtime_responses')
+
+class CoverageGap(db.Model):
+    """Track detected coverage gaps for analysis"""
+    __tablename__ = 'coverage_gaps'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    position_id = db.Column(db.Integer, db.ForeignKey('position.id'), nullable=False)
+    date = db.Column(db.Date, nullable=False)
+    shift_type = db.Column(db.String(20), nullable=False)
+    required_count = db.Column(db.Integer, nullable=False)
+    scheduled_count = db.Column(db.Integer, nullable=False)
+    gap_count = db.Column(db.Integer, nullable=False)
+    detected_at = db.Column(db.DateTime, default=datetime.now)
+    status = db.Column(db.String(20), default='open')
+    resolved_at = db.Column(db.DateTime)
+    resolved_by_id = db.Column(db.Integer, db.ForeignKey('employee.id'))
+    resolution_method = db.Column(db.String(50))
+    
+    position = db.relationship('Position', backref='coverage_gaps')
+    resolved_by = db.relationship('Employee', backref='resolved_gaps')
+
+class EmployeeSkill(db.Model):
+    """Track employee skills and certifications"""
+    __tablename__ = 'employee_skills_new'  # Different name to avoid conflict
+    
+    id = db.Column(db.Integer, primary_key=True)
+    employee_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=False)
+    skill_name = db.Column(db.String(100), nullable=False)
+    certification_number = db.Column(db.String(100))
+    certified_date = db.Column(db.Date)
+    expiry_date = db.Column(db.Date)
+    is_active = db.Column(db.Boolean, default=True)
+    
+    employee = db.relationship('Employee', backref='employee_skills')
+    
+    __table_args__ = (
+        db.UniqueConstraint('employee_id', 'skill_name', name='_employee_skill_uc'),
+    )
+
+class FatigueTracking(db.Model):
+    """Track employee fatigue indicators for safety"""
+    __tablename__ = 'fatigue_tracking'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    employee_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=False)
+    date = db.Column(db.Date, nullable=False)
+    consecutive_days = db.Column(db.Integer, default=0)
+    hours_last_7_days = db.Column(db.Float, default=0)
+    hours_last_14_days = db.Column(db.Float, default=0)
+    night_shifts_last_7_days = db.Column(db.Integer, default=0)
+    shift_changes_last_7_days = db.Column(db.Integer, default=0)
+    fatigue_score = db.Column(db.Float, default=0)
+    last_updated = db.Column(db.DateTime, default=datetime.now)
+    
+    employee = db.relationship('Employee', backref='fatigue_records')
+    
+    __table_args__ = (
+        db.UniqueConstraint('employee_id', 'date', name='_employee_fatigue_date_uc'),
+    )
+
+class MandatoryOvertimeLog(db.Model):
+    """Log all mandatory overtime assignments for compliance"""
+    __tablename__ = 'mandatory_overtime_logs'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    employee_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=False)
+    assigned_by_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=False)
+    position_id = db.Column(db.Integer, db.ForeignKey('position.id'), nullable=False)
+    date = db.Column(db.Date, nullable=False)
+    shift_type = db.Column(db.String(20), nullable=False)
+    assigned_at = db.Column(db.DateTime, default=datetime.now)
+    reason = db.Column(db.Text, nullable=False)
+    employees_considered = db.Column(db.Integer)
+    seniority_rank = db.Column(db.Integer)
+    
+    employee = db.relationship('Employee', foreign_keys=[employee_id], backref='mandatory_overtime_assigned')
+    assigned_by = db.relationship('Employee', foreign_keys=[assigned_by_id], backref='mandatory_overtime_given')
+    position = db.relationship('Position', backref='mandatory_assignments')
+
+class ShiftPattern(db.Model):
+    """Define shift patterns for crew rotations"""
+    __tablename__ = 'shift_patterns'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    pattern_type = db.Column(db.String(50), nullable=False)
+    cycle_days = db.Column(db.Integer, nullable=False)
+    pattern_data = db.Column(JSON, nullable=False)
+    description = db.Column(db.Text)
+    is_active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.now)
+
+class CoverageNotificationResponse(db.Model):
+    """Track responses to coverage notifications"""
+    __tablename__ = 'coverage_notification_responses'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    notification_id = db.Column(db.Integer, db.ForeignKey('coverage_notification.id'), nullable=False)
+    response = db.Column(db.String(20), nullable=False)
+    responded_at = db.Column(db.DateTime, default=datetime.now)
+    decline_reason = db.Column(db.String(200))
+    
+    notification = db.relationship('CoverageNotification', backref='notification_responses')
 
 # ==========================================
 # NEW SHIFT TRADE MARKETPLACE MODELS
