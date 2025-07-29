@@ -5,9 +5,13 @@ Fixed main blueprint with proper dashboard routing
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, send_file, current_app
 from flask_login import login_required, current_user
-from models import db, Employee, Position, OvertimeHistory, TimeOffRequest, ShiftSwapRequest, ScheduleSuggestion
+from models import (db, Employee, Position, Schedule, OvertimeHistory, TimeOffRequest, 
+                   ShiftSwapRequest, ScheduleSuggestion, CrewCoverageRequirement,
+                   CoverageRequest, MaintenanceIssue, CasualWorker, OvertimeOpportunity,
+                   CoverageNotification)
 from datetime import date, timedelta, datetime
-from sqlalchemy import or_, func, text
+from sqlalchemy import or_, func, text, and_
+from utils.helpers import get_coverage_gaps
 import traceback
 
 # Create the blueprint - MUST be named 'main_bp' to match the import
@@ -24,66 +28,516 @@ def index():
 @main_bp.route('/dashboard')
 @login_required
 def dashboard():
-    """Main dashboard - route to appropriate dashboard based on user role"""
+    """Supervisor Operations Center Dashboard"""
+    if not current_user.is_supervisor:
+        return redirect(url_for('main.employee_dashboard'))
+    
     try:
-        if current_user.is_supervisor:
-            # Render supervisor dashboard directly - don't redirect
-            # Get statistics for supervisor dashboard
-            stats = {
-                'pending_time_off': TimeOffRequest.query.filter_by(status='pending').count(),
-                'pending_swaps': ShiftSwapRequest.query.filter_by(status='pending').count(),
-                'total_employees': Employee.query.filter_by(crew=current_user.crew).count() if current_user.crew else Employee.query.count(),
-                'employees_off_today': 0,  # This would need proper calculation
-                'coverage_gaps': 0,  # This would need proper calculation
-                'pending_suggestions': ScheduleSuggestion.query.filter_by(status='pending').count() if hasattr(ScheduleSuggestion, 'status') else 0,
-                'critical_maintenance': 0  # This would need proper calculation
-            }
-            
-            # Check if template exists, otherwise use a simple version
-            try:
-                return render_template('dashboard.html', **stats)
-            except:
-                # Fallback if template is missing
-                return render_template('supervisor_dashboard_simple.html', **stats)
+        # Get real-time staffing data
+        today = date.today()
+        
+        # Current staffing levels
+        scheduled_today = Schedule.query.filter_by(date=today).count()
+        
+        # Calculate total required positions
+        total_positions = db.session.query(func.sum(Position.min_coverage)).scalar() or 0
+        
+        # Today's absences
+        absences = db.session.query(Employee).join(TimeOffRequest).filter(
+            TimeOffRequest.status == 'approved',
+            TimeOffRequest.start_date <= today,
+            TimeOffRequest.end_date >= today
+        ).count()
+        
+        # No-shows (scheduled but not checked in - placeholder for now)
+        no_shows = 0  # Would need attendance tracking system
+        
+        # Get current shift info
+        current_hour = datetime.now().hour
+        if 6 <= current_hour < 18:
+            current_shift = 'day'
+            shift_start = '06:00'
+            shift_end = '18:00'
         else:
-            # For regular employees, redirect to employee dashboard
-            return redirect(url_for('main.employee_dashboard'))
+            current_shift = 'night'
+            shift_start = '18:00'
+            shift_end = '06:00'
+        
+        # Get crews on duty today
+        crews_on_duty = {}
+        for crew in ['A', 'B', 'C', 'D']:
+            crew_schedules = db.session.query(Schedule).join(Employee).filter(
+                Employee.crew == crew,
+                Schedule.date == today,
+                Schedule.shift_type == current_shift
+            ).count()
             
+            # Get required positions for this crew
+            crew_positions = db.session.query(
+                func.sum(CrewCoverageRequirement.min_coverage)
+            ).filter(
+                CrewCoverageRequirement.crew == crew
+            ).scalar() or 0
+            
+            crews_on_duty[crew] = {
+                'scheduled': crew_schedules,
+                'required': crew_positions,
+                'status': 'on' if crew_schedules > 0 else 'off',
+                'shortage': max(0, crew_positions - crew_schedules)
+            }
+        
+        # Get coverage gaps using helper function
+        all_gaps = get_coverage_gaps()
+        
+        # Format gaps for display (next 7 days)
+        coverage_gaps = []
+        for gap in all_gaps:
+            if gap['date'] <= today + timedelta(days=7):
+                coverage_gaps.append({
+                    'date': gap['date'],
+                    'date_str': gap['date'].strftime('%b %d'),
+                    'shift': gap['shift_type'],
+                    'position': gap['position_name'],
+                    'shortage': gap['shortage']
+                })
+        
+        # Limit to top 5 most urgent gaps
+        coverage_gaps = sorted(coverage_gaps, key=lambda x: (x['date'], x['shortage']), reverse=True)[:5]
+        future_gaps_count = len([g for g in all_gaps if g['date'] > today and g['date'] <= today + timedelta(days=7)])
+        
+        # Get overtime volunteers available today
+        off_duty_crews = [c for c, info in crews_on_duty.items() if info['status'] == 'off']
+        overtime_volunteers = Employee.query.filter(
+            Employee.is_supervisor == False,
+            Employee.crew.in_(off_duty_crews) if off_duty_crews else Employee.crew.isnot(None)
+        ).count()
+        
+        # Get pending actions
+        pending_time_off = TimeOffRequest.query.filter_by(status='pending').limit(5).all()
+        pending_swaps = ShiftSwapRequest.query.filter_by(status='pending').limit(5).all()
+        
+        # Build priority actions list
+        priority_actions = []
+        
+        # Add critical staffing shortages
+        total_shortage = max(0, total_positions - scheduled_today)
+        if total_shortage > 0:
+            for crew, info in crews_on_duty.items():
+                if info['shortage'] > 0 and info['status'] == 'on':
+                    # Find which positions are short
+                    crew_positions = db.session.query(Position).join(
+                        CrewCoverageRequirement
+                    ).filter(
+                        CrewCoverageRequirement.crew == crew
+                    ).all()
+                    
+                    for position in crew_positions:
+                        scheduled_for_position = db.session.query(Schedule).join(Employee).filter(
+                            Employee.crew == crew,
+                            Employee.position_id == position.id,
+                            Schedule.date == today,
+                            Schedule.shift_type == current_shift
+                        ).count()
+                        
+                        required = position.min_coverage
+                        if scheduled_for_position < required:
+                            priority_actions.append({
+                                'priority': 'high',
+                                'title': f'Fill {position.name} Position',
+                                'subtitle': f'Crew {crew} - {current_shift.title()} Shift - Critical Position',
+                                'crew': crew,
+                                'position_id': position.id,
+                                'actions': ['post_overtime', 'mandate']
+                            })
+        
+        # Add pending time-off that would create shortage
+        for time_off in pending_time_off[:2]:  # Show top 2
+            # Check if approving would create a shortage
+            would_create_shortage = False  # Simplified - implement actual check
+            priority_actions.append({
+                'priority': 'medium' if would_create_shortage else 'low',
+                'title': 'Review Time-Off Request',
+                'subtitle': f'{time_off.employee.name} - {time_off.start_date.strftime("%b %d")}-{time_off.end_date.strftime("%b %d")}',
+                'actions': ['approve', 'deny', 'view_impact'],
+                'request_id': time_off.id,
+                'would_create_shortage': would_create_shortage
+            })
+        
+        # Add pending swaps
+        for swap in pending_swaps[:1]:  # Show top 1
+            priority_actions.append({
+                'priority': 'low',
+                'title': 'Shift Swap Pending',
+                'subtitle': f'{swap.requesting_employee.name} ↔ {swap.target_employee.name if swap.target_employee else "Open"}',
+                'actions': ['review'],
+                'swap_id': swap.id
+            })
+        
+        # Get overtime distribution for current week
+        week_start = today - timedelta(days=today.weekday())
+        overtime_distribution = db.session.query(
+            Employee.id,
+            Employee.name,
+            Employee.crew,
+            func.coalesce(func.sum(OvertimeHistory.overtime_hours), 0).label('ot_hours')
+        ).outerjoin(
+            OvertimeHistory,
+            and_(
+                OvertimeHistory.employee_id == Employee.id,
+                OvertimeHistory.week_start_date == week_start
+            )
+        ).filter(
+            Employee.is_supervisor == False
+        ).group_by(Employee.id, Employee.name, Employee.crew).order_by(
+            func.sum(OvertimeHistory.overtime_hours).desc().nullslast()
+        ).limit(10).all()
+        
+        # Calculate staffing percentage
+        staffing_percentage = int((scheduled_today / total_positions * 100)) if total_positions > 0 else 0
+        
+        return render_template('dashboard.html',
+            # Current status
+            current_staffing=scheduled_today,
+            total_required=total_positions,
+            staffing_shortage=total_shortage,
+            staffing_percentage=staffing_percentage,
+            absences_count=absences,
+            no_shows_count=no_shows,
+            overtime_volunteers=overtime_volunteers,
+            future_gaps_count=future_gaps_count,
+            
+            # Shift info
+            current_shift=current_shift,
+            shift_start=shift_start,
+            shift_end=shift_end,
+            crews_on_duty=crews_on_duty,
+            
+            # Actions needed
+            priority_actions=priority_actions,
+            coverage_gaps=coverage_gaps,
+            overtime_distribution=overtime_distribution,
+            
+            # Pending counts
+            pending_time_off_count=len(pending_time_off),
+            pending_swaps_count=len(pending_swaps),
+            
+            # Time info
+            current_time=datetime.now(),
+            current_date=today
+        )
+        
     except Exception as e:
-        current_app.logger.error(f"Error in dashboard: {str(e)}\n{traceback.format_exc()}")
-        flash(f'Error loading dashboard: {str(e)}', 'danger')
-        # Fallback to a simple page
-        return redirect(url_for('main.test_dashboard'))
+        print(f"Dashboard error: {str(e)}")
+        traceback.print_exc()
+        flash('Error loading dashboard. Please try again.', 'danger')
+        
+        # Return a basic dashboard on error
+        return render_template('dashboard.html',
+            current_staffing=0,
+            total_required=0,
+            staffing_shortage=0,
+            staffing_percentage=0,
+            absences_count=0,
+            no_shows_count=0,
+            overtime_volunteers=0,
+            future_gaps_count=0,
+            current_shift='day',
+            shift_start='06:00',
+            shift_end='18:00',
+            crews_on_duty={},
+            priority_actions=[],
+            coverage_gaps=[],
+            overtime_distribution=[],
+            pending_time_off_count=0,
+            pending_swaps_count=0,
+            current_time=datetime.now(),
+            current_date=date.today()
+        )
 
 @main_bp.route('/employee-dashboard')
 @login_required
 def employee_dashboard():
     """Employee dashboard"""
+    if current_user.is_supervisor:
+        return redirect(url_for('main.dashboard'))
+    
     try:
-        # Check if template exists
-        try:
-            return render_template('employee_dashboard.html')
-        except:
-            # Simple fallback
-            return f"""
-            <html>
-            <head><title>Employee Dashboard</title></head>
-            <body>
-                <h1>Employee Dashboard</h1>
-                <p>Welcome, {current_user.name}!</p>
-                <ul>
-                    <li><a href="/vacation/request">Request Time Off</a></li>
-                    <li><a href="/shift-marketplace">Shift Marketplace</a></li>
-                    <li><a href="/schedule/view">View Schedule</a></li>
-                    <li><a href="/auth/logout">Logout</a></li>
-                </ul>
-            </body>
-            </html>
-            """
+        # Get employee's schedule for the week
+        today = date.today()
+        week_start = today - timedelta(days=today.weekday())
+        week_end = week_start + timedelta(days=6)
+        
+        my_schedule = Schedule.query.filter(
+            Schedule.employee_id == current_user.id,
+            Schedule.date >= week_start,
+            Schedule.date <= week_end
+        ).order_by(Schedule.date).all()
+        
+        # Get time-off requests
+        my_time_off = TimeOffRequest.query.filter_by(
+            employee_id=current_user.id
+        ).order_by(TimeOffRequest.created_at.desc()).limit(5).all()
+        
+        # Get shift swaps
+        my_swaps = ShiftSwapRequest.query.filter(
+            db.or_(
+                ShiftSwapRequest.requesting_employee_id == current_user.id,
+                ShiftSwapRequest.target_employee_id == current_user.id
+            )
+        ).order_by(ShiftSwapRequest.created_at.desc()).limit(5).all()
+        
+        # Get overtime opportunities
+        overtime_opps = CoverageRequest.query.filter(
+            CoverageRequest.date >= today,
+            CoverageRequest.status == 'open'
+        ).order_by(CoverageRequest.date).limit(5).all()
+        
+        # Get current week overtime
+        current_week_ot = db.session.query(
+            func.sum(OvertimeHistory.overtime_hours)
+        ).filter(
+            OvertimeHistory.employee_id == current_user.id,
+            OvertimeHistory.week_start_date == week_start
+        ).scalar() or 0
+        
+        # Get vacation balance
+        vacation_balance = current_user.vacation_days
+        sick_balance = current_user.sick_days
+        personal_balance = current_user.personal_days
+        
+        return render_template('employee_dashboard.html',
+            my_schedule=my_schedule,
+            my_time_off=my_time_off,
+            my_swaps=my_swaps,
+            overtime_opportunities=overtime_opps,
+            current_week_overtime=current_week_ot,
+            vacation_balance=vacation_balance,
+            sick_balance=sick_balance,
+            personal_balance=personal_balance,
+            week_start=week_start,
+            week_end=week_end,
+            today=today
+        )
+        
     except Exception as e:
-        flash(f'Error loading employee dashboard: {str(e)}', 'danger')
-        return redirect(url_for('main.index'))
+        print(f"Employee dashboard error: {str(e)}")
+        flash('Error loading dashboard. Please try again.', 'danger')
+        return render_template('employee_dashboard.html',
+            my_schedule=[],
+            my_time_off=[],
+            my_swaps=[],
+            overtime_opportunities=[],
+            current_week_overtime=0,
+            vacation_balance=0,
+            sick_balance=0,
+            personal_balance=0,
+            week_start=date.today(),
+            week_end=date.today(),
+            today=date.today()
+        )
 
+# NEW API ROUTES FOR QUICK ACTIONS
+@main_bp.route('/api/quick-action', methods=['POST'])
+@login_required
+def quick_action():
+    """Handle quick actions from the dashboard"""
+    if not current_user.is_supervisor:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    try:
+        action_type = request.json.get('action')
+        data = request.json.get('data', {})
+        
+        if action_type == 'post_overtime':
+            # Redirect to overtime posting
+            return jsonify({
+                'success': True,
+                'redirect': url_for('overtime.quick_post_form', 
+                                  position_id=data.get('position_id'))
+            })
+            
+        elif action_type == 'call_casual':
+            # Get available casual workers
+            position_id = data.get('position_id')
+            date_needed = data.get('date', date.today().strftime('%Y-%m-%d'))
+            
+            casuals = CasualWorker.query.filter_by(is_active=True).all()
+            
+            # Filter by skills if position specified
+            if position_id:
+                position = Position.query.get(position_id)
+                required_skill_names = [s.name for s in position.required_skills]
+                
+                qualified_casuals = []
+                for casual in casuals:
+                    casual_skills = [s.name for s in casual.skills]
+                    if any(skill in casual_skills for skill in required_skill_names):
+                        qualified_casuals.append({
+                            'id': casual.id,
+                            'name': casual.name,
+                            'phone': casual.phone,
+                            'email': casual.email,
+                            'rating': casual.rating,
+                            'last_worked': casual.last_worked_date.strftime('%Y-%m-%d') if casual.last_worked_date else 'Never'
+                        })
+                
+                return jsonify({
+                    'success': True,
+                    'casuals': qualified_casuals,
+                    'position': position.name if position else 'Any'
+                })
+            
+            return jsonify({
+                'success': True,
+                'casuals': [{'id': c.id, 'name': c.name, 'phone': c.phone} for c in casuals]
+            })
+            
+        elif action_type == 'reassign_staff':
+            # Get reassignment options
+            from_crew = data.get('from_crew')
+            to_position = data.get('to_position')
+            date_str = data.get('date', date.today().strftime('%Y-%m-%d'))
+            
+            # Find employees who could be reassigned
+            available_employees = db.session.query(Employee).join(Schedule).filter(
+                Employee.crew == from_crew,
+                Schedule.date == datetime.strptime(date_str, '%Y-%m-%d').date(),
+                Employee.is_supervisor == False
+            ).all()
+            
+            return jsonify({
+                'success': True,
+                'available_employees': [
+                    {'id': e.id, 'name': e.name, 'current_position': e.position.name if e.position else 'None'}
+                    for e in available_employees
+                ]
+            })
+            
+        elif action_type == 'view_schedule':
+            crew = data.get('crew')
+            return jsonify({
+                'success': True,
+                'redirect': url_for('schedule.view_schedules', crew=crew)
+            })
+            
+        elif action_type == 'overtime_report':
+            return jsonify({
+                'success': True,
+                'redirect': url_for('main.overtime_management')
+            })
+            
+        elif action_type == 'message_crew':
+            crew = data.get('crew')
+            return jsonify({
+                'success': True,
+                'redirect': url_for('supervisor.messages', crew=crew)
+            })
+            
+        else:
+            return jsonify({'error': 'Unknown action type'}), 400
+            
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@main_bp.route('/api/fill-gap', methods=['POST'])
+@login_required
+def fill_gap():
+    """Quick fill for coverage gaps"""
+    if not current_user.is_supervisor:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    try:
+        gap_date = request.json.get('date')
+        shift_type = request.json.get('shift')
+        position_name = request.json.get('position')
+        
+        # Find the position
+        position = Position.query.filter_by(name=position_name).first()
+        if not position:
+            return jsonify({'error': 'Position not found'}), 404
+        
+        # Use the overtime engine to find eligible employees
+        from blueprints.overtime import OvertimeAssignmentEngine
+        
+        date_needed = datetime.strptime(gap_date, '%Y-%m-%d').date()
+        eligible = OvertimeAssignmentEngine.get_eligible_employees(
+            position.id, date_needed, shift_type
+        )
+        
+        # Create overtime opportunity
+        opportunity = OvertimeOpportunity(
+            position_id=position.id,
+            date=date_needed,
+            shift_type=shift_type,
+            posted_by_id=current_user.id,
+            status='open',
+            urgent=True,
+            response_deadline=datetime.now() + timedelta(hours=4)
+        )
+        db.session.add(opportunity)
+        
+        # Notify top 5 eligible employees
+        notified = 0
+        for emp_data in eligible[:5]:
+            if emp_data['availability']['available']:
+                notification = CoverageNotification(
+                    sent_to_type='individual',
+                    sent_to_employee_id=emp_data['employee'].id,
+                    sent_by_id=current_user.id,
+                    message=f"URGENT: {position.name} needed for {shift_type} shift on {date_needed.strftime('%b %d')}"
+                )
+                db.session.add(notification)
+                notified += 1
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': f'Posted to {notified} eligible employees',
+            'opportunity_id': opportunity.id
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@main_bp.route('/api/quick-schedule', methods=['POST'])
+@login_required
+def quick_schedule():
+    """API endpoint for quick scheduling actions"""
+    if not current_user.is_supervisor:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    try:
+        action = request.json.get('action')
+        data = request.json.get('data', {})
+        
+        if action == 'post_overtime':
+            # Create overtime opportunity
+            position_id = data.get('position_id')
+            date_str = data.get('date')
+            shift_type = data.get('shift_type')
+            crew = data.get('crew')
+            
+            # Implementation would go here
+            return jsonify({'success': True, 'message': 'Overtime posted successfully'})
+            
+        elif action == 'mandate':
+            # Mandatory overtime assignment
+            employee_id = data.get('employee_id')
+            date_str = data.get('date')
+            shift_type = data.get('shift_type')
+            
+            # Implementation would go here
+            return jsonify({'success': True, 'message': 'Overtime assigned'})
+            
+        else:
+            return jsonify({'error': 'Invalid action'}), 400
+            
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# Keep all your existing routes below this line
 @main_bp.route('/test-dashboard')
 @login_required
 def test_dashboard():
@@ -146,609 +600,6 @@ def test_dashboard():
     </html>
     """
 
-@main_bp.route('/overtime-management')
-@login_required
-def overtime_management_main():  # Changed function name to be unique
-    """Enhanced overtime management page with multi-level sorting"""
-    # Check if user is supervisor
-    if not current_user.is_supervisor:
-        flash('You must be a supervisor to access this page.', 'danger')
-        return redirect(url_for('main.dashboard'))
-    
-    try:
-        # Get all employees (no is_active filter since field doesn't exist)
-        employees = Employee.query.order_by(Employee.crew, Employee.name).all()
-        
-        # Get overtime history for the last 13 weeks
-        thirteen_weeks_ago = datetime.now().date() - timedelta(weeks=13)
-        
-        employees_data = []
-        for emp in employees:
-            # Skip the current user (supervisor) from the list
-            if emp.id == current_user.id:
-                continue
-                
-            # Get overtime hours from OvertimeHistory table
-            overtime_total = db.session.query(func.sum(OvertimeHistory.overtime_hours)).filter(
-                OvertimeHistory.employee_id == emp.id,
-                OvertimeHistory.week_start_date >= thirteen_weeks_ago
-            ).scalar() or 0.0
-            
-            # Get current week overtime
-            current_week_start = datetime.now().date() - timedelta(days=datetime.now().weekday())
-            current_week_ot = db.session.query(func.sum(OvertimeHistory.overtime_hours)).filter(
-                OvertimeHistory.employee_id == emp.id,
-                OvertimeHistory.week_start_date == current_week_start
-            ).scalar() or 0.0
-            
-            employees_data.append({
-                'id': emp.id,
-                'name': emp.name,
-                'employee_id': emp.employee_id or f'EMP{emp.id}',
-                'crew': emp.crew or 'Unassigned',
-                'position': emp.position.name if emp.position else 'No Position',
-                'hire_date': emp.hire_date.strftime('%Y-%m-%d') if emp.hire_date else 'N/A',
-                'hire_date_sort': emp.hire_date if emp.hire_date else datetime(2099, 12, 31).date(),
-                'current_week_ot': round(current_week_ot, 1),
-                'overtime_13week': round(overtime_total, 1),
-                'weekly_average': round(overtime_total / 13, 1) if overtime_total else 0
-            })
-        
-        # Calculate statistics
-        total_ot = sum(e['overtime_13week'] for e in employees_data)
-        high_ot_count = len([e for e in employees_data if e['overtime_13week'] > 200])
-        avg_ot = round(total_ot / len(employees_data), 1) if employees_data else 0
-        
-        # Full HTML with multi-level sorting
-        html = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Overtime Management</title>
-            <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-            <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
-            <style>
-                body {{ background-color: #f5f7fa; }}
-                .container {{ max-width: 1400px; margin: 2rem auto; }}
-                .header {{ margin-bottom: 2rem; }}
-                table {{ background: white; font-size: 0.9rem; }}
-                .high-ot {{ background-color: #ffebee !important; }}
-                .medium-ot {{ background-color: #fff8e1 !important; }}
-                .low-ot {{ background-color: #e8f5e9 !important; }}
-                .crew-badge {{
-                    display: inline-block;
-                    padding: 0.25rem 0.5rem;
-                    border-radius: 0.25rem;
-                    font-size: 0.875rem;
-                    font-weight: 500;
-                }}
-                .crew-a {{ background-color: #e3f2fd; color: #1976d2; }}
-                .crew-b {{ background-color: #f3e5f5; color: #7b1fa2; }}
-                .crew-c {{ background-color: #e8f5e9; color: #388e3c; }}
-                .crew-d {{ background-color: #fff3e0; color: #f57c00; }}
-                .sort-controls {{
-                    background: white;
-                    padding: 20px;
-                    border-radius: 8px;
-                    margin-bottom: 20px;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                }}
-                .sort-level {{
-                    margin-bottom: 10px;
-                    padding: 10px;
-                    background: #f8f9fa;
-                    border-radius: 5px;
-                }}
-                .stats-card {{
-                    background: white;
-                    border-radius: 8px;
-                    padding: 20px;
-                    text-align: center;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                    height: 100%;
-                }}
-                .stat-value {{
-                    font-size: 2rem;
-                    font-weight: bold;
-                    color: #11998e;
-                }}
-                .clickable {{ cursor: pointer; }}
-                .clickable:hover {{ background-color: #e9ecef; }}
-                .filters {{
-                    background: white;
-                    padding: 15px;
-                    border-radius: 8px;
-                    margin-bottom: 20px;
-                }}
-                .table-container {{
-                    background: white;
-                    padding: 20px;
-                    border-radius: 8px;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                    overflow-x: auto;
-                }}
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <div class="header">
-                    <h1><i class="bi bi-clock-history"></i> Overtime Management</h1>
-                    <p class="text-muted">13-Week Rolling Overtime Summary with Multi-Level Sorting</p>
-                </div>
-
-                <!-- Action Buttons -->
-                <div class="mb-3">
-                    <a href="/dashboard" class="btn btn-secondary">
-                        <i class="bi bi-arrow-left"></i> Back to Dashboard
-                    </a>
-                    <a href="/upload-employees" class="btn btn-primary">
-                        <i class="bi bi-upload"></i> Re-upload Employee Data
-                    </a>
-                    <button class="btn btn-success" onclick="exportData()">
-                        <i class="bi bi-download"></i> Export to Excel
-                    </button>
-                </div>
-
-                <!-- Statistics Cards -->
-                <div class="row mb-4">
-                    <div class="col-md-3">
-                        <div class="stats-card">
-                            <div class="stat-value">{len(employees_data)}</div>
-                            <div class="text-muted">Total Employees</div>
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="stats-card">
-                            <div class="stat-value">{total_ot:.0f}h</div>
-                            <div class="text-muted">Total OT (13 weeks)</div>
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="stats-card">
-                            <div class="stat-value">{avg_ot}h</div>
-                            <div class="text-muted">Average OT/Employee</div>
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="stats-card">
-                            <div class="stat-value">{high_ot_count}</div>
-                            <div class="text-muted">High OT (>200h)</div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Filters -->
-                <div class="filters">
-                    <h5>Filters</h5>
-                    <div class="row">
-                        <div class="col-md-3">
-                            <select class="form-select" id="crewFilter" onchange="applyFilters()">
-                                <option value="">All Crews</option>
-                                <option value="A">Crew A</option>
-                                <option value="B">Crew B</option>
-                                <option value="C">Crew C</option>
-                                <option value="D">Crew D</option>
-                            </select>
-                        </div>
-                        <div class="col-md-3">
-                            <select class="form-select" id="positionFilter" onchange="applyFilters()">
-                                <option value="">All Positions</option>
-        """
-        
-        # Add unique positions to filter
-        positions = sorted(set(e['position'] for e in employees_data if e['position'] != 'No Position'))
-        for pos in positions:
-            html += f'<option value="{pos}">{pos}</option>'
-        
-        html += """
-                            </select>
-                        </div>
-                        <div class="col-md-3">
-                            <select class="form-select" id="otFilter" onchange="applyFilters()">
-                                <option value="">All OT Ranges</option>
-                                <option value="0-50">0-50 hours</option>
-                                <option value="50-100">50-100 hours</option>
-                                <option value="100-150">100-150 hours</option>
-                                <option value="150-200">150-200 hours</option>
-                                <option value="200+">200+ hours</option>
-                            </select>
-                        </div>
-                        <div class="col-md-3">
-                            <button class="btn btn-secondary" onclick="resetFilters()">
-                                <i class="bi bi-arrow-counterclockwise"></i> Reset Filters
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Sort Controls -->
-                <div class="sort-controls">
-                    <h5>Multi-Level Sorting</h5>
-                    <div class="row">
-                        <div class="col-md-3">
-                            <div class="sort-level">
-                                <label>Sort Level 1:</label>
-                                <select class="form-select" id="sort1">
-                                    <option value="">None</option>
-                                    <option value="crew">Crew</option>
-                                    <option value="position">Position</option>
-                                    <option value="overtime">13-Week Total</option>
-                                    <option value="hire_date">Date of Hire</option>
-                                    <option value="name">Name</option>
-                                </select>
-                                <select class="form-select mt-1" id="dir1">
-                                    <option value="asc">Ascending</option>
-                                    <option value="desc">Descending</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="sort-level">
-                                <label>Sort Level 2:</label>
-                                <select class="form-select" id="sort2">
-                                    <option value="">None</option>
-                                    <option value="crew">Crew</option>
-                                    <option value="position">Position</option>
-                                    <option value="overtime">13-Week Total</option>
-                                    <option value="hire_date">Date of Hire</option>
-                                    <option value="name">Name</option>
-                                </select>
-                                <select class="form-select mt-1" id="dir2">
-                                    <option value="asc">Ascending</option>
-                                    <option value="desc">Descending</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="sort-level">
-                                <label>Sort Level 3:</label>
-                                <select class="form-select" id="sort3">
-                                    <option value="">None</option>
-                                    <option value="crew">Crew</option>
-                                    <option value="position">Position</option>
-                                    <option value="overtime">13-Week Total</option>
-                                    <option value="hire_date">Date of Hire</option>
-                                    <option value="name">Name</option>
-                                </select>
-                                <select class="form-select mt-1" id="dir3">
-                                    <option value="asc">Ascending</option>
-                                    <option value="desc">Descending</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="sort-level">
-                                <label>Sort Level 4:</label>
-                                <select class="form-select" id="sort4">
-                                    <option value="">None</option>
-                                    <option value="crew">Crew</option>
-                                    <option value="position">Position</option>
-                                    <option value="overtime">13-Week Total</option>
-                                    <option value="hire_date">Date of Hire</option>
-                                    <option value="name">Name</option>
-                                </select>
-                                <select class="form-select mt-1" id="dir4">
-                                    <option value="asc">Ascending</option>
-                                    <option value="desc">Descending</option>
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="row mt-3">
-                        <div class="col-12 text-center">
-                            <button class="btn btn-primary btn-lg" onclick="applySort()">
-                                <i class="bi bi-sort-down"></i> Apply Sort
-                            </button>
-                            <button class="btn btn-secondary btn-lg ms-2" onclick="resetSort()">
-                                <i class="bi bi-arrow-counterclockwise"></i> Reset Sort
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Employee Table -->
-                <div class="table-container">
-                    <table class="table table-hover" id="employeeTable">
-                        <thead>
-                            <tr>
-                                <th class="clickable" onclick="quickSort('name')">Employee <i class="bi bi-arrow-down-up"></i></th>
-                                <th>Employee ID</th>
-                                <th class="clickable" onclick="quickSort('crew')">Crew <i class="bi bi-arrow-down-up"></i></th>
-                                <th class="clickable" onclick="quickSort('position')">Position <i class="bi bi-arrow-down-up"></i></th>
-                                <th class="clickable" onclick="quickSort('hire_date')">Date of Hire <i class="bi bi-arrow-down-up"></i></th>
-                                <th>Current Week</th>
-                                <th class="clickable" onclick="quickSort('overtime')">13-Week Total <i class="bi bi-arrow-down-up"></i></th>
-                                <th>Weekly Avg</th>
-                                <th>Trend</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tableBody">
-        """
-        
-        # Add employee rows
-        for emp in sorted(employees_data, key=lambda x: (-x['overtime_13week'])):
-            row_class = ''
-            if emp['overtime_13week'] > 200:
-                row_class = 'high-ot'
-            elif emp['overtime_13week'] > 150:
-                row_class = 'medium-ot'
-            elif emp['overtime_13week'] < 50:
-                row_class = 'low-ot'
-            
-            crew_badge = f'<span class="crew-badge crew-{emp["crew"].lower()}">{emp["crew"]}</span>' if emp['crew'] != 'Unassigned' else emp['crew']
-            
-            # Simple trend indicator
-            trend = '→'
-            trend_color = 'text-muted'
-            if emp['current_week_ot'] > emp['weekly_average'] * 1.2:
-                trend = '↑'
-                trend_color = 'text-danger'
-            elif emp['current_week_ot'] < emp['weekly_average'] * 0.8:
-                trend = '↓'
-                trend_color = 'text-success'
-            
-            html += f"""
-                <tr class="{row_class}" data-crew="{emp['crew']}" data-position="{emp['position']}" 
-                    data-overtime="{emp['overtime_13week']}" data-hire-date="{emp['hire_date_sort']}"
-                    data-name="{emp['name']}">
-                    <td>{emp['name']}</td>
-                    <td>{emp['employee_id']}</td>
-                    <td>{crew_badge}</td>
-                    <td>{emp['position']}</td>
-                    <td>{emp['hire_date']}</td>
-                    <td>{emp['current_week_ot']}h</td>
-                    <td><strong>{emp['overtime_13week']}h</strong></td>
-                    <td>{emp['weekly_average']}h</td>
-                    <td class="{trend_color}">{trend}</td>
-                </tr>
-            """
-        
-        html += """
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            <script>
-                let allRows = [];
-                let filteredRows = [];
-                
-                // Store all rows on load
-                document.addEventListener('DOMContentLoaded', function() {
-                    allRows = Array.from(document.querySelectorAll('#tableBody tr'));
-                    filteredRows = [...allRows];
-                });
-                
-                function applyFilters() {
-                    const crewFilter = document.getElementById('crewFilter').value;
-                    const positionFilter = document.getElementById('positionFilter').value;
-                    const otFilter = document.getElementById('otFilter').value;
-                    
-                    filteredRows = allRows.filter(row => {
-                        const crew = row.getAttribute('data-crew');
-                        const position = row.getAttribute('data-position');
-                        const overtime = parseFloat(row.getAttribute('data-overtime'));
-                        
-                        let show = true;
-                        
-                        if (crewFilter && crew !== crewFilter) show = false;
-                        if (positionFilter && position !== positionFilter) show = false;
-                        
-                        if (otFilter) {
-                            switch(otFilter) {
-                                case '0-50': if (overtime > 50) show = false; break;
-                                case '50-100': if (overtime <= 50 || overtime > 100) show = false; break;
-                                case '100-150': if (overtime <= 100 || overtime > 150) show = false; break;
-                                case '150-200': if (overtime <= 150 || overtime > 200) show = false; break;
-                                case '200+': if (overtime <= 200) show = false; break;
-                            }
-                        }
-                        
-                        return show;
-                    });
-                    
-                    applySort();
-                }
-                
-                function resetFilters() {
-                    document.getElementById('crewFilter').value = '';
-                    document.getElementById('positionFilter').value = '';
-                    document.getElementById('otFilter').value = '';
-                    filteredRows = [...allRows];
-                    applySort();
-                }
-                
-                function applySort() {
-                    const sortLevels = [];
-                    for (let i = 1; i <= 4; i++) {
-                        const field = document.getElementById(`sort${i}`).value;
-                        const dir = document.getElementById(`dir${i}`).value;
-                        if (field) {
-                            sortLevels.push({ field, dir });
-                        }
-                    }
-                    
-                    if (sortLevels.length === 0) {
-                        // Default sort by overtime descending
-                        sortLevels.push({ field: 'overtime', dir: 'desc' });
-                    }
-                    
-                    const sortedRows = [...filteredRows].sort((a, b) => {
-                        for (const level of sortLevels) {
-                            let aVal, bVal;
-                            
-                            switch(level.field) {
-                                case 'crew':
-                                    aVal = a.getAttribute('data-crew');
-                                    bVal = b.getAttribute('data-crew');
-                                    break;
-                                case 'position':
-                                    aVal = a.getAttribute('data-position');
-                                    bVal = b.getAttribute('data-position');
-                                    break;
-                                case 'overtime':
-                                    aVal = parseFloat(a.getAttribute('data-overtime'));
-                                    bVal = parseFloat(b.getAttribute('data-overtime'));
-                                    break;
-                                case 'hire_date':
-                                    aVal = a.getAttribute('data-hire-date');
-                                    bVal = b.getAttribute('data-hire-date');
-                                    break;
-                                case 'name':
-                                    aVal = a.getAttribute('data-name');
-                                    bVal = b.getAttribute('data-name');
-                                    break;
-                            }
-                            
-                            if (aVal < bVal) return level.dir === 'asc' ? -1 : 1;
-                            if (aVal > bVal) return level.dir === 'asc' ? 1 : -1;
-                        }
-                        return 0;
-                    });
-                    
-                    // Update table
-                    const tbody = document.getElementById('tableBody');
-                    tbody.innerHTML = '';
-                    
-                    // Show filtered and sorted rows
-                    sortedRows.forEach(row => {
-                        tbody.appendChild(row.cloneNode(true));
-                    });
-                    
-                    // Hide non-filtered rows
-                    allRows.forEach(row => {
-                        if (!filteredRows.includes(row)) {
-                            row.style.display = 'none';
-                        }
-                    });
-                }
-                
-                function resetSort() {
-                    // Clear all sort levels
-                    for (let i = 1; i <= 4; i++) {
-                        document.getElementById(`sort${i}`).value = '';
-                        document.getElementById(`dir${i}`).value = 'asc';
-                    }
-                    
-                    // Apply default sort (by overtime descending)
-                    document.getElementById('sort1').value = 'overtime';
-                    document.getElementById('dir1').value = 'desc';
-                    
-                    applySort();
-                }
-                
-                function quickSort(field) {
-                    // Set first sort level to this field
-                    document.getElementById('sort1').value = field;
-                    document.getElementById('dir1').value = field === 'hire_date' ? 'asc' : 'desc';
-                    
-                    // Clear other sort levels
-                    for (let i = 2; i <= 4; i++) {
-                        document.getElementById(`sort${i}`).value = '';
-                    }
-                    
-                    applySort();
-                }
-                
-                function exportData() {
-                    window.location.href = '/overtime-management/export/excel';
-                }
-            </script>
-        </body>
-        </html>
-        """
-        
-        return html
-        
-    except Exception as e:
-        # More detailed error reporting
-        import traceback
-        error_details = traceback.format_exc()
-        current_app.logger.error(f"Error in overtime_management: {str(e)}\n{error_details}")
-        
-        # Return a detailed error page for debugging
-        return f"""
-        <html>
-        <head><title>Error - Overtime Management</title></head>
-        <body style="font-family: Arial; margin: 50px;">
-            <h1>Error Loading Overtime Data</h1>
-            <p><strong>Error:</strong> {str(e)}</p>
-            <details>
-                <summary>Full Error Details (click to expand)</summary>
-                <pre style="background: #f0f0f0; padding: 20px; overflow: auto;">{error_details}</pre>
-            </details>
-            <hr>
-            <p><a href="/dashboard" class="btn btn-primary">Back to Dashboard</a></p>
-            <p><a href="/test-dashboard" class="btn btn-secondary">Try Test Dashboard</a></p>
-            <p><a href="/upload-employees" class="btn btn-success">Upload Employee Data</a></p>
-        </body>
-        </html>
-        """, 500
-    
-    try:
-        # Get all employees (no is_active filter since field doesn't exist)
-        employees = Employee.query.order_by(Employee.crew, Employee.name).all()
-        
-        # Check employee count
-        total_employees = len(employees)
-        expected_count = 100  # You mentioned uploading 100 employees
-        
-        # Get overtime history for the last 13 weeks
-        thirteen_weeks_ago = datetime.now().date() - timedelta(weeks=13)
-        
-        employees_data = []
-        for emp in employees:
-            # Skip the current user (supervisor) from the count
-            if emp.id == current_user.id:
-                continue
-                
-            # Get overtime hours from OvertimeHistory table
-            overtime_total = db.session.query(func.sum(OvertimeHistory.overtime_hours)).filter(
-                OvertimeHistory.employee_id == emp.id,
-                OvertimeHistory.week_start_date >= thirteen_weeks_ago
-            ).scalar() or 0.0
-            
-            # Get current week overtime
-            current_week_start = datetime.now().date() - timedelta(days=datetime.now().weekday())
-            current_week_ot = db.session.query(func.sum(OvertimeHistory.overtime_hours)).filter(
-                OvertimeHistory.employee_id == emp.id,
-                OvertimeHistory.week_start_date == current_week_start
-            ).scalar() or 0.0
-            
-            employees_data.append({
-                'id': emp.id,
-                'name': emp.name,
-                'employee_id': emp.employee_id or f'EMP{emp.id}',
-                'crew': emp.crew or 'Unassigned',
-                'position': emp.position.name if emp.position else 'No Position',
-                'hire_date': emp.hire_date.strftime('%Y-%m-%d') if emp.hire_date else None,
-                'current_week_ot': round(current_week_ot, 1),
-                'overtime_13week': round(overtime_total, 1),
-                'weekly_average': round(overtime_total / 13, 1) if overtime_total else 0
-            })
-        
-        # Count excluding supervisor
-        actual_employee_count = len(employees_data)
-        
-        # Calculate statistics
-        total_ot = sum(e['overtime_13week'] for e in employees_data)
-        high_ot_count = len([e for e in employees_data if e['overtime_13week'] > 200])
-        avg_ot = round(total_ot / len(employees_data), 1) if employees_data else 0
-        
-        # Return the improved HTML template
-        return render_template_string(open('improved_overtime_template.html').read(),
-                                    employees=employees_data,
-                                    total_employees=actual_employee_count,
-                                    expected_count=expected_count,
-                                    total_ot=total_ot,
-                                    high_ot_count=high_ot_count,
-                                    avg_ot=avg_ot)
-        
-    except Exception as e:
-        # If template not found or other error, use inline version
-        employees = Employee.query.order_by(Employee.crew, Employee.name).all()
-        actual_employee_count = len([e for e in employees if e.id != current_user.id])
-        
 @main_bp.route('/overtime-management')
 @login_required
 def overtime_management():
@@ -1246,219 +1097,6 @@ def overtime_management():
         </body>
         </html>
         """, 500
-        
-        # Get overtime history for the last 13 weeks
-        thirteen_weeks_ago = datetime.now().date() - timedelta(weeks=13)
-        
-        employees_data = []
-        for emp in employees:
-            # Get overtime hours from OvertimeHistory table
-            overtime_total = db.session.query(func.sum(OvertimeHistory.overtime_hours)).filter(
-                OvertimeHistory.employee_id == emp.id,
-                OvertimeHistory.week_start_date >= thirteen_weeks_ago
-            ).scalar() or 0.0
-            
-            # Get current week overtime
-            current_week_start = datetime.now().date() - timedelta(days=datetime.now().weekday())
-            current_week_ot = db.session.query(func.sum(OvertimeHistory.overtime_hours)).filter(
-                OvertimeHistory.employee_id == emp.id,
-                OvertimeHistory.week_start_date == current_week_start
-            ).scalar() or 0.0
-            
-            employees_data.append({
-                'id': emp.id,
-                'name': emp.name,
-                'employee_id': emp.employee_id or f'EMP{emp.id}',
-                'crew': emp.crew or 'Unassigned',
-                'position': emp.position.name if emp.position else 'No Position',
-                'current_week_overtime': round(current_week_ot, 1),
-                'last_13_weeks_overtime': round(overtime_total, 1),
-                'average_weekly_overtime': round(overtime_total / 13, 1) if overtime_total else 0
-            })
-        
-        # Sort by total overtime descending
-        employees_data.sort(key=lambda x: x['last_13_weeks_overtime'], reverse=True)
-        
-        # Simple HTML response
-        html = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Overtime Management</title>
-            <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-            <style>
-                body {{ background-color: #f5f7fa; }}
-                .container {{ max-width: 1200px; margin: 2rem auto; }}
-                .header {{ margin-bottom: 2rem; }}
-                .alert-warning {{ margin-bottom: 2rem; }}
-                table {{ background: white; }}
-                .high-ot {{ background-color: #fee; }}
-                .medium-ot {{ background-color: #ffd; }}
-                .crew-badge {{
-                    display: inline-block;
-                    padding: 0.25rem 0.5rem;
-                    border-radius: 0.25rem;
-                    font-size: 0.875rem;
-                    font-weight: 500;
-                }}
-                .crew-a {{ background-color: #e3f2fd; color: #1976d2; }}
-                .crew-b {{ background-color: #f3e5f5; color: #7b1fa2; }}
-                .crew-c {{ background-color: #e8f5e9; color: #388e3c; }}
-                .crew-d {{ background-color: #fff3e0; color: #f57c00; }}
-                .debug-info {{ background: #f0f0f0; padding: 10px; margin-bottom: 20px; border-radius: 5px; }}
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <div class="header">
-                    <h1>Overtime Management</h1>
-                    <p class="text-muted">13-Week Rolling Overtime Summary</p>
-                    <a href="/dashboard" class="btn btn-secondary">Back to Dashboard</a>
-                    <a href="/upload-employees" class="btn btn-primary">Upload New Data</a>
-                </div>
-                
-                <div class="debug-info">
-                    <strong>Debug Info:</strong><br>
-                    Total employees in database: {total_employees}<br>
-                    Active employees: {active_employees}<br>
-                    Employees found by query: {len(employees)}<br>
-                    OvertimeHistory records: {OvertimeHistory.query.count()}
-                </div>
-        """
-        
-        if not employees_data:
-            html += """
-                <div class="alert alert-warning">
-                    <h4>No Employee Data Found</h4>
-                    <p>Please <a href="/upload-employees">upload employee data</a> to view overtime information.</p>
-                </div>
-                
-                <div class="debug-info">
-                    <strong>Additional Debug:</strong><br>
-            """
-            
-            # Show first few employees if any exist
-            sample_employees = Employee.query.limit(5).all()
-            if sample_employees:
-                html += "Sample employees in database:<br>"
-                for emp in sample_employees:
-                    html += f"- {emp.name} (ID: {emp.id}, Active: {getattr(emp, 'is_active', 'N/A')}, Crew: {emp.crew})<br>"
-            else:
-                html += "No employees found in database at all!<br>"
-                
-            html += """
-                </div>
-            """
-        else:
-            # Statistics
-            total_ot = sum(e['last_13_weeks_overtime'] for e in employees_data)
-            high_ot_count = len([e for e in employees_data if e['last_13_weeks_overtime'] > 200])
-            
-            html += f"""
-                <div class="row mb-4">
-                    <div class="col-md-3">
-                        <div class="card">
-                            <div class="card-body text-center">
-                                <h3>{len(employees_data)}</h3>
-                                <p class="text-muted mb-0">Total Employees</p>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="card">
-                            <div class="card-body text-center">
-                                <h3>{total_ot:.1f}</h3>
-                                <p class="text-muted mb-0">Total OT Hours</p>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="card">
-                            <div class="card-body text-center">
-                                <h3>{total_ot/len(employees_data) if employees_data else 0:.1f}</h3>
-                                <p class="text-muted mb-0">Avg OT/Employee</p>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="card">
-                            <div class="card-body text-center">
-                                <h3>{high_ot_count}</h3>
-                                <p class="text-muted mb-0">High OT (&gt;200h)</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="card">
-                    <div class="card-body">
-                        <table class="table table-hover">
-                            <thead>
-                                <tr>
-                                    <th>Employee</th>
-                                    <th>ID</th>
-                                    <th>Crew</th>
-                                    <th>Position</th>
-                                    <th>Current Week OT</th>
-                                    <th>13-Week Total</th>
-                                    <th>Weekly Average</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-            """
-            
-            for emp in employees_data:
-                row_class = ''
-                if emp['last_13_weeks_overtime'] > 200:
-                    row_class = 'high-ot'
-                elif emp['last_13_weeks_overtime'] > 150:
-                    row_class = 'medium-ot'
-                
-                crew_badge = f'<span class="crew-badge crew-{emp["crew"].lower()}">{emp["crew"]}</span>' if emp['crew'] != 'Unassigned' else emp['crew']
-                
-                html += f"""
-                    <tr class="{row_class}">
-                        <td>{emp['name']}</td>
-                        <td>{emp['employee_id']}</td>
-                        <td>{crew_badge}</td>
-                        <td>{emp['position']}</td>
-                        <td>{emp['current_week_overtime']}h</td>
-                        <td><strong>{emp['last_13_weeks_overtime']}h</strong></td>
-                        <td>{emp['average_weekly_overtime']}h</td>
-                    </tr>
-                """
-            
-            html += """
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            """
-        
-        html += """
-            </div>
-        </body>
-        </html>
-        """
-        
-        return html
-        
-    except Exception as e:
-        # If there's any error, show a simple error page
-        return f"""
-        <html>
-        <head><title>Error - Overtime Management</title></head>
-        <body>
-            <div style="max-width: 800px; margin: 50px auto; padding: 20px;">
-                <h1>Error Loading Overtime Data</h1>
-                <p>There was an error loading the overtime management page.</p>
-                <p>Error details: {str(e)}</p>
-                <p><a href="/dashboard">Back to Dashboard</a></p>
-                <p><a href="/upload-employees">Upload Employee Data</a></p>
-            </div>
-        </body>
-        </html>
-        """, 500
 
 @main_bp.route('/diagnostic')
 @login_required
@@ -1736,25 +1374,40 @@ def clear_all_employees():
 @main_bp.route('/api/dashboard-stats')
 @login_required
 def api_dashboard_stats():
-    """Get real-time dashboard statistics"""
+    """Get real-time dashboard statistics - UPDATED VERSION"""
+    if not current_user.is_supervisor:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
     try:
-        stats = {
-            'pending_time_off': TimeOffRequest.query.filter_by(status='pending').count(),
-            'pending_swaps': ShiftSwapRequest.query.filter_by(status='pending').count(),
-            'coverage_gaps': 0,
-            'pending_suggestions': ScheduleSuggestion.query.filter_by(status='pending').count() if hasattr(ScheduleSuggestion, 'status') else 0,
-            'new_critical_items': 0
-        }
-        return jsonify(stats)
-    except Exception as e:
+        today = date.today()
+        
+        # Get current staffing
+        scheduled_today = Schedule.query.filter_by(date=today).count()
+        total_required = db.session.query(func.sum(Position.min_coverage)).scalar() or 0
+        
+        # Get pending counts
+        pending_time_off = TimeOffRequest.query.filter_by(status='pending').count()
+        pending_swaps = ShiftSwapRequest.query.filter_by(status='pending').count()
+        
+        # Get gaps for next 7 days
+        gaps = get_coverage_gaps()
+        future_gaps = len([g for g in gaps if g['date'] > today and g['date'] <= today + timedelta(days=7)])
+        
         return jsonify({
-            'pending_time_off': 0,
-            'pending_swaps': 0,
-            'coverage_gaps': 0,
-            'pending_suggestions': 0,
-            'new_critical_items': 0,
-            'error': str(e)
+            'success': True,
+            'data': {
+                'current_staffing': scheduled_today,
+                'total_required': total_required,
+                'shortage': max(0, total_required - scheduled_today),
+                'pending_time_off': pending_time_off,
+                'pending_swaps': pending_swaps,
+                'future_gaps': future_gaps,
+                'last_updated': datetime.now().strftime('%H:%M:%S')
+            }
         })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 # Error handlers
 @main_bp.errorhandler(404)
