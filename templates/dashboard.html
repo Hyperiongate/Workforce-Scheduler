@@ -209,6 +209,30 @@
                             <i class="bi bi-clock-history"></i> Overtime
                         </a>
                     </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="dataDropdown" role="button" data-bs-toggle="dropdown">
+                            <i class="bi bi-database"></i> Data Management
+                        </a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="{{ url_for('employee_import.upload_employees') }}">
+                                <i class="bi bi-upload"></i> Upload Employees
+                            </a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('employee_import.upload_overtime') }}">
+                                <i class="bi bi-clock-fill"></i> Upload Overtime
+                            </a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{{ url_for('employee_import.upload_history') }}">
+                                <i class="bi bi-clock-history"></i> Upload History
+                            </a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{{ url_for('employee_import.export_current_employees') }}">
+                                <i class="bi bi-download"></i> Export Employees
+                            </a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('employee_import.export_current_overtime') }}">
+                                <i class="bi bi-download"></i> Export Overtime
+                            </a></li>
+                        </ul>
+                    </li>
                 </ul>
                 <ul class="navbar-nav">
                     <li class="nav-item dropdown">
@@ -284,32 +308,70 @@
                 Employee Management
             </h2>
             <div class="action-grid">
-                <a href="/upload-employees" class="action-card">
-                    <i class="bi bi-upload"></i>
+                <a href="{{ url_for('employee_import.upload_employees') }}" class="action-card">
+                    <i class="bi bi-cloud-upload"></i>
                     <div class="action-content">
-                        <h4>Upload Employees</h4>
-                        <p>Import employee data from Excel</p>
+                        <h4>Upload Employee Data</h4>
+                        <p>Import employees & overtime from Excel</p>
                     </div>
                 </a>
-                <a href="/employees/crew-management" class="action-card">
-                    <i class="bi bi-diagram-3-fill"></i>
-                    <div class="action-content">
-                        <h4>Crew Management</h4>
-                        <p>Manage crew assignments online</p>
-                    </div>
-                </a>
-                <a href="/employees/management" class="action-card">
-                    <i class="bi bi-person-lines-fill"></i>
-                    <div class="action-content">
-                        <h4>Employee Directory</h4>
-                        <p>View and edit all employees</p>
-                    </div>
-                </a>
-                <a href="/overtime-management" class="action-card">
+                <a href="{{ url_for('employee_import.upload_overtime') }}" class="action-card">
                     <i class="bi bi-clock-history"></i>
                     <div class="action-content">
-                        <h4>Overtime Management</h4>
-                        <p>Track and manage overtime hours</p>
+                        <h4>Upload Overtime History</h4>
+                        <p>Import 13-week overtime data</p>
+                    </div>
+                </a>
+                <a href="{{ url_for('employee_import.upload_history') }}" class="action-card">
+                    <i class="bi bi-list-check"></i>
+                    <div class="action-content">
+                        <h4>Upload History</h4>
+                        <p>View all data imports</p>
+                    </div>
+                </a>
+                <a href="{{ url_for('main.overtime_management') }}" class="action-card">
+                    <i class="bi bi-graph-up-arrow"></i>
+                    <div class="action-content">
+                        <h4>Overtime Analytics</h4>
+                        <p>Analyze overtime distribution</p>
+                    </div>
+                </a>
+            </div>
+        </div>
+
+        <!-- Data Management Section -->
+        <div class="section-card">
+            <h2 class="section-title">
+                <i class="bi bi-database" style="color: #11998e;"></i>
+                Data Management
+            </h2>
+            <div class="action-grid">
+                <a href="{{ url_for('employee_import.download_employee_template') }}" class="action-card">
+                    <i class="bi bi-file-earmark-excel"></i>
+                    <div class="action-content">
+                        <h4>Employee Template</h4>
+                        <p>Download import template</p>
+                    </div>
+                </a>
+                <a href="{{ url_for('employee_import.download_overtime_template') }}" class="action-card">
+                    <i class="bi bi-file-earmark-clock"></i>
+                    <div class="action-content">
+                        <h4>Overtime Template</h4>
+                        <p>13-week OT template</p>
+                    </div>
+                </a>
+                <a href="{{ url_for('employee_import.export_current_employees') }}" class="action-card">
+                    <i class="bi bi-box-arrow-up"></i>
+                    <div class="action-content">
+                        <h4>Export Employees</h4>
+                        <p>Download current data</p>
+                    </div>
+                </a>
+                <a href="{{ url_for('employee_import.export_current_overtime') }}" class="action-card">
+                    <i class="bi bi-box-arrow-in-up"></i>
+                    <div class="action-content">
+                        <h4>Export Overtime</h4>
+                        <p>Download OT history</p>
                     </div>
                 </a>
             </div>
@@ -456,11 +518,11 @@
                         <p>Simple test interface</p>
                     </div>
                 </a>
-                <a href="/employees/download-template" class="action-card">
-                    <i class="bi bi-file-earmark-excel"></i>
+                <a href="/add-fileupload-table" class="action-card">
+                    <i class="bi bi-database-add"></i>
                     <div class="action-content">
-                        <h4>Download Templates</h4>
-                        <p>Excel import templates</p>
+                        <h4>Add FileUpload Table</h4>
+                        <p>Initialize upload tracking</p>
                     </div>
                 </a>
                 <a href="/help" class="action-card">
