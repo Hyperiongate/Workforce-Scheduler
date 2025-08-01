@@ -1,0 +1,750 @@
+{% extends "base.html" %}
+{% block title %}Upload Employee Data - Workforce Scheduler{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <!-- Header with Back Button -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <h1>
+                    <i class="bi bi-cloud-upload"></i> Employee Data Upload Center
+                </h1>
+                <a href="{{ url_for('main.dashboard') }}" class="btn btn-secondary">
+                    <i class="bi bi-arrow-left"></i> Back to Dashboard
+                </a>
+            </div>
+            <p class="text-muted">Import employee data, overtime history, and manage your workforce database</p>
+        </div>
+    </div>
+
+    <!-- Statistics Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <i class="bi bi-people-fill text-primary" style="font-size: 2rem;"></i>
+                    <h3 class="mt-2">{{ employee_count }}</h3>
+                    <p class="text-muted mb-0">Total Employees</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <i class="bi bi-diagram-3-fill text-success" style="font-size: 2rem;"></i>
+                    <h3 class="mt-2">4</h3>
+                    <p class="text-muted mb-0">Active Crews</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <i class="bi bi-clock-history text-warning" style="font-size: 2rem;"></i>
+                    <h3 class="mt-2">{{ recent_uploads|length }}</h3>
+                    <p class="text-muted mb-0">Recent Uploads</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <i class="bi bi-exclamation-triangle text-danger" style="font-size: 2rem;"></i>
+                    <h3 class="mt-2" id="validationErrors">0</h3>
+                    <p class="text-muted mb-0">Validation Errors</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="row">
+        <!-- Templates & Resources -->
+        <div class="col-md-4">
+            <h3 class="mb-3">
+                <i class="bi bi-file-earmark-excel text-success"></i> Excel Templates
+            </h3>
+            
+            <!-- Template Cards -->
+            <div class="template-section">
+                <div class="card template-card mb-3" onclick="window.location.href='/download-employee-template'">
+                    <div class="card-body">
+                        <h5 class="card-title">
+                            <i class="bi bi-people text-primary"></i> Employee Import Template
+                        </h5>
+                        <p class="card-text">Complete template for importing employee data including crews, positions, and skills</p>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span class="badge bg-primary">Recommended</span>
+                            <i class="bi bi-download"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card template-card mb-3" onclick="window.location.href='/download-overtime-template'">
+                    <div class="card-body">
+                        <h5 class="card-title">
+                            <i class="bi bi-clock-fill text-warning"></i> Overtime History Template
+                        </h5>
+                        <p class="card-text">Import 13 weeks of overtime history for all employees</p>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span class="badge bg-warning text-dark">Import After Employees</span>
+                            <i class="bi bi-download"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card template-card mb-3" onclick="window.location.href='/download-bulk-update-template/employee'">
+                    <div class="card-body">
+                        <h5 class="card-title">
+                            <i class="bi bi-pencil-square text-info"></i> Bulk Update Template
+                        </h5>
+                        <p class="card-text">Update existing employee data in bulk</p>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span class="badge bg-info">Advanced</span>
+                            <i class="bi bi-download"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Export Options -->
+                <h5 class="mt-4 mb-3">
+                    <i class="bi bi-box-arrow-up text-secondary"></i> Export Current Data
+                </h5>
+                <div class="list-group">
+                    <a href="/export-current-employees" class="list-group-item list-group-item-action">
+                        <i class="bi bi-people"></i> Export All Employees
+                    </a>
+                    <a href="/export-current-overtime" class="list-group-item list-group-item-action">
+                        <i class="bi bi-clock"></i> Export Overtime History
+                    </a>
+                </div>
+            </div>
+
+            <!-- Recent Upload History -->
+            <h5 class="mt-4 mb-3">
+                <i class="bi bi-clock-history"></i> Recent Uploads
+            </h5>
+            <div class="upload-history">
+                {% for upload in recent_uploads %}
+                <div class="small mb-2 p-2 bg-light rounded">
+                    <div class="d-flex justify-content-between">
+                        <span><i class="bi bi-file-earmark-check text-success"></i> {{ upload.filename }}</span>
+                        <span class="text-muted">{{ upload.upload_date.strftime('%m/%d %I:%M%p') }}</span>
+                    </div>
+                    <small class="text-muted">{{ upload.records_processed }} records</small>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Upload Section -->
+        <div class="col-md-8">
+            <h3 class="mb-3">
+                <i class="bi bi-cloud-upload text-primary"></i> Upload Data
+            </h3>
+
+            <!-- Step Indicator -->
+            <div class="step-indicator mb-4">
+                <div class="step active" id="step1">
+                    <i class="bi bi-1-circle-fill"></i>
+                    <div>Select File</div>
+                </div>
+                <div class="step" id="step2">
+                    <i class="bi bi-2-circle"></i>
+                    <div>Validate</div>
+                </div>
+                <div class="step" id="step3">
+                    <i class="bi bi-3-circle"></i>
+                    <div>Review</div>
+                </div>
+                <div class="step" id="step4">
+                    <i class="bi bi-4-circle"></i>
+                    <div>Import</div>
+                </div>
+            </div>
+
+            <!-- Upload Form -->
+            <form id="uploadForm" method="POST" enctype="multipart/form-data">
+                <!-- File Upload Zone -->
+                <div class="upload-zone" id="uploadZone">
+                    <i class="bi bi-cloud-arrow-up" style="font-size: 4rem; color: #007bff;"></i>
+                    <h4 class="mt-3">Drag & Drop Excel File Here</h4>
+                    <p class="text-muted">or click to browse</p>
+                    <input type="file" id="fileInput" name="file" accept=".xlsx,.xls" style="display: none;">
+                    
+                    <div id="selectedFile" class="mt-3 d-none">
+                        <div class="alert alert-info">
+                            <i class="bi bi-file-earmark-excel"></i>
+                            <span id="fileName"></span>
+                            <button type="button" class="btn-close float-end" onclick="clearFileSelection()"></button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Upload Type Selection -->
+                <div class="row mt-4" id="uploadTypeSection" style="display: none;">
+                    <div class="col-12">
+                        <h5>What type of data are you uploading?</h5>
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="form-check upload-type-card">
+                                    <input class="form-check-input" type="radio" name="upload_type" id="typeEmployee" value="employee" checked>
+                                    <label class="form-check-label w-100" for="typeEmployee">
+                                        <div class="card">
+                                            <div class="card-body text-center">
+                                                <i class="bi bi-people-fill text-primary" style="font-size: 2rem;"></i>
+                                                <h6 class="mt-2">Employee Data</h6>
+                                                <small class="text-muted">Names, crews, positions</small>
+                                            </div>
+                                        </div>
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-check upload-type-card">
+                                    <input class="form-check-input" type="radio" name="upload_type" id="typeOvertime" value="overtime">
+                                    <label class="form-check-label w-100" for="typeOvertime">
+                                        <div class="card">
+                                            <div class="card-body text-center">
+                                                <i class="bi bi-clock-fill text-warning" style="font-size: 2rem;"></i>
+                                                <h6 class="mt-2">Overtime History</h6>
+                                                <small class="text-muted">13-week OT data</small>
+                                            </div>
+                                        </div>
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-check upload-type-card">
+                                    <input class="form-check-input" type="radio" name="upload_type" id="typeBulk" value="bulk_update">
+                                    <label class="form-check-label w-100" for="typeBulk">
+                                        <div class="card">
+                                            <div class="card-body text-center">
+                                                <i class="bi bi-pencil-square text-info" style="font-size: 2rem;"></i>
+                                                <h6 class="mt-2">Bulk Update</h6>
+                                                <small class="text-muted">Update existing data</small>
+                                            </div>
+                                        </div>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Options Section -->
+                <div class="mt-4" id="optionsSection" style="display: none;">
+                    <h5>Import Options</h5>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="replaceAll" name="replace_all">
+                        <label class="form-check-label" for="replaceAll">
+                            <strong>Replace All Existing Data</strong>
+                            <br>
+                            <small class="text-muted">This will remove all existing records before importing new ones</small>
+                        </label>
+                    </div>
+                    <div class="form-check mt-2">
+                        <input class="form-check-input" type="checkbox" id="validateOnly" name="validate_only">
+                        <label class="form-check-label" for="validateOnly">
+                            <strong>Validate Only (Don't Import)</strong>
+                            <br>
+                            <small class="text-muted">Check for errors without actually importing the data</small>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Validation Results -->
+                <div id="validationResults" class="mt-4" style="display: none;">
+                    <h5>Validation Results</h5>
+                    <div id="validationContent"></div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="mt-4" id="actionButtons" style="display: none;">
+                    <button type="button" class="btn btn-secondary" onclick="resetUpload()">
+                        <i class="bi bi-arrow-counterclockwise"></i> Start Over
+                    </button>
+                    <button type="button" class="btn btn-primary" id="validateBtn" onclick="validateFile()">
+                        <i class="bi bi-check-circle"></i> Validate File
+                    </button>
+                    <button type="submit" class="btn btn-success d-none" id="importBtn">
+                        <i class="bi bi-cloud-upload"></i> Import Data
+                    </button>
+                </div>
+            </form>
+
+            <!-- Progress Bar -->
+            <div class="progress mt-4 d-none" id="progressBar">
+                <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+            </div>
+
+            <!-- Results Section -->
+            <div id="importResults" class="mt-4" style="display: none;">
+                <h5>Import Results</h5>
+                <div id="resultsContent"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Crew Distribution Chart -->
+    <div class="row mt-5">
+        <div class="col-12">
+            <h3 class="mb-3">
+                <i class="bi bi-pie-chart"></i> Current Crew Distribution
+            </h3>
+            <div class="card">
+                <div class="card-body">
+                    <canvas id="crewChart" height="100"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.upload-zone {
+    border: 2px dashed #007bff;
+    border-radius: 10px;
+    padding: 40px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s;
+    background-color: #f8f9fa;
+}
+
+.upload-zone:hover {
+    border-color: #0056b3;
+    background-color: #e9ecef;
+}
+
+.upload-zone.dragover {
+    border-color: #28a745;
+    background-color: #d4edda;
+}
+
+.template-card {
+    cursor: pointer;
+    transition: transform 0.2s;
+}
+
+.template-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.step-indicator {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 30px;
+}
+
+.step {
+    flex: 1;
+    text-align: center;
+    position: relative;
+    opacity: 0.5;
+}
+
+.step.active {
+    opacity: 1;
+}
+
+.step.completed {
+    opacity: 1;
+}
+
+.step i {
+    font-size: 2rem;
+    color: #6c757d;
+}
+
+.step.active i {
+    color: #007bff;
+}
+
+.step.completed i {
+    color: #28a745;
+}
+
+.step::after {
+    content: '';
+    position: absolute;
+    top: 1rem;
+    right: -50%;
+    width: 100%;
+    height: 2px;
+    background-color: #dee2e6;
+    z-index: -1;
+}
+
+.step:last-child::after {
+    display: none;
+}
+
+.step.completed::after {
+    background-color: #28a745;
+}
+
+.upload-type-card .form-check-input {
+    position: absolute;
+    opacity: 0;
+}
+
+.upload-type-card .card {
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.upload-type-card .form-check-input:checked + label .card {
+    border-color: #007bff;
+    box-shadow: 0 0 0 2px rgba(0,123,255,0.25);
+}
+
+.validation-error {
+    background-color: #f8d7da;
+    border-left: 4px solid #dc3545;
+    padding: 10px;
+    margin-bottom: 10px;
+}
+
+.validation-warning {
+    background-color: #fff3cd;
+    border-left: 4px solid #ffc107;
+    padding: 10px;
+    margin-bottom: 10px;
+}
+
+.validation-success {
+    background-color: #d4edda;
+    border-left: 4px solid #28a745;
+    padding: 10px;
+    margin-bottom: 10px;
+}
+</style>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// File upload handling
+const uploadZone = document.getElementById('uploadZone');
+const fileInput = document.getElementById('fileInput');
+const selectedFile = document.getElementById('selectedFile');
+const fileName = document.getElementById('fileName');
+const uploadTypeSection = document.getElementById('uploadTypeSection');
+const optionsSection = document.getElementById('optionsSection');
+const actionButtons = document.getElementById('actionButtons');
+
+// Click to select file
+uploadZone.addEventListener('click', () => {
+    fileInput.click();
+});
+
+// Drag and drop
+uploadZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    uploadZone.classList.add('dragover');
+});
+
+uploadZone.addEventListener('dragleave', () => {
+    uploadZone.classList.remove('dragover');
+});
+
+uploadZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    uploadZone.classList.remove('dragover');
+    
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+        handleFileSelect(files[0]);
+    }
+});
+
+// File input change
+fileInput.addEventListener('change', (e) => {
+    if (e.target.files.length > 0) {
+        handleFileSelect(e.target.files[0]);
+    }
+});
+
+function handleFileSelect(file) {
+    if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
+        alert('Please select an Excel file (.xlsx or .xls)');
+        return;
+    }
+    
+    fileName.textContent = file.name;
+    selectedFile.classList.remove('d-none');
+    uploadTypeSection.style.display = 'block';
+    optionsSection.style.display = 'block';
+    actionButtons.style.display = 'block';
+    updateStepIndicator(1);
+}
+
+function clearFileSelection() {
+    fileInput.value = '';
+    selectedFile.classList.add('d-none');
+    uploadTypeSection.style.display = 'none';
+    optionsSection.style.display = 'none';
+    actionButtons.style.display = 'none';
+    resetValidation();
+}
+
+function updateStepIndicator(step) {
+    // Update step classes
+    for (let i = 1; i <= 4; i++) {
+        const stepEl = document.getElementById(`step${i}`);
+        stepEl.classList.remove('active', 'completed');
+        
+        if (i < step) {
+            stepEl.classList.add('completed');
+            stepEl.querySelector('i').className = `bi bi-${i}-circle-fill`;
+        } else if (i === step) {
+            stepEl.classList.add('active');
+            stepEl.querySelector('i').className = `bi bi-${i}-circle-fill`;
+        } else {
+            stepEl.querySelector('i').className = `bi bi-${i}-circle`;
+        }
+    }
+}
+
+function validateFile() {
+    if (!fileInput.files[0]) {
+        alert('Please select a file first');
+        return;
+    }
+    
+    updateStepIndicator(2);
+    
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+    formData.append('type', document.querySelector('input[name="upload_type"]:checked').value);
+    
+    // Show progress
+    document.getElementById('progressBar').classList.remove('d-none');
+    const progressBar = document.querySelector('.progress-bar');
+    progressBar.style.width = '50%';
+    
+    // Make AJAX request to validate
+    fetch('/validate-upload', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        progressBar.style.width = '100%';
+        setTimeout(() => {
+            document.getElementById('progressBar').classList.add('d-none');
+            displayValidationResults(data);
+        }, 500);
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error validating file: ' + error.message);
+        document.getElementById('progressBar').classList.add('d-none');
+    });
+}
+
+function displayValidationResults(data) {
+    updateStepIndicator(3);
+    
+    const validationResults = document.getElementById('validationResults');
+    const validationContent = document.getElementById('validationContent');
+    
+    validationResults.style.display = 'block';
+    
+    let html = '';
+    
+    if (data.success) {
+        html += '<div class="validation-success">';
+        html += `<i class="bi bi-check-circle"></i> Validation passed! ${data.records_valid} records ready to import.`;
+        html += '</div>';
+        
+        // Enable import button
+        document.getElementById('validateBtn').classList.add('d-none');
+        document.getElementById('importBtn').classList.remove('d-none');
+    } else {
+        html += '<div class="validation-error">';
+        html += '<h6><i class="bi bi-exclamation-circle"></i> Validation Failed</h6>';
+        html += '</div>';
+    }
+    
+    // Show errors
+    if (data.errors && data.errors.length > 0) {
+        html += '<div class="mt-3">';
+        html += '<h6>Errors Found:</h6>';
+        html += '<ul class="list-unstyled">';
+        data.errors.forEach(error => {
+            html += `<li class="validation-error"><i class="bi bi-x-circle"></i> ${error}</li>`;
+        });
+        if (data.total_errors > data.errors.length) {
+            html += `<li class="text-muted">... and ${data.total_errors - data.errors.length} more errors</li>`;
+        }
+        html += '</ul>';
+        html += '</div>';
+    }
+    
+    // Show warnings
+    if (data.warnings && data.warnings.length > 0) {
+        html += '<div class="mt-3">';
+        html += '<h6>Warnings:</h6>';
+        html += '<ul class="list-unstyled">';
+        data.warnings.forEach(warning => {
+            html += `<li class="validation-warning"><i class="bi bi-exclamation-triangle"></i> ${warning}</li>`;
+        });
+        if (data.total_warnings > data.warnings.length) {
+            html += `<li class="text-muted">... and ${data.total_warnings - data.warnings.length} more warnings</li>`;
+        }
+        html += '</ul>';
+        html += '</div>';
+    }
+    
+    validationContent.innerHTML = html;
+    
+    // Update error count
+    document.getElementById('validationErrors').textContent = data.total_errors || 0;
+}
+
+function resetValidation() {
+    document.getElementById('validationResults').style.display = 'none';
+    document.getElementById('importResults').style.display = 'none';
+    document.getElementById('validateBtn').classList.remove('d-none');
+    document.getElementById('importBtn').classList.add('d-none');
+    updateStepIndicator(1);
+}
+
+function resetUpload() {
+    clearFileSelection();
+    resetValidation();
+}
+
+// Handle form submission
+document.getElementById('uploadForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    updateStepIndicator(4);
+    
+    // Show progress
+    document.getElementById('progressBar').classList.remove('d-none');
+    const progressBar = document.querySelector('.progress-bar');
+    progressBar.style.width = '0%';
+    
+    const formData = new FormData(this);
+    
+    // Simulate progress
+    let progress = 0;
+    const progressInterval = setInterval(() => {
+        progress += 10;
+        progressBar.style.width = progress + '%';
+        if (progress >= 90) {
+            clearInterval(progressInterval);
+        }
+    }, 200);
+    
+    fetch(this.action || '/upload-employees', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        clearInterval(progressInterval);
+        progressBar.style.width = '100%';
+        
+        setTimeout(() => {
+            document.getElementById('progressBar').classList.add('d-none');
+            displayImportResults(data);
+        }, 500);
+    })
+    .catch(error => {
+        clearInterval(progressInterval);
+        console.error('Error:', error);
+        alert('Error uploading file: ' + error.message);
+        document.getElementById('progressBar').classList.add('d-none');
+    });
+});
+
+function displayImportResults(data) {
+    const importResults = document.getElementById('importResults');
+    const resultsContent = document.getElementById('resultsContent');
+    
+    importResults.style.display = 'block';
+    
+    let html = '';
+    
+    if (data.success) {
+        html += '<div class="alert alert-success">';
+        html += '<h6><i class="bi bi-check-circle"></i> Import Successful!</h6>';
+        html += `<p>Successfully imported ${data.records_imported} records.</p>`;
+        if (data.records_updated) {
+            html += `<p>Updated ${data.records_updated} existing records.</p>`;
+        }
+        html += '</div>';
+        
+        // Hide action buttons
+        document.getElementById('actionButtons').style.display = 'none';
+    } else {
+        html += '<div class="alert alert-danger">';
+        html += '<h6><i class="bi bi-x-circle"></i> Import Failed</h6>';
+        html += `<p>${data.error}</p>`;
+        html += '</div>';
+    }
+    
+    resultsContent.innerHTML = html;
+}
+
+// Crew distribution chart
+const crewData = {{ crew_distribution | tojson }};
+const ctx = document.getElementById('crewChart').getContext('2d');
+new Chart(ctx, {
+    type: 'bar',
+    data: {
+        labels: ['Crew A', 'Crew B', 'Crew C', 'Crew D', 'Unassigned'],
+        datasets: [{
+            label: 'Number of Employees',
+            data: [
+                crewData['A'] || 0,
+                crewData['B'] || 0,
+                crewData['C'] || 0,
+                crewData['D'] || 0,
+                crewData['Unassigned'] || 0
+            ],
+            backgroundColor: [
+                'rgba(54, 162, 235, 0.8)',
+                'rgba(75, 192, 192, 0.8)',
+                'rgba(255, 206, 86, 0.8)',
+                'rgba(153, 102, 255, 0.8)',
+                'rgba(255, 99, 132, 0.8)'
+            ],
+            borderColor: [
+                'rgba(54, 162, 235, 1)',
+                'rgba(75, 192, 192, 1)',
+                'rgba(255, 206, 86, 1)',
+                'rgba(153, 102, 255, 1)',
+                'rgba(255, 99, 132, 1)'
+            ],
+            borderWidth: 1
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+            y: {
+                beginAtZero: true,
+                ticks: {
+                    stepSize: 1
+                }
+            }
+        },
+        plugins: {
+            legend: {
+                display: false
+            },
+            title: {
+                display: true,
+                text: 'Employees per Crew'
+            }
+        }
+    }
+});
+</script>
+{% endblock %}
