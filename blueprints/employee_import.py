@@ -306,13 +306,32 @@ def upload_employees():
     try:
         # Create upload folder if it doesn't exist
         upload_folder = current_app.config.get('UPLOAD_FOLDER', 'uploads')
-        if not os.path.exists(upload_folder):
-            os.makedirs(upload_folder)
+        
+        # Get the absolute path for the upload folder
+        if not os.path.isabs(upload_folder):
+            upload_folder = os.path.join(current_app.root_path, upload_folder)
+        
+        # Create directory if it doesn't exist
+        try:
+            if not os.path.exists(upload_folder):
+                os.makedirs(upload_folder, exist_ok=True)
+                current_app.logger.info(f"Created upload folder: {upload_folder}")
+        except Exception as e:
+            current_app.logger.error(f"Error creating upload folder: {str(e)}")
+            # Use temp directory as fallback
+            upload_folder = tempfile.gettempdir()
+            current_app.logger.info(f"Using temp directory: {upload_folder}")
         
         # Save file temporarily
         filename = secure_filename(file.filename)
         temp_path = os.path.join(upload_folder, filename)
-        file.save(temp_path)
+        
+        try:
+            file.save(temp_path)
+            current_app.logger.info(f"File saved to: {temp_path}")
+        except Exception as e:
+            current_app.logger.error(f"Error saving file: {str(e)}")
+            raise
         
         # Read and process the file
         df = pd.read_excel(temp_path, sheet_name='Employee Data')
