@@ -8,6 +8,7 @@ import io
 from datetime import datetime, date, timedelta
 import traceback
 import os
+import tempfile
 from werkzeug.utils import secure_filename
 from models import db, Employee, Position, OvertimeHistory, Skill, EmployeeSkill, FileUpload
 from sqlalchemy import func
@@ -304,20 +305,28 @@ def upload_employees():
         return redirect(request.url)
     
     try:
-        # Create upload folder if it doesn't exist
-        upload_folder = current_app.config.get('UPLOAD_FOLDER', 'uploads')
+        # Use a different folder name to avoid conflicts
+        upload_folder = current_app.config.get('UPLOAD_FOLDER', 'upload_files')
         
         # Get the absolute path for the upload folder
         if not os.path.isabs(upload_folder):
             upload_folder = os.path.join(current_app.root_path, upload_folder)
         
-        # Create directory if it doesn't exist
+        # Check if path exists and handle accordingly
         try:
-            if not os.path.exists(upload_folder):
+            if os.path.exists(upload_folder):
+                if os.path.isfile(upload_folder):
+                    # If it's a file, use a different name
+                    current_app.logger.warning(f"{upload_folder} exists as a file, using alternative")
+                    upload_folder = os.path.join(current_app.root_path, 'upload_files')
+            
+            # Create directory if it doesn't exist
+            if not os.path.exists(upload_folder) or not os.path.isdir(upload_folder):
                 os.makedirs(upload_folder, exist_ok=True)
                 current_app.logger.info(f"Created upload folder: {upload_folder}")
+                
         except Exception as e:
-            current_app.logger.error(f"Error creating upload folder: {str(e)}")
+            current_app.logger.error(f"Error with upload folder: {str(e)}")
             # Use temp directory as fallback
             upload_folder = tempfile.gettempdir()
             current_app.logger.info(f"Using temp directory: {upload_folder}")
@@ -422,7 +431,12 @@ def upload_employees():
         db.session.commit()
         
         # Remove temp file
-        os.remove(temp_path)
+        try:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+                current_app.logger.info(f"Removed temp file: {temp_path}")
+        except Exception as e:
+            current_app.logger.warning(f"Could not remove temp file: {str(e)}")
         
         # Flash results
         if error_count == 0:
@@ -505,10 +519,27 @@ def process_overtime_upload():
         return redirect(url_for('employee_import.upload_overtime'))
     
     try:
-        # Create upload folder if needed
-        upload_folder = current_app.config.get('UPLOAD_FOLDER', 'uploads')
-        if not os.path.exists(upload_folder):
-            os.makedirs(upload_folder)
+        # Use a different folder name to avoid conflicts
+        upload_folder = current_app.config.get('UPLOAD_FOLDER', 'upload_files')
+        
+        # Get the absolute path for the upload folder
+        if not os.path.isabs(upload_folder):
+            upload_folder = os.path.join(current_app.root_path, upload_folder)
+        
+        # Check if path exists and handle accordingly
+        try:
+            if os.path.exists(upload_folder):
+                if os.path.isfile(upload_folder):
+                    # If it's a file, use a different name
+                    upload_folder = os.path.join(current_app.root_path, 'upload_files')
+            
+            # Create directory if it doesn't exist
+            if not os.path.exists(upload_folder) or not os.path.isdir(upload_folder):
+                os.makedirs(upload_folder, exist_ok=True)
+                
+        except Exception as e:
+            # Use temp directory as fallback
+            upload_folder = tempfile.gettempdir()
         
         # Save file
         filename = secure_filename(file.filename)
