@@ -78,8 +78,13 @@ def upload_employees():
                                  crew_distribution=crew_distribution)
                                  
         except Exception as e:
+            import traceback
             current_app.logger.error(f"Error in upload_employees GET: {str(e)}")
+            current_app.logger.error(traceback.format_exc())
             flash(f'Error loading upload page: {str(e)}', 'error')
+            # Let's also check what's happening
+            print(f"ERROR: {str(e)}")
+            print(f"TRACEBACK: {traceback.format_exc()}")
             return redirect(url_for('main.dashboard'))
     
     # POST - Process upload
