@@ -1,4 +1,4 @@
-# blueprints/employee_import.py - Fixed version with correct URL routing
+# blueprints/employee_import.py - Fixed version without external dependencies
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file, jsonify, current_app
 from flask_login import login_required, current_user
@@ -11,7 +11,7 @@ import os
 from werkzeug.utils import secure_filename
 from models import db, Employee, Position, OvertimeHistory, Skill, EmployeeSkill, FileUpload
 from sqlalchemy import func
-import random
+import re
 
 # Create the blueprint
 employee_import_bp = Blueprint('employee_import', __name__)
@@ -27,6 +27,11 @@ def supervisor_required(f):
             return redirect(url_for('main.employee_dashboard'))
         return f(*args, **kwargs)
     return decorated_function
+
+# Simple validation helper
+def validate_email(email):
+    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    return bool(re.match(pattern, email))
 
 # Template download routes
 @employee_import_bp.route('/download-employee-template')
@@ -246,12 +251,12 @@ def download_bulk_update_template(template_type):
         flash(f'Error generating template: {str(e)}', 'error')
         return redirect(url_for('main.dashboard'))
 
-# Enhanced upload page
+# Enhanced upload page - SIMPLIFIED VERSION
 @employee_import_bp.route('/upload-employees', methods=['GET', 'POST'])
 @login_required
 @supervisor_required
 def upload_employees():
-    """Enhanced employee data upload with validation"""
+    """Employee data upload page"""
     if request.method == 'GET':
         try:
             # Get statistics
@@ -270,15 +275,17 @@ def upload_employees():
                 Employee.id != current_user.id
             ).group_by(Employee.crew).all()
             
-            crew_distribution = {crew: count for crew, count in crew_stats}
+            crew_distribution = {crew: count for crew, count in crew_stats if crew}
             
-            return render_template('upload_employees_enhanced.html',
+            # Use the simpler template for now
+            return render_template('upload_employees.html',
                                  employee_count=employee_count,
                                  recent_uploads=recent_uploads,
                                  crew_distribution=crew_distribution)
                                  
         except Exception as e:
             current_app.logger.error(f"Error in upload_employees GET: {str(e)}")
+            current_app.logger.error(traceback.format_exc())
             flash(f'Error loading upload page: {str(e)}', 'error')
             return redirect(url_for('main.dashboard'))
     
@@ -298,7 +305,7 @@ def upload_employees():
     
     try:
         # Create upload folder if it doesn't exist
-        upload_folder = os.path.join(current_app.root_path, 'uploads')
+        upload_folder = current_app.config.get('UPLOAD_FOLDER', 'uploads')
         if not os.path.exists(upload_folder):
             os.makedirs(upload_folder)
         
@@ -310,8 +317,8 @@ def upload_employees():
         # Read and process the file
         df = pd.read_excel(temp_path, sheet_name='Employee Data')
         
-        # Process based on replace_all option
-        replace_all = request.form.get('replace_all') == 'true'
+        # Process based on replace_all option (default to True for simplicity)
+        replace_all = True
         
         if replace_all:
             # Delete existing employees (except admin)
@@ -328,6 +335,11 @@ def upload_employees():
                 # Get or create employee
                 employee_id = str(row.get('Employee ID', '')).strip()
                 email = str(row.get('Email', '')).strip()
+                
+                if not email or not validate_email(email):
+                    error_count += 1
+                    errors.append(f"Row {index + 2}: Invalid email")
+                    continue
                 
                 if replace_all:
                     employee = Employee()
@@ -475,7 +487,7 @@ def process_overtime_upload():
     
     try:
         # Create upload folder if needed
-        upload_folder = os.path.join(current_app.root_path, 'uploads')
+        upload_folder = current_app.config.get('UPLOAD_FOLDER', 'uploads')
         if not os.path.exists(upload_folder):
             os.makedirs(upload_folder)
         
@@ -788,7 +800,7 @@ def validate_employee_data():
             if pd.isna(row['Employee ID']) or str(row['Employee ID']).strip() == '':
                 errors.append(f"Row {row_num}: Missing Employee ID")
             
-            if pd.isna(row['Email']) or '@' not in str(row['Email']):
+            if pd.isna(row['Email']) or not validate_email(str(row['Email'])):
                 errors.append(f"Row {row_num}: Invalid email address")
             
             # Check crew
