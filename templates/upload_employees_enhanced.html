@@ -68,7 +68,7 @@
             
             <!-- Template Cards -->
             <div class="template-section">
-                <div class="card template-card mb-3" onclick="window.location.href='/download-employee-template'">
+                <div class="card template-card mb-3" onclick="window.location.href='{{ url_for('employee_import.download_employee_template') }}'">
                     <div class="card-body">
                         <h5 class="card-title">
                             <i class="bi bi-people text-primary"></i> Employee Import Template
@@ -81,7 +81,7 @@
                     </div>
                 </div>
 
-                <div class="card template-card mb-3" onclick="window.location.href='/download-overtime-template'">
+                <div class="card template-card mb-3" onclick="window.location.href='{{ url_for('employee_import.download_overtime_template') }}'">
                     <div class="card-body">
                         <h5 class="card-title">
                             <i class="bi bi-clock-fill text-warning"></i> Overtime History Template
@@ -94,7 +94,7 @@
                     </div>
                 </div>
 
-                <div class="card template-card mb-3" onclick="window.location.href='/download-bulk-update-template/employee'">
+                <div class="card template-card mb-3" onclick="window.location.href='{{ url_for('employee_import.download_bulk_update_template', template_type='employee') }}'">
                     <div class="card-body">
                         <h5 class="card-title">
                             <i class="bi bi-pencil-square text-info"></i> Bulk Update Template
@@ -112,10 +112,10 @@
                     <i class="bi bi-box-arrow-up text-secondary"></i> Export Current Data
                 </h5>
                 <div class="list-group">
-                    <a href="/export-current-employees" class="list-group-item list-group-item-action">
+                    <a href="{{ url_for('employee_import.export_current_employees') }}" class="list-group-item list-group-item-action">
                         <i class="bi bi-people"></i> Export All Employees
                     </a>
-                    <a href="/export-current-overtime" class="list-group-item list-group-item-action">
+                    <a href="{{ url_for('employee_import.export_current_overtime') }}" class="list-group-item list-group-item-action">
                         <i class="bi bi-clock"></i> Export Overtime History
                     </a>
                 </div>
@@ -525,7 +525,7 @@ function validateFile() {
     progressBar.style.width = '50%';
     
     // Make AJAX request to validate
-    fetch('/validate-upload', {
+    fetch('{{ url_for("employee_import.validate_upload") }}', {
         method: 'POST',
         body: formData
     })
@@ -640,7 +640,7 @@ document.getElementById('uploadForm').addEventListener('submit', function(e) {
         }
     }, 200);
     
-    fetch(this.action || '/upload-employees', {
+    fetch(this.action || '{{ url_for("employee_import.upload_employees") }}', {
         method: 'POST',
         body: formData
     })
