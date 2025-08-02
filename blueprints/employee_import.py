@@ -349,9 +349,45 @@ def upload_employees():
         replace_all = True
         
         if replace_all:
-            # Delete existing employees (except admin)
-            Employee.query.filter(Employee.email != 'admin@workforce.com').delete()
-            db.session.commit()
+            # Delete existing employees (except admin) and their related records
+            try:
+                # First, delete related records
+                employees_to_delete = Employee.query.filter(Employee.email != 'admin@workforce.com').all()
+                employee_ids = [emp.id for emp in employees_to_delete]
+                
+                if employee_ids:
+                    # Delete employee skills
+                    EmployeeSkill.query.filter(EmployeeSkill.employee_id.in_(employee_ids)).delete(synchronize_session=False)
+                    
+                    # Delete overtime history
+                    OvertimeHistory.query.filter(OvertimeHistory.employee_id.in_(employee_ids)).delete(synchronize_session=False)
+                    
+                    # Delete time off requests
+                    if hasattr(db.Model, 'TimeOffRequest'):
+                        db.session.execute(f"DELETE FROM time_off_request WHERE employee_id IN ({','.join(map(str, employee_ids))})")
+                    
+                    # Delete shift swap requests
+                    if hasattr(db.Model, 'ShiftSwapRequest'):
+                        db.session.execute(f"DELETE FROM shift_swap_request WHERE requester_id IN ({','.join(map(str, employee_ids))}) OR target_employee_id IN ({','.join(map(str, employee_ids))})")
+                    
+                    # Delete schedules
+                    if hasattr(db.Model, 'Schedule'):
+                        db.session.execute(f"DELETE FROM schedule WHERE employee_id IN ({','.join(map(str, employee_ids))})")
+                    
+                    # Commit the deletions
+                    db.session.commit()
+                    
+                    # Now delete the employees
+                    Employee.query.filter(Employee.email != 'admin@workforce.com').delete()
+                    db.session.commit()
+                    
+                current_app.logger.info(f"Deleted {len(employee_ids)} employees and their related records")
+                
+            except Exception as e:
+                db.session.rollback()
+                current_app.logger.error(f"Error during deletion: {str(e)}")
+                flash('Error clearing existing data. Please try again.', 'error')
+                return redirect(url_for('employee_import.upload_employees'))
         
         # Process each row
         success_count = 0
@@ -555,8 +591,14 @@ def process_overtime_upload():
         
         if replace_all and not validate_only:
             # Delete existing overtime history
-            OvertimeHistory.query.delete()
-            db.session.commit()
+            try:
+                OvertimeHistory.query.delete()
+                db.session.commit()
+                current_app.logger.info("Deleted all existing overtime history")
+            except Exception as e:
+                db.session.rollback()
+                current_app.logger.error(f"Error deleting overtime history: {str(e)}")
+                flash('Error clearing existing overtime data.', 'error')
         
         # Process each row
         success_count = 0
