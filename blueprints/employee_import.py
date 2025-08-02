@@ -11,6 +11,7 @@ from datetime import datetime, date, timedelta
 import tempfile
 from sqlalchemy import text
 import re
+import io
 
 # Create blueprint
 employee_import_bp = Blueprint('employee_import', __name__)
@@ -300,12 +301,16 @@ def process_employee_upload():
                 if 'Skills' in row and pd.notna(row['Skills']):
                     skills_str = str(row['Skills']).strip()
                     if skills_str:
+                        # Save employee first if new
+                        if not employee.id:
+                            db.session.add(employee)
+                            db.session.flush()
+                        
                         # Remove existing skills for this employee
-                        if employee.id:
-                            db.session.execute(
-                                text("DELETE FROM employee_skills WHERE employee_id = :emp_id"),
-                                {'emp_id': employee.id}
-                            )
+                        db.session.execute(
+                            text("DELETE FROM employee_skills WHERE employee_id = :emp_id"),
+                            {'emp_id': employee.id}
+                        )
                         
                         # Parse and add skills
                         skill_names = [s.strip() for s in skills_str.split(',')]
@@ -317,14 +322,10 @@ def process_employee_upload():
                                     db.session.add(skill)
                                     db.session.flush()
                                 
-                                # Add skill to employee after they're saved
-                                if not employee.id:
-                                    db.session.add(employee)
-                                    db.session.flush()
-                                
+                                # Add skill to employee with default values for additional columns
                                 db.session.execute(
-                                    text("INSERT INTO employee_skills (employee_id, skill_id) VALUES (:emp_id, :skill_id)"),
-                                    {'emp_id': employee.id, 'skill_id': skill.id}
+                                    text("INSERT INTO employee_skills (employee_id, skill_id, is_primary, certification_date) VALUES (:emp_id, :skill_id, :is_primary, :cert_date) ON CONFLICT DO NOTHING"),
+                                    {'emp_id': employee.id, 'skill_id': skill.id, 'is_primary': False, 'cert_date': date.today()}
                                 )
                 
                 # Save employee
@@ -479,9 +480,11 @@ def process_overtime_upload():
                     if week_col in row:
                         hours = row[week_col]
                         if pd.notna(hours) and hours > 0:
-                            # Calculate week ending date (13 weeks ago + week_num)
-                            week_ending = date.today() - timedelta(weeks=(13 - week_num))
-                            week_start = week_ending - timedelta(days=6)
+                            # Calculate week start date (13 weeks ago + week_num)
+                            week_start = date.today() - timedelta(weeks=(14 - week_num))
+                            # Adjust to Monday
+                            days_since_monday = week_start.weekday()
+                            week_start = week_start - timedelta(days=days_since_monday)
                             
                             # Check if record exists
                             existing = OvertimeHistory.query.filter_by(
@@ -856,3 +859,170 @@ def upload_stats():
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+# Export current employees
+@employee_import_bp.route('/export-current-employees')
+@login_required
+@supervisor_required
+def export_current_employees():
+    """Export current employee data"""
+    try:
+        employees = Employee.query.filter(
+            Employee.email != 'admin@workforce.com'
+        ).order_by(Employee.crew, Employee.name).all()
+        
+        data = []
+        for emp in employees:
+            # Get skills from the association table
+            emp_skills = db.session.execute(
+                text("""
+                    SELECT s.name 
+                    FROM skill s 
+                    JOIN employee_skills es ON s.id = es.skill_id 
+                    WHERE es.employee_id = :emp_id
+                """),
+                {'emp_id': emp.id}
+            ).fetchall()
+            skills_list = [skill[0] for skill in emp_skills]
+            
+            data.append({
+                'Employee ID': emp.employee_id or f'EMP{emp.id}',
+                'First Name': emp.name.split(' ')[0] if emp.name else '',
+                'Last Name': ' '.join(emp.name.split(' ')[1:]) if emp.name and ' ' in emp.name else '',
+                'Email': emp.email,
+                'Crew': emp.crew or '',
+                'Position': emp.position.name if emp.position else '',
+                'Department': emp.department or '',
+                'Hire Date': emp.hire_date.strftime('%Y-%m-%d') if emp.hire_date else '',
+                'Phone': emp.phone or '',
+                'Emergency Contact': '',
+                'Skills': ', '.join(skills_list),
+                'Is Supervisor': 'Yes' if emp.is_supervisor else 'No'
+            })
+        
+        df = pd.DataFrame(data)
+        
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            df.to_excel(writer, sheet_name='Employee Data', index=False)
+        
+        output.seek(0)
+        
+        filename = f'employee_export_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
+        
+# Add the missing export_current_overtime route at the end
+@employee_import_bp.route('/export-current-overtime')
+@login_required
+@supervisor_required
+def export_current_overtime():
+    """Export current overtime data"""
+    try:
+        employees = Employee.query.filter(
+            Employee.email != 'admin@workforce.com'
+        ).order_by(Employee.crew, Employee.name).all()
+        
+        # Calculate date range for last 13 weeks
+        today = date.today()
+        # Find the most recent Monday
+        days_since_monday = today.weekday()
+        most_recent_monday = today - timedelta(days=days_since_monday)
+        
+        data = []
+        for emp in employees:
+            row = {
+                'Employee ID': emp.employee_id or f'EMP{emp.id}',
+                'Employee Name': emp.name,
+                'Crew': emp.crew
+            }
+            
+            # Get overtime for last 13 weeks
+            for week_num in range(1, 14):
+                # Calculate week start date
+                week_start = most_recent_monday - timedelta(weeks=(13 - week_num))
+                
+                ot_record = OvertimeHistory.query.filter_by(
+                    employee_id=emp.id,
+                    week_start_date=week_start
+                ).first()
+                
+                row[f'Week {week_num}'] = ot_record.overtime_hours if ot_record else 0
+            
+            data.append(row)
+        
+        df = pd.DataFrame(data)
+        
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            df.to_excel(writer, sheet_name='Overtime Data', index=False)
+        
+        output.seek(0)
+        
+        filename = f'overtime_export_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
+        
+        return send_file(
+            output,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=filename
+        )
+    except Exception as e:
+        flash(f'Error exporting data: {str(e)}', 'error')
+        return redirect(url_for('main.dashboard'))
+
+@employee_import_bp.route('/export-current-overtime')
+@login_required
+@supervisor_required
+def export_current_overtime():
+    """Export current overtime data"""
+    try:
+        employees = Employee.query.filter(
+            Employee.email != 'admin@workforce.com'
+        ).order_by(Employee.crew, Employee.name).all()
+        
+        # Calculate date range for last 13 weeks
+        today = date.today()
+        # Find the most recent Monday
+        days_since_monday = today.weekday()
+        most_recent_monday = today - timedelta(days=days_since_monday)
+        
+        data = []
+        for emp in employees:
+            row = {
+                'Employee ID': emp.employee_id or f'EMP{emp.id}',
+                'Employee Name': emp.name,
+                'Crew': emp.crew
+            }
+            
+            # Get overtime for last 13 weeks
+            for week_num in range(1, 14):
+                # Calculate week start date
+                week_start = most_recent_monday - timedelta(weeks=(13 - week_num))
+                
+                ot_record = OvertimeHistory.query.filter_by(
+                    employee_id=emp.id,
+                    week_start_date=week_start
+                ).first()
+                
+                row[f'Week {week_num}'] = ot_record.overtime_hours if ot_record else 0
+            
+            data.append(row)
+        
+        df = pd.DataFrame(data)
+        
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            df.to_excel(writer, sheet_name='Overtime Data', index=False)
+        
+        output.seek(0)
+        
+        filename = f'overtime_export_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
+        
+        return send_file(
+            output,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=filename
+        )
+    except Exception as e:
+        flash(f'Error exporting data: {str(e)}', 'error')
+        return redirect(url_for('main.dashboard'))
