@@ -199,7 +199,7 @@ def upload_employees():
             
             crew_distribution = {crew: count for crew, count in crew_stats if crew}
             
-            return render_template('upload_employees.html',
+            return render_template('upload_employees_enhanced.html',
                                  employee_count=employee_count,
                                  recent_uploads=recent_uploads,
                                  crew_distribution=crew_distribution)
@@ -709,54 +709,283 @@ def download_bulk_update_template(template_type):
         flash('Error generating template', 'error')
         return redirect(url_for('main.dashboard'))
 
-# ===== VALIDATION ENDPOINTS =====
+# ===== FIXED: ADD MISSING VALIDATION ROUTES =====
 
-@employee_import_bp.route('/api/validate-upload', methods=['POST'])
+# This is the main validation route that the frontend is looking for
+@employee_import_bp.route('/validate-upload', methods=['POST'])
 @login_required
 @supervisor_required
 def validate_upload():
-    """Validate upload file without importing"""
-    if 'file' not in request.files:
-        return jsonify({'success': False, 'error': 'No file provided'})
-    
-    file = request.files['file']
-    upload_type = request.form.get('upload_type', 'employee')
-    
+    """Generic validation endpoint that routes to specific validators based on upload type"""
     try:
-        df = pd.read_excel(file, sheet_name=0)
+        if 'file' not in request.files:
+            return jsonify({'success': False, 'error': 'No file provided'})
+        
+        file = request.files['file']
+        upload_type = request.form.get('type', 'employee')  # Note: 'type' not 'upload_type'
+        
+        if file.filename == '':
+            return jsonify({'success': False, 'error': 'No file selected'})
+        
+        # Route to appropriate validator based on type
+        if upload_type == 'employee':
+            return validate_employee_data()
+        elif upload_type == 'overtime':
+            return validate_overtime_data()
+        elif upload_type == 'bulk_update':
+            return validate_bulk_update()
+        else:
+            return jsonify({'success': False, 'error': f'Unknown upload type: {upload_type}'})
+            
+    except Exception as e:
+        current_app.logger.error(f"Validation error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': f'Validation failed: {str(e)}'
+        })
+
+# Employee data validation
+@employee_import_bp.route('/api/validate-employee-data', methods=['POST'])
+@login_required
+@supervisor_required
+def validate_employee_data():
+    """Validate employee data without importing"""
+    try:
+        if 'file' not in request.files:
+            return jsonify({'success': False, 'error': 'No file provided'})
+        
+        file = request.files['file']
+        df = pd.read_excel(file, sheet_name='Employee Data')
         
         errors = []
         warnings = []
         
-        if upload_type == 'employee':
-            required_cols = ['Employee ID', 'First Name', 'Last Name', 'Email', 'Crew']
-            missing_cols = [col for col in required_cols if col not in df.columns]
-            if missing_cols:
-                errors.append(f"Missing required columns: {', '.join(missing_cols)}")
+        # Validate required fields
+        required_fields = ['Employee ID', 'First Name', 'Last Name', 'Email', 'Crew']
+        for field in required_fields:
+            if field not in df.columns:
+                errors.append(f"Missing required column: {field}")
+        
+        if errors:
+            return jsonify({
+                'success': False,
+                'errors': errors,
+                'row_count': 0
+            })
+        
+        # Validate each row
+        valid_crews = ['A', 'B', 'C', 'D']
+        valid_positions = [p.name for p in Position.query.all()]
+        
+        for index, row in df.iterrows():
+            row_num = index + 2
             
-            valid_crews = ['A', 'B', 'C', 'D']
+            # Check required fields
+            if pd.isna(row['Employee ID']) or str(row['Employee ID']).strip() == '':
+                errors.append(f"Row {row_num}: Missing Employee ID")
             
-            for index, row in df.iterrows():
-                row_num = index + 2
+            if pd.isna(row['First Name']) or str(row['First Name']).strip() == '':
+                errors.append(f"Row {row_num}: Missing First Name")
                 
-                if pd.isna(row.get('Email')) or not validate_email(str(row['Email'])):
-                    errors.append(f"Row {row_num}: Invalid email")
+            if pd.isna(row['Last Name']) or str(row['Last Name']).strip() == '':
+                errors.append(f"Row {row_num}: Missing Last Name")
+            
+            if pd.isna(row['Email']) or not validate_email(str(row['Email'])):
+                errors.append(f"Row {row_num}: Invalid email format")
+            
+            crew = str(row.get('Crew', '')).strip().upper()
+            if crew not in valid_crews:
+                errors.append(f"Row {row_num}: Invalid crew '{crew}' (must be A, B, C, or D)")
                 
-                crew = str(row.get('Crew', '')).strip().upper()
-                if crew not in valid_crews:
-                    errors.append(f"Row {row_num}: Invalid crew '{crew}'")
+            # Check for duplicate emails
+            email = str(row['Email']).strip().lower()
+            existing = Employee.query.filter_by(email=email).first()
+            if existing:
+                warnings.append(f"Row {row_num}: Email '{email}' already exists (will update)")
+        
+        return jsonify({
+            'success': len(errors) == 0,
+            'errors': errors[:10],  # Limit to first 10 errors
+            'warnings': warnings[:10],
+            'row_count': len(df),
+            'error_count': len(errors),
+            'warning_count': len(warnings),
+            'preview_data': df.head(5).to_dict('records') if len(errors) == 0 else None
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Error reading file: {str(e)}'
+        })
+
+# Overtime data validation
+@employee_import_bp.route('/api/validate-overtime-data', methods=['POST'])
+@login_required
+@supervisor_required
+def validate_overtime_data():
+    """Validate overtime data without importing"""
+    try:
+        if 'file' not in request.files:
+            return jsonify({'success': False, 'error': 'No file provided'})
+        
+        file = request.files['file']
+        df = pd.read_excel(file, sheet_name='Overtime Data')
+        
+        errors = []
+        warnings = []
+        
+        # Check required columns
+        required_columns = ['Employee ID']
+        week_columns = [f'Week {i}' for i in range(1, 14)]
+        
+        for col in required_columns + week_columns:
+            if col not in df.columns:
+                errors.append(f"Missing required column: {col}")
+        
+        if errors:
+            return jsonify({
+                'success': False,
+                'errors': errors,
+                'row_count': 0
+            })
+        
+        # Validate each row
+        valid_rows = 0
+        for index, row in df.iterrows():
+            row_num = index + 2
+            
+            # Check Employee ID exists
+            emp_id = str(row['Employee ID']).strip()
+            employee = Employee.query.filter_by(employee_id=emp_id).first()
+            
+            if not employee:
+                errors.append(f"Row {row_num}: Employee ID '{emp_id}' not found")
+                continue
+            
+            # Validate week data
+            for week_num in range(1, 14):
+                week_col = f'Week {week_num}'
+                hours = row.get(week_col, 0)
+                
+                try:
+                    hours_float = float(hours) if pd.notna(hours) else 0
+                    if hours_float < 0:
+                        warnings.append(f"Row {row_num}, {week_col}: Negative hours ({hours_float})")
+                    elif hours_float > 168:  # More than hours in a week
+                        errors.append(f"Row {row_num}, {week_col}: Invalid hours ({hours_float} > 168)")
+                except:
+                    errors.append(f"Row {row_num}, {week_col}: Invalid number format")
+            
+            if len([e for e in errors if f"Row {row_num}" in e]) == 0:
+                valid_rows += 1
+        
+        return jsonify({
+            'success': len(errors) == 0,
+            'errors': errors[:10],  # Limit to first 10 errors
+            'warnings': warnings[:10],
+            'row_count': len(df),
+            'valid_rows': valid_rows,
+            'error_count': len(errors),
+            'warning_count': len(warnings),
+            'preview_data': df.head(5).to_dict('records') if len(errors) == 0 else None
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Error reading file: {str(e)}'
+        })
+
+# Bulk update validation
+@employee_import_bp.route('/api/validate-bulk-update', methods=['POST'])
+@login_required  
+@supervisor_required
+def validate_bulk_update():
+    """Validate bulk update data"""
+    try:
+        if 'file' not in request.files:
+            return jsonify({'success': False, 'error': 'No file provided'})
+        
+        file = request.files['file']
+        df = pd.read_excel(file, sheet_name=0)  # First sheet
+        
+        errors = []
+        warnings = []
+        updates_preview = []
+        
+        # Must have Employee ID
+        if 'Employee ID' not in df.columns:
+            return jsonify({
+                'success': False,
+                'error': 'Missing required column: Employee ID'
+            })
+        
+        # Determine which fields are being updated
+        update_fields = [col for col in df.columns if col != 'Employee ID']
+        
+        if not update_fields:
+            return jsonify({
+                'success': False,
+                'error': 'No fields to update. File must contain at least one field besides Employee ID'
+            })
+        
+        # Validate each row
+        for index, row in df.iterrows():
+            row_num = index + 2
+            emp_id = str(row['Employee ID']).strip()
+            
+            employee = Employee.query.filter_by(employee_id=emp_id).first()
+            if not employee:
+                errors.append(f"Row {row_num}: Employee ID '{emp_id}' not found")
+                continue
+            
+            update_preview = {'employee_id': emp_id, 'updates': {}}
+            
+            # Validate each field
+            for field in update_fields:
+                value = row.get(field)
+                if pd.isna(value):
+                    continue
+                    
+                if field == 'Crew' and value not in ['A', 'B', 'C', 'D']:
+                    errors.append(f"Row {row_num}: Invalid crew '{value}'")
+                elif field == 'Email':
+                    if not validate_email(str(value)):
+                        errors.append(f"Row {row_num}: Invalid email format '{value}'")
+                elif field == 'Position':
+                    if not Position.query.filter_by(name=str(value)).first():
+                        warnings.append(f"Row {row_num}: Position '{value}' will be created")
+                
+                update_preview['updates'][field] = value
+            
+            if update_preview['updates']:
+                updates_preview.append(update_preview)
         
         return jsonify({
             'success': len(errors) == 0,
             'errors': errors[:10],
             'warnings': warnings[:10],
             'row_count': len(df),
-            'total_errors': len(errors),
-            'total_warnings': len(warnings)
+            'update_count': len(updates_preview),
+            'fields_to_update': update_fields,
+            'preview': updates_preview[:5]
         })
         
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)})
+        return jsonify({
+            'success': False,
+            'error': f'Error processing file: {str(e)}'
+        })
+
+# ===== EXISTING VALIDATION ENDPOINT (keeping for compatibility) =====
+
+@employee_import_bp.route('/api/validate-upload', methods=['POST'])
+@login_required
+@supervisor_required
+def api_validate_upload():
+    """API endpoint for validation - redirects to main validation"""
+    return validate_upload()
 
 @employee_import_bp.route('/api/upload-stats')
 @login_required
@@ -783,3 +1012,20 @@ def upload_stats():
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+# ===== DELETE UPLOAD RECORD =====
+
+@employee_import_bp.route('/delete-upload/<int:upload_id>', methods=['POST'])
+@login_required
+@supervisor_required
+def delete_upload(upload_id):
+    """Delete an upload record"""
+    try:
+        upload = FileUpload.query.get_or_404(upload_id)
+        db.session.delete(upload)
+        db.session.commit()
+        flash('Upload record deleted successfully', 'success')
+    except Exception as e:
+        flash(f'Error deleting record: {str(e)}', 'error')
+    
+    return redirect(url_for('employee_import.upload_history'))
