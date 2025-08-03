@@ -1,6 +1,6 @@
 # blueprints/employee_import.py
 """
-Employee Import Blueprint - Complete and Validated
+Employee Import Blueprint - Complete and Fixed
 This file handles all employee and overtime data imports/exports
 """
 
@@ -199,6 +199,7 @@ def upload_employees():
             
             crew_distribution = {crew: count for crew, count in crew_stats if crew}
             
+            # FIXED: Using the correct template name
             return render_template('upload_employees_enhanced.html',
                                  employee_count=employee_count,
                                  recent_uploads=recent_uploads,
@@ -365,7 +366,7 @@ def upload_overtime():
             func.count(func.distinct(OvertimeHistory.employee_id))
         ).scalar() or 0
         
-        # Fixed: OvertimeHistory doesn't have 'hours' column, it has 'overtime_hours'
+        # Fixed: OvertimeHistory has 'overtime_hours' not 'hours'
         total_ot_hours = db.session.query(
             func.sum(OvertimeHistory.overtime_hours)
         ).scalar() or 0
@@ -712,7 +713,6 @@ def download_bulk_update_template(template_type):
 
 # ===== VALIDATION ROUTES =====
 
-# This is the main validation route that the frontend is looking for
 @employee_import_bp.route('/validate-upload', methods=['POST'])
 @login_required
 @supervisor_required
