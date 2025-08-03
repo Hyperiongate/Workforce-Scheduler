@@ -365,8 +365,9 @@ def upload_overtime():
             func.count(func.distinct(OvertimeHistory.employee_id))
         ).scalar() or 0
         
+        # Fixed: OvertimeHistory doesn't have 'hours' column, it has 'overtime_hours'
         total_ot_hours = db.session.query(
-            func.sum(OvertimeHistory.hours)
+            func.sum(OvertimeHistory.overtime_hours)
         ).scalar() or 0
         
         avg_weekly_ot = round(total_ot_hours / (employees_with_ot * 13), 1) if employees_with_ot > 0 else 0
@@ -709,7 +710,7 @@ def download_bulk_update_template(template_type):
         flash('Error generating template', 'error')
         return redirect(url_for('main.dashboard'))
 
-# ===== FIXED: ADD MISSING VALIDATION ROUTES =====
+# ===== VALIDATION ROUTES =====
 
 # This is the main validation route that the frontend is looking for
 @employee_import_bp.route('/validate-upload', methods=['POST'])
@@ -978,7 +979,7 @@ def validate_bulk_update():
             'error': f'Error processing file: {str(e)}'
         })
 
-# ===== EXISTING VALIDATION ENDPOINT (keeping for compatibility) =====
+# ===== API ENDPOINTS =====
 
 @employee_import_bp.route('/api/validate-upload', methods=['POST'])
 @login_required
