@@ -107,4 +107,115 @@ def logout():
 @login_required
 def change_password():
     """Force password change for new users or password resets"""
-    if request.metho
+    if request.method == 'POST':
+        current_password = request.form.get('current_password')
+        new_password = request.form.get('new_password')
+        confirm_password = request.form.get('confirm_password')
+        
+        # Validate current password
+        if not current_user.check_password(current_password):
+            flash('Current password is incorrect.', 'danger')
+            return render_template('change_password.html')
+        
+        # Validate new password
+        if len(new_password) < 8:
+            flash('New password must be at least 8 characters long.', 'danger')
+            return render_template('change_password.html')
+            
+        if new_password != confirm_password:
+            flash('New passwords do not match.', 'danger')
+            return render_template('change_password.html')
+            
+        if current_password == new_password:
+            flash('New password must be different from current password.', 'danger')
+            return render_template('change_password.html')
+        
+        # Update password
+        current_user.set_password(new_password)
+        if hasattr(current_user, 'must_change_password'):
+            current_user.must_change_password = False
+        if hasattr(current_user, 'last_password_change'):
+            current_user.last_password_change = datetime.utcnow()
+        
+        db.session.commit()
+        
+        flash('Password changed successfully!', 'success')
+        
+        # Redirect to appropriate dashboard
+        if current_user.is_supervisor:
+            return redirect(url_for('main.dashboard'))
+        else:
+            return redirect(url_for('main.employee_dashboard'))
+    
+    return render_template('change_password.html')
+
+@auth_bp.route('/forgot-password', methods=['GET', 'POST'])
+def forgot_password():
+    """Handle password reset requests"""
+    if current_user.is_authenticated:
+        return redirect(url_for('main.dashboard'))
+        
+    if request.method == 'POST':
+        email = request.form.get('email')
+        employee = Employee.query.filter_by(email=email).first()
+        
+        if employee:
+            # Generate reset token
+            if hasattr(employee, 'generate_reset_token'):
+                token = employee.generate_reset_token()
+                db.session.commit()
+                
+                # In a real application, you would send an email here
+                # For now, just show a message
+                flash('Password reset instructions have been sent to your email.', 'info')
+            else:
+                flash('Password reset is not available. Please contact your administrator.', 'warning')
+        else:
+            # Don't reveal if email exists or not for security
+            flash('If that email exists in our system, password reset instructions have been sent.', 'info')
+            
+        return redirect(url_for('auth.login'))
+        
+    return render_template('forgot_password.html')
+
+@auth_bp.route('/reset-password/<token>', methods=['GET', 'POST'])
+def reset_password(token):
+    """Handle password reset with token"""
+    if current_user.is_authenticated:
+        return redirect(url_for('main.dashboard'))
+        
+    # Find employee with this token
+    employee = Employee.query.filter_by(reset_token=token).first()
+    
+    if not employee or not employee.validate_reset_token(token):
+        flash('Invalid or expired reset link.', 'danger')
+        return redirect(url_for('auth.login'))
+        
+    if request.method == 'POST':
+        new_password = request.form.get('new_password')
+        confirm_password = request.form.get('confirm_password')
+        
+        # Validate new password
+        if len(new_password) < 8:
+            flash('Password must be at least 8 characters long.', 'danger')
+            return render_template('reset_password.html', token=token)
+            
+        if new_password != confirm_password:
+            flash('Passwords do not match.', 'danger')
+            return render_template('reset_password.html', token=token)
+        
+        # Update password
+        employee.set_password(new_password)
+        employee.reset_token = None
+        employee.reset_token_expires = None
+        if hasattr(employee, 'must_change_password'):
+            employee.must_change_password = False
+        if hasattr(employee, 'last_password_change'):
+            employee.last_password_change = datetime.utcnow()
+        
+        db.session.commit()
+        
+        flash('Your password has been reset successfully! Please log in with your new password.', 'success')
+        return redirect(url_for('auth.login'))
+        
+    return render_template('reset_password.html', token=token)
