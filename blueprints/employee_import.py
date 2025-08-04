@@ -38,6 +38,124 @@ def upload_employees():
             if not file or file.filename == '':
                 flash('No file selected', 'error')
                 return redirect(url_for('employee_import.upload_employees'))
+        
+    # Clear from session after download
+    session.pop('credentials_file', None)
+    
+    return send_file(filepath, as_attachment=True,
+                    download_name=f'employee_credentials_{datetime.now().strftime("%Y%m%d")}.xlsx',
+                    mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
+@employee_import_bp.route('/upload-history')
+@login_required
+def upload_history():
+    """View upload history"""
+    if not current_user.is_supervisor:
+        flash('Access denied', 'danger')
+        return redirect(url_for('employee.dashboard'))
+        
+    # Get filter parameters
+    upload_type = request.args.get('type', 'all')
+    date_from = request.args.get('from')
+    date_to = request.args.get('to')
+    
+    # Build query
+    query = UploadHistory.query
+    
+    # Only show uploads by current user unless admin
+    query = query.filter_by(uploaded_by_id=current_user.id)
+        
+    if upload_type != 'all':
+        query = query.filter_by(upload_type=upload_type)
+        
+    if date_from:
+        query = query.filter(UploadHistory.uploaded_at >= date_from)
+        
+    if date_to:
+        query = query.filter(UploadHistory.uploaded_at <= date_to)
+        
+    uploads = query.order_by(UploadHistory.uploaded_at.desc()).all()
+    
+    return render_template('upload_history.html', uploads=uploads)
+
+
+@employee_import_bp.route('/api/upload-history')
+@login_required
+def api_upload_history():
+    """API endpoint for upload history"""
+    if not current_user.is_supervisor:
+        return jsonify([])
+        
+    uploads = UploadHistory.query.filter_by(
+        uploaded_by_id=current_user.id
+    ).order_by(UploadHistory.uploaded_at.desc()).limit(50).all()
+    
+    return jsonify([{
+        'id': u.id,
+        'filename': u.filename,
+        'upload_type': u.upload_type,
+        'status': u.status,
+        'uploaded_at': u.uploaded_at.isoformat(),
+        'records_processed': u.records_processed,
+        'records_created': u.records_created,
+        'records_updated': u.records_updated,
+        'uploaded_by': u.uploaded_by.name if u.uploaded_by else 'Unknown'
+    } for u in uploads])
+
+
+@employee_import_bp.route('/upload/<int:upload_id>/download')
+@login_required
+def download_upload_file(upload_id):
+    """Download original uploaded file"""
+    if not current_user.is_supervisor:
+        flash('Access denied', 'danger')
+        return redirect(url_for('employee.dashboard'))
+        
+    upload = UploadHistory.query.get_or_404(upload_id)
+    
+    # Check permissions
+    if upload.uploaded_by_id != current_user.id:
+        flash('Access denied', 'danger')
+        return redirect(url_for('employee_import.upload_history'))
+    
+    upload_folder = current_app.config.get('UPLOAD_FOLDER', 'upload_files')
+    filepath = os.path.join(upload_folder, upload.file_path)
+    
+    if not os.path.exists(filepath):
+        flash('File not found', 'error')
+        return redirect(url_for('employee_import.upload_history'))
+        
+    return send_file(filepath, as_attachment=True,
+                    download_name=upload.filename,
+                    mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
+@employee_import_bp.route('/upload-overtime', methods=['GET', 'POST'])
+@login_required
+def upload_overtime():
+    """Dedicated overtime upload page"""
+    if not current_user.is_supervisor:
+        flash('Access denied. Supervisor role required.', 'danger')
+        return redirect(url_for('employee.dashboard'))
+        
+    if request.method == 'POST':
+        # Redirect to main upload handler with overtime type
+        return redirect(url_for('employee_import.upload_employees'))
+        
+    # Get statistics for overtime
+    total_ot_hours = db.session.query(db.func.sum(OvertimeHistory.overtime_hours)).scalar() or 0
+    employees_with_ot = db.session.query(db.func.count(db.func.distinct(OvertimeHistory.employee_id))).scalar() or 0
+    
+    recent_uploads = UploadHistory.query.filter_by(
+        uploaded_by_id=current_user.id,
+        upload_type='overtime'
+    ).order_by(UploadHistory.uploaded_at.desc()).limit(5).all()
+    
+    return render_template('upload_overtime.html',
+                         total_ot_hours=total_ot_hours,
+                         employees_with_ot=employees_with_ot,
+                         recent_uploads=recent_uploads).upload_employees'))
                 
             # Save uploaded file
             filename = secure_filename(file.filename)
@@ -591,123 +709,5 @@ def download_credentials():
     filepath = os.path.join(upload_folder, credentials_file)
     
     if not os.path.exists(filepath):
-        flash('File not found', 'error')
-        return redirect(url_for('employee_import.upload_history'))
-        
-    return send_file(filepath, as_attachment=True,
-                    download_name=upload.filename,
-                    mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-
-
-@employee_import_bp.route('/upload-overtime', methods=['GET', 'POST'])
-@login_required
-def upload_overtime():
-    """Dedicated overtime upload page"""
-    if not current_user.is_supervisor:
-        flash('Access denied. Supervisor role required.', 'danger')
-        return redirect(url_for('employee.dashboard'))
-        
-    if request.method == 'POST':
-        # Redirect to main upload handler with overtime type
-        return redirect(url_for('employee_import.upload_employees'))
-        
-    # Get statistics for overtime
-    total_ot_hours = db.session.query(db.func.sum(OvertimeHistory.overtime_hours)).scalar() or 0
-    employees_with_ot = db.session.query(db.func.count(db.func.distinct(OvertimeHistory.employee_id))).scalar() or 0
-    
-    recent_uploads = UploadHistory.query.filter_by(
-        uploaded_by_id=current_user.id,
-        upload_type='overtime'
-    ).order_by(UploadHistory.uploaded_at.desc()).limit(5).all()
-    
-    return render_template('upload_overtime.html',
-                         total_ot_hours=total_ot_hours,
-                         employees_with_ot=employees_with_ot,
-                         recent_uploads=recent_uploads)):
         flash('Credentials file not found', 'error')
-        return redirect(url_for('employee_import.upload_employees'))
-        
-    # Clear from session after download
-    session.pop('credentials_file', None)
-    
-    return send_file(filepath, as_attachment=True,
-                    download_name=f'employee_credentials_{datetime.now().strftime("%Y%m%d")}.xlsx',
-                    mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-
-
-@employee_import_bp.route('/upload-history')
-@login_required
-def upload_history():
-    """View upload history"""
-    if not current_user.is_supervisor:
-        flash('Access denied', 'danger')
-        return redirect(url_for('employee.dashboard'))
-        
-    # Get filter parameters
-    upload_type = request.args.get('type', 'all')
-    date_from = request.args.get('from')
-    date_to = request.args.get('to')
-    
-    # Build query
-    query = UploadHistory.query
-    
-    # Only show uploads by current user unless admin
-    query = query.filter_by(uploaded_by_id=current_user.id)
-        
-    if upload_type != 'all':
-        query = query.filter_by(upload_type=upload_type)
-        
-    if date_from:
-        query = query.filter(UploadHistory.uploaded_at >= date_from)
-        
-    if date_to:
-        query = query.filter(UploadHistory.uploaded_at <= date_to)
-        
-    uploads = query.order_by(UploadHistory.uploaded_at.desc()).all()
-    
-    return render_template('upload_history.html', uploads=uploads)
-
-
-@employee_import_bp.route('/api/upload-history')
-@login_required
-def api_upload_history():
-    """API endpoint for upload history"""
-    if not current_user.is_supervisor:
-        return jsonify([])
-        
-    uploads = UploadHistory.query.filter_by(
-        uploaded_by_id=current_user.id
-    ).order_by(UploadHistory.uploaded_at.desc()).limit(50).all()
-    
-    return jsonify([{
-        'id': u.id,
-        'filename': u.filename,
-        'upload_type': u.upload_type,
-        'status': u.status,
-        'uploaded_at': u.uploaded_at.isoformat(),
-        'records_processed': u.records_processed,
-        'records_created': u.records_created,
-        'records_updated': u.records_updated,
-        'uploaded_by': u.uploaded_by.name if u.uploaded_by else 'Unknown'
-    } for u in uploads])
-
-
-@employee_import_bp.route('/upload/<int:upload_id>/download')
-@login_required
-def download_upload_file(upload_id):
-    """Download original uploaded file"""
-    if not current_user.is_supervisor:
-        flash('Access denied', 'danger')
-        return redirect(url_for('employee.dashboard'))
-        
-    upload = UploadHistory.query.get_or_404(upload_id)
-    
-    # Check permissions
-    if upload.uploaded_by_id != current_user.id:
-        flash('Access denied', 'danger')
-        return redirect(url_for('employee_import.upload_history'))
-    
-    upload_folder = current_app.config.get('UPLOAD_FOLDER', 'upload_files')
-    filepath = os.path.join(upload_folder, upload.file_path)
-    
-    if not os.path.exists(filepath
+        return redirect(url_for('employee_import
