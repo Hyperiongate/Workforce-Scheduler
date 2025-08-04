@@ -4,12 +4,12 @@
 from app import app, db
 from models import Employee, UploadHistory
 from datetime import datetime
+from sqlalchemy import text, inspect
 
 def add_authentication_fields():
     """Add authentication fields to Employee table"""
     with app.app_context():
         # Check if columns already exist
-        from sqlalchemy import inspect
         inspector = inspect(db.engine)
         columns = [col['name'] for col in inspector.get_columns('employee')]
         
@@ -18,8 +18,6 @@ def add_authentication_fields():
         
         if 'username' not in columns:
             sql_commands.append("ALTER TABLE employee ADD COLUMN username VARCHAR(50) UNIQUE;")
-        if 'password' not in columns:
-            sql_commands.append("ALTER TABLE employee ADD COLUMN password VARCHAR(200);")
         if 'must_change_password' not in columns:
             sql_commands.append("ALTER TABLE employee ADD COLUMN must_change_password BOOLEAN DEFAULT TRUE;")
         if 'first_login' not in columns:
@@ -44,14 +42,14 @@ def add_authentication_fields():
         # Execute SQL commands
         for sql in sql_commands:
             try:
-                db.session.execute(db.text(sql))
+                db.session.execute(text(sql))
                 print(f"Executed: {sql}")
             except Exception as e:
                 print(f"Error executing {sql}: {str(e)}")
                 
         # Create index on username
         try:
-            db.session.execute(db.text("CREATE INDEX idx_employee_username ON employee(username);"))
+            db.session.execute(text("CREATE INDEX idx_employee_username ON employee(username);"))
             print("Created index on username")
         except:
             print("Index on username may already exist")
@@ -64,7 +62,6 @@ def create_upload_history_table():
     """Create upload_history table if it doesn't exist"""
     with app.app_context():
         # Check if table exists
-        from sqlalchemy import inspect
         inspector = inspect(db.engine)
         
         if 'upload_history' not in inspector.get_table_names():
@@ -81,61 +78,81 @@ def update_existing_employees():
         updated = 0
         
         for emp in employees:
-            # Set default email if missing
+            # Set default email if missing (already has unique constraint, so be careful)
             if not emp.email:
-                emp.email = f"{emp.employee_id.lower()}@company.com"
-                
-            # Set name if missing (for older records)
-            if not hasattr(emp, 'name') or not emp.name:
-                emp.name = f"Employee {emp.employee_id}"
+                # Use a unique email based on employee_id
+                emp.email = f"{emp.employee_id.lower()}@company.local"
                 
             # Set account_active if not set
-            if not hasattr(emp, 'account_active'):
+            if not hasattr(emp, 'account_active') or emp.account_active is None:
                 emp.account_active = True
                 
             updated += 1
             
-        db.session.commit()
-        print(f"Updated {updated} existing employees with default values")
+        try:
+            db.session.commit()
+            print(f"Updated {updated} existing employees with default values")
+        except Exception as e:
+            print(f"Error updating employees: {str(e)}")
+            db.session.rollback()
 
 def create_test_supervisor():
     """Create a test supervisor account for initial access"""
     with app.app_context():
-        # Check if any supervisor exists
-        supervisor = Employee.query.filter_by(is_supervisor=True).first()
+        # Check if any supervisor exists with a username
+        supervisor = Employee.query.filter_by(is_supervisor=True).filter(Employee.username != None).first()
         
         if not supervisor:
-            # Create test supervisor
-            from utils.account_generator import AccountGenerator
+            # Check if we have any supervisor without username
+            supervisor = Employee.query.filter_by(is_supervisor=True).first()
             
-            supervisor = Employee(
-                employee_id='SUP001',
-                name='Test Supervisor',
-                email='supervisor@company.com',
-                is_supervisor=True,
-                crew='A',
-                department='Management',
-                hire_date=datetime.now().date()
-            )
-            
-            # Set login credentials
-            supervisor.username = 'supervisor'
-            supervisor.set_password('TempPass123!')
-            supervisor.must_change_password = True
-            supervisor.first_login = True
-            supervisor.account_created_date = datetime.utcnow()
-            
-            db.session.add(supervisor)
-            db.session.commit()
-            
-            print("\n" + "="*50)
-            print("CREATED TEST SUPERVISOR ACCOUNT")
-            print("Username: supervisor")
-            print("Password: TempPass123!")
-            print("You will be required to change this password on first login")
-            print("="*50 + "\n")
+            if supervisor:
+                # Update existing supervisor
+                supervisor.username = 'supervisor'
+                supervisor.set_password('TempPass123!')
+                supervisor.must_change_password = True
+                supervisor.first_login = True
+                supervisor.account_created_date = datetime.utcnow()
+                
+                db.session.commit()
+                
+                print("\n" + "="*50)
+                print("UPDATED EXISTING SUPERVISOR WITH LOGIN")
+                print(f"Name: {supervisor.name}")
+                print("Username: supervisor")
+                print("Password: TempPass123!")
+                print("You will be required to change this password on first login")
+                print("="*50 + "\n")
+            else:
+                # Create new supervisor
+                supervisor = Employee(
+                    employee_id='SUP001',
+                    name='Test Supervisor',
+                    email='supervisor@company.local',
+                    is_supervisor=True,
+                    crew='A',
+                    department='Management',
+                    hire_date=datetime.now().date()
+                )
+                
+                # Set login credentials
+                supervisor.username = 'supervisor'
+                supervisor.set_password('TempPass123!')
+                supervisor.must_change_password = True
+                supervisor.first_login = True
+                supervisor.account_created_date = datetime.utcnow()
+                
+                db.session.add(supervisor)
+                db.session.commit()
+                
+                print("\n" + "="*50)
+                print("CREATED TEST SUPERVISOR ACCOUNT")
+                print("Username: supervisor")
+                print("Password: TempPass123!")
+                print("You will be required to change this password on first login")
+                print("="*50 + "\n")
         else:
-            print("Supervisor account already exists")
+            print(f"Supervisor account already exists: {supervisor.username}")
 
 if __name__ == '__main__':
     print("Starting database migration...")
