@@ -17,6 +17,19 @@
             min-height: calc(100vh - 56px);
             padding: 2rem 0;
         }
+        /* Dropdown submenu styles */
+        .dropdown-submenu {
+            position: relative;
+        }
+        .dropdown-submenu .dropdown-menu {
+            top: 0;
+            left: 100%;
+            margin-top: -1px;
+        }
+        .dropdown-header {
+            font-weight: 600;
+            color: #6c757d;
+        }
     </style>
     {% block extra_css %}{% endblock %}
 </head>
@@ -47,6 +60,17 @@
                                     <li><hr class="dropdown-divider"></li>
                                     <li><a class="dropdown-item" href="{{ url_for('supervisor.employee_management') }}">Employee Management</a></li>
                                     <li><a class="dropdown-item" href="{{ url_for('supervisor.crew_management') }}">Crew Management</a></li>
+                                    <li><hr class="dropdown-divider"></li>
+                                    <li><h6 class="dropdown-header">Data Management</h6></li>
+                                    <li><a class="dropdown-item" href="{{ url_for('employee_import.upload_employees') }}">
+                                        <i class="bi bi-upload"></i> Upload Employees
+                                    </a></li>
+                                    <li><a class="dropdown-item" href="{{ url_for('employee_import.upload_overtime') }}">
+                                        <i class="bi bi-clock-history"></i> Upload Overtime
+                                    </a></li>
+                                    <li><a class="dropdown-item" href="{{ url_for('employee_import.upload_history') }}">
+                                        <i class="bi bi-list-ul"></i> Upload History
+                                    </a></li>
                                 </ul>
                             </li>
                         {% endif %}
