@@ -477,8 +477,8 @@ class ScheduleSuggestion(db.Model):
     reviewer_notes = db.Column(db.Text)
     
     # Relationships
-    employee = db.relationship('Employee', foreign_keys=[employee_id], backref='suggestions_made')
-    reviewed_by = db.relationship('Employee', foreign_keys=[reviewed_by_id], backref='suggestions_reviewed')
+    employee = db.relationship('Employee', foreign_keys=[employee_id], backref='schedule_suggestions')
+    reviewed_by = db.relationship('Employee', foreign_keys=[reviewed_by_id], backref='schedule_suggestions_reviewed')
 
 # Shift Trade Models
 class ShiftTrade(db.Model):
@@ -761,8 +761,9 @@ class EmployeeSuggestion(db.Model):
     
     # Relationships
     employee = db.relationship('Employee', foreign_keys=[employee_id], 
-                             backref='suggestions_made')
-    reviewed_by = db.relationship('Employee', foreign_keys=[reviewed_by_id])
+                             backref='employee_suggestions')
+    reviewed_by = db.relationship('Employee', foreign_keys=[reviewed_by_id], 
+                                backref='employee_suggestions_reviewed')
 
 # Sleep Management Models
 class CircadianProfile(db.Model):
