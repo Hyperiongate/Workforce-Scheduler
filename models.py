@@ -463,6 +463,23 @@ class ShiftSwapRequest(db.Model):
     requested_schedule = db.relationship('Schedule', foreign_keys=[requested_schedule_id])
     reviewer = db.relationship('Employee', foreign_keys=[reviewed_by_id])
 
+class ScheduleSuggestion(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    employee_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=False)
+    suggestion_type = db.Column(db.String(50))  # shift_preference, availability_change, scheduling_process, fairness, general
+    title = db.Column(db.String(200), nullable=False)
+    description = db.Column(db.Text, nullable=False)
+    priority = db.Column(db.String(20), default='medium')  # low, medium, high
+    status = db.Column(db.String(20), default='new')  # new, under_review, implemented, declined
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    reviewed_at = db.Column(db.DateTime)
+    reviewed_by_id = db.Column(db.Integer, db.ForeignKey('employee.id'))
+    reviewer_notes = db.Column(db.Text)
+    
+    # Relationships
+    employee = db.relationship('Employee', foreign_keys=[employee_id], backref='suggestions_made')
+    reviewed_by = db.relationship('Employee', foreign_keys=[reviewed_by_id], backref='suggestions_reviewed')
+
 # Shift Trade Models
 class ShiftTrade(db.Model):
     """Represents a shift trade transaction between two employees"""
