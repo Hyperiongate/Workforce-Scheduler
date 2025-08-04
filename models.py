@@ -93,7 +93,7 @@
             return False
         return True
 
-# 3. Add this complete class at the END of your models.py file:
+# 3. Add this complete class at the END of your models.py file (NO INDENTATION):
 
 class UploadHistory(db.Model):
     """Track file upload history with detailed information"""
