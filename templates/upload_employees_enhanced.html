@@ -726,9 +726,11 @@ function displayImportResults(data) {
         }
         
         if (data.credentials_file) {
+            // Build the URL using the blueprint route pattern
+            const credentialsUrl = `/download-credentials/${data.credentials_file}`;
             html += `<div class="alert alert-info mt-3">
                         <i class="bi bi-key"></i> Login credentials have been generated!
-                        <a href="{{ url_for('employee_import.download_credentials', filename='') }}${data.credentials_file}" 
+                        <a href="${credentialsUrl}" 
                            class="btn btn-sm btn-primary float-end">
                             <i class="bi bi-download"></i> Download Credentials
                         </a>
