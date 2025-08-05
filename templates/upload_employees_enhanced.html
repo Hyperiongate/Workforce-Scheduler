@@ -24,7 +24,7 @@
             <div class="card text-center">
                 <div class="card-body">
                     <i class="bi bi-people-fill text-primary" style="font-size: 2rem;"></i>
-                    <h3 class="mt-2">{{ employee_count }}</h3>
+                    <h3 class="mt-2">{{ stats.total_employees if stats else 0 }}</h3>
                     <p class="text-muted mb-0">Total Employees</p>
                 </div>
             </div>
@@ -42,7 +42,7 @@
             <div class="card text-center">
                 <div class="card-body">
                     <i class="bi bi-clock-history text-warning" style="font-size: 2rem;"></i>
-                    <h3 class="mt-2">{{ recent_uploads|length }}</h3>
+                    <h3 class="mt-2">{{ recent_uploads|length if recent_uploads else 0 }}</h3>
                     <p class="text-muted mb-0">Recent Uploads</p>
                 </div>
             </div>
@@ -51,8 +51,8 @@
             <div class="card text-center">
                 <div class="card-body">
                     <i class="bi bi-exclamation-triangle text-danger" style="font-size: 2rem;"></i>
-                    <h3 class="mt-2" id="validationErrors">0</h3>
-                    <p class="text-muted mb-0">Validation Errors</p>
+                    <h3 class="mt-2">{{ stats.employees_without_ot if stats else 0 }}</h3>
+                    <p class="text-muted mb-0">Missing OT Data</p>
                 </div>
             </div>
         </div>
@@ -126,6 +126,7 @@
                 <i class="bi bi-clock-history"></i> Recent Uploads
             </h5>
             <div class="upload-history">
+                {% if recent_uploads %}
                 {% for upload in recent_uploads %}
                 <div class="small mb-2 p-2 bg-light rounded">
                     <div class="d-flex justify-content-between">
@@ -135,6 +136,9 @@
                     <small class="text-muted">{{ upload.records_processed }} records</small>
                 </div>
                 {% endfor %}
+                {% else %}
+                <p class="text-muted">No recent uploads</p>
+                {% endif %}
             </div>
         </div>
 
@@ -165,7 +169,7 @@
             </div>
 
             <!-- Upload Form -->
-            <form id="uploadForm" method="POST" enctype="multipart/form-data">
+            <form id="uploadForm" method="POST" enctype="multipart/form-data" action="{{ url_for('employee_import.upload_employees') }}">
                 <!-- File Upload Zone -->
                 <div class="upload-zone" id="uploadZone">
                     <i class="bi bi-cloud-arrow-up" style="font-size: 4rem; color: #007bff;"></i>
@@ -189,7 +193,7 @@
                         <div class="row">
                             <div class="col-md-4">
                                 <div class="form-check upload-type-card">
-                                    <input class="form-check-input" type="radio" name="upload_type" id="typeEmployee" value="employee" checked>
+                                    <input class="form-check-input" type="radio" name="upload_type" id="typeEmployee" value="employees" checked>
                                     <label class="form-check-label w-100" for="typeEmployee">
                                         <div class="card">
                                             <div class="card-body text-center">
@@ -434,6 +438,9 @@ const uploadTypeSection = document.getElementById('uploadTypeSection');
 const optionsSection = document.getElementById('optionsSection');
 const actionButtons = document.getElementById('actionButtons');
 
+// Store the selected file globally
+let selectedFileObject = null;
+
 // Click to select file
 uploadZone.addEventListener('click', () => {
     fileInput.click();
@@ -472,6 +479,12 @@ function handleFileSelect(file) {
         return;
     }
     
+    // Reset any previous validation state
+    resetValidation();
+    
+    // Store the file globally
+    selectedFileObject = file;
+    
     fileName.textContent = file.name;
     selectedFile.classList.remove('d-none');
     uploadTypeSection.style.display = 'block';
@@ -482,6 +495,7 @@ function handleFileSelect(file) {
 
 function clearFileSelection() {
     fileInput.value = '';
+    selectedFileObject = null;
     selectedFile.classList.add('d-none');
     uploadTypeSection.style.display = 'none';
     optionsSection.style.display = 'none';
@@ -508,7 +522,7 @@ function updateStepIndicator(step) {
 }
 
 function validateFile() {
-    if (!fileInput.files[0]) {
+    if (!selectedFileObject) {
         alert('Please select a file first');
         return;
     }
@@ -516,7 +530,7 @@ function validateFile() {
     updateStepIndicator(2);
     
     const formData = new FormData();
-    formData.append('file', fileInput.files[0]);
+    formData.append('file', selectedFileObject);
     formData.append('type', document.querySelector('input[name="upload_type"]:checked').value);
     
     // Show progress
@@ -525,11 +539,16 @@ function validateFile() {
     progressBar.style.width = '50%';
     
     // Make AJAX request to validate
-    fetch('{{ url_for("employee_import.validate_upload") }}', {
+    fetch('/validate-upload', {
         method: 'POST',
         body: formData
     })
-    .then(response => response.json())
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.json();
+    })
     .then(data => {
         progressBar.style.width = '100%';
         setTimeout(() => {
@@ -541,6 +560,7 @@ function validateFile() {
         console.error('Error:', error);
         alert('Error validating file: ' + error.message);
         document.getElementById('progressBar').classList.add('d-none');
+        updateStepIndicator(1);
     });
 }
 
@@ -556,8 +576,20 @@ function displayValidationResults(data) {
     
     if (data.success) {
         html += '<div class="validation-success">';
-        html += `<i class="bi bi-check-circle"></i> Validation passed! ${data.records_valid} records ready to import.`;
+        html += `<i class="bi bi-check-circle"></i> Validation passed! ${data.row_count || 0} records ready to import.`;
         html += '</div>';
+        
+        // Show warnings if any
+        if (data.warnings && data.warnings.length > 0) {
+            html += '<div class="validation-warning mt-2">';
+            html += '<h6>Warnings:</h6>';
+            html += '<ul class="mb-0">';
+            data.warnings.forEach(warning => {
+                html += `<li>${warning}</li>`;
+            });
+            html += '</ul>';
+            html += '</div>';
+        }
         
         // Enable import button
         document.getElementById('validateBtn').classList.add('d-none');
@@ -565,43 +597,30 @@ function displayValidationResults(data) {
     } else {
         html += '<div class="validation-error">';
         html += '<h6><i class="bi bi-exclamation-circle"></i> Validation Failed</h6>';
-        html += '</div>';
-    }
-    
-    // Show errors
-    if (data.errors && data.errors.length > 0) {
-        html += '<div class="mt-3">';
-        html += '<h6>Errors Found:</h6>';
-        html += '<ul class="list-unstyled">';
-        data.errors.forEach(error => {
-            html += `<li class="validation-error"><i class="bi bi-x-circle"></i> ${error}</li>`;
-        });
-        if (data.total_errors > data.errors.length) {
-            html += `<li class="text-muted">... and ${data.total_errors - data.errors.length} more errors</li>`;
+        if (data.error) {
+            html += `<p>${data.error}</p>`;
         }
-        html += '</ul>';
         html += '</div>';
-    }
-    
-    // Show warnings
-    if (data.warnings && data.warnings.length > 0) {
-        html += '<div class="mt-3">';
-        html += '<h6>Warnings:</h6>';
-        html += '<ul class="list-unstyled">';
-        data.warnings.forEach(warning => {
-            html += `<li class="validation-warning"><i class="bi bi-exclamation-triangle"></i> ${warning}</li>`;
-        });
-        if (data.total_warnings > data.warnings.length) {
-            html += `<li class="text-muted">... and ${data.total_warnings - data.warnings.length} more warnings</li>`;
+        
+        // Show errors
+        if (data.errors && data.errors.length > 0) {
+            html += '<div class="mt-3">';
+            html += '<h6>Errors Found:</h6>';
+            html += '<ul class="list-unstyled">';
+            data.errors.forEach((error, index) => {
+                if (index < 10) {
+                    html += `<li class="validation-error mb-1"><i class="bi bi-x-circle"></i> ${error}</li>`;
+                }
+            });
+            if (data.errors.length > 10) {
+                html += `<li class="text-muted">... and ${data.errors.length - 10} more errors</li>`;
+            }
+            html += '</ul>';
+            html += '</div>';
         }
-        html += '</ul>';
-        html += '</div>';
     }
     
     validationContent.innerHTML = html;
-    
-    // Update error count
-    document.getElementById('validationErrors').textContent = data.total_errors || 0;
 }
 
 function resetValidation() {
@@ -621,6 +640,11 @@ function resetUpload() {
 document.getElementById('uploadForm').addEventListener('submit', function(e) {
     e.preventDefault();
     
+    if (!selectedFileObject) {
+        alert('Please select a file first');
+        return;
+    }
+    
     updateStepIndicator(4);
     
     // Show progress
@@ -628,7 +652,12 @@ document.getElementById('uploadForm').addEventListener('submit', function(e) {
     const progressBar = document.querySelector('.progress-bar');
     progressBar.style.width = '0%';
     
-    const formData = new FormData(this);
+    // Create FormData and manually add the file
+    const formData = new FormData();
+    formData.append('file', selectedFileObject);
+    formData.append('upload_type', document.querySelector('input[name="upload_type"]:checked').value);
+    formData.append('replace_all', document.getElementById('replaceAll').checked ? 'on' : 'off');
+    formData.append('validate_only', document.getElementById('validateOnly').checked ? 'on' : 'off');
     
     // Simulate progress
     let progress = 0;
@@ -640,11 +669,17 @@ document.getElementById('uploadForm').addEventListener('submit', function(e) {
         }
     }, 200);
     
-    fetch(this.action || '{{ url_for("employee_import.upload_employees") }}', {
+    // Submit to the correct endpoint
+    fetch('/upload-employees', {
         method: 'POST',
         body: formData
     })
-    .then(response => response.json())
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.json();
+    })
     .then(data => {
         clearInterval(progressInterval);
         progressBar.style.width = '100%';
@@ -673,18 +708,44 @@ function displayImportResults(data) {
     if (data.success) {
         html += '<div class="alert alert-success">';
         html += '<h6><i class="bi bi-check-circle"></i> Import Successful!</h6>';
-        html += `<p>Successfully imported ${data.records_imported} records.</p>`;
-        if (data.records_updated) {
-            html += `<p>Updated ${data.records_updated} existing records.</p>`;
+        
+        if (data.message) {
+            html += `<p>${data.message}</p>`;
         }
+        
+        if (data.processed) {
+            html += `<p>Total processed: ${data.processed} records</p>`;
+        }
+        
+        if (data.created) {
+            html += `<p>New employees created: ${data.created}</p>`;
+        }
+        
+        if (data.updated) {
+            html += `<p>Existing employees updated: ${data.updated}</p>`;
+        }
+        
+        if (data.credentials_file) {
+            html += `<div class="alert alert-info mt-3">
+                        <i class="bi bi-key"></i> Login credentials have been generated!
+                        <a href="{{ url_for('employee_import.download_credentials', filename='') }}${data.credentials_file}" 
+                           class="btn btn-sm btn-primary float-end">
+                            <i class="bi bi-download"></i> Download Credentials
+                        </a>
+                     </div>`;
+        }
+        
         html += '</div>';
         
         // Hide action buttons
         document.getElementById('actionButtons').style.display = 'none';
+        
+        // Add button to upload more
+        html += '<button class="btn btn-primary" onclick="location.reload()">Upload More Data</button>';
     } else {
         html += '<div class="alert alert-danger">';
         html += '<h6><i class="bi bi-x-circle"></i> Import Failed</h6>';
-        html += `<p>${data.error}</p>`;
+        html += `<p>${data.error || 'An error occurred during import'}</p>`;
         html += '</div>';
     }
     
@@ -692,7 +753,7 @@ function displayImportResults(data) {
 }
 
 // Crew distribution chart
-const crewData = {{ crew_distribution | tojson }};
+const crewData = {{ crew_distribution | tojson if crew_distribution else '{}' }};
 const ctx = document.getElementById('crewChart').getContext('2d');
 new Chart(ctx, {
     type: 'bar',
