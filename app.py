@@ -1,3 +1,4 @@
+# app.py - Updated version with automatic schema management
 from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
 from flask_login import LoginManager, login_required, login_user, logout_user, current_user 
 from flask_migrate import Migrate, stamp
@@ -14,6 +15,14 @@ import os
 from datetime import datetime, timedelta, date
 import random
 from sqlalchemy import and_, func, text
+import logging
+
+# Import the schema manager
+from database_schema_manager import DatabaseSchemaManager
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Create Flask app
 app = Flask(__name__)
@@ -42,147 +51,52 @@ upload_folder = app.config['UPLOAD_FOLDER']
 if not os.path.isabs(upload_folder):
     upload_folder = os.path.join(app.root_path, upload_folder)
 
-# Check if path exists and is a file (not directory)
-if os.path.exists(upload_folder) and os.path.isfile(upload_folder):
-    # If 'upload_files' exists as a file, use a different name
-    print(f"Warning: {upload_folder} exists as a file, using alternative directory")
-    app.config['UPLOAD_FOLDER'] = 'temp_uploads'
-    upload_folder = os.path.join(app.root_path, app.config['UPLOAD_FOLDER'])
-
-# Create the directory if it doesn't exist
-try:
-    if not os.path.exists(upload_folder):
-        os.makedirs(upload_folder, exist_ok=True)
-        print(f"Created upload folder: {upload_folder}")
-    elif not os.path.isdir(upload_folder):
-        # If it exists but is not a directory, try to remove and recreate
+# Check if path exists and is a folder
+if os.path.exists(upload_folder):
+    if not os.path.isdir(upload_folder):
+        # It's a file, not a folder - remove it
         os.remove(upload_folder)
-        os.makedirs(upload_folder, exist_ok=True)
-        print(f"Recreated upload folder: {upload_folder}")
-except Exception as e:
-    print(f"Warning: Could not create upload folder: {e}")
-    # Fall back to using temp directory
-    import tempfile
-    app.config['UPLOAD_FOLDER'] = tempfile.gettempdir()
-    print(f"Using temp directory: {app.config['UPLOAD_FOLDER']}")
+        os.makedirs(upload_folder)
+else:
+    # Create the folder
+    os.makedirs(upload_folder)
 
-# Initialize extensions
+# Initialize database
 db.init_app(app)
 migrate = Migrate(app, db)
 
-login_manager = LoginManager()
-login_manager.init_app(app)
-login_manager.login_view = 'auth.login'
-
-@login_manager.user_loader
-def load_user(user_id):
-    return Employee.query.get(int(user_id))
-
-# NEW FUNCTION: Initialize database with migration fix
-def init_db_with_migration_fix():
-    """Initialize database with migration fix for multiple heads"""
+# AUTOMATIC SCHEMA SYNCHRONIZATION
+def check_and_sync_database():
+    """Automatically check and synchronize database schema on startup"""
     with app.app_context():
         try:
-            # Try to create tables if they don't exist
+            logger.info("🔄 Checking database schema...")
+            
+            # First ensure all tables exist
             db.create_all()
+            logger.info("✅ Base tables created/verified")
             
-            # Check if we need to stamp the database
-            from alembic import command
-            from alembic.config import Config
+            # Then run the schema manager to fix any column mismatches
+            schema_manager = DatabaseSchemaManager(app, db)
+            success = schema_manager.run_full_check()
             
-            # Get alembic config - check if migrations folder exists
-            if os.path.exists('migrations/alembic.ini'):
-                config = Config("migrations/alembic.ini")
+            if success:
+                logger.info("✅ Database schema synchronized successfully")
+            else:
+                logger.error("⚠️  Some schema issues could not be resolved automatically")
                 
-                try:
-                    # Try to get current revision
-                    from alembic.runtime.migration import MigrationContext
-                    from sqlalchemy import create_engine
-                    
-                    engine = create_engine(app.config['SQLALCHEMY_DATABASE_URI'])
-                    conn = engine.connect()
-                    context = MigrationContext.configure(conn)
-                    current_rev = context.get_current_revision()
-                    
-                    if current_rev is None:
-                        # No revision set, stamp with latest
-                        stamp(revision='head')
-                        print("Database stamped with initial revision")
-                        
-                except Exception as e:
-                    print(f"Migration check error: {e}")
-                    # If there's an error, try to stamp anyway
-                    try:
-                        stamp(revision='head')
-                    except:
-                        pass
-                    
         except Exception as e:
-            print(f"Database initialization error: {e}")
+            logger.error(f"❌ Error during schema synchronization: {e}")
+            # Don't crash the app, just log the error
+            
+# Run schema check before first request
+@app.before_first_request
+def initialize_database():
+    """Initialize database and check schema before handling any requests"""
+    check_and_sync_database()
 
-# Initialize the database with migration fix
+# Alternative: Run on startup (for newer Flask versions)
 with app.app_context():
-    init_db_with_migration_fix()
-
-# Import and register blueprints from the blueprints folder
-# IMPORT MAIN BLUEPRINT FIRST
-try:
-    from blueprints.main import main_bp
-    app.register_blueprint(main_bp)
-    print("Successfully imported main blueprint")
-except ImportError as e:
-    print(f"Warning: Could not import main blueprint: {e}")
-
-# IMPORT AUTH BLUEPRINT
-try:
-    from blueprints.auth import auth_bp
-    app.register_blueprint(auth_bp)
-    print("Successfully imported auth blueprint")
-except ImportError as e:
-    print(f"Warning: Could not import auth blueprint: {e}")
-    # If auth blueprint doesn't exist, set login view to the fallback
-    login_manager.login_view = 'login'
-
-try:
-    from blueprints.supervisor import supervisor_bp
-    app.register_blueprint(supervisor_bp)
-    print("Successfully imported supervisor blueprint")
-except ImportError as e:
-    print(f"Warning: Could not import supervisor blueprint: {e}")
-
-try:
-    from blueprints.employee import employee_bp
-    app.register_blueprint(employee_bp)
-    print("Successfully imported employee blueprint")
-except ImportError as e:
-    print(f"Warning: Could not import employee blueprint: {e}")
-
-try:
-    from blueprints.schedule import schedule_bp
-    app.register_blueprint(schedule_bp, url_prefix='/schedule')
-    print("Successfully imported schedule blueprint")
-except ImportError as e:
-    print(f"Warning: Could not import schedule blueprint: {e}")
-
-try:
-    from blueprints.employee_import import employee_import_bp
-    app.register_blueprint(employee_import_bp)
-    print("Successfully imported employee_import blueprint")
-except ImportError as e:
-    print(f"Warning: Could not import employee_import blueprint: {e}")
-
-# IMPORT OVERTIME BLUEPRINT
-try:
-    from blueprints.overtime import overtime_bp
-    app.register_blueprint(overtime_bp)
-    print("Successfully imported overtime blueprint")
-except ImportError as e:
-    print(f"Warning: Could not import overtime blueprint: {e}")
-
-# IMPORT NEW STAFFING API BLUEPRINT
-try:
-    from blueprints.staffing_api import staffing_api_bp
-    app.register_blueprint(staffing_api_bp)
-    print("Successfully imported staffing API blueprint")
-except ImportError as e:
-    print(f"Warning: Could not import staffing API blueprint: {e}")
+    # Only run if not in a migration context
+    if not os.environ.get('FLASK_MIGRATE'):
+        check_and_sync_database()
