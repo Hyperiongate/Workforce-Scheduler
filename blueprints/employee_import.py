@@ -9,7 +9,7 @@ from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 from models import db, Employee, Position, Skill, OvertimeHistory, FileUpload
 from datetime import datetime, date, timedelta
-from sqlalchemy import func
+from sqlalchemy import func, or_
 import pandas as pd
 import os
 import io
@@ -45,7 +45,7 @@ def generate_temp_password():
 @employee_import_bp.route('/upload-employees', methods=['GET', 'POST'])
 @login_required
 def upload_employees():
-    """Main employee upload page"""
+    """Main employee upload page with enhanced UI"""
     if not current_user.is_supervisor:
         flash('Only supervisors can upload employee data', 'danger')
         return redirect(url_for('main.employee_dashboard'))
@@ -112,18 +112,41 @@ def upload_employees():
         else:
             flash('Invalid file type. Please upload an Excel file (.xlsx or .xls)', 'danger')
     
-    # Get recent uploads
+    # Get all required data for template
     recent_uploads = FileUpload.query.order_by(FileUpload.upload_date.desc()).limit(10).all()
     
-    # Get statistics
+    # Get employee statistics
+    total_employees = Employee.query.count()
+    active_employees = Employee.query.filter_by(is_active=True).count()
+    
+    # Count employees without accounts (no username)
+    employees_without_accounts = Employee.query.filter(
+        or_(Employee.username == None, Employee.username == '')
+    ).count()
+    
+    # Get crew distribution
+    crew_counts = db.session.query(
+        Employee.crew, func.count(Employee.id)
+    ).filter(Employee.is_active == True).group_by(Employee.crew).all()
+    
+    crew_distribution = {}
+    for crew, count in crew_counts:
+        crew_distribution[crew if crew else 'Unassigned'] = count
+    
+    # Ensure all crews are represented
+    for crew in ['A', 'B', 'C', 'D']:
+        if crew not in crew_distribution:
+            crew_distribution[crew] = 0
+    
+    # Calculate additional stats
     stats = {
-        'total_employees': Employee.query.count(),
-        'active_employees': Employee.query.filter_by(is_active=True).count(),
+        'total_employees': total_employees,
+        'active_employees': active_employees,
         'crews': {
-            'A': Employee.query.filter_by(crew='A', is_active=True).count(),
-            'B': Employee.query.filter_by(crew='B', is_active=True).count(),
-            'C': Employee.query.filter_by(crew='C', is_active=True).count(),
-            'D': Employee.query.filter_by(crew='D', is_active=True).count(),
+            'A': crew_distribution.get('A', 0),
+            'B': crew_distribution.get('B', 0),
+            'C': crew_distribution.get('C', 0),
+            'D': crew_distribution.get('D', 0),
         },
         'missing_overtime': Employee.query.filter(
             ~Employee.id.in_(
@@ -132,9 +155,16 @@ def upload_employees():
         ).count()
     }
     
+    # Check if we can create accounts
+    ACCOUNT_CREATION_AVAILABLE = True  # Set based on your logic
+    
     return render_template('upload_employees_enhanced.html', 
                          recent_uploads=recent_uploads,
-                         stats=stats)
+                         stats=stats,
+                         total_employees=total_employees,
+                         employees_without_accounts=employees_without_accounts,
+                         crew_distribution=crew_distribution,
+                         account_creation_available=ACCOUNT_CREATION_AVAILABLE)
 
 @employee_import_bp.route('/upload-overtime', methods=['GET', 'POST'])
 @login_required
@@ -178,15 +208,19 @@ def upload_overtime():
                 if os.path.exists(filepath):
                     os.remove(filepath)
     
-    # Get statistics
-    stats = {
-        'total_employees': Employee.query.count(),
-        'employees_with_ot': db.session.query(OvertimeHistory.employee_id).distinct().count(),
-        'total_ot_hours': db.session.query(func.sum(OvertimeHistory.hours_worked)).scalar() or 0,
-        'avg_ot_hours': db.session.query(func.avg(OvertimeHistory.hours_worked)).scalar() or 0
-    }
+    # Get statistics - matching what template expects
+    total_ot_hours = db.session.query(func.sum(OvertimeHistory.hours_worked)).scalar() or 0
+    employees_with_ot = db.session.query(OvertimeHistory.employee_id).distinct().count()
     
-    return render_template('upload_overtime.html', stats=stats)
+    # Get recent uploads for overtime type
+    recent_uploads = FileUpload.query.filter_by(file_type='overtime').order_by(
+        FileUpload.upload_date.desc()
+    ).limit(5).all()
+    
+    return render_template('upload_overtime.html', 
+                         total_ot_hours=total_ot_hours,
+                         employees_with_ot=employees_with_ot,
+                         recent_uploads=recent_uploads)
 
 @employee_import_bp.route('/upload-history')
 @login_required
@@ -196,11 +230,26 @@ def upload_history():
         flash('Only supervisors can view upload history', 'danger')
         return redirect(url_for('main.employee_dashboard'))
     
-    # Get all uploads with pagination
-    page = request.args.get('page', 1, type=int)
-    uploads = FileUpload.query.order_by(FileUpload.upload_date.desc()).paginate(
-        page=page, per_page=20, error_out=False
-    )
+    # Get filter parameters
+    file_type = request.args.get('type')
+    status = request.args.get('status')
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    
+    # Build query
+    query = FileUpload.query
+    
+    if file_type:
+        query = query.filter_by(file_type=file_type)
+    if status:
+        query = query.filter_by(status=status)
+    if start_date:
+        query = query.filter(FileUpload.upload_date >= datetime.strptime(start_date, '%Y-%m-%d'))
+    if end_date:
+        query = query.filter(FileUpload.upload_date <= datetime.strptime(end_date, '%Y-%m-%d'))
+    
+    # Order by date and get all uploads
+    uploads = query.order_by(FileUpload.upload_date.desc()).all()
     
     return render_template('upload_history.html', uploads=uploads)
 
@@ -778,6 +827,26 @@ def delete_upload(upload_id):
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
+
+@employee_import_bp.route('/download-upload-file/<int:upload_id>')
+@login_required
+def download_upload_file(upload_id):
+    """Download original uploaded file"""
+    if not current_user.is_supervisor:
+        flash('Access denied', 'danger')
+        return redirect(url_for('main.employee_dashboard'))
+    
+    upload = FileUpload.query.get_or_404(upload_id)
+    
+    # Check if file still exists
+    upload_folder = current_app.config.get('UPLOAD_FOLDER', 'upload_files')
+    filepath = os.path.join(upload_folder, upload.filename)
+    
+    if not os.path.exists(filepath):
+        flash('Original file no longer exists', 'warning')
+        return redirect(url_for('employee_import.upload_history'))
+    
+    return send_file(filepath, as_attachment=True, download_name=upload.filename)
 
 # Error handler
 @employee_import_bp.errorhandler(404)
