@@ -419,7 +419,7 @@
                         <p>View real-time shortages</p>
                     </div>
                 </a>
-                <a href="{{ url_for('schedule.view_schedule') }}" class="action-card">
+                <a href="{{ url_for('schedule.view_schedules') }}" class="action-card">
                     <i class="bi bi-calendar-week" style="color: #00b09b;"></i>
                     <div class="action-content">
                         <h4>View Schedule</h4>
@@ -457,14 +457,14 @@
                         <p>{{ pending_swaps }} pending approval</p>
                     </div>
                 </a>
-                <a href="{{ url_for('employee.shift_marketplace') }}" class="action-card">
+                <a href="/shift-marketplace" class="action-card">
                     <i class="bi bi-shop" style="color: #667eea;"></i>
                     <div class="action-content">
                         <h4>Shift Marketplace</h4>
                         <p>Monitor shift trading</p>
                     </div>
                 </a>
-                <a href="{{ url_for('supervisor.suggestions') }}" class="action-card">
+                <a href="/supervisor/suggestions" class="action-card">
                     <i class="bi bi-lightbulb" style="color: #96c93d;"></i>
                     <div class="action-content">
                         <h4>Employee Suggestions</h4>
