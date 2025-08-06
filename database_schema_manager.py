@@ -1,310 +1,193 @@
-# database_schema_manager.py
-"""
-Comprehensive Database Schema Management System
-This module handles all database schema synchronization automatically
-"""
+-- Complete Database Fix for vacation_calendar table
+-- This script includes full validation and error handling
 
-import os
-import sys
-from datetime import datetime
-from flask import Flask
-from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import text, inspect, MetaData
-from sqlalchemy.exc import ProgrammingError, OperationalError
-import logging
+-- Step 1: Create a transaction for safety
+BEGIN;
 
-# Set up logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+-- Step 2: Check if the table exists
+DO $$ 
+DECLARE
+    table_exists boolean;
+    column_exists boolean;
+BEGIN
+    -- Check if vacation_calendar table exists
+    SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_schema = 'public' 
+        AND table_name = 'vacation_calendar'
+    ) INTO table_exists;
+    
+    IF NOT table_exists THEN
+        RAISE NOTICE 'Table vacation_calendar does not exist. Creating it...';
+        
+        -- Create the table if it doesn't exist
+        CREATE TABLE vacation_calendar (
+            id SERIAL PRIMARY KEY,
+            employee_id INTEGER NOT NULL,
+            date DATE NOT NULL,
+            shift_type VARCHAR(20),
+            reason VARCHAR(50),
+            status VARCHAR(20) DEFAULT 'approved',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            CONSTRAINT fk_employee 
+                FOREIGN KEY(employee_id) 
+                REFERENCES employee(id) 
+                ON DELETE CASCADE
+        );
+        
+        -- Create indexes
+        CREATE INDEX idx_vacation_calendar_employee_date 
+            ON vacation_calendar(employee_id, date);
+        CREATE INDEX idx_vacation_calendar_date 
+            ON vacation_calendar(date);
+        CREATE INDEX idx_vacation_calendar_status 
+            ON vacation_calendar(status);
+            
+        RAISE NOTICE 'Table vacation_calendar created successfully';
+    ELSE
+        -- Table exists, check if status column exists
+        SELECT EXISTS (
+            SELECT FROM information_schema.columns 
+            WHERE table_name = 'vacation_calendar' 
+            AND column_name = 'status'
+        ) INTO column_exists;
+        
+        IF NOT column_exists THEN
+            RAISE NOTICE 'Adding status column to vacation_calendar table...';
+            
+            -- Add the status column
+            ALTER TABLE vacation_calendar 
+            ADD COLUMN status VARCHAR(20) DEFAULT 'approved';
+            
+            -- Update any existing records
+            UPDATE vacation_calendar 
+            SET status = 'approved' 
+            WHERE status IS NULL;
+            
+            -- Add index on status
+            CREATE INDEX IF NOT EXISTS idx_vacation_calendar_status 
+                ON vacation_calendar(status);
+            
+            RAISE NOTICE 'Column status added successfully';
+        ELSE
+            RAISE NOTICE 'Column status already exists';
+            
+            -- Ensure default value is set
+            ALTER TABLE vacation_calendar 
+            ALTER COLUMN status SET DEFAULT 'approved';
+            
+            -- Update any NULL values
+            UPDATE vacation_calendar 
+            SET status = 'approved' 
+            WHERE status IS NULL;
+        END IF;
+    END IF;
+    
+    -- Add check constraint if it doesn't exist
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints 
+        WHERE constraint_name = 'chk_vacation_status'
+    ) THEN
+        ALTER TABLE vacation_calendar 
+        ADD CONSTRAINT chk_vacation_status 
+        CHECK (status IN ('pending', 'approved', 'denied', 'cancelled'));
+        
+        RAISE NOTICE 'Check constraint added successfully';
+    END IF;
+    
+END $$;
 
-class DatabaseSchemaManager:
-    """Manages database schema synchronization and migrations"""
-    
-    def __init__(self, app, db):
-        self.app = app
-        self.db = db
-        self.issues_found = []
-        self.fixes_applied = []
-        
-    def get_column_definition(self, column_name, column_type):
-        """Generate SQL column definition based on column name and type"""
-        definitions = {
-            # String columns
-            'email': "VARCHAR(120) UNIQUE",
-            'name': "VARCHAR(100)",
-            'employee_id': "VARCHAR(50) UNIQUE",
-            'username': "VARCHAR(50) UNIQUE",
-            'password_hash': "VARCHAR(255)",
-            'phone': "VARCHAR(20)",
-            'crew': "VARCHAR(1)",
-            'department': "VARCHAR(100)",
-            'shift_pattern': "VARCHAR(50)",
-            'reset_token': "VARCHAR(100)",
-            'default_shift': "VARCHAR(20) DEFAULT 'day'",
-            
-            # Boolean columns
-            'is_supervisor': "BOOLEAN DEFAULT FALSE",
-            'must_change_password': "BOOLEAN DEFAULT TRUE",
-            'first_login': "BOOLEAN DEFAULT TRUE",
-            'account_active': "BOOLEAN DEFAULT TRUE",
-            'is_on_call': "BOOLEAN DEFAULT FALSE",
-            'is_active': "BOOLEAN DEFAULT TRUE",
-            
-            # Date columns
-            'hire_date': "DATE",
-            'seniority_date': "DATE",
-            
-            # Datetime columns
-            'account_created_date': "TIMESTAMP",
-            'last_password_change': "TIMESTAMP",
-            'last_login': "TIMESTAMP",
-            'locked_until': "TIMESTAMP",
-            'reset_token_expires': "TIMESTAMP",
-            
-            # Integer columns
-            'position_id': "INTEGER",
-            'login_attempts': "INTEGER DEFAULT 0",
-            'max_consecutive_days': "INTEGER DEFAULT 14",
-            
-            # Float columns
-            'vacation_days': "FLOAT DEFAULT 10.0",
-            'sick_days': "FLOAT DEFAULT 5.0",
-            'personal_days': "FLOAT DEFAULT 3.0",
-        }
-        
-        return definitions.get(column_name, "VARCHAR(255)")
-    
-    def get_model_columns(self, model_class):
-        """Extract column information from SQLAlchemy model"""
-        columns = {}
-        for column in model_class.__table__.columns:
-            columns[column.name] = {
-                'type': str(column.type),
-                'nullable': column.nullable,
-                'default': column.default,
-                'unique': column.unique,
-                'primary_key': column.primary_key
-            }
-        return columns
-    
-    def check_table_exists(self, table_name):
-        """Check if a table exists in the database"""
-        try:
-            result = self.db.session.execute(text(f"""
-                SELECT EXISTS (
-                    SELECT FROM information_schema.tables 
-                    WHERE table_schema = 'public' 
-                    AND table_name = '{table_name}'
-                )
-            """))
-            return result.scalar()
-        except Exception:
-            return False
-    
-    def get_database_columns(self, table_name):
-        """Get current columns from database"""
-        try:
-            inspector = inspect(self.db.engine)
-            columns = {}
-            for col in inspector.get_columns(table_name):
-                columns[col['name']] = {
-                    'type': str(col['type']),
-                    'nullable': col['nullable'],
-                    'default': col['default']
-                }
-            return columns
-        except Exception as e:
-            logger.error(f"Error getting columns for {table_name}: {e}")
-            return {}
-    
-    def fix_employee_table(self):
-        """Specifically fix the employee table schema"""
-        logger.info("🔧 Checking employee table schema...")
-        
-        if not self.check_table_exists('employee'):
-            logger.error("❌ Employee table does not exist!")
-            return False
-        
-        # Get current database columns
-        db_columns = self.get_database_columns('employee')
-        
-        # Define all expected columns for employee table
-        expected_columns = {
-            'id': 'INTEGER PRIMARY KEY',
-            'employee_id': 'VARCHAR(50) UNIQUE',
-            'email': 'VARCHAR(120) UNIQUE',
-            'name': 'VARCHAR(100)',
-            'password_hash': 'VARCHAR(255)',
-            'is_supervisor': 'BOOLEAN DEFAULT FALSE',
-            'position_id': 'INTEGER',
-            'department': 'VARCHAR(100)',
-            'hire_date': 'DATE',
-            'phone': 'VARCHAR(20)',
-            'crew': 'VARCHAR(1)',
-            'shift_pattern': 'VARCHAR(50)',
-            'seniority_date': 'DATE',
-            'username': 'VARCHAR(50) UNIQUE',
-            'must_change_password': 'BOOLEAN DEFAULT TRUE',
-            'first_login': 'BOOLEAN DEFAULT TRUE',
-            'account_active': 'BOOLEAN DEFAULT TRUE',
-            'account_created_date': 'TIMESTAMP',
-            'last_password_change': 'TIMESTAMP',
-            'last_login': 'TIMESTAMP',
-            'login_attempts': 'INTEGER DEFAULT 0',
-            'locked_until': 'TIMESTAMP',
-            'reset_token': 'VARCHAR(100)',
-            'reset_token_expires': 'TIMESTAMP',
-            'default_shift': 'VARCHAR(20) DEFAULT \'day\'',
-            'max_consecutive_days': 'INTEGER DEFAULT 14',
-            'is_on_call': 'BOOLEAN DEFAULT FALSE',
-            'is_active': 'BOOLEAN DEFAULT TRUE',
-            'vacation_days': 'FLOAT DEFAULT 10.0',
-            'sick_days': 'FLOAT DEFAULT 5.0',
-            'personal_days': 'FLOAT DEFAULT 3.0'
-        }
-        
-        # Find missing columns
-        missing_columns = set(expected_columns.keys()) - set(db_columns.keys())
-        
-        if missing_columns:
-            logger.info(f"❌ Found {len(missing_columns)} missing columns: {missing_columns}")
-            
-            for column in missing_columns:
-                try:
-                    column_def = self.get_column_definition(column, expected_columns[column])
-                    
-                    # Add the column
-                    logger.info(f"Adding column: {column}")
-                    self.db.session.execute(text(f"ALTER TABLE employee ADD COLUMN {column} {column_def}"))
-                    
-                    # Handle special cases
-                    if column == 'seniority_date':
-                        self.db.session.execute(text("UPDATE employee SET seniority_date = hire_date WHERE seniority_date IS NULL"))
-                    elif column == 'username':
-                        self.db.session.execute(text("UPDATE employee SET username = SPLIT_PART(email, '@', 1) WHERE username IS NULL"))
-                    elif column == 'account_created_date':
-                        self.db.session.execute(text("UPDATE employee SET account_created_date = CURRENT_TIMESTAMP WHERE account_created_date IS NULL"))
-                    
-                    self.fixes_applied.append(f"Added column {column} to employee table")
-                    logger.info(f"✅ Successfully added column: {column}")
-                    
-                except Exception as e:
-                    logger.error(f"❌ Failed to add column {column}: {e}")
-                    self.issues_found.append(f"Could not add column {column}: {str(e)}")
-            
-            try:
-                self.db.session.commit()
-                logger.info("✅ All changes committed successfully")
-            except Exception as e:
-                self.db.session.rollback()
-                logger.error(f"❌ Failed to commit changes: {e}")
-                return False
-        else:
-            logger.info("✅ No missing columns in employee table")
-        
-        return True
-    
-    def fix_all_tables(self):
-        """Check and fix all tables in the database"""
-        tables_to_check = [
-            'employee', 'position', 'skill', 'schedule', 'availability',
-            'time_off_requests', 'shift_swap_requests', 'coverage_requests',
-            'overtime_history', 'schedule_suggestions', 'vacation_calendar',
-            'overtime_opportunities', 'overtime_responses', 'coverage_gaps',
-            'employee_skills_new', 'fatigue_tracking', 'mandatory_overtime_logs',
-            'shift_patterns', 'coverage_notification_responses', 'file_uploads'
-        ]
-        
-        for table in tables_to_check:
-            if self.check_table_exists(table):
-                logger.info(f"✅ Table {table} exists")
-            else:
-                logger.warning(f"⚠️  Table {table} does not exist")
-                self.issues_found.append(f"Table {table} is missing")
-    
-    def create_indexes(self):
-        """Create missing indexes for better performance"""
-        indexes = [
-            ("idx_employee_email", "employee", "email"),
-            ("idx_employee_username", "employee", "username"),
-            ("idx_employee_crew", "employee", "crew"),
-            ("idx_schedule_date_crew", "schedule", "date, crew"),
-            ("idx_schedule_employee_date", "schedule", "employee_id, date"),
-        ]
-        
-        for index_name, table_name, columns in indexes:
-            try:
-                self.db.session.execute(text(f"CREATE INDEX IF NOT EXISTS {index_name} ON {table_name} ({columns})"))
-                self.fixes_applied.append(f"Created index {index_name}")
-            except Exception as e:
-                logger.warning(f"Could not create index {index_name}: {e}")
-    
-    def run_full_check(self):
-        """Run complete database schema check and fix"""
-        logger.info("="*60)
-        logger.info("🔍 Starting comprehensive database schema check...")
-        logger.info("="*60)
-        
-        with self.app.app_context():
-            # First, fix the employee table (most critical)
-            success = self.fix_employee_table()
-            
-            if success:
-                # Check other tables
-                self.fix_all_tables()
-                
-                # Create indexes
-                self.create_indexes()
-                
-                # Generate report
-                logger.info("\n" + "="*60)
-                logger.info("📊 SCHEMA CHECK COMPLETE")
-                logger.info("="*60)
-                
-                if self.fixes_applied:
-                    logger.info(f"\n✅ Fixes Applied ({len(self.fixes_applied)}):")
-                    for fix in self.fixes_applied:
-                        logger.info(f"  - {fix}")
-                
-                if self.issues_found:
-                    logger.info(f"\n⚠️  Issues Found ({len(self.issues_found)}):")
-                    for issue in self.issues_found:
-                        logger.info(f"  - {issue}")
-                else:
-                    logger.info("\n✅ No issues found - database schema is correct!")
-                
-                logger.info("\n" + "="*60)
-                
-                return True
-            else:
-                logger.error("❌ Failed to fix employee table schema")
-                return False
+-- Step 3: Verify the changes
+SELECT 
+    column_name,
+    data_type,
+    character_maximum_length,
+    column_default,
+    is_nullable
+FROM information_schema.columns
+WHERE table_name = 'vacation_calendar'
+ORDER BY ordinal_position;
 
+-- Step 4: Show sample data
+SELECT 
+    COUNT(*) as total_records,
+    COUNT(DISTINCT status) as unique_statuses,
+    status,
+    COUNT(*) as count_per_status
+FROM vacation_calendar
+GROUP BY status
+ORDER BY count_per_status DESC;
 
-def init_schema_manager(app, db):
-    """Initialize schema manager and run checks"""
-    manager = DatabaseSchemaManager(app, db)
-    return manager.run_full_check()
+-- Step 5: Commit the transaction
+COMMIT;
 
+-- Step 6: Create a helper function for coverage gap calculations
+CREATE OR REPLACE FUNCTION get_coverage_gaps(
+    p_start_date DATE,
+    p_end_date DATE,
+    p_crew VARCHAR(1) DEFAULT NULL
+)
+RETURNS TABLE (
+    gap_date DATE,
+    crew VARCHAR(1),
+    employees_scheduled INTEGER,
+    employees_on_leave INTEGER,
+    coverage_percentage NUMERIC
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        d.date_value as gap_date,
+        c.crew_value as crew,
+        COALESCE(s.scheduled_count, 0) as employees_scheduled,
+        COALESCE(v.leave_count, 0) as employees_on_leave,
+        CASE 
+            WHEN COALESCE(s.scheduled_count, 0) = 0 THEN 0
+            ELSE ROUND(
+                (COALESCE(s.scheduled_count, 0) - COALESCE(v.leave_count, 0))::NUMERIC / 
+                COALESCE(s.scheduled_count, 0) * 100, 2
+            )
+        END as coverage_percentage
+    FROM 
+        generate_series(p_start_date, p_end_date, '1 day'::interval) d(date_value)
+    CROSS JOIN 
+        (SELECT unnest(ARRAY['A', 'B', 'C', 'D']) as crew_value) c
+    LEFT JOIN (
+        SELECT 
+            date, 
+            crew, 
+            COUNT(*) as scheduled_count
+        FROM schedule
+        WHERE date BETWEEN p_start_date AND p_end_date
+        GROUP BY date, crew
+    ) s ON d.date_value = s.date AND c.crew_value = s.crew
+    LEFT JOIN (
+        SELECT 
+            vc.date, 
+            e.crew,
+            COUNT(*) as leave_count
+        FROM vacation_calendar vc
+        JOIN employee e ON vc.employee_id = e.id
+        WHERE vc.date BETWEEN p_start_date AND p_end_date
+        AND vc.status = 'approved'
+        GROUP BY vc.date, e.crew
+    ) v ON d.date_value = v.date AND c.crew_value = v.crew
+    WHERE (p_crew IS NULL OR c.crew_value = p_crew)
+    ORDER BY d.date_value, c.crew_value;
+END;
+$$ LANGUAGE plpgsql;
 
-# Standalone script functionality
-if __name__ == '__main__':
-    # This allows running the script directly
-    from flask import Flask
-    from flask_sqlalchemy import SQLAlchemy
-    
-    app = Flask(__name__)
-    
-    # Database configuration
-    database_url = os.environ.get('DATABASE_URL')
-    if database_url and database_url.startswith('postgres://'):
-        database_url = database_url.replace('postgres://', 'postgresql://', 1)
-    
-    app.config['SQLALCHEMY_DATABASE_URI'] = database_url
-    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-    
-    db = SQLAlchemy(app)
-    
-    # Run the schema check
-    manager = DatabaseSchemaManager(app, db)
-    manager.run_full_check()
+-- Step 7: Grant permissions (skip if user has all privileges)
+-- Note: Replace 'your_app_user' with your actual database user
+-- Or comment out these lines if your user already has full access
+-- GRANT SELECT, INSERT, UPDATE, DELETE ON vacation_calendar TO your_app_user;
+-- GRANT USAGE ON SEQUENCE vacation_calendar_id_seq TO your_app_user;
+
+-- Final verification output
+SELECT 
+    'Database fix completed successfully!' as message,
+    (SELECT COUNT(*) FROM vacation_calendar) as total_vacation_records,
+    (SELECT COUNT(DISTINCT status) FROM vacation_calendar) as distinct_statuses;
+
+-- ROLLBACK; -- Uncomment this line if you want to test without committing
