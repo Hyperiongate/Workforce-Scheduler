@@ -1,6 +1,45 @@
-# blueprints/supervisor.py - COMPLETE Employee Management Section
-# This is the complete code for the employee management functionality
-# Replace the entire employee management section in your supervisor.py with this
+# blueprints/supervisor.py - COMPLETE FILE WITH BLUEPRINT DEFINITION
+"""
+Supervisor blueprint - Complete implementation
+Handles all supervisor-specific functionality
+"""
+
+from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, send_file
+from flask_login import login_required, current_user
+from datetime import date, timedelta, datetime
+from sqlalchemy import or_, func, case, and_
+import pandas as pd
+import io
+from werkzeug.utils import secure_filename
+import os
+
+# Import all required models
+from models import (
+    db, Employee, Schedule, VacationCalendar, Position, Skill, 
+    TimeOffRequest, ShiftSwapRequest, CircadianProfile, CoverageNotification, 
+    OvertimeHistory, SleepLog, PositionMessage, MessageReadReceipt, 
+    MaintenanceIssue, ShiftTradePost, ShiftTradeProposal, ShiftTrade,
+    FileUpload, Availability, CoverageRequest, OvertimeOpportunity,
+    CoverageGap, ScheduleSuggestion, CrewCoverageRequirement
+)
+
+# CREATE THE BLUEPRINT - THIS WAS MISSING!
+supervisor_bp = Blueprint('supervisor', __name__)
+
+# Helper decorator for supervisor-only routes
+def supervisor_required(f):
+    """Decorator to require supervisor access"""
+    from functools import wraps
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated:
+            flash('Please log in to access this page.', 'warning')
+            return redirect(url_for('auth.login'))
+        if not current_user.is_supervisor:
+            flash('You must be a supervisor to access this page.', 'danger')
+            return redirect(url_for('main.employee_dashboard'))
+        return f(*args, **kwargs)
+    return decorated_function
 
 # ========== EMPLOYEE MANAGEMENT ROUTES ==========
 
@@ -111,9 +150,9 @@ def upload_employees():
                         email=row['Email'],
                         crew=row['Crew'] if row['Crew'] in ['A', 'B', 'C', 'D'] else None,
                         is_supervisor=False,
-                        vacation_days=0,
-                        sick_days=0,
-                        personal_days=0
+                        vacation_days=10,
+                        sick_days=5,
+                        personal_days=3
                     )
                     
                     # Set position if it exists
@@ -149,6 +188,18 @@ def upload_employees():
         flash(f'Error processing file: {str(e)}', 'danger')
     
     return redirect(url_for('supervisor.employee_management'))
+
+@supervisor_bp.route('/employees/crew-management')
+@login_required
+@supervisor_required
+def crew_management():
+    """Interactive crew management interface"""
+    employees = Employee.query.filter(Employee.id != current_user.id).order_by(Employee.crew, Employee.name).all()
+    positions = Position.query.order_by(Position.name).all()
+    
+    return render_template('crew_management.html',
+                         employees=employees,
+                         positions=positions)
 
 @supervisor_bp.route('/employees/edit/<int:employee_id>', methods=['GET', 'POST'])
 @login_required
@@ -191,36 +242,141 @@ def edit_employee(employee_id):
                          employee=employee, 
                          positions=positions)
 
-@supervisor_bp.route('/employees/delete/<int:employee_id>', methods=['POST'])
+# ========== COVERAGE NEEDS ROUTES ==========
+
+@supervisor_bp.route('/supervisor/coverage-needs')
 @login_required
 @supervisor_required
-def delete_employee(employee_id):
-    """Delete/deactivate an employee"""
+def coverage_needs():
+    """View and manage coverage needs"""
     try:
-        employee = Employee.query.get_or_404(employee_id)
+        # Get all positions
+        positions = Position.query.order_by(Position.name).all()
         
-        # Don't allow deleting yourself
-        if employee.id == current_user.id:
-            flash('You cannot delete your own account', 'danger')
-            return redirect(url_for('supervisor.employee_management'))
+        # Get current coverage requirements
+        requirements = {}
+        for position in positions:
+            reqs = CrewCoverageRequirement.query.filter_by(position_id=position.id).all()
+            requirements[position.id] = {req.crew: req.minimum_required for req in reqs}
         
-        # Instead of hard delete, mark as inactive (if column exists)
-        # Otherwise, delete the employee
-        try:
-            employee.is_active = False
-            db.session.commit()
-            flash(f'Successfully deactivated {employee.name}', 'success')
-        except AttributeError:
-            # is_active doesn't exist, do hard delete
-            db.session.delete(employee)
-            db.session.commit()
-            flash(f'Successfully deleted {employee.name}', 'success')
-            
+        # Calculate current staffing
+        current_staffing = {}
+        for crew in ['A', 'B', 'C', 'D']:
+            current_staffing[crew] = {}
+            for position in positions:
+                count = Employee.query.filter_by(
+                    crew=crew,
+                    position_id=position.id
+                ).count()
+                current_staffing[crew][position.id] = count
+        
+        return render_template('coverage_needs.html',
+                             positions=positions,
+                             requirements=requirements,
+                             current_staffing=current_staffing)
+                             
+    except Exception as e:
+        flash(f'Error loading coverage needs: {str(e)}', 'danger')
+        return redirect(url_for('main.dashboard'))
+
+@supervisor_bp.route('/api/coverage-needs', methods=['POST'])
+@login_required
+@supervisor_required
+def update_coverage_needs():
+    """Update coverage requirements via API"""
+    try:
+        data = request.get_json()
+        
+        for position_id, crews in data.items():
+            for crew, minimum in crews.items():
+                # Find or create requirement
+                req = CrewCoverageRequirement.query.filter_by(
+                    position_id=int(position_id),
+                    crew=crew
+                ).first()
+                
+                if req:
+                    req.minimum_required = int(minimum)
+                else:
+                    req = CrewCoverageRequirement(
+                        position_id=int(position_id),
+                        crew=crew,
+                        minimum_required=int(minimum)
+                    )
+                    db.session.add(req)
+        
+        db.session.commit()
+        return jsonify({'success': True, 'message': 'Coverage requirements updated'})
+        
     except Exception as e:
         db.session.rollback()
-        flash(f'Error deleting employee: {str(e)}', 'danger')
+        return jsonify({'success': False, 'error': str(e)}), 400
+
+# ========== TIME OFF MANAGEMENT ROUTES ==========
+
+@supervisor_bp.route('/supervisor/time-off-requests')
+@login_required
+@supervisor_required
+def time_off_requests():
+    """View and manage time off requests"""
+    # Get pending requests
+    pending_requests = TimeOffRequest.query.filter_by(status='pending').order_by(TimeOffRequest.created_at.desc()).all()
     
-    return redirect(url_for('supervisor.employee_management'))
+    # Get recent approved/denied requests
+    recent_requests = TimeOffRequest.query.filter(
+        TimeOffRequest.status.in_(['approved', 'denied'])
+    ).order_by(TimeOffRequest.created_at.desc()).limit(20).all()
+    
+    return render_template('time_off_requests.html',
+                         pending_requests=pending_requests,
+                         recent_requests=recent_requests)
+
+@supervisor_bp.route('/supervisor/approve-time-off/<int:request_id>', methods=['POST'])
+@login_required
+@supervisor_required
+def approve_time_off(request_id):
+    """Approve a time off request"""
+    time_off = TimeOffRequest.query.get_or_404(request_id)
+    
+    try:
+        # Update request status
+        time_off.status = 'approved'
+        time_off.approved_by = current_user.id
+        time_off.approved_date = datetime.now()
+        
+        # Deduct from employee balance
+        employee = time_off.employee
+        days_requested = time_off.days_requested or 1
+        
+        if time_off.request_type == 'vacation':
+            employee.vacation_days -= days_requested
+        elif time_off.request_type == 'sick':
+            employee.sick_days -= days_requested
+        elif time_off.request_type == 'personal':
+            employee.personal_days -= days_requested
+        
+        # Add to vacation calendar
+        current_date = time_off.start_date
+        while current_date <= time_off.end_date:
+            calendar_entry = VacationCalendar(
+                employee_id=employee.id,
+                date=current_date,
+                reason=time_off.request_type,
+                status='approved'
+            )
+            db.session.add(calendar_entry)
+            current_date += timedelta(days=1)
+        
+        db.session.commit()
+        flash(f'Time off request approved for {employee.name}', 'success')
+        
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error approving request: {str(e)}', 'danger')
+    
+    return redirect(url_for('supervisor.time_off_requests'))
+
+# ========== DOWNLOAD TEMPLATE ROUTES ==========
 
 @supervisor_bp.route('/employees/download-template')
 @login_required
@@ -363,6 +519,20 @@ def export_current_employees():
         flash(f'Error exporting employees: {str(e)}', 'danger')
         return redirect(url_for('supervisor.employee_management'))
 
-# VERIFICATION: Check all routes reference the correct template
-# All redirects go to supervisor.employee_management
-# Template name is employee_management.html (not employee_management_new.html)
+# ========== API ROUTES ==========
+
+@supervisor_bp.route('/api/employee/<int:employee_id>/crew', methods=['PUT'])
+@login_required
+@supervisor_required
+def update_employee_crew(employee_id):
+    """API endpoint to update employee crew assignment"""
+    employee = Employee.query.get_or_404(employee_id)
+    data = request.get_json()
+    
+    new_crew = data.get('crew')
+    if new_crew in ['A', 'B', 'C', 'D', 'UNASSIGNED']:
+        employee.crew = new_crew if new_crew != 'UNASSIGNED' else None
+        db.session.commit()
+        return jsonify({'success': True})
+    
+    return jsonify({'success': False, 'message': 'Invalid crew'}), 400
