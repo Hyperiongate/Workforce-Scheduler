@@ -593,7 +593,7 @@ def employee_management():
     employees = Employee.query.filter(Employee.id != current_user.id).order_by(Employee.crew, Employee.name).all()
     employee_count = len(employees)
     
-    return render_template('employee_management_new.html',
+    return render_template('employee_management.html',
                          employees=employees,
                          employee_count=employee_count)
 
