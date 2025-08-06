@@ -7,187 +7,247 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
     <style>
+        :root {
+            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --secondary-gradient: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            --success-gradient: linear-gradient(135deg, #00b09b 0%, #96c93d 100%);
+            --warning-gradient: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+        }
+
         body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background-color: #f5f7fa;
         }
-        
-        .navbar-custom {
-            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        
+
         .dashboard-container {
             max-width: 1400px;
-            margin: 0 auto;
-            padding: 2rem;
+            margin: 2rem auto;
+            padding: 0 1rem;
         }
-        
+
         .dashboard-header {
             margin-bottom: 2rem;
         }
-        
+
         .dashboard-title {
-            font-size: 2.5rem;
-            font-weight: 700;
-            color: #2c3e50;
+            font-size: 2rem;
+            font-weight: bold;
+            color: #2d3748;
             margin-bottom: 0.5rem;
         }
-        
+
         .dashboard-subtitle {
-            color: #6c757d;
+            color: #718096;
             font-size: 1.1rem;
         }
-        
-        /* Statistics Cards */
+
+        /* Quick Stats Section */
         .stats-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
             margin-bottom: 2rem;
         }
-        
+
         .stat-card {
             background: white;
-            border-radius: 10px;
+            border-radius: 12px;
             padding: 1.5rem;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.08);
-            transition: transform 0.2s, box-shadow 0.2s;
-            height: 100%;
-            border-left: 4px solid #11998e;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+            position: relative;
+            overflow: hidden;
         }
-        
-        .stat-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
         }
-        
+
+        .stat-card.warning::before {
+            background: var(--warning-gradient);
+        }
+
+        .stat-card.success::before {
+            background: var(--success-gradient);
+        }
+
+        .stat-card.primary::before {
+            background: var(--primary-gradient);
+        }
+
+        .stat-card.danger::before {
+            background: var(--secondary-gradient);
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+            margin-bottom: 0.25rem;
+        }
+
+        .stat-label {
+            color: #718096;
+            font-size: 0.9rem;
+        }
+
         .stat-icon {
-            font-size: 2.5rem;
-            color: #11998e;
-            opacity: 0.2;
             position: absolute;
             right: 1rem;
             top: 1rem;
+            font-size: 2rem;
+            opacity: 0.2;
         }
-        
-        .stat-number {
-            font-size: 2.5rem;
-            font-weight: 700;
-            color: #11998e;
-            margin-bottom: 0.25rem;
-            line-height: 1;
-        }
-        
-        .stat-label {
-            color: #6c757d;
-            font-size: 0.9rem;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 0;
-        }
-        
+
         /* Section Cards */
         .section-card {
             background: white;
-            border-radius: 10px;
-            padding: 2rem;
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
             margin-bottom: 2rem;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.08);
         }
-        
+
         .section-title {
-            font-size: 1.5rem;
+            font-size: 1.3rem;
             font-weight: 600;
-            color: #2c3e50;
+            color: #2d3748;
             margin-bottom: 1.5rem;
             display: flex;
             align-items: center;
             gap: 0.5rem;
         }
-        
-        /* Action Grid */
+
         .action-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
             gap: 1rem;
         }
-        
+
         .action-card {
-            background: #f8f9fa;
-            border: 1px solid #e9ecef;
-            border-radius: 8px;
-            padding: 1.25rem;
-            text-decoration: none;
-            color: #495057;
-            transition: all 0.2s;
             display: flex;
             align-items: center;
-            gap: 1rem;
+            padding: 1.25rem;
+            background: #f8f9fa;
+            border-radius: 8px;
+            text-decoration: none;
+            color: inherit;
+            transition: all 0.3s ease;
+            border: 1px solid transparent;
         }
-        
+
         .action-card:hover {
-            background: #11998e;
-            color: white;
+            background: white;
+            border-color: #e2e8f0;
             transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(17, 153, 142, 0.3);
-            border-color: #11998e;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
         }
-        
+
         .action-card i {
-            font-size: 1.5rem;
-            color: #11998e;
-            min-width: 2rem;
+            font-size: 2rem;
+            margin-right: 1rem;
+            opacity: 0.8;
         }
-        
-        .action-card:hover i {
-            color: white;
-        }
-        
+
         .action-content h4 {
             margin: 0;
             font-size: 1.1rem;
             font-weight: 600;
+            color: #2d3748;
         }
-        
+
         .action-content p {
             margin: 0;
-            font-size: 0.85rem;
-            opacity: 0.8;
+            color: #718096;
+            font-size: 0.9rem;
         }
-        
-        .action-card:hover h4,
-        .action-card:hover p {
+
+        /* Priority Features Section */
+        .priority-section {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 12px;
+            padding: 1.5rem;
             color: white;
+            margin-bottom: 2rem;
         }
-        
-        /* Alert styling */
-        .alert-custom {
-            border-radius: 10px;
-            border: none;
+
+        .priority-title {
+            font-size: 1.3rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+        }
+
+        .priority-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+
+        .priority-card {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            padding: 1rem;
+            text-align: center;
+            text-decoration: none;
+            color: white;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .priority-card:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+
+        .priority-card i {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+            display: block;
+        }
+
+        .priority-card h5 {
+            margin: 0;
+            font-size: 1rem;
+            font-weight: 600;
+        }
+
+        /* Alert Banner */
+        .alert-banner {
+            background: var(--warning-gradient);
+            color: white;
             padding: 1rem 1.5rem;
-        }
-        
-        /* Badge styling */
-        .badge-count {
-            position: absolute;
-            top: -8px;
-            right: -8px;
-            background: #dc3545;
-            color: white;
-            border-radius: 50%;
-            width: 24px;
-            height: 24px;
+            border-radius: 8px;
+            margin-bottom: 1.5rem;
             display: flex;
             align-items: center;
-            justify-content: center;
-            font-size: 0.75rem;
-            font-weight: bold;
+            gap: 1rem;
+        }
+
+        .alert-banner i {
+            font-size: 1.5rem;
+        }
+
+        @media (max-width: 768px) {
+            .stats-row {
+                grid-template-columns: 1fr;
+            }
+            .action-grid {
+                grid-template-columns: 1fr;
+            }
+            .priority-grid {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 </head>
 <body>
-    <!-- Navigation -->
-    <nav class="navbar navbar-expand-lg navbar-dark navbar-custom">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
         <div class="container-fluid">
             <a class="navbar-brand" href="/dashboard">
-                <i class="bi bi-grid-3x3-gap-fill"></i> Workforce Scheduler
+                <i class="bi bi-calendar-week"></i> Workforce Scheduler
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
@@ -195,41 +255,25 @@
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav me-auto">
                     <li class="nav-item">
-                        <a class="nav-link active" href="/dashboard">
-                            <i class="bi bi-speedometer2"></i> Dashboard
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/schedule/view">
-                            <i class="bi bi-calendar-week"></i> Schedule
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/overtime-management">
-                            <i class="bi bi-clock-history"></i> Overtime
-                        </a>
+                        <a class="nav-link active" href="/dashboard">Dashboard</a>
                     </li>
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" id="dataDropdown" role="button" data-bs-toggle="dropdown">
-                            <i class="bi bi-database"></i> Data Management
+                        <a class="nav-link dropdown-toggle" href="#" id="supervisorDropdown" role="button" data-bs-toggle="dropdown">
+                            Supervisor Tools
                         </a>
                         <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="{{ url_for('employee_import.upload_employees') }}">
-                                <i class="bi bi-upload"></i> Upload Employees
+                            <li><a class="dropdown-item" href="{{ url_for('supervisor.coverage_needs') }}">
+                                <i class="bi bi-shield-check"></i> Coverage Requirements
                             </a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('employee_import.upload_overtime') }}">
-                                <i class="bi bi-clock-fill"></i> Upload Overtime
-                            </a></li>
-                            <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="{{ url_for('employee_import.upload_history') }}">
-                                <i class="bi bi-clock-history"></i> Upload History
+                            <li><a class="dropdown-item" href="{{ url_for('supervisor.coverage_gaps') }}">
+                                <i class="bi bi-exclamation-triangle"></i> Coverage Gaps
                             </a></li>
                             <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="{{ url_for('employee_import.export_current_employees') }}">
-                                <i class="bi bi-download"></i> Export Employees
+                            <li><a class="dropdown-item" href="{{ url_for('supervisor.time_off_requests') }}">
+                                <i class="bi bi-calendar-x"></i> Time Off Requests
                             </a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('employee_import.export_current_overtime') }}">
-                                <i class="bi bi-download"></i> Export Overtime
+                            <li><a class="dropdown-item" href="{{ url_for('supervisor.swap_requests') }}">
+                                <i class="bi bi-arrow-left-right"></i> Swap Requests
                             </a></li>
                         </ul>
                     </li>
@@ -240,8 +284,6 @@
                             <i class="bi bi-person-circle"></i> {{ current_user.name }}
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end">
-                            <li><a class="dropdown-item" href="/profile"><i class="bi bi-person"></i> Profile</a></li>
-                            <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item" href="/logout"><i class="bi bi-box-arrow-right"></i> Logout</a></li>
                         </ul>
                     </li>
@@ -251,165 +293,144 @@
     </nav>
 
     <div class="dashboard-container">
-        <!-- Flash Messages -->
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                {% for category, message in messages %}
-                    <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show alert-custom" role="alert">
-                        {{ message }}
-                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                    </div>
-                {% endfor %}
-            {% endif %}
-        {% endwith %}
-
         <!-- Dashboard Header -->
         <div class="dashboard-header">
             <h1 class="dashboard-title">Supervisor Dashboard</h1>
-            <p class="dashboard-subtitle">Welcome back, {{ current_user.name }}! Here's your operations overview.</p>
+            <p class="dashboard-subtitle">Welcome back, {{ current_user.name }}!</p>
         </div>
-        
-        <!-- Statistics Row -->
-        <div class="row stats-row">
-            <div class="col-md-3 mb-3">
-                <div class="stat-card position-relative">
-                    <i class="bi bi-calendar-x stat-icon"></i>
-                    <div class="stat-number">{{ pending_time_off }}</div>
-                    <div class="stat-label">Pending Time Off</div>
-                </div>
+
+        <!-- Alert Banner (if there are issues) -->
+        {% if coverage_gaps > 0 or pending_time_off > 5 %}
+        <div class="alert-banner">
+            <i class="bi bi-exclamation-circle-fill"></i>
+            <div>
+                <strong>Attention Required:</strong>
+                {% if coverage_gaps > 0 %}{{ coverage_gaps }} coverage gaps today.{% endif %}
+                {% if pending_time_off > 5 %}{{ pending_time_off }} time-off requests pending.{% endif %}
             </div>
-            <div class="col-md-3 mb-3">
-                <div class="stat-card position-relative">
-                    <i class="bi bi-arrow-left-right stat-icon"></i>
-                    <div class="stat-number">{{ pending_swaps }}</div>
-                    <div class="stat-label">Pending Swaps</div>
-                </div>
+        </div>
+        {% endif %}
+
+        <!-- Quick Stats -->
+        <div class="stats-row">
+            <div class="stat-card warning">
+                <div class="stat-value">{{ pending_time_off }}</div>
+                <div class="stat-label">Pending Time Off Requests</div>
+                <i class="bi bi-calendar-x stat-icon"></i>
             </div>
-            <div class="col-md-3 mb-3">
-                <div class="stat-card position-relative">
-                    <i class="bi bi-people stat-icon"></i>
-                    <div class="stat-number">{{ total_employees }}</div>
-                    <div class="stat-label">Total Employees</div>
-                </div>
+            <div class="stat-card primary">
+                <div class="stat-value">{{ pending_swaps }}</div>
+                <div class="stat-label">Pending Swap Requests</div>
+                <i class="bi bi-arrow-left-right stat-icon"></i>
             </div>
-            <div class="col-md-3 mb-3">
-                <div class="stat-card position-relative">
-                    <i class="bi bi-exclamation-triangle stat-icon"></i>
-                    <div class="stat-number">{{ coverage_gaps }}</div>
-                    <div class="stat-label">Coverage Gaps</div>
-                </div>
+            <div class="stat-card danger">
+                <div class="stat-value">{{ coverage_gaps }}</div>
+                <div class="stat-label">Coverage Gaps Today</div>
+                <i class="bi bi-exclamation-triangle stat-icon"></i>
+            </div>
+            <div class="stat-card success">
+                <div class="stat-value">{{ total_employees }}</div>
+                <div class="stat-label">Total Employees</div>
+                <i class="bi bi-people stat-icon"></i>
+            </div>
+        </div>
+
+        <!-- Priority Features Section -->
+        <div class="priority-section">
+            <h2 class="priority-title">
+                <i class="bi bi-star-fill"></i> Priority Actions
+            </h2>
+            <div class="priority-grid">
+                <a href="{{ url_for('supervisor.coverage_needs') }}" class="priority-card">
+                    <i class="bi bi-shield-check"></i>
+                    <h5>Set Coverage Requirements</h5>
+                </a>
+                <a href="{{ url_for('supervisor.coverage_gaps') }}" class="priority-card">
+                    <i class="bi bi-exclamation-triangle-fill"></i>
+                    <h5>View Coverage Gaps</h5>
+                </a>
+                <a href="{{ url_for('supervisor.time_off_requests') }}" class="priority-card">
+                    <i class="bi bi-calendar-x"></i>
+                    <h5>Review Time Off</h5>
+                </a>
+                <a href="{{ url_for('supervisor.overtime_distribution') }}" class="priority-card">
+                    <i class="bi bi-clock-history"></i>
+                    <h5>Overtime Distribution</h5>
+                </a>
             </div>
         </div>
 
         <!-- Employee Management Section -->
         <div class="section-card">
             <h2 class="section-title">
-                <i class="bi bi-people-fill" style="color: #11998e;"></i>
+                <i class="bi bi-people-fill" style="color: #667eea;"></i>
                 Employee Management
             </h2>
             <div class="action-grid">
-                <a href="{{ url_for('employee_import.upload_employees') }}" class="action-card">
-                    <i class="bi bi-cloud-upload"></i>
+                <a href="{{ url_for('supervisor.employee_management') }}" class="action-card">
+                    <i class="bi bi-person-plus-fill" style="color: #667eea;"></i>
                     <div class="action-content">
-                        <h4>Upload Employee Data</h4>
-                        <p>Import employees & overtime from Excel</p>
+                        <h4>Employee Management</h4>
+                        <p>Add, edit, and manage employees</p>
+                    </div>
+                </a>
+                <a href="{{ url_for('supervisor.crew_management') }}" class="action-card">
+                    <i class="bi bi-diagram-3-fill" style="color: #764ba2;"></i>
+                    <div class="action-content">
+                        <h4>Crew Management</h4>
+                        <p>Organize crew assignments</p>
+                    </div>
+                </a>
+                <a href="{{ url_for('employee_import.upload_employees') }}" class="action-card">
+                    <i class="bi bi-upload" style="color: #00b09b;"></i>
+                    <div class="action-content">
+                        <h4>Upload Employees</h4>
+                        <p>Bulk import from Excel</p>
                     </div>
                 </a>
                 <a href="{{ url_for('employee_import.upload_overtime') }}" class="action-card">
-                    <i class="bi bi-clock-history"></i>
+                    <i class="bi bi-clock-history" style="color: #f5576c;"></i>
                     <div class="action-content">
-                        <h4>Upload Overtime History</h4>
-                        <p>Import 13-week overtime data</p>
-                    </div>
-                </a>
-                <a href="{{ url_for('employee_import.upload_history') }}" class="action-card">
-                    <i class="bi bi-list-check"></i>
-                    <div class="action-content">
-                        <h4>Upload History</h4>
-                        <p>View all data imports</p>
-                    </div>
-                </a>
-                <a href="{{ url_for('main.overtime_management') }}" class="action-card">
-                    <i class="bi bi-graph-up-arrow"></i>
-                    <div class="action-content">
-                        <h4>Overtime Analytics</h4>
-                        <p>Analyze overtime distribution</p>
+                        <h4>Upload Overtime</h4>
+                        <p>Import overtime history</p>
                     </div>
                 </a>
             </div>
         </div>
 
-        <!-- Data Management Section -->
+        <!-- Schedule & Coverage Section -->
         <div class="section-card">
             <h2 class="section-title">
-                <i class="bi bi-database" style="color: #11998e;"></i>
-                Data Management
+                <i class="bi bi-calendar3" style="color: #f093fb;"></i>
+                Schedule & Coverage
             </h2>
             <div class="action-grid">
-                <a href="{{ url_for('employee_import.download_employee_template') }}" class="action-card">
-                    <i class="bi bi-file-earmark-excel"></i>
+                <a href="{{ url_for('supervisor.coverage_needs') }}" class="action-card">
+                    <i class="bi bi-shield-check" style="color: #667eea;"></i>
                     <div class="action-content">
-                        <h4>Employee Template</h4>
-                        <p>Download import template</p>
+                        <h4>Coverage Requirements</h4>
+                        <p>Set minimum staffing levels</p>
                     </div>
                 </a>
-                <a href="{{ url_for('employee_import.download_overtime_template') }}" class="action-card">
-                    <i class="bi bi-file-earmark-clock"></i>
-                    <div class="action-content">
-                        <h4>Overtime Template</h4>
-                        <p>13-week OT template</p>
-                    </div>
-                </a>
-                <a href="{{ url_for('employee_import.export_current_employees') }}" class="action-card">
-                    <i class="bi bi-box-arrow-up"></i>
-                    <div class="action-content">
-                        <h4>Export Employees</h4>
-                        <p>Download current data</p>
-                    </div>
-                </a>
-                <a href="{{ url_for('employee_import.export_current_overtime') }}" class="action-card">
-                    <i class="bi bi-box-arrow-in-up"></i>
-                    <div class="action-content">
-                        <h4>Export Overtime</h4>
-                        <p>Download OT history</p>
-                    </div>
-                </a>
-            </div>
-        </div>
-
-        <!-- Schedule Management Section -->
-        <div class="section-card">
-            <h2 class="section-title">
-                <i class="bi bi-calendar-week" style="color: #11998e;"></i>
-                Schedule Management
-            </h2>
-            <div class="action-grid">
-                <a href="/schedule/view" class="action-card">
-                    <i class="bi bi-calendar3"></i>
-                    <div class="action-content">
-                        <h4>View Schedule</h4>
-                        <p>Current schedule by crew</p>
-                    </div>
-                </a>
-                <a href="/schedule/create" class="action-card">
-                    <i class="bi bi-calendar-plus"></i>
-                    <div class="action-content">
-                        <h4>Create Schedule</h4>
-                        <p>Build new rotation schedules</p>
-                    </div>
-                </a>
-                <a href="/vacation-calendar" class="action-card">
-                    <i class="bi bi-calendar-heart"></i>
-                    <div class="action-content">
-                        <h4>Vacation Calendar</h4>
-                        <p>View all planned time off</p>
-                    </div>
-                </a>
-                <a href="/supervisor/coverage-gaps" class="action-card">
-                    <i class="bi bi-exclamation-triangle"></i>
+                <a href="{{ url_for('supervisor.coverage_gaps') }}" class="action-card">
+                    <i class="bi bi-exclamation-triangle-fill" style="color: #f5576c;"></i>
                     <div class="action-content">
                         <h4>Coverage Gaps</h4>
-                        <p>Identify staffing shortages</p>
+                        <p>View real-time shortages</p>
+                    </div>
+                </a>
+                <a href="{{ url_for('schedule.view_schedule') }}" class="action-card">
+                    <i class="bi bi-calendar-week" style="color: #00b09b;"></i>
+                    <div class="action-content">
+                        <h4>View Schedule</h4>
+                        <p>Current crew schedules</p>
+                    </div>
+                </a>
+                <a href="{{ url_for('supervisor.vacation_calendar') }}" class="action-card">
+                    <i class="bi bi-calendar-heart" style="color: #764ba2;"></i>
+                    <div class="action-content">
+                        <h4>Vacation Calendar</h4>
+                        <p>Team time-off overview</p>
                     </div>
                 </a>
             </div>
@@ -418,42 +439,36 @@
         <!-- Requests & Approvals Section -->
         <div class="section-card">
             <h2 class="section-title">
-                <i class="bi bi-inbox-fill" style="color: #11998e;"></i>
+                <i class="bi bi-inbox-fill" style="color: #fa709a;"></i>
                 Requests & Approvals
             </h2>
             <div class="action-grid">
-                <a href="/supervisor/time-off-requests" class="action-card position-relative">
-                    {% if pending_time_off > 0 %}
-                        <span class="badge-count">{{ pending_time_off }}</span>
-                    {% endif %}
-                    <i class="bi bi-calendar-x"></i>
+                <a href="{{ url_for('supervisor.time_off_requests') }}" class="action-card">
+                    <i class="bi bi-calendar-x" style="color: #fa709a;"></i>
                     <div class="action-content">
                         <h4>Time Off Requests</h4>
-                        <p>Review and approve time off</p>
+                        <p>{{ pending_time_off }} pending approval</p>
                     </div>
                 </a>
-                <a href="/supervisor/shift-swaps" class="action-card position-relative">
-                    {% if pending_swaps > 0 %}
-                        <span class="badge-count">{{ pending_swaps }}</span>
-                    {% endif %}
-                    <i class="bi bi-arrow-left-right"></i>
+                <a href="{{ url_for('supervisor.swap_requests') }}" class="action-card">
+                    <i class="bi bi-arrow-left-right" style="color: #fee140;"></i>
                     <div class="action-content">
-                        <h4>Shift Swaps</h4>
-                        <p>Approve shift exchanges</p>
+                        <h4>Swap Requests</h4>
+                        <p>{{ pending_swaps }} pending approval</p>
                     </div>
                 </a>
-                <a href="/shift-marketplace" class="action-card">
-                    <i class="bi bi-shop"></i>
+                <a href="{{ url_for('employee.shift_marketplace') }}" class="action-card">
+                    <i class="bi bi-shop" style="color: #667eea;"></i>
                     <div class="action-content">
                         <h4>Shift Marketplace</h4>
-                        <p>Available shifts for pickup</p>
+                        <p>Monitor shift trading</p>
                     </div>
                 </a>
-                <a href="/supervisor/suggestions" class="action-card">
-                    <i class="bi bi-lightbulb"></i>
+                <a href="{{ url_for('supervisor.suggestions') }}" class="action-card">
+                    <i class="bi bi-lightbulb" style="color: #96c93d;"></i>
                     <div class="action-content">
                         <h4>Employee Suggestions</h4>
-                        <p>Review schedule feedback</p>
+                        <p>Review feedback</p>
                     </div>
                 </a>
             </div>
@@ -466,89 +481,54 @@
                 Reports & Analytics
             </h2>
             <div class="action-grid">
-                <a href="/reports/overtime" class="action-card">
-                    <i class="bi bi-file-earmark-bar-graph"></i>
+                <a href="{{ url_for('supervisor.overtime_distribution') }}" class="action-card">
+                    <i class="bi bi-bar-chart-fill" style="color: #11998e;"></i>
                     <div class="action-content">
-                        <h4>Overtime Reports</h4>
-                        <p>Analyze overtime trends</p>
+                        <h4>Overtime Distribution</h4>
+                        <p>Manage OT allocation</p>
                     </div>
                 </a>
                 <a href="/reports/attendance" class="action-card">
-                    <i class="bi bi-calendar-check"></i>
+                    <i class="bi bi-calendar-check" style="color: #96c93d;"></i>
                     <div class="action-content">
                         <h4>Attendance Reports</h4>
                         <p>Track attendance patterns</p>
                     </div>
                 </a>
                 <a href="/reports/coverage" class="action-card">
-                    <i class="bi bi-pie-chart"></i>
+                    <i class="bi bi-pie-chart" style="color: #667eea;"></i>
                     <div class="action-content">
                         <h4>Coverage Analysis</h4>
-                        <p>Staffing level insights</p>
+                        <p>Staffing insights</p>
                     </div>
                 </a>
-                <a href="/reports/export" class="action-card">
-                    <i class="bi bi-download"></i>
+                <a href="{{ url_for('employee_import.upload_history') }}" class="action-card">
+                    <i class="bi bi-clock-history" style="color: #764ba2;"></i>
                     <div class="action-content">
-                        <h4>Export Data</h4>
-                        <p>Download reports to Excel</p>
-                    </div>
-                </a>
-            </div>
-        </div>
-
-        <!-- System Tools Section -->
-        <div class="section-card">
-            <h2 class="section-title">
-                <i class="bi bi-gear-fill" style="color: #11998e;"></i>
-                System Tools
-            </h2>
-            <div class="action-grid">
-                <a href="/diagnostic" class="action-card">
-                    <i class="bi bi-activity"></i>
-                    <div class="action-content">
-                        <h4>System Diagnostic</h4>
-                        <p>Check system health</p>
-                    </div>
-                </a>
-                <a href="/test-dashboard" class="action-card">
-                    <i class="bi bi-bug"></i>
-                    <div class="action-content">
-                        <h4>Test Dashboard</h4>
-                        <p>Simple test interface</p>
-                    </div>
-                </a>
-                <a href="/add-fileupload-table" class="action-card">
-                    <i class="bi bi-database-add"></i>
-                    <div class="action-content">
-                        <h4>Add FileUpload Table</h4>
-                        <p>Initialize upload tracking</p>
-                    </div>
-                </a>
-                <a href="/help" class="action-card">
-                    <i class="bi bi-question-circle"></i>
-                    <div class="action-content">
-                        <h4>Help & Support</h4>
-                        <p>User guides and FAQs</p>
+                        <h4>Upload History</h4>
+                        <p>View import logs</p>
                     </div>
                 </a>
             </div>
         </div>
     </div>
 
-    <!-- Bootstrap Bundle JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-    
-    <!-- Optional: Auto-refresh for real-time updates -->
     <script>
-        // Refresh dashboard stats every 60 seconds
+        // Auto-refresh stats every 60 seconds
         setInterval(function() {
             fetch('/api/dashboard-stats')
                 .then(response => response.json())
                 .then(data => {
-                    // Update stats if needed
-                    console.log('Dashboard refreshed');
-                });
+                    // Update stats if elements exist
+                    ['pending_time_off', 'pending_swaps', 'coverage_gaps'].forEach(stat => {
+                        const el = document.querySelector(`.stat-card .stat-value`);
+                        if (el && data[stat] !== undefined) {
+                            el.textContent = data[stat];
+                        }
+                    });
+                })
+                .catch(error => console.error('Error fetching stats:', error));
         }, 60000);
     </script>
 </body>
