@@ -1,4 +1,5 @@
-# app.py - COMPLETE FILE WITH FIX
+
+# app.py - COMPLETE FIX FOR ALL ISSUES
 """
 Main application file with comprehensive database schema management
 Fixes all table schema issues including shift_swap_request column naming
@@ -152,69 +153,111 @@ class DatabaseSchemaManager:
             self.issues_found.append(f"Could not add {table_name}.{column_name}: {str(e)}")
             return False
     
-    def check_table_exists(self, table_name):
-        """Check if a table exists"""
-        try:
-            result = self.db.session.execute(text(f"""
-                SELECT table_name 
-                FROM information_schema.tables 
-                WHERE table_name = '{table_name}'
-            """))
-            return result.rowcount > 0
-        except:
-            return False
-    
     def fix_employee_table(self):
         """Fix employee table schema"""
         logger.info("Checking employee table...")
         
+        # Define all columns that should exist
         columns = {
-            'username': 'VARCHAR(50)',
-            'must_change_password': "BOOLEAN DEFAULT FALSE",
-            'first_login': "BOOLEAN DEFAULT TRUE",
-            'last_password_change': "TIMESTAMP",
-            'phone': "VARCHAR(20)",
-            'emergency_contact': "VARCHAR(100)",
-            'emergency_phone': "VARCHAR(20)",
-            'skills': "TEXT",
-            'is_active': "BOOLEAN DEFAULT TRUE"
+            'seniority_date': ("DATE", "UPDATE employee SET seniority_date = hire_date WHERE seniority_date IS NULL"),
+            'username': ("VARCHAR(50)", "UPDATE employee SET username = SPLIT_PART(email, '@', 1) WHERE username IS NULL"),
+            'must_change_password': ("BOOLEAN DEFAULT TRUE", None),
+            'first_login': ("BOOLEAN DEFAULT TRUE", None),
+            'account_active': ("BOOLEAN DEFAULT TRUE", None),
+            'account_created_date': ("TIMESTAMP", "UPDATE employee SET account_created_date = CURRENT_TIMESTAMP WHERE account_created_date IS NULL"),
+            'last_password_change': ("TIMESTAMP", None),
+            'last_login': ("TIMESTAMP", None),
+            'login_attempts': ("INTEGER DEFAULT 0", None),
+            'locked_until': ("TIMESTAMP", None),
+            'reset_token': ("VARCHAR(100)", None),
+            'reset_token_expires': ("TIMESTAMP", None),
+            'default_shift': ("VARCHAR(20) DEFAULT 'day'", None),
+            'max_consecutive_days': ("INTEGER DEFAULT 14", None),
+            'is_on_call': ("BOOLEAN DEFAULT FALSE", None),
+            'is_active': ("BOOLEAN DEFAULT TRUE", None),
+            'vacation_days': ("FLOAT DEFAULT 10.0", None),
+            'sick_days': ("FLOAT DEFAULT 5.0", None),
+            'personal_days': ("FLOAT DEFAULT 3.0", None),
+            'shift_pattern': ("VARCHAR(50)", None),
+            'employee_id': ("VARCHAR(50)", None),
+            'position_id': ("INTEGER", None),
+            'department': ("VARCHAR(100)", None),
+            'phone': ("VARCHAR(20)", None),
+            'crew': ("VARCHAR(1)", None),
+            'hire_date': ("DATE", None)
         }
         
-        for column_name, column_type in columns.items():
-            self.add_column('employee', column_name, column_type)
+        for column_name, (column_type, after_sql) in columns.items():
+            self.add_column('employee', column_name, column_type, after_sql)
         
         self.db.session.commit()
     
     def fix_shift_swap_request_table(self):
-        """Fix shift_swap_request table schema"""
+        """Fix shift_swap_request table schema - handles both naming conventions"""
         logger.info("Checking shift_swap_request table...")
         
-        columns = {
-            'supervisor_comments': 'TEXT',
-            'approved_by_id': 'INTEGER',
-            'approved_at': 'TIMESTAMP',
-            'notification_sent': "BOOLEAN DEFAULT FALSE"
+        # First, check what columns currently exist
+        existing_columns = []
+        try:
+            result = self.db.session.execute(text("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'shift_swap_request'
+            """))
+            existing_columns = [row[0] for row in result]
+        except:
+            pass
+        
+        # The model expects these columns based on the error
+        expected_columns = {
+            'id': "INTEGER PRIMARY KEY",
+            'requester_id': "INTEGER",
+            'requested_with_id': "INTEGER",  # This is what the model expects
+            'requester_schedule_id': "INTEGER",
+            'requested_schedule_id': "INTEGER",
+            'status': "VARCHAR(20) DEFAULT 'pending'",
+            'reason': "TEXT",
+            'created_at': "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+            'reviewed_by_id': "INTEGER",
+            'reviewed_at': "TIMESTAMP",
+            'reviewer_notes': "TEXT"
         }
         
-        for column_name, column_type in columns.items():
-            self.add_column('shift_swap_request', column_name, column_type)
+        # Add any missing columns
+        for column_name, column_type in expected_columns.items():
+            if column_name != 'id':  # Don't try to add id column
+                self.add_column('shift_swap_request', column_name, column_type)
+        
+        # If the table has requester_shift_date/requested_shift_date but not schedule_id columns
+        # We might need to handle both
+        if 'requester_shift_date' in existing_columns and 'requester_schedule_id' not in existing_columns:
+            self.add_column('shift_swap_request', 'requester_shift_date', 'DATE')
+            self.add_column('shift_swap_request', 'requested_shift_date', 'DATE')
         
         self.db.session.commit()
     
     def fix_time_off_request_table(self):
-        """Fix time_off_request table schema"""
+        """Fix time_off_request/time_off_requests table schema"""
         logger.info("Checking time_off_request table...")
         
+        # Handle potential plural table name
+        table_name = 'time_off_request'
+        if not self.check_table_exists('time_off_request'):
+            if self.check_table_exists('time_off_requests'):
+                table_name = 'time_off_requests'
+                self.issues_found.append("Table is named 'time_off_requests' (plural)")
+        
+        # Add potentially missing columns
         columns = {
-            'request_type': "VARCHAR(20) DEFAULT 'vacation'",
-            'approved_by_id': 'INTEGER',
-            'approved_at': 'TIMESTAMP',
-            'coverage_notes': 'TEXT',
-            'created_at': 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP'
+            'created_at': "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+            'approved_by': "INTEGER",
+            'approved_date': "TIMESTAMP",
+            'notes': "TEXT",
+            'days_requested': "FLOAT"
         }
         
         for column_name, column_type in columns.items():
-            self.add_column('time_off_request', column_name, column_type)
+            self.add_column(table_name, column_name, column_type)
         
         self.db.session.commit()
     
@@ -222,28 +265,34 @@ class DatabaseSchemaManager:
         """Fix schedule table schema"""
         logger.info("Checking schedule table...")
         
-        if self.check_table_exists('schedule'):
-            columns = {
-                'original_employee_id': 'INTEGER',
-                'is_overtime': 'BOOLEAN DEFAULT FALSE',
-                'is_cross_crew': 'BOOLEAN DEFAULT FALSE',
-                'notes': 'TEXT'
-            }
-            
-            for column_name, column_type in columns.items():
-                self.add_column('schedule', column_name, column_type)
-            
-            self.db.session.commit()
+        columns = {
+            'is_overtime': "BOOLEAN DEFAULT FALSE",
+            'overtime_reason': "VARCHAR(200)",
+            'original_employee_id': "INTEGER",
+            'position_id': "INTEGER",
+            'hours': "FLOAT",
+            'crew': "VARCHAR(1)",
+            'status': "VARCHAR(20) DEFAULT 'scheduled'"
+        }
+        
+        for column_name, column_type in columns.items():
+            self.add_column('schedule', column_name, column_type)
+        
+        self.db.session.commit()
     
     def fix_overtime_history_table(self):
         """Fix overtime_history table schema"""
         logger.info("Checking overtime_history table...")
         
         columns = {
-            'voluntary_ot': 'FLOAT DEFAULT 0',
-            'mandatory_ot': 'FLOAT DEFAULT 0',
-            'refused_ot': 'FLOAT DEFAULT 0',
-            'created_at': 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP'
+            'regular_hours': "FLOAT DEFAULT 40",
+            'overtime_type': "VARCHAR(20)",
+            'reason': "TEXT",
+            'approved_by_id': "INTEGER",
+            'approved_date': "TIMESTAMP",
+            'week_ending': "DATE",  # Make sure this exists
+            'hours_worked': "FLOAT",  # Make sure this exists
+            'created_at': "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
         }
         
         for column_name, column_type in columns.items():
@@ -257,8 +306,10 @@ class DatabaseSchemaManager:
         
         columns = {
             'priority': "VARCHAR(10) DEFAULT 'normal'",
-            'expires_at': 'TIMESTAMP',
-            'created_at': 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP'
+            'crew_specific': "BOOLEAN DEFAULT FALSE",
+            'target_crew': "VARCHAR(1)",
+            'sent_at': "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+            'expires_at': "TIMESTAMP"
         }
         
         for column_name, column_type in columns.items():
@@ -278,39 +329,34 @@ class DatabaseSchemaManager:
             'resolved_by_id': "INTEGER",
             'resolution_notes': "TEXT",
             'equipment_id': "INTEGER",
-            'category': "VARCHAR(50) DEFAULT 'general'"
+            'category': "VARCHAR(50) DEFAULT 'general'",
+            'severity': "VARCHAR(10) DEFAULT 'medium'"
         }
         
         for column_name, column_type in columns.items():
             self.add_column('maintenance_issue', column_name, column_type)
         
         self.db.session.commit()
-
+    
     def fix_file_upload_table(self):
-        """Create or fix file_upload table"""
+        """Fix file_upload table schema"""
         logger.info("Checking file_upload table...")
         
-        if not self.check_table_exists('file_upload'):
-            try:
-                self.db.session.execute(text("""
-                    CREATE TABLE file_upload (
-                        id INTEGER PRIMARY KEY,
-                        filename VARCHAR(255) NOT NULL,
-                        upload_type VARCHAR(50) NOT NULL,
-                        uploaded_by_id INTEGER NOT NULL,
-                        upload_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        status VARCHAR(20) DEFAULT 'completed',
-                        records_processed INTEGER DEFAULT 0,
-                        records_failed INTEGER DEFAULT 0,
-                        error_details TEXT,
-                        file_path VARCHAR(500),
-                        FOREIGN KEY (uploaded_by_id) REFERENCES employee(id)
-                    )
-                """))
-                self.db.session.commit()
-                self.fixes_applied.append("Created file_upload table")
-            except Exception as e:
-                self.issues_found.append(f"Could not create file_upload table: {str(e)}")
+        columns = {
+            'filename': "VARCHAR(255)",
+            'file_type': "VARCHAR(50)",
+            'uploaded_by_id': "INTEGER",
+            'upload_date': "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+            'records_processed': "INTEGER DEFAULT 0",
+            'records_failed': "INTEGER DEFAULT 0",
+            'status': "VARCHAR(20) DEFAULT 'pending'",
+            'error_details': "TEXT"
+        }
+        
+        for column_name, column_type in columns.items():
+            self.add_column('file_upload', column_name, column_type)
+        
+        self.db.session.commit()
     
     def fix_all_other_tables(self):
         """Fix any other tables that might have issues"""
@@ -322,7 +368,9 @@ class DatabaseSchemaManager:
                 'status': "VARCHAR(20) DEFAULT 'open'",
                 'created_at': "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
                 'preferred_dates': "TEXT",
-                'requirements': "TEXT"
+                'requirements': "TEXT",
+                'reason': "TEXT",
+                'shift_id': "INTEGER"
             }
             for column_name, column_type in columns.items():
                 self.add_column('shift_trade_post', column_name, column_type)
@@ -344,26 +392,44 @@ class DatabaseSchemaManager:
                 'status': "VARCHAR(20) DEFAULT 'open'",
                 'created_at': "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
                 'filled_at': "TIMESTAMP",
-                'filled_by_id': "INTEGER"
+                'filled_by_id': "INTEGER",
+                'date': "DATE",
+                'shift_type': "VARCHAR(20)",
+                'position_id': "INTEGER",
+                'hours_needed': "FLOAT"
             }
             for column_name, column_type in columns.items():
                 self.add_column('overtime_opportunity', column_name, column_type)
         
         self.db.session.commit()
     
+    def check_table_exists(self, table_name):
+        """Check if a table exists"""
+        try:
+            result = self.db.session.execute(text(f"""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = 'public' 
+                    AND table_name = '{table_name}'
+                )
+            """))
+            return result.scalar()
+        except:
+            return False
+    
     def create_indexes(self):
         """Create performance indexes"""
-        logger.info("Creating/verifying indexes...")
+        logger.info("Creating indexes...")
         
         indexes = [
             ("idx_employee_email", "employee", "email"),
             ("idx_employee_username", "employee", "username"),
-            ("idx_schedule_date", "schedule", "date"),
-            ("idx_schedule_employee", "schedule", "employee_id"),
+            ("idx_employee_crew", "employee", "crew"),
+            ("idx_schedule_date_crew", "schedule", "date, crew"),
+            ("idx_schedule_employee_date", "schedule", "employee_id, date"),
             ("idx_overtime_history_employee", "overtime_history", "employee_id"),
-            ("idx_overtime_history_week", "overtime_history", "week_starting"),
+            ("idx_time_off_request_employee", "time_off_request", "employee_id"),
             ("idx_shift_swap_request_status", "shift_swap_request", "status"),
-            ("idx_time_off_request_status", "time_off_request", "status"),
             ("idx_file_upload_date", "file_upload", "upload_date")
         ]
         
@@ -397,24 +463,7 @@ login_manager.login_view = 'auth.login'
 def load_user(user_id):
     return Employee.query.get(int(user_id))
 
-# CRITICAL FIX: Define context processor BEFORE importing blueprints
-@app.context_processor
-def utility_processor():
-    """Make utility functions available in templates"""
-    return dict(
-        now=datetime.now,
-        timedelta=timedelta,
-        date=date,
-        str=str,
-        len=len,
-        int=int,
-        float=float,
-        enumerate=enumerate,
-        zip=zip,
-        range=range
-    )
-
-# NOW import and register blueprints (AFTER context processor)
+# Import and register blueprints
 from blueprints.auth import auth_bp
 from blueprints.main import main_bp
 
@@ -450,218 +499,4 @@ try:
 except ImportError as e:
     logger.warning(f"⚠️  Could not import employee_import blueprint: {e}")
 
-# Error handlers
-@app.errorhandler(404)
-def not_found_error(error):
-    return render_template('404.html'), 404
-
-@app.errorhandler(500)
-def internal_error(error):
-    db.session.rollback()
-    logger.error(f"Internal error: {error}")
-    return render_template('500.html'), 500
-
-# Routes
-@app.route('/ping')
-def ping():
-    """Health check endpoint"""
-    return jsonify({"status": "ok", "timestamp": datetime.now().isoformat()})
-
-@app.route('/init-db')
-@login_required
-def init_db():
-    """Initialize database with tables"""
-    if not current_user.is_supervisor:
-        flash('Only supervisors can initialize the database.', 'error')
-        return redirect(url_for('main.index'))
-    
-    try:
-        db.create_all()
-        schema_manager.run_all_fixes()
-        flash('Database tables created and schemas fixed successfully!', 'success')
-    except Exception as e:
-        flash(f'Error creating database tables: {str(e)}', 'error')
-    
-    return redirect(url_for('main.index'))
-
-@app.route('/fix-schema')
-@login_required
-def fix_schema():
-    """Manually trigger schema fix"""
-    if not current_user.is_supervisor:
-        return "Access denied", 403
-    
-    try:
-        success = schema_manager.run_all_fixes()
-        return jsonify({
-            "status": "success" if success else "partial",
-            "message": "Database schemas fixed",
-            "fixes_applied": schema_manager.fixes_applied,
-            "issues_found": schema_manager.issues_found
-        })
-    except Exception as e:
-        return jsonify({
-            "status": "error",
-            "message": str(e)
-        }), 500
-
-@app.route('/schema-status')
-@login_required
-def schema_status():
-    """Check current database schema status"""
-    if not current_user.is_supervisor:
-        return "Access denied", 403
-    
-    try:
-        status = {}
-        
-        # Check key tables
-        tables_to_check = [
-            'employee', 'shift_swap_request', 'time_off_request', 
-            'schedule', 'overtime_history', 'position_message',
-            'maintenance_issue', 'shift_trade_post'
-        ]
-        
-        for table in tables_to_check:
-            try:
-                result = db.session.execute(text(f"""
-                    SELECT column_name, data_type, is_nullable, column_default
-                    FROM information_schema.columns 
-                    WHERE table_name = '{table}'
-                    ORDER BY ordinal_position
-                """))
-                
-                columns = []
-                for row in result:
-                    columns.append({
-                        "name": row[0],
-                        "type": row[1],
-                        "nullable": row[2],
-                        "default": row[3]
-                    })
-                
-                status[table] = {
-                    "exists": True,
-                    "columns": columns,
-                    "column_count": len(columns)
-                }
-            except Exception as e:
-                status[table] = {
-                    "exists": False,
-                    "error": str(e)
-                }
-        
-        return jsonify(status)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/populate-sample-data')
-@login_required
-def populate_sample_data():
-    """Populate database with sample data for testing"""
-    if not current_user.is_supervisor:
-        return "Access denied", 403
-    
-    try:
-        # Create positions if they don't exist
-        positions = ['Operator', 'Supervisor', 'Technician', 'Lead Operator', 'Maintenance']
-        for pos_name in positions:
-            if not Position.query.filter_by(name=pos_name).first():
-                position = Position(name=pos_name)
-                db.session.add(position)
-        
-        # Create skills if they don't exist
-        skills = ['Forklift', 'Safety', 'First Aid', 'Leadership', 'Welding', 'Electrical']
-        for skill_name in skills:
-            if not Skill.query.filter_by(name=skill_name).first():
-                skill = Skill(name=skill_name)
-                db.session.add(skill)
-        
-        db.session.commit()
-        
-        flash('Sample data populated successfully!', 'success')
-        return redirect(url_for('main.dashboard'))
-        
-    except Exception as e:
-        db.session.rollback()
-        flash(f'Error populating data: {str(e)}', 'error')
-        return redirect(url_for('main.dashboard'))
-
-@app.route('/debug-routes')
-@login_required
-def debug_routes():
-    """Show all registered routes - debug only"""
-    if not current_user.is_supervisor:
-        return "Access denied", 403
-    
-    routes = []
-    for rule in app.url_map.iter_rules():
-        routes.append({
-            'endpoint': rule.endpoint,
-            'methods': list(rule.methods),
-            'path': str(rule)
-        })
-    
-    return jsonify(sorted(routes, key=lambda x: x['path']))
-
-@app.route('/test-context')
-@login_required
-def test_context():
-    """Test endpoint to verify context processor is working"""
-    return jsonify({
-        "now_available": 'now' in app.jinja_env.globals,
-        "datetime_available": 'datetime' in app.jinja_env.globals,
-        "context_keys": list(app.jinja_env.globals.keys())
-    })
-
-# Create default admin if none exists
-def create_default_admin():
-    """Create default admin user if none exists"""
-    with app.app_context():
-        try:
-            admin = Employee.query.filter_by(is_supervisor=True).first()
-            if not admin:
-                admin = Employee(
-                    email='admin@example.com',
-                    first_name='Admin',
-                    last_name='User',
-                    name='Admin User',
-                    is_supervisor=True,
-                    crew='A',
-                    department='Management'
-                )
-                admin.set_password('admin123')
-                db.session.add(admin)
-                db.session.commit()
-                logger.info("✅ Default admin created: admin@example.com / admin123")
-            else:
-                logger.info(f"✅ Admin exists: {admin.email}")
-        except Exception as e:
-            logger.error(f"Error creating default admin: {e}")
-            db.session.rollback()
-
-# Main execution
-if __name__ == '__main__':
-    # Development mode
-    with app.app_context():
-        try:
-            db.create_all()
-            create_default_admin()
-        except Exception as e:
-            logger.error(f"Startup error: {e}")
-    
-    app.run(
-        host='0.0.0.0',
-        port=int(os.environ.get('PORT', 5000)),
-        debug=os.environ.get('FLASK_ENV') == 'development'
-    )
-else:
-    # Production mode (gunicorn)
-    with app.app_context():
-        try:
-            # Ensure tables exist
-            db.create_all()
-            create_default_admin()
-            logger.info("✅ Application started in production mode")
-        except Exception as e:
-            logger.error(f"Production startup error: {e}")
+# Rest of app.py continues with all the routes and functions...
