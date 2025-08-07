@@ -385,13 +385,13 @@ def overtime_management():
         # Base query - get all employees (no is_active filter)
         query = db.session.query(
             Employee,
-            func.coalesce(func.sum(OvertimeHistory.hours_worked), 0).label('total_ot')
+            func.coalesce(func.sum(OvertimeHistory.overtime_hours), 0).label('total_ot')
         ).outerjoin(
             OvertimeHistory,
             and_(
                 Employee.id == OvertimeHistory.employee_id,
-                OvertimeHistory.week_ending >= start_date,
-                OvertimeHistory.week_ending <= end_date
+                OvertimeHistory.week_start_date >= start_date,
+                OvertimeHistory.week_start_date <= end_date
             )
         ).group_by(Employee.id)
         
@@ -444,7 +444,7 @@ def overtime_management():
                 elif sort_field == 'seniority':
                     order_func = Employee.hire_date.asc() if sort_dir == 'asc' else Employee.hire_date.desc()
                 elif sort_field == 'overtime':
-                    order_func = func.coalesce(func.sum(OvertimeHistory.hours_worked), 0)
+                    order_func = func.coalesce(func.sum(OvertimeHistory.overtime_hours), 0)
                     order_func = order_func.asc() if sort_dir == 'asc' else order_func.desc()
                 else:
                     continue
@@ -452,7 +452,7 @@ def overtime_management():
                 query = query.order_by(order_func)
         else:
             # Default sort by overtime hours descending
-            query = query.order_by(func.coalesce(func.sum(OvertimeHistory.hours_worked), 0).desc())
+            query = query.order_by(func.coalesce(func.sum(OvertimeHistory.overtime_hours), 0).desc())
         
         # Execute paginated query
         paginated = query.paginate(page=page, per_page=per_page, error_out=False)
@@ -468,15 +468,15 @@ def overtime_management():
             weekly_ot = OvertimeHistory.query.filter_by(
                 employee_id=emp.id
             ).filter(
-                OvertimeHistory.week_ending >= start_date,
-                OvertimeHistory.week_ending <= end_date
-            ).order_by(OvertimeHistory.week_ending.desc()).all()
+                OvertimeHistory.week_start_date >= start_date,
+                OvertimeHistory.week_start_date <= end_date
+            ).order_by(OvertimeHistory.week_start_date.desc()).all()
             
             # Calculate current week overtime
             current_week_start = today - timedelta(days=today.weekday())
             current_week_ot = sum(
-                ot.hours_worked for ot in weekly_ot 
-                if ot.week_ending >= current_week_start
+                ot.overtime_hours for ot in weekly_ot 
+                if ot.week_start_date >= current_week_start
             )
             
             # Calculate average weekly overtime
@@ -484,8 +484,8 @@ def overtime_management():
             
             # Determine trend (simplified)
             if len(weekly_ot) >= 4:
-                recent_avg = sum(ot.hours_worked for ot in weekly_ot[:4]) / 4
-                older_avg = sum(ot.hours_worked for ot in weekly_ot[-4:]) / 4
+                recent_avg = sum(ot.overtime_hours for ot in weekly_ot[:4]) / 4
+                older_avg = sum(ot.overtime_hours for ot in weekly_ot[-4:]) / 4
                 if recent_avg > older_avg * 1.1:
                     trend = 'increasing'
                 elif recent_avg < older_avg * 0.9:
@@ -534,6 +534,10 @@ def overtime_management():
         # Get all positions for filter dropdown
         positions = Position.query.order_by(Position.name).all()
         
+        # Get pending counts for base.html navigation
+        pending_time_off = TimeOffRequest.query.filter_by(status='pending').count()
+        pending_swaps = ShiftSwapRequest.query.filter_by(status='pending').count()
+        
         # Prepare template context
         return render_template('overtime_management.html',
             # Employee data
@@ -558,7 +562,10 @@ def overtime_management():
             start_date=start_date,
             end_date=end_date,
             # Sort parameters (for maintaining state)
-            sort_levels=sort_levels
+            sort_levels=sort_levels,
+            # Variables for base.html
+            pending_time_off=pending_time_off,
+            pending_swaps=pending_swaps
         )
         
     except Exception as e:
@@ -584,7 +591,9 @@ def overtime_management():
             high_overtime_employees=[],
             start_date=date.today() - timedelta(weeks=13),
             end_date=date.today(),
-            sort_levels=[]
+            sort_levels=[],
+            pending_time_off=0,
+            pending_swaps=0
         )
 
 # Keep existing utility routes below
