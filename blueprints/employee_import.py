@@ -128,7 +128,26 @@ def upload_employees():
         uploaded_by_id=current_user.id
     ).order_by(FileUpload.upload_date.desc()).limit(5).all()
     
-    return render_template('upload_employees_enhanced.html', recent_uploads=recent_uploads)
+    # Get statistics for the page
+    employee_count = Employee.query.filter_by(is_active=True).count()
+    crew_counts = db.session.query(
+        Employee.crew, func.count(Employee.id)
+    ).filter(Employee.is_active == True).group_by(Employee.crew).all()
+    
+    crew_data = {crew: count for crew, count in crew_counts}
+    
+    stats = {
+        'employee_count': employee_count,
+        'crew_a_count': crew_data.get('A', 0),
+        'crew_b_count': crew_data.get('B', 0),
+        'crew_c_count': crew_data.get('C', 0),
+        'crew_d_count': crew_data.get('D', 0),
+        'last_upload_date': recent_uploads[0].upload_date.strftime('%Y-%m-%d %H:%M') if recent_uploads else 'Never'
+    }
+    
+    return render_template('upload_employees_enhanced.html', 
+                         recent_uploads=recent_uploads,
+                         **stats)
 
 # Upload processing functions
 def process_employee_upload(filepath, replace_all=False, validate_only=False):
@@ -592,7 +611,7 @@ def save_credentials_file(credentials):
     
     return filename
 
-# NEW ROUTE - VALIDATION ENDPOINT
+# VALIDATION ENDPOINT - THE MISSING ROUTE
 @employee_import_bp.route('/validate-upload', methods=['POST'])
 @login_required
 def validate_upload():
@@ -756,8 +775,36 @@ def upload_overtime():
                     'error': str(e)
                 }), 500
     
-    # GET request
-    return render_template('upload_overtime.html')
+    # GET request - calculate statistics
+    total_ot = db.session.query(func.sum(OvertimeHistory.hours_worked)).scalar() or 0
+    employee_count = Employee.query.filter_by(is_active=True).count()
+    avg_ot = total_ot / employee_count if employee_count > 0 else 0
+    
+    # Count employees missing OT data
+    employees_with_ot = db.session.query(OvertimeHistory.employee_id).distinct().count()
+    missing_ot_count = employee_count - employees_with_ot
+    
+    # OT distribution
+    ot_ranges = db.session.query(
+        func.case(
+            (func.sum(OvertimeHistory.hours_worked) <= 130, '0-10'),
+            (func.sum(OvertimeHistory.hours_worked) <= 260, '10-20'),
+            (func.sum(OvertimeHistory.hours_worked) <= 520, '20-40'),
+            else_='40+'
+        ).label('range'),
+        func.count(OvertimeHistory.employee_id.distinct())
+    ).group_by('range').all()
+    
+    ot_distribution = {r[0]: r[1] for r in ot_ranges}
+    
+    return render_template('upload_overtime.html',
+                         total_ot_hours=int(total_ot),
+                         avg_ot_hours=int(avg_ot),
+                         missing_ot_count=missing_ot_count,
+                         ot_0_10=ot_distribution.get('0-10', 0),
+                         ot_10_20=ot_distribution.get('10-20', 0),
+                         ot_20_40=ot_distribution.get('20-40', 0),
+                         ot_40_plus=ot_distribution.get('40+', 0))
 
 # Upload history route
 @employee_import_bp.route('/upload-history')
@@ -768,6 +815,30 @@ def upload_history():
         flash('Access denied', 'danger')
         return redirect(url_for('main.employee_dashboard'))
     
+    # Handle JSON request for AJAX
+    if request.args.get('format') == 'json':
+        file_type = request.args.get('file_type')
+        query = FileUpload.query
+        
+        if file_type:
+            query = query.filter_by(file_type=file_type)
+            
+        uploads = query.order_by(FileUpload.upload_date.desc()).limit(10).all()
+        
+        data = []
+        for upload in uploads:
+            data.append({
+                'id': upload.id,
+                'upload_date': upload.upload_date.isoformat(),
+                'uploaded_by_name': f"{upload.uploaded_by.first_name} {upload.uploaded_by.last_name}",
+                'records_processed': upload.records_processed,
+                'status': upload.status,
+                'total_hours': 0  # Calculate if needed
+            })
+            
+        return jsonify(data)
+    
+    # Regular HTML request
     # Get filter parameters
     file_type = request.args.get('file_type')
     status = request.args.get('status')
@@ -1049,6 +1120,46 @@ def delete_upload(upload_id):
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@employee_import_bp.route('/api/upload/details/<int:upload_id>')
+@login_required
+def get_upload_details(upload_id):
+    """Get detailed information about an upload"""
+    if not current_user.is_supervisor:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    upload = FileUpload.query.get_or_404(upload_id)
+    
+    # Build response data
+    data = {
+        'id': upload.id,
+        'filename': upload.filename,
+        'file_type': upload.file_type,
+        'file_size': upload.file_size,
+        'upload_date': upload.upload_date.isoformat(),
+        'uploaded_by_name': f"{upload.uploaded_by.first_name} {upload.uploaded_by.last_name}",
+        'uploaded_by_email': upload.uploaded_by.email,
+        'status': upload.status,
+        'records_processed': upload.records_processed,
+        'records_created': upload.records_created,
+        'records_updated': upload.records_updated,
+        'error_details': upload.error_details,
+        'notes': upload.notes
+    }
+    
+    # Add type-specific details
+    if upload.file_type == 'overtime_import' and upload.records_processed:
+        # Calculate total OT hours if it's an overtime upload
+        try:
+            total_hours = OvertimeHistory.query.filter(
+                OvertimeHistory.created_at >= upload.upload_date,
+                OvertimeHistory.created_at <= upload.upload_date + timedelta(minutes=5)
+            ).with_entities(func.sum(OvertimeHistory.hours_worked)).scalar()
+            data['total_overtime_hours'] = float(total_hours) if total_hours else 0
+        except:
+            pass
+    
+    return jsonify(data)
+
 @employee_import_bp.route('/download-upload-file/<int:upload_id>')
 @login_required
 def download_upload_file(upload_id):
@@ -1069,7 +1180,7 @@ def download_upload_file(upload_id):
     
     return send_file(filepath, as_attachment=True, download_name=upload.filename)
 
-# Error handler
+# Error handlers
 @employee_import_bp.errorhandler(404)
 def not_found_error(error):
     return render_template('404.html'), 404
