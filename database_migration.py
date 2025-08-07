@@ -1,113 +1,203 @@
 # database_migration.py
-# Run this script to add the new fields to your database
+# Enhanced version with vacation_calendar fix and comprehensive migration system
 
 from app import app, db
-from models import Employee, UploadHistory
+from models import Employee, UploadHistory, VacationCalendar, TimeOffRequest
 from datetime import datetime
 from sqlalchemy import text, inspect
+import logging
 
-def add_authentication_fields():
-    """Add authentication fields to Employee table"""
-    with app.app_context():
-        # Check if columns already exist
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+class DatabaseMigrationManager:
+    """Manages all database migrations in a systematic way"""
+    
+    def __init__(self):
+        self.migrations_run = []
+        self.errors = []
+        
+    def run_all_migrations(self):
+        """Run all migrations in order"""
+        with app.app_context():
+            logger.info("="*60)
+            logger.info("Starting comprehensive database migration...")
+            logger.info("="*60)
+            
+            # Run migrations in order
+            self.add_vacation_calendar_status()
+            self.add_authentication_fields()
+            self.add_time_off_request_fields()
+            self.create_upload_history_table()
+            self.create_missing_indexes()
+            self.update_existing_employees()
+            self.create_test_supervisor()
+            
+            # Report results
+            self.print_summary()
+            
+    def add_vacation_calendar_status(self):
+        """Fix the vacation_calendar status column issue"""
+        try:
+            inspector = inspect(db.engine)
+            columns = [col['name'] for col in inspector.get_columns('vacation_calendar')]
+            
+            if 'status' not in columns:
+                logger.info("Adding status column to vacation_calendar...")
+                db.session.execute(text("""
+                    ALTER TABLE vacation_calendar 
+                    ADD COLUMN status VARCHAR(20) DEFAULT 'approved'
+                """))
+                
+                db.session.execute(text("""
+                    UPDATE vacation_calendar 
+                    SET status = 'approved' 
+                    WHERE status IS NULL
+                """))
+                
+                db.session.commit()
+                self.migrations_run.append("✓ Added status column to vacation_calendar")
+            else:
+                self.migrations_run.append("✓ vacation_calendar.status already exists")
+                
+        except Exception as e:
+            self.errors.append(f"✗ Error with vacation_calendar.status: {str(e)}")
+            db.session.rollback()
+
+    def add_authentication_fields(self):
+        """Add authentication fields to Employee table"""
         inspector = inspect(db.engine)
         columns = [col['name'] for col in inspector.get_columns('employee')]
         
-        # SQL commands to add missing columns
-        sql_commands = []
+        # Define fields to add
+        fields_to_add = {
+            'username': "VARCHAR(50) UNIQUE",
+            'must_change_password': "BOOLEAN DEFAULT TRUE",
+            'first_login': "BOOLEAN DEFAULT TRUE",
+            'account_active': "BOOLEAN DEFAULT TRUE",
+            'account_created_date': "TIMESTAMP",
+            'last_password_change': "TIMESTAMP",
+            'last_login': "TIMESTAMP",
+            'login_attempts': "INTEGER DEFAULT 0",
+            'locked_until': "TIMESTAMP",
+            'reset_token': "VARCHAR(100)",
+            'reset_token_expires': "TIMESTAMP"
+        }
         
-        if 'username' not in columns:
-            sql_commands.append("ALTER TABLE employee ADD COLUMN username VARCHAR(50) UNIQUE;")
-        if 'must_change_password' not in columns:
-            sql_commands.append("ALTER TABLE employee ADD COLUMN must_change_password BOOLEAN DEFAULT TRUE;")
-        if 'first_login' not in columns:
-            sql_commands.append("ALTER TABLE employee ADD COLUMN first_login BOOLEAN DEFAULT TRUE;")
-        if 'account_active' not in columns:
-            sql_commands.append("ALTER TABLE employee ADD COLUMN account_active BOOLEAN DEFAULT TRUE;")
-        if 'account_created_date' not in columns:
-            sql_commands.append("ALTER TABLE employee ADD COLUMN account_created_date DATETIME;")
-        if 'last_password_change' not in columns:
-            sql_commands.append("ALTER TABLE employee ADD COLUMN last_password_change DATETIME;")
-        if 'last_login' not in columns:
-            sql_commands.append("ALTER TABLE employee ADD COLUMN last_login DATETIME;")
-        if 'login_attempts' not in columns:
-            sql_commands.append("ALTER TABLE employee ADD COLUMN login_attempts INTEGER DEFAULT 0;")
-        if 'locked_until' not in columns:
-            sql_commands.append("ALTER TABLE employee ADD COLUMN locked_until DATETIME;")
-        if 'reset_token' not in columns:
-            sql_commands.append("ALTER TABLE employee ADD COLUMN reset_token VARCHAR(100);")
-        if 'reset_token_expires' not in columns:
-            sql_commands.append("ALTER TABLE employee ADD COLUMN reset_token_expires DATETIME;")
-            
-        # Execute SQL commands
-        for sql in sql_commands:
-            try:
-                db.session.execute(text(sql))
-                print(f"Executed: {sql}")
-            except Exception as e:
-                print(f"Error executing {sql}: {str(e)}")
-                
+        for field, definition in fields_to_add.items():
+            if field not in columns:
+                try:
+                    sql = f"ALTER TABLE employee ADD COLUMN {field} {definition};"
+                    db.session.execute(text(sql))
+                    self.migrations_run.append(f"✓ Added employee.{field}")
+                except Exception as e:
+                    if "already exists" not in str(e):
+                        self.errors.append(f"✗ Error adding employee.{field}: {str(e)}")
+                        
         # Create index on username
         try:
-            db.session.execute(text("CREATE INDEX idx_employee_username ON employee(username);"))
-            print("Created index on username")
-        except:
-            print("Index on username may already exist")
-            
-        # Commit changes
+            db.session.execute(text("CREATE INDEX IF NOT EXISTS idx_employee_username ON employee(username);"))
+            self.migrations_run.append("✓ Created index on employee.username")
+        except Exception as e:
+            if "already exists" not in str(e):
+                self.errors.append(f"✗ Error creating username index: {str(e)}")
+                
         db.session.commit()
-        print("Authentication fields added successfully!")
 
-def create_upload_history_table():
-    """Create upload_history table if it doesn't exist"""
-    with app.app_context():
-        # Check if table exists
+    def add_time_off_request_fields(self):
+        """Ensure TimeOffRequest has all required fields"""
+        try:
+            inspector = inspect(db.engine)
+            columns = [col['name'] for col in inspector.get_columns('time_off_request')]
+            
+            fields_to_add = {
+                'created_at': "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+                'approved_by': "INTEGER REFERENCES employee(id)",
+                'approved_date': "TIMESTAMP",
+                'notes': "TEXT",
+                'days_requested': "FLOAT"
+            }
+            
+            for field, definition in fields_to_add.items():
+                if field not in columns:
+                    try:
+                        sql = f"ALTER TABLE time_off_request ADD COLUMN {field} {definition};"
+                        db.session.execute(text(sql))
+                        self.migrations_run.append(f"✓ Added time_off_request.{field}")
+                    except Exception as e:
+                        if "already exists" not in str(e):
+                            self.errors.append(f"✗ Error adding time_off_request.{field}: {str(e)}")
+                            
+            db.session.commit()
+            
+        except Exception as e:
+            self.errors.append(f"✗ Error updating time_off_request: {str(e)}")
+            db.session.rollback()
+
+    def create_upload_history_table(self):
+        """Create upload_history table if it doesn't exist"""
         inspector = inspect(db.engine)
         
         if 'upload_history' not in inspector.get_table_names():
-            # Create the table
-            UploadHistory.__table__.create(db.engine)
-            print("Created upload_history table")
+            try:
+                UploadHistory.__table__.create(db.engine)
+                self.migrations_run.append("✓ Created upload_history table")
+            except Exception as e:
+                self.errors.append(f"✗ Error creating upload_history: {str(e)}")
         else:
-            print("upload_history table already exists")
+            self.migrations_run.append("✓ upload_history table already exists")
 
-def update_existing_employees():
-    """Update existing employees with default values"""
-    with app.app_context():
-        employees = Employee.query.all()
-        updated = 0
+    def create_missing_indexes(self):
+        """Create performance indexes"""
+        indexes_to_create = [
+            ("idx_schedule_date_crew", "schedule", "date, crew"),
+            ("idx_schedule_employee_date", "schedule", "employee_id, date"),
+            ("idx_vacation_calendar_employee_date", "vacation_calendar", "employee_id, date"),
+            ("idx_time_off_request_status", "time_off_request", "status"),
+            ("idx_overtime_history_employee_week", "overtime_history", "employee_id, week_start_date")
+        ]
         
-        for emp in employees:
-            # Set default email if missing (already has unique constraint, so be careful)
-            if not emp.email:
-                # Use a unique email based on employee_id
-                emp.email = f"{emp.employee_id.lower()}@company.local"
-                
-            # Set account_active if not set
-            if not hasattr(emp, 'account_active') or emp.account_active is None:
-                emp.account_active = True
-                
-            updated += 1
-            
+        for index_name, table, columns in indexes_to_create:
+            try:
+                sql = f"CREATE INDEX IF NOT EXISTS {index_name} ON {table} ({columns});"
+                db.session.execute(text(sql))
+                self.migrations_run.append(f"✓ Created index {index_name}")
+            except Exception as e:
+                if "already exists" not in str(e):
+                    self.errors.append(f"✗ Error creating index {index_name}: {str(e)}")
+                    
+        db.session.commit()
+
+    def update_existing_employees(self):
+        """Update existing employees with default values"""
         try:
+            employees = Employee.query.all()
+            updated = 0
+            
+            for emp in employees:
+                if not emp.email:
+                    emp.email = f"{emp.employee_id.lower()}@company.local"
+                    
+                if not hasattr(emp, 'account_active') or emp.account_active is None:
+                    emp.account_active = True
+                    
+                updated += 1
+                
             db.session.commit()
-            print(f"Updated {updated} existing employees with default values")
+            self.migrations_run.append(f"✓ Updated {updated} existing employees")
+            
         except Exception as e:
-            print(f"Error updating employees: {str(e)}")
+            self.errors.append(f"✗ Error updating employees: {str(e)}")
             db.session.rollback()
 
-def create_test_supervisor():
-    """Create a test supervisor account for initial access"""
-    with app.app_context():
-        # Check if any supervisor exists with a username
+    def create_test_supervisor(self):
+        """Create a test supervisor account for initial access"""
         supervisor = Employee.query.filter_by(is_supervisor=True).filter(Employee.username != None).first()
         
         if not supervisor:
-            # Check if we have any supervisor without username
             supervisor = Employee.query.filter_by(is_supervisor=True).first()
             
             if supervisor:
-                # Update existing supervisor
                 supervisor.username = 'supervisor'
                 supervisor.set_password('TempPass123!')
                 supervisor.must_change_password = True
@@ -115,16 +205,15 @@ def create_test_supervisor():
                 supervisor.account_created_date = datetime.utcnow()
                 
                 db.session.commit()
+                self.migrations_run.append("✓ Updated existing supervisor with login credentials")
                 
-                print("\n" + "="*50)
-                print("UPDATED EXISTING SUPERVISOR WITH LOGIN")
-                print(f"Name: {supervisor.name}")
-                print("Username: supervisor")
-                print("Password: TempPass123!")
-                print("You will be required to change this password on first login")
-                print("="*50 + "\n")
+                logger.info("\n" + "="*50)
+                logger.info("SUPERVISOR ACCOUNT READY")
+                logger.info("Username: supervisor")
+                logger.info("Password: TempPass123!")
+                logger.info("="*50 + "\n")
             else:
-                # Create new supervisor
+                # Create new supervisor if none exists
                 supervisor = Employee(
                     employee_id='SUP001',
                     name='Test Supervisor',
@@ -132,11 +221,9 @@ def create_test_supervisor():
                     is_supervisor=True,
                     crew='A',
                     department='Management',
-                    hire_date=datetime.now().date()
+                    hire_date=datetime.now().date(),
+                    username='supervisor'
                 )
-                
-                # Set login credentials
-                supervisor.username = 'supervisor'
                 supervisor.set_password('TempPass123!')
                 supervisor.must_change_password = True
                 supervisor.first_login = True
@@ -144,33 +231,53 @@ def create_test_supervisor():
                 
                 db.session.add(supervisor)
                 db.session.commit()
+                self.migrations_run.append("✓ Created test supervisor account")
                 
-                print("\n" + "="*50)
-                print("CREATED TEST SUPERVISOR ACCOUNT")
-                print("Username: supervisor")
-                print("Password: TempPass123!")
-                print("You will be required to change this password on first login")
-                print("="*50 + "\n")
+                logger.info("\n" + "="*50)
+                logger.info("CREATED TEST SUPERVISOR")
+                logger.info("Username: supervisor")
+                logger.info("Password: TempPass123!")
+                logger.info("="*50 + "\n")
         else:
-            print(f"Supervisor account already exists: {supervisor.username}")
+            self.migrations_run.append(f"✓ Supervisor account already exists: {supervisor.username}")
+
+    def print_summary(self):
+        """Print migration summary"""
+        logger.info("\n" + "="*60)
+        logger.info("MIGRATION SUMMARY")
+        logger.info("="*60)
+        
+        if self.migrations_run:
+            logger.info(f"\nSuccessful Migrations ({len(self.migrations_run)}):")
+            for migration in self.migrations_run:
+                logger.info(f"  {migration}")
+                
+        if self.errors:
+            logger.info(f"\nErrors ({len(self.errors)}):")
+            for error in self.errors:
+                logger.info(f"  {error}")
+        else:
+            logger.info("\n✓ All migrations completed successfully!")
+            
+        logger.info("\n" + "="*60)
+
+# Add this function to run migrations on app startup
+def run_migrations_on_startup(app, db):
+    """Run this in your app.py after db.init_app(app)"""
+    with app.app_context():
+        try:
+            manager = DatabaseMigrationManager()
+            manager.run_all_migrations()
+        except Exception as e:
+            logger.error(f"Migration error: {str(e)}")
 
 if __name__ == '__main__':
-    print("Starting database migration...")
+    # Run migrations when script is executed directly
+    manager = DatabaseMigrationManager()
+    manager.run_all_migrations()
     
-    # Add authentication fields
-    add_authentication_fields()
-    
-    # Create upload history table
-    create_upload_history_table()
-    
-    # Update existing employees
-    update_existing_employees()
-    
-    # Create test supervisor
-    create_test_supervisor()
-    
-    print("\nDatabase migration completed!")
     print("\nNext steps:")
-    print("1. Restart your Flask application")
-    print("2. Log in with the supervisor account")
-    print("3. Upload employee data and create accounts")
+    print("1. Deploy this updated migration script")
+    print("2. Run: python database_migration.py")
+    print("3. All database issues will be fixed automatically")
+    print("4. The vacation_calendar.status error will be resolved")
