@@ -1,342 +1,277 @@
 {% extends "base.html" %}
-{% block title %}Upload Employee Data - Workforce Scheduler{% endblock %}
+
+{% block title %}Upload Employee Data{% endblock %}
 
 {% block content %}
 <div class="container-fluid mt-4">
-    <!-- Header with Back Button -->
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center">
-                <h1>
-                    <i class="bi bi-cloud-upload"></i> Employee Data Upload Center
-                </h1>
-                <a href="{{ url_for('main.dashboard') }}" class="btn btn-secondary">
-                    <i class="bi bi-arrow-left"></i> Back to Dashboard
-                </a>
-            </div>
-            <p class="text-muted">Import employee data, overtime history, and manage your workforce database</p>
-        </div>
-    </div>
-
-    <!-- Statistics Cards -->
-    <div class="row mb-4">
-        <div class="col-md-3">
-            <div class="card text-center">
-                <div class="card-body">
-                    <i class="bi bi-people-fill text-primary" style="font-size: 2rem;"></i>
-                    <h3 class="mt-2">{{ stats.total_employees if stats else 0 }}</h3>
-                    <p class="text-muted mb-0">Total Employees</p>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card text-center">
-                <div class="card-body">
-                    <i class="bi bi-diagram-3-fill text-success" style="font-size: 2rem;"></i>
-                    <h3 class="mt-2">4</h3>
-                    <p class="text-muted mb-0">Active Crews</p>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card text-center">
-                <div class="card-body">
-                    <i class="bi bi-clock-history text-warning" style="font-size: 2rem;"></i>
-                    <h3 class="mt-2">{{ recent_uploads|length if recent_uploads else 0 }}</h3>
-                    <p class="text-muted mb-0">Recent Uploads</p>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card text-center">
-                <div class="card-body">
-                    <i class="bi bi-exclamation-triangle text-danger" style="font-size: 2rem;"></i>
-                    <h3 class="mt-2">{{ stats.employees_without_ot if stats else 0 }}</h3>
-                    <p class="text-muted mb-0">Missing OT Data</p>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Main Content -->
     <div class="row">
-        <!-- Templates & Resources -->
-        <div class="col-md-4">
-            <h3 class="mb-3">
-                <i class="bi bi-file-earmark-excel text-success"></i> Excel Templates
-            </h3>
-            
-            <!-- Template Cards -->
-            <div class="template-section">
-                <div class="card template-card mb-3" onclick="window.location.href='{{ url_for('employee_import.download_employee_template') }}'">
-                    <div class="card-body">
-                        <h5 class="card-title">
-                            <i class="bi bi-people text-primary"></i> Employee Import Template
-                        </h5>
-                        <p class="card-text">Complete template for importing employee data including crews, positions, and skills</p>
-                        <div class="d-flex justify-content-between align-items-center">
-                            <span class="badge bg-primary">Recommended</span>
-                            <i class="bi bi-download"></i>
-                        </div>
-                    </div>
+        <div class="col-lg-3">
+            <!-- Statistics Sidebar -->
+            <div class="card mb-4">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="bi bi-bar-chart"></i> Upload Statistics</h5>
                 </div>
-
-                <div class="card template-card mb-3" onclick="window.location.href='{{ url_for('employee_import.download_overtime_template') }}'">
-                    <div class="card-body">
-                        <h5 class="card-title">
-                            <i class="bi bi-clock-fill text-warning"></i> Overtime History Template
-                        </h5>
-                        <p class="card-text">Import 13 weeks of overtime history for all employees</p>
-                        <div class="d-flex justify-content-between align-items-center">
-                            <span class="badge bg-warning text-dark">Import After Employees</span>
-                            <i class="bi bi-download"></i>
-                        </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label class="text-muted small">Total Employees</label>
+                        <h4 class="mb-0">{{ employee_count|default(0) }}</h4>
                     </div>
-                </div>
-
-                <div class="card template-card mb-3" onclick="window.location.href='{{ url_for('employee_import.download_bulk_update_template', template_type='employee') }}'">
-                    <div class="card-body">
-                        <h5 class="card-title">
-                            <i class="bi bi-pencil-square text-info"></i> Bulk Update Template
-                        </h5>
-                        <p class="card-text">Update existing employee data in bulk</p>
-                        <div class="d-flex justify-content-between align-items-center">
-                            <span class="badge bg-info">Advanced</span>
-                            <i class="bi bi-download"></i>
-                        </div>
+                    <div class="mb-3">
+                        <label class="text-muted small">Crew Distribution</label>
+                        <canvas id="crewChart" width="100%" height="100"></canvas>
                     </div>
-                </div>
-
-                <!-- Export Options -->
-                <h5 class="mt-4 mb-3">
-                    <i class="bi bi-box-arrow-up text-secondary"></i> Export Current Data
-                </h5>
-                <div class="list-group">
-                    <a href="{{ url_for('employee_import.export_current_employees') }}" class="list-group-item list-group-item-action">
-                        <i class="bi bi-people"></i> Export All Employees
-                    </a>
-                    <a href="{{ url_for('employee_import.export_current_overtime') }}" class="list-group-item list-group-item-action">
-                        <i class="bi bi-clock"></i> Export Overtime History
-                    </a>
+                    <div class="mb-3">
+                        <label class="text-muted small">Last Upload</label>
+                        <p class="mb-0">{{ last_upload_date|default('Never') }}</p>
+                    </div>
                 </div>
             </div>
 
-            <!-- Recent Upload History -->
-            <h5 class="mt-4 mb-3">
-                <i class="bi bi-clock-history"></i> Recent Uploads
-            </h5>
-            <div class="upload-history">
-                {% if recent_uploads %}
-                {% for upload in recent_uploads %}
-                <div class="small mb-2 p-2 bg-light rounded">
-                    <div class="d-flex justify-content-between">
-                        <span><i class="bi bi-file-earmark-check text-success"></i> {{ upload.filename }}</span>
-                        <span class="text-muted">{{ upload.upload_date.strftime('%m/%d %I:%M%p') }}</span>
-                    </div>
-                    <small class="text-muted">{{ upload.records_processed }} records</small>
+            <!-- Quick Actions -->
+            <div class="card">
+                <div class="card-header bg-secondary text-white">
+                    <h5 class="mb-0"><i class="bi bi-lightning"></i> Quick Actions</h5>
                 </div>
-                {% endfor %}
-                {% else %}
-                <p class="text-muted">No recent uploads</p>
-                {% endif %}
+                <div class="list-group list-group-flush">
+                    <a href="{{ url_for('employee_import.download_employee_template') }}" class="list-group-item list-group-item-action">
+                        <i class="bi bi-download"></i> Download Template
+                    </a>
+                    <a href="{{ url_for('employee_import.export_current_employees') }}" class="list-group-item list-group-item-action">
+                        <i class="bi bi-file-earmark-excel"></i> Export Current Data
+                    </a>
+                    <a href="{{ url_for('employee_import.upload_history') }}" class="list-group-item list-group-item-action">
+                        <i class="bi bi-clock-history"></i> View History
+                    </a>
+                </div>
             </div>
         </div>
 
-        <!-- Upload Section -->
-        <div class="col-md-8">
-            <h3 class="mb-3">
-                <i class="bi bi-cloud-upload text-primary"></i> Upload Data
-            </h3>
+        <div class="col-lg-9">
+            <!-- Main Upload Area -->
+            <div class="card">
+                <div class="card-header">
+                    <h4 class="mb-0"><i class="bi bi-cloud-upload"></i> Upload Employee Data</h4>
+                </div>
+                <div class="card-body">
+                    <!-- Step Indicator -->
+                    <div class="step-indicator mb-4">
+                        <div class="step active" id="step1">
+                            <i class="bi bi-1-circle"></i>
+                            <span>Select File</span>
+                        </div>
+                        <div class="step" id="step2">
+                            <i class="bi bi-2-circle"></i>
+                            <span>Validate</span>
+                        </div>
+                        <div class="step" id="step3">
+                            <i class="bi bi-3-circle"></i>
+                            <span>Review</span>
+                        </div>
+                        <div class="step" id="step4">
+                            <i class="bi bi-4-circle"></i>
+                            <span>Import</span>
+                        </div>
+                    </div>
 
-            <!-- Step Indicator -->
-            <div class="step-indicator mb-4">
-                <div class="step active" id="step1">
-                    <i class="bi bi-1-circle-fill"></i>
-                    <div>Select File</div>
-                </div>
-                <div class="step" id="step2">
-                    <i class="bi bi-2-circle"></i>
-                    <div>Validate</div>
-                </div>
-                <div class="step" id="step3">
-                    <i class="bi bi-3-circle"></i>
-                    <div>Review</div>
-                </div>
-                <div class="step" id="step4">
-                    <i class="bi bi-4-circle"></i>
-                    <div>Import</div>
-                </div>
-            </div>
+                    <!-- Flash Messages -->
+                    {% with messages = get_flashed_messages(with_categories=true) %}
+                        {% if messages %}
+                            {% for category, message in messages %}
+                                <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
+                                    {{ message }}
+                                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                                </div>
+                            {% endfor %}
+                        {% endif %}
+                    {% endwith %}
 
-            <!-- Upload Form -->
-            <form id="uploadForm" method="POST" enctype="multipart/form-data" action="{{ url_for('employee_import.upload_employees') }}">
-                <!-- File Upload Zone -->
-                <div class="upload-zone" id="uploadZone">
-                    <i class="bi bi-cloud-arrow-up" style="font-size: 4rem; color: #007bff;"></i>
-                    <h4 class="mt-3">Drag & Drop Excel File Here</h4>
-                    <p class="text-muted">or click to browse</p>
-                    <input type="file" id="fileInput" name="file" accept=".xlsx,.xls" style="display: none;">
-                    
-                    <div id="selectedFile" class="mt-3 d-none">
-                        <div class="alert alert-info">
+                    <!-- Upload Form -->
+                    <form id="uploadForm" method="POST" enctype="multipart/form-data">
+                        <!-- File Upload Zone -->
+                        <div class="upload-zone" id="uploadZone">
+                            <i class="bi bi-cloud-upload display-1 text-muted"></i>
+                            <h5>Drag & Drop Excel File Here</h5>
+                            <p class="text-muted">or click to browse</p>
+                            <input type="file" id="fileInput" name="file" class="d-none" accept=".xlsx,.xls">
+                        </div>
+
+                        <!-- Selected File Display -->
+                        <div id="selectedFile" class="alert alert-info d-none">
                             <i class="bi bi-file-earmark-excel"></i>
                             <span id="fileName"></span>
                             <button type="button" class="btn-close float-end" onclick="clearFileSelection()"></button>
                         </div>
-                    </div>
-                </div>
 
-                <!-- Upload Type Selection -->
-                <div class="row mt-4" id="uploadTypeSection" style="display: none;">
-                    <div class="col-12">
-                        <h5>What type of data are you uploading?</h5>
-                        <div class="row">
-                            <div class="col-md-4">
-                                <div class="form-check upload-type-card">
-                                    <input class="form-check-input" type="radio" name="upload_type" id="typeEmployee" value="employees" checked>
-                                    <label class="form-check-label w-100" for="typeEmployee">
-                                        <div class="card">
-                                            <div class="card-body text-center">
-                                                <i class="bi bi-people-fill text-primary" style="font-size: 2rem;"></i>
-                                                <h6 class="mt-2">Employee Data</h6>
-                                                <small class="text-muted">Names, crews, positions</small>
+                        <!-- Upload Type Selection -->
+                        <div class="mt-4" id="uploadTypeSection" style="display: none;">
+                            <h5>Select Upload Type</h5>
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <div class="form-check upload-type-card">
+                                        <input class="form-check-input" type="radio" name="upload_type" id="typeEmployee" value="employee" checked>
+                                        <label class="form-check-label" for="typeEmployee">
+                                            <div class="card">
+                                                <div class="card-body text-center">
+                                                    <i class="bi bi-people display-4 text-primary"></i>
+                                                    <h6>Employee Data</h6>
+                                                    <small class="text-muted">Upload new employees or update existing</small>
+                                                </div>
                                             </div>
-                                        </div>
-                                    </label>
+                                        </label>
+                                    </div>
                                 </div>
-                            </div>
-                            <div class="col-md-4">
-                                <div class="form-check upload-type-card">
-                                    <input class="form-check-input" type="radio" name="upload_type" id="typeOvertime" value="overtime">
-                                    <label class="form-check-label w-100" for="typeOvertime">
-                                        <div class="card">
-                                            <div class="card-body text-center">
-                                                <i class="bi bi-clock-fill text-warning" style="font-size: 2rem;"></i>
-                                                <h6 class="mt-2">Overtime History</h6>
-                                                <small class="text-muted">13-week OT data</small>
+                                <div class="col-md-4">
+                                    <div class="form-check upload-type-card">
+                                        <input class="form-check-input" type="radio" name="upload_type" id="typeOvertime" value="overtime">
+                                        <label class="form-check-label" for="typeOvertime">
+                                            <div class="card">
+                                                <div class="card-body text-center">
+                                                    <i class="bi bi-clock-history display-4 text-warning"></i>
+                                                    <h6>Overtime History</h6>
+                                                    <small class="text-muted">13-week overtime records</small>
+                                                </div>
                                             </div>
-                                        </div>
-                                    </label>
+                                        </label>
+                                    </div>
                                 </div>
-                            </div>
-                            <div class="col-md-4">
-                                <div class="form-check upload-type-card">
-                                    <input class="form-check-input" type="radio" name="upload_type" id="typeBulk" value="bulk_update">
-                                    <label class="form-check-label w-100" for="typeBulk">
-                                        <div class="card">
-                                            <div class="card-body text-center">
-                                                <i class="bi bi-pencil-square text-info" style="font-size: 2rem;"></i>
-                                                <h6 class="mt-2">Bulk Update</h6>
-                                                <small class="text-muted">Update existing data</small>
+                                <div class="col-md-4">
+                                    <div class="form-check upload-type-card">
+                                        <input class="form-check-input" type="radio" name="upload_type" id="typeBulk" value="bulk_update">
+                                        <label class="form-check-label" for="typeBulk">
+                                            <div class="card">
+                                                <div class="card-body text-center">
+                                                    <i class="bi bi-pencil-square display-4 text-success"></i>
+                                                    <h6>Bulk Update</h6>
+                                                    <small class="text-muted">Update multiple employees</small>
+                                                </div>
                                             </div>
-                                        </div>
-                                    </label>
+                                        </label>
+                                    </div>
                                 </div>
                             </div>
                         </div>
+
+                        <!-- Options Section -->
+                        <div class="mt-4" id="optionsSection" style="display: none;">
+                            <h5>Import Options</h5>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="replaceAll" name="replace_all">
+                                <label class="form-check-label" for="replaceAll">
+                                    <strong>Replace All Existing Data</strong>
+                                    <br>
+                                    <small class="text-muted">This will remove all existing records before importing new ones</small>
+                                </label>
+                            </div>
+                            <div class="form-check mt-2">
+                                <input class="form-check-input" type="checkbox" id="validateOnly" name="validate_only">
+                                <label class="form-check-label" for="validateOnly">
+                                    <strong>Validate Only (Don't Import)</strong>
+                                    <br>
+                                    <small class="text-muted">Check for errors without actually importing the data</small>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Validation Results -->
+                        <div id="validationResults" class="mt-4" style="display: none;">
+                            <h5>Validation Results</h5>
+                            <div id="validationContent"></div>
+                        </div>
+
+                        <!-- Action Buttons -->
+                        <div class="mt-4" id="actionButtons" style="display: none;">
+                            <button type="button" class="btn btn-secondary" onclick="resetUpload()">
+                                <i class="bi bi-arrow-counterclockwise"></i> Start Over
+                            </button>
+                            <button type="button" class="btn btn-primary" id="validateBtn" onclick="validateFile()">
+                                <i class="bi bi-check-circle"></i> Validate File
+                            </button>
+                            <button type="submit" class="btn btn-success d-none" id="importBtn">
+                                <i class="bi bi-cloud-upload"></i> Import Data
+                            </button>
+                        </div>
+                    </form>
+
+                    <!-- Progress Bar -->
+                    <div class="progress mt-4 d-none" id="progressBar">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                    </div>
+
+                    <!-- Import Results -->
+                    <div id="importResults" class="mt-4" style="display: none;">
+                        <h5>Import Results</h5>
+                        <div id="importContent"></div>
                     </div>
                 </div>
-
-                <!-- Options Section -->
-                <div class="mt-4" id="optionsSection" style="display: none;">
-                    <h5>Import Options</h5>
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" id="replaceAll" name="replace_all">
-                        <label class="form-check-label" for="replaceAll">
-                            <strong>Replace All Existing Data</strong>
-                            <br>
-                            <small class="text-muted">This will remove all existing records before importing new ones</small>
-                        </label>
-                    </div>
-                    <div class="form-check mt-2">
-                        <input class="form-check-input" type="checkbox" id="validateOnly" name="validate_only">
-                        <label class="form-check-label" for="validateOnly">
-                            <strong>Validate Only (Don't Import)</strong>
-                            <br>
-                            <small class="text-muted">Check for errors without actually importing the data</small>
-                        </label>
-                    </div>
-                </div>
-
-                <!-- Validation Results -->
-                <div id="validationResults" class="mt-4" style="display: none;">
-                    <h5>Validation Results</h5>
-                    <div id="validationContent"></div>
-                </div>
-
-                <!-- Action Buttons -->
-                <div class="mt-4" id="actionButtons" style="display: none;">
-                    <button type="button" class="btn btn-secondary" onclick="resetUpload()">
-                        <i class="bi bi-arrow-counterclockwise"></i> Start Over
-                    </button>
-                    <button type="button" class="btn btn-primary" id="validateBtn" onclick="validateFile()">
-                        <i class="bi bi-check-circle"></i> Validate File
-                    </button>
-                    <button type="submit" class="btn btn-success d-none" id="importBtn">
-                        <i class="bi bi-cloud-upload"></i> Import Data
-                    </button>
-                </div>
-            </form>
-
-            <!-- Progress Bar -->
-            <div class="progress mt-4 d-none" id="progressBar">
-                <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
             </div>
 
-            <!-- Results Section -->
-            <div id="importResults" class="mt-4" style="display: none;">
-                <h5>Import Results</h5>
-                <div id="resultsContent"></div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Crew Distribution Chart -->
-    <div class="row mt-5">
-        <div class="col-12">
-            <h3 class="mb-3">
-                <i class="bi bi-pie-chart"></i> Current Crew Distribution
-            </h3>
-            <div class="card">
+            <!-- Recent Uploads -->
+            {% if recent_uploads %}
+            <div class="card mt-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-clock-history"></i> Recent Uploads</h5>
+                </div>
                 <div class="card-body">
-                    <canvas id="crewChart" height="100"></canvas>
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>File</th>
+                                    <th>Type</th>
+                                    <th>Status</th>
+                                    <th>Records</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for upload in recent_uploads %}
+                                <tr>
+                                    <td>{{ upload.upload_date.strftime('%Y-%m-%d %H:%M') }}</td>
+                                    <td>{{ upload.filename }}</td>
+                                    <td>{{ upload.file_type.replace('_', ' ').title() }}</td>
+                                    <td>
+                                        {% if upload.status == 'completed' %}
+                                            <span class="badge bg-success">Completed</span>
+                                        {% elif upload.status == 'failed' %}
+                                            <span class="badge bg-danger">Failed</span>
+                                        {% else %}
+                                            <span class="badge bg-warning">{{ upload.status }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ upload.records_processed|default(0) }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Tips and Instructions -->
+            <div class="card mt-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-info-circle"></i> Tips for Successful Upload</h5>
+                </div>
+                <div class="card-body">
+                    <ul>
+                        <li>Download the template first to ensure your data is in the correct format</li>
+                        <li>Employee IDs must be unique across all employees</li>
+                        <li>Email addresses will be used as login usernames</li>
+                        <li>Crew assignments must be A, B, C, or D</li>
+                        <li>For overtime uploads, include exactly 13 weeks of data</li>
+                        <li>Validate your file before importing to catch any errors</li>
+                    </ul>
                 </div>
             </div>
         </div>
     </div>
 </div>
 
+<!-- Hidden element to store validation errors count -->
+<div id="validationErrors" class="d-none">0</div>
+
 <style>
-.upload-zone {
-    border: 2px dashed #007bff;
-    border-radius: 10px;
-    padding: 40px;
-    text-align: center;
-    cursor: pointer;
-    transition: all 0.3s;
-    background-color: #f8f9fa;
-}
-
-.upload-zone:hover {
-    border-color: #0056b3;
-    background-color: #e9ecef;
-}
-
-.upload-zone.dragover {
-    border-color: #28a745;
-    background-color: #d4edda;
-}
-
-.template-card {
-    cursor: pointer;
-    transition: transform 0.2s;
-}
-
-.template-card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-}
-
 .step-indicator {
     display: flex;
     justify-content: space-between;
@@ -347,47 +282,54 @@
     flex: 1;
     text-align: center;
     position: relative;
-    opacity: 0.5;
+    color: #6c757d;
 }
 
 .step.active {
-    opacity: 1;
+    color: #007bff;
 }
 
 .step.completed {
-    opacity: 1;
+    color: #28a745;
 }
 
 .step i {
     font-size: 2rem;
-    color: #6c757d;
+    display: block;
+    margin-bottom: 5px;
 }
 
-.step.active i {
-    color: #007bff;
-}
-
-.step.completed i {
-    color: #28a745;
-}
-
-.step::after {
+.step:not(:last-child)::after {
     content: '';
     position: absolute;
-    top: 1rem;
-    right: -50%;
+    top: 15px;
+    left: 50%;
     width: 100%;
     height: 2px;
     background-color: #dee2e6;
-    z-index: -1;
 }
 
-.step:last-child::after {
-    display: none;
-}
-
-.step.completed::after {
+.step.completed:not(:last-child)::after {
     background-color: #28a745;
+}
+
+.upload-zone {
+    border: 3px dashed #dee2e6;
+    border-radius: 10px;
+    padding: 40px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.upload-zone:hover {
+    border-color: #007bff;
+    background-color: #f8f9fa;
+}
+
+.upload-zone.dragover {
+    border-color: #007bff;
+    background-color: #e7f3ff;
 }
 
 .upload-type-card .form-check-input {
@@ -398,6 +340,11 @@
 .upload-type-card .card {
     cursor: pointer;
     transition: all 0.3s;
+}
+
+.upload-type-card .card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
 }
 
 .upload-type-card .form-check-input:checked + label .card {
@@ -438,9 +385,6 @@ const uploadTypeSection = document.getElementById('uploadTypeSection');
 const optionsSection = document.getElementById('optionsSection');
 const actionButtons = document.getElementById('actionButtons');
 
-// Store the selected file globally
-let selectedFileObject = null;
-
 // Click to select file
 uploadZone.addEventListener('click', () => {
     fileInput.click();
@@ -479,12 +423,6 @@ function handleFileSelect(file) {
         return;
     }
     
-    // Reset any previous validation state
-    resetValidation();
-    
-    // Store the file globally
-    selectedFileObject = file;
-    
     fileName.textContent = file.name;
     selectedFile.classList.remove('d-none');
     uploadTypeSection.style.display = 'block';
@@ -495,7 +433,6 @@ function handleFileSelect(file) {
 
 function clearFileSelection() {
     fileInput.value = '';
-    selectedFileObject = null;
     selectedFile.classList.add('d-none');
     uploadTypeSection.style.display = 'none';
     optionsSection.style.display = 'none';
@@ -522,7 +459,7 @@ function updateStepIndicator(step) {
 }
 
 function validateFile() {
-    if (!selectedFileObject) {
+    if (!fileInput.files[0]) {
         alert('Please select a file first');
         return;
     }
@@ -530,7 +467,7 @@ function validateFile() {
     updateStepIndicator(2);
     
     const formData = new FormData();
-    formData.append('file', selectedFileObject);
+    formData.append('file', fileInput.files[0]);
     formData.append('type', document.querySelector('input[name="upload_type"]:checked').value);
     
     // Show progress
@@ -539,16 +476,11 @@ function validateFile() {
     progressBar.style.width = '50%';
     
     // Make AJAX request to validate
-    fetch('/validate-upload', {
+    fetch('{{ url_for("employee_import.validate_upload") }}', {
         method: 'POST',
         body: formData
     })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        return response.json();
-    })
+    .then(response => response.json())
     .then(data => {
         progressBar.style.width = '100%';
         setTimeout(() => {
@@ -560,7 +492,6 @@ function validateFile() {
         console.error('Error:', error);
         alert('Error validating file: ' + error.message);
         document.getElementById('progressBar').classList.add('d-none');
-        updateStepIndicator(1);
     });
 }
 
@@ -576,51 +507,76 @@ function displayValidationResults(data) {
     
     if (data.success) {
         html += '<div class="validation-success">';
-        html += `<i class="bi bi-check-circle"></i> Validation passed! ${data.row_count || 0} records ready to import.`;
+        html += `<i class="bi bi-check-circle"></i> Validation passed! `;
+        html += `Found ${data.row_count} rows ready to import.`;
         html += '</div>';
         
-        // Show warnings if any
         if (data.warnings && data.warnings.length > 0) {
-            html += '<div class="validation-warning mt-2">';
-            html += '<h6>Warnings:</h6>';
-            html += '<ul class="mb-0">';
+            html += '<div class="validation-warning">';
+            html += '<strong>Warnings:</strong><ul>';
+            data.warnings.forEach(warning => {
+                html += `<li>${warning}</li>`;
+            });
+            html += '</ul></div>';
+        }
+        
+        // Show preview if available
+        if (data.preview && data.preview.length > 0) {
+            html += '<h6 class="mt-3">Preview (first 5 rows):</h6>';
+            html += '<div class="table-responsive">';
+            html += '<table class="table table-sm table-bordered">';
+            html += '<thead><tr>';
+            Object.keys(data.preview[0]).forEach(col => {
+                html += `<th>${col}</th>`;
+            });
+            html += '</tr></thead><tbody>';
+            data.preview.forEach(row => {
+                html += '<tr>';
+                Object.values(row).forEach(val => {
+                    html += `<td>${val}</td>`;
+                });
+                html += '</tr>';
+            });
+            html += '</tbody></table></div>';
+        }
+        
+        // Enable import button
+        document.getElementById('validateBtn').classList.add('d-none');
+        document.getElementById('importBtn').classList.remove('d-none');
+        
+    } else {
+        html += '<div class="validation-error">';
+        html += '<i class="bi bi-x-circle"></i> Validation failed! ';
+        if (data.error) {
+            html += data.error;
+        } else {
+            html += 'Please fix the following errors:';
+        }
+        html += '</div>';
+        
+        if (data.errors && data.errors.length > 0) {
+            html += '<ul class="mt-2">';
+            data.errors.forEach(error => {
+                html += `<li class="text-danger">${error}</li>`;
+            });
+            html += '</ul>';
+        }
+        
+        if (data.warnings && data.warnings.length > 0) {
+            html += '<div class="validation-warning mt-3">';
+            html += '<strong>Warnings:</strong><ul>';
             data.warnings.forEach(warning => {
                 html += `<li>${warning}</li>`;
             });
             html += '</ul>';
             html += '</div>';
         }
-        
-        // Enable import button
-        document.getElementById('validateBtn').classList.add('d-none');
-        document.getElementById('importBtn').classList.remove('d-none');
-    } else {
-        html += '<div class="validation-error">';
-        html += '<h6><i class="bi bi-exclamation-circle"></i> Validation Failed</h6>';
-        if (data.error) {
-            html += `<p>${data.error}</p>`;
-        }
-        html += '</div>';
-        
-        // Show errors
-        if (data.errors && data.errors.length > 0) {
-            html += '<div class="mt-3">';
-            html += '<h6>Errors Found:</h6>';
-            html += '<ul class="list-unstyled">';
-            data.errors.forEach((error, index) => {
-                if (index < 10) {
-                    html += `<li class="validation-error mb-1"><i class="bi bi-x-circle"></i> ${error}</li>`;
-                }
-            });
-            if (data.errors.length > 10) {
-                html += `<li class="text-muted">... and ${data.errors.length - 10} more errors</li>`;
-            }
-            html += '</ul>';
-            html += '</div>';
-        }
     }
     
     validationContent.innerHTML = html;
+    
+    // Update error count
+    document.getElementById('validationErrors').textContent = data.total_errors || 0;
 }
 
 function resetValidation() {
@@ -640,11 +596,6 @@ function resetUpload() {
 document.getElementById('uploadForm').addEventListener('submit', function(e) {
     e.preventDefault();
     
-    if (!selectedFileObject) {
-        alert('Please select a file first');
-        return;
-    }
-    
     updateStepIndicator(4);
     
     // Show progress
@@ -652,12 +603,7 @@ document.getElementById('uploadForm').addEventListener('submit', function(e) {
     const progressBar = document.querySelector('.progress-bar');
     progressBar.style.width = '0%';
     
-    // Create FormData and manually add the file
-    const formData = new FormData();
-    formData.append('file', selectedFileObject);
-    formData.append('upload_type', document.querySelector('input[name="upload_type"]:checked').value);
-    formData.append('replace_all', document.getElementById('replaceAll').checked ? 'on' : 'off');
-    formData.append('validate_only', document.getElementById('validateOnly').checked ? 'on' : 'off');
+    const formData = new FormData(this);
     
     // Simulate progress
     let progress = 0;
@@ -669,17 +615,11 @@ document.getElementById('uploadForm').addEventListener('submit', function(e) {
         }
     }, 200);
     
-    // Submit to the correct endpoint
-    fetch('/upload-employees', {
+    fetch(this.action || '{{ url_for("employee_import.upload_employees") }}', {
         method: 'POST',
         body: formData
     })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        return response.json();
-    })
+    .then(response => response.json())
     .then(data => {
         clearInterval(progressInterval);
         progressBar.style.width = '100%';
@@ -692,14 +632,14 @@ document.getElementById('uploadForm').addEventListener('submit', function(e) {
     .catch(error => {
         clearInterval(progressInterval);
         console.error('Error:', error);
-        alert('Error uploading file: ' + error.message);
+        alert('Error importing data: ' + error.message);
         document.getElementById('progressBar').classList.add('d-none');
     });
 });
 
 function displayImportResults(data) {
     const importResults = document.getElementById('importResults');
-    const resultsContent = document.getElementById('resultsContent');
+    const importContent = document.getElementById('importContent');
     
     importResults.style.display = 'block';
     
@@ -707,104 +647,76 @@ function displayImportResults(data) {
     
     if (data.success) {
         html += '<div class="alert alert-success">';
-        html += '<h6><i class="bi bi-check-circle"></i> Import Successful!</h6>';
-        
-        if (data.message) {
-            html += `<p>${data.message}</p>`;
-        }
-        
-        if (data.processed) {
-            html += `<p>Total processed: ${data.processed} records</p>`;
-        }
+        html += '<i class="bi bi-check-circle-fill"></i> ';
+        html += data.message || 'Import completed successfully!';
+        html += '</div>';
         
         if (data.created) {
-            html += `<p>New employees created: ${data.created}</p>`;
+            html += `<p>✓ Created ${data.created} new employees</p>`;
         }
-        
         if (data.updated) {
-            html += `<p>Existing employees updated: ${data.updated}</p>`;
+            html += `<p>✓ Updated ${data.updated} existing employees</p>`;
         }
         
         if (data.credentials_file) {
-            // Build the URL using the blueprint route pattern
-            const credentialsUrl = `/download-credentials/${data.credentials_file}`;
-            html += `<div class="alert alert-info mt-3">
-                        <i class="bi bi-key"></i> Login credentials have been generated!
-                        <a href="${credentialsUrl}" 
-                           class="btn btn-sm btn-primary float-end">
-                            <i class="bi bi-download"></i> Download Credentials
-                        </a>
-                     </div>`;
+            html += '<div class="alert alert-info mt-3">';
+            html += '<i class="bi bi-key-fill"></i> Employee credentials have been generated. ';
+            html += '<a href="{{ url_for("employee_import.download_credentials") }}" class="btn btn-sm btn-primary">';
+            html += '<i class="bi bi-download"></i> Download Credentials</a>';
+            html += '</div>';
         }
         
+        // Show action buttons
+        html += '<div class="mt-4">';
+        html += '<a href="{{ url_for("employee_import.upload_employees") }}" class="btn btn-primary">';
+        html += '<i class="bi bi-plus"></i> Upload More Data</a> ';
+        html += '<a href="{{ url_for("main.dashboard") }}" class="btn btn-secondary">';
+        html += '<i class="bi bi-house"></i> Back to Dashboard</a>';
         html += '</div>';
         
-        // Hide action buttons
-        document.getElementById('actionButtons').style.display = 'none';
-        
-        // Add button to upload more
-        html += '<button class="btn btn-primary" onclick="location.reload()">Upload More Data</button>';
     } else {
         html += '<div class="alert alert-danger">';
-        html += '<h6><i class="bi bi-x-circle"></i> Import Failed</h6>';
-        html += `<p>${data.error || 'An error occurred during import'}</p>`;
+        html += '<i class="bi bi-x-circle-fill"></i> ';
+        html += data.message || 'Import failed!';
         html += '</div>';
+        
+        if (data.errors && data.errors.length > 0) {
+            html += '<h6>Errors:</h6><ul>';
+            data.errors.forEach(error => {
+                html += `<li class="text-danger">${error}</li>`;
+            });
+            html += '</ul>';
+        }
     }
     
-    resultsContent.innerHTML = html;
+    importContent.innerHTML = html;
 }
 
 // Crew distribution chart
-const crewData = {{ crew_distribution | tojson if crew_distribution else '{}' }};
+const crewData = {
+    'A': {{ crew_a_count|default(0) }},
+    'B': {{ crew_b_count|default(0) }},
+    'C': {{ crew_c_count|default(0) }},
+    'D': {{ crew_d_count|default(0) }}
+};
+
 const ctx = document.getElementById('crewChart').getContext('2d');
 new Chart(ctx, {
-    type: 'bar',
+    type: 'doughnut',
     data: {
-        labels: ['Crew A', 'Crew B', 'Crew C', 'Crew D', 'Unassigned'],
+        labels: ['Crew A', 'Crew B', 'Crew C', 'Crew D'],
         datasets: [{
-            label: 'Number of Employees',
-            data: [
-                crewData['A'] || 0,
-                crewData['B'] || 0,
-                crewData['C'] || 0,
-                crewData['D'] || 0,
-                crewData['Unassigned'] || 0
-            ],
-            backgroundColor: [
-                'rgba(54, 162, 235, 0.8)',
-                'rgba(75, 192, 192, 0.8)',
-                'rgba(255, 206, 86, 0.8)',
-                'rgba(153, 102, 255, 0.8)',
-                'rgba(255, 99, 132, 0.8)'
-            ],
-            borderColor: [
-                'rgba(54, 162, 235, 1)',
-                'rgba(75, 192, 192, 1)',
-                'rgba(255, 206, 86, 1)',
-                'rgba(153, 102, 255, 1)',
-                'rgba(255, 99, 132, 1)'
-            ],
-            borderWidth: 1
+            data: Object.values(crewData),
+            backgroundColor: ['#007bff', '#28a745', '#ffc107', '#dc3545']
         }]
     },
     options: {
         responsive: true,
-        maintainAspectRatio: false,
-        scales: {
-            y: {
-                beginAtZero: true,
-                ticks: {
-                    stepSize: 1
-                }
-            }
-        },
-        plugins: {
-            legend: {
-                display: false
-            },
-            title: {
-                display: true,
-                text: 'Employees per Crew'
+        maintainAspectRatio: true,
+        legend: {
+            position: 'bottom',
+            labels: {
+                boxWidth: 12
             }
         }
     }
