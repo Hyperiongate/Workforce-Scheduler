@@ -1,4 +1,3 @@
-
 # app.py - COMPLETE FIX FOR ALL ISSUES
 """
 Main application file with comprehensive database schema management
@@ -85,7 +84,8 @@ class DatabaseSchemaManager:
                 self.db.create_all()
                 logger.info("✅ Base tables created/verified")
                 
-                # Fix each table
+                # Fix each table - ADDED VACATION CALENDAR FIX
+                self.fix_vacation_calendar_table()  # NEW - CRITICAL FIX
                 self.fix_employee_table()
                 self.fix_shift_swap_request_table()
                 self.fix_time_off_request_table()
@@ -152,6 +152,30 @@ class DatabaseSchemaManager:
         except Exception as e:
             self.issues_found.append(f"Could not add {table_name}.{column_name}: {str(e)}")
             return False
+    
+    def fix_vacation_calendar_table(self):
+        """Fix vacation_calendar table schema - CRITICAL FOR COVERAGE GAPS"""
+        logger.info("Checking vacation_calendar table...")
+        
+        # First ensure the table exists
+        if not self.check_table_exists('vacation_calendar'):
+            logger.error("vacation_calendar table does not exist!")
+            return
+        
+        # Add the missing status column that's causing the Coverage Gaps error
+        columns = {
+            'status': ("VARCHAR(20) DEFAULT 'approved'", "UPDATE vacation_calendar SET status = 'approved' WHERE status IS NULL"),
+            'type': ("VARCHAR(20)", None),
+            'date': ("DATE", None),
+            'employee_id': ("INTEGER", None),
+            'request_id': ("INTEGER", None)
+        }
+        
+        for column_name, (column_type, after_sql) in columns.items():
+            self.add_column('vacation_calendar', column_name, column_type, after_sql)
+        
+        self.db.session.commit()
+        logger.info("✅ vacation_calendar table fixed - Coverage Gaps should work now!")
     
     def fix_employee_table(self):
         """Fix employee table schema"""
@@ -430,7 +454,8 @@ class DatabaseSchemaManager:
             ("idx_overtime_history_employee", "overtime_history", "employee_id"),
             ("idx_time_off_request_employee", "time_off_request", "employee_id"),
             ("idx_shift_swap_request_status", "shift_swap_request", "status"),
-            ("idx_file_upload_date", "file_upload", "upload_date")
+            ("idx_file_upload_date", "file_upload", "upload_date"),
+            ("idx_vacation_calendar_employee_date", "vacation_calendar", "employee_id, date")  # NEW INDEX
         ]
         
         for index_name, table_name, columns in indexes:
@@ -499,4 +524,61 @@ try:
 except ImportError as e:
     logger.warning(f"⚠️  Could not import employee_import blueprint: {e}")
 
-# Rest of app.py continues with all the routes and functions...
+# Error handlers
+@app.errorhandler(404)
+def not_found_error(error):
+    return render_template('404.html'), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    db.session.rollback()
+    return render_template('500.html'), 500
+
+# Test route for database connectivity
+@app.route('/test-db')
+@login_required
+def test_db():
+    """Test database connectivity"""
+    if not current_user.is_supervisor:
+        return "Access denied", 403
+    
+    try:
+        # Test basic query
+        result = db.session.execute(text("SELECT 1"))
+        
+        # Count tables
+        table_count = db.session.execute(text("""
+            SELECT COUNT(*) 
+            FROM information_schema.tables 
+            WHERE table_schema = 'public'
+        """)).scalar()
+        
+        # Count employees
+        employee_count = Employee.query.count()
+        
+        # Check vacation_calendar status column specifically
+        vacation_cal_check = db.session.execute(text("""
+            SELECT column_name, data_type 
+            FROM information_schema.columns 
+            WHERE table_name = 'vacation_calendar' 
+            AND column_name = 'status'
+        """)).fetchone()
+        
+        return jsonify({
+            "status": "ok",
+            "database": "connected",
+            "table_count": table_count,
+            "employee_count": employee_count,
+            "vacation_calendar_status_exists": vacation_cal_check is not None,
+            "timestamp": datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
+
+# Main app entry point
+if __name__ == '__main__':
+    app.run(debug=True)
