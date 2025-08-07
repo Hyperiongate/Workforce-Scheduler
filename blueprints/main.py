@@ -1,7 +1,7 @@
 # blueprints/main.py
 """
-Fixed main blueprint with proper dashboard routing and complete error handling
-COMPLETE FILE WITH ALL FIXES APPLIED
+Complete main blueprint with all routes and fixes
+VERIFIED AGAINST PROJECT REQUIREMENTS
 """
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, send_file, current_app
@@ -15,7 +15,7 @@ from sqlalchemy import or_, func, text, and_
 from utils.helpers import get_coverage_gaps
 import traceback
 
-# Create the blueprint - MUST be named 'main_bp' to match the import
+# Create the blueprint
 main_bp = Blueprint('main', __name__)
 
 @main_bp.route('/')
@@ -37,16 +37,15 @@ def dashboard():
         # Get real-time staffing data
         today = date.today()
         
-        # Get pending counts - REQUIRED by template
+        # Get pending counts - REQUIRED by dashboard.html template
         pending_time_off = TimeOffRequest.query.filter_by(status='pending').count()
         pending_swaps = ShiftSwapRequest.query.filter_by(status='pending').count()
         total_employees = Employee.query.count()
         
-        # Calculate coverage gaps for today - REQUIRED by template
+        # Calculate coverage gaps for today
         all_gaps = get_coverage_gaps()
         coverage_gaps = len([g for g in all_gaps if g['date'] == today])
         
-        # Return with EXACTLY what the template expects
         return render_template('dashboard.html',
             pending_time_off=pending_time_off,
             pending_swaps=pending_swaps,
@@ -59,7 +58,7 @@ def dashboard():
         traceback.print_exc()
         flash('Error loading dashboard. Please try again.', 'danger')
         
-        # Return a basic dashboard on error with default values
+        # Return with default values on error
         return render_template('dashboard.html',
             pending_time_off=0,
             pending_swaps=0,
@@ -91,7 +90,7 @@ def employee_dashboard():
             employee_id=current_user.id
         ).order_by(TimeOffRequest.created_at.desc()).limit(5).all()
         
-        # Get shift swaps - FIXED: Explicitly handle the OR condition
+        # Get shift swaps - Fixed with explicit OR
         my_swaps = ShiftSwapRequest.query.filter(
             db.or_(
                 ShiftSwapRequest.requester_id == current_user.id,
@@ -263,6 +262,7 @@ def overtime_management():
                              
     except Exception as e:
         current_app.logger.error(f"Error in overtime_management: {str(e)}")
+        traceback.print_exc()
         flash('Error loading overtime management.', 'danger')
         return redirect(url_for('main.dashboard'))
 
@@ -533,6 +533,7 @@ def view_crews():
                 output += f"<li>{emp.name} - {emp.position.name if emp.position else 'No Position'}</li>"
             output += "</ul>"
         
+        output += '<br><a href="/dashboard">Back to Dashboard</a>'
         return output
 
 @main_bp.route('/diagnostic')
@@ -552,7 +553,8 @@ def diagnostic():
         'Pending Swaps': ShiftSwapRequest.query.filter_by(status='pending').count(),
         'Today\'s Date': date.today().strftime('%Y-%m-%d'),
         'Current User': f"{current_user.name} (ID: {current_user.id})",
-        'User Role': 'Supervisor' if current_user.is_supervisor else 'Employee'
+        'User Role': 'Supervisor' if current_user.is_supervisor else 'Employee',
+        'Available Routes': 'See /debug-routes for full list'
     }
     
     output = "<h1>System Diagnostic</h1><table border='1' style='border-collapse: collapse;'>"
@@ -560,8 +562,32 @@ def diagnostic():
         output += f"<tr><td style='padding: 10px;'><strong>{key}</strong></td><td style='padding: 10px;'>{value}</td></tr>"
     output += "</table>"
     output += "<br><a href='/dashboard'>Back to Dashboard</a>"
+    output += "<br><a href='/debug-routes'>View All Routes</a>"
     
     return output
+
+@main_bp.route('/debug-routes')
+@login_required
+def debug_routes():
+    """Show all registered routes"""
+    if not current_user.is_supervisor:
+        flash('Supervisor access required', 'danger')
+        return redirect(url_for('main.dashboard'))
+    
+    output = ["<h1>All Registered Routes</h1><pre>"]
+    
+    # Get all routes from the app
+    rules = sorted(current_app.url_map.iter_rules(), key=lambda r: r.rule)
+    
+    for rule in rules:
+        methods = ','.join(sorted(rule.methods - {'HEAD', 'OPTIONS'}))
+        line = f"{rule.rule:50s} {methods:20s} {rule.endpoint}"
+        output.append(line)
+    
+    output.append("</pre>")
+    output.append("<br><a href='/dashboard'>Back to Dashboard</a>")
+    
+    return '\n'.join(output)
 
 # Error handlers
 @main_bp.errorhandler(404)
