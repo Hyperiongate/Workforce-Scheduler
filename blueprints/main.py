@@ -1,6 +1,6 @@
 # blueprints/main.py - COMPLETE FILE
 """
-Main blueprint with enhanced employee dashboard
+Main blueprint with enhanced employee dashboard and fixed overtime management
 Complete implementation following project requirements
 """
 
@@ -11,7 +11,7 @@ from models import (db, Employee, Position, Schedule, OvertimeHistory, TimeOffRe
                    CoverageRequest, MaintenanceIssue, CasualWorker, OvertimeOpportunity,
                    CoverageNotification, VacationCalendar)
 from datetime import date, timedelta, datetime
-from sqlalchemy import or_, func, text, and_
+from sqlalchemy import or_, func, text, and_, case
 from utils.helpers import get_coverage_gaps
 import traceback
 
@@ -349,6 +349,244 @@ def employee_dashboard():
             current_date=today.strftime('%A, %B %d, %Y')
         )
 
+@main_bp.route('/supervisor/overtime-management')
+@login_required
+def overtime_management():
+    """Enhanced overtime management page with multi-level sorting - FIXED VERSION"""
+    # Check if user is supervisor
+    if not current_user.is_supervisor:
+        flash('You must be a supervisor to access this page.', 'danger')
+        return redirect(url_for('main.employee_dashboard'))
+    
+    try:
+        # Get parameters from URL
+        page = request.args.get('page', 1, type=int)
+        per_page = 25
+        
+        # Search and filter parameters
+        search_term = request.args.get('search', '')
+        crew_filter = request.args.get('crew', '')
+        position_filter = request.args.get('position', '')
+        ot_range_filter = request.args.get('ot_range', '')
+        
+        # Multi-level sort parameters
+        sort_levels = []
+        for i in range(1, 5):
+            sort_field = request.args.get(f'sort{i}')
+            sort_dir = request.args.get(f'dir{i}', 'asc')
+            if sort_field:
+                sort_levels.append((sort_field, sort_dir))
+        
+        # Calculate date range for 13-week period
+        today = date.today()
+        end_date = today
+        start_date = today - timedelta(weeks=13)
+        
+        # Base query - get all employees (no is_active filter)
+        query = db.session.query(
+            Employee,
+            func.coalesce(func.sum(OvertimeHistory.hours_worked), 0).label('total_ot')
+        ).outerjoin(
+            OvertimeHistory,
+            and_(
+                Employee.id == OvertimeHistory.employee_id,
+                OvertimeHistory.week_ending >= start_date,
+                OvertimeHistory.week_ending <= end_date
+            )
+        ).group_by(Employee.id)
+        
+        # Apply filters
+        if search_term:
+            query = query.filter(
+                or_(
+                    Employee.name.ilike(f'%{search_term}%'),
+                    Employee.employee_id.ilike(f'%{search_term}%')
+                )
+            )
+        
+        if crew_filter:
+            query = query.filter(Employee.crew == crew_filter)
+        
+        if position_filter:
+            query = query.filter(Employee.position_id == position_filter)
+        
+        # Apply OT range filter
+        if ot_range_filter:
+            if ot_range_filter == '0-50':
+                query = query.having(func.coalesce(func.sum(OvertimeHistory.hours_worked), 0) <= 50)
+            elif ot_range_filter == '50-100':
+                query = query.having(
+                    and_(
+                        func.coalesce(func.sum(OvertimeHistory.hours_worked), 0) > 50,
+                        func.coalesce(func.sum(OvertimeHistory.hours_worked), 0) <= 100
+                    )
+                )
+            elif ot_range_filter == '100-150':
+                query = query.having(
+                    and_(
+                        func.coalesce(func.sum(OvertimeHistory.hours_worked), 0) > 100,
+                        func.coalesce(func.sum(OvertimeHistory.hours_worked), 0) <= 150
+                    )
+                )
+            elif ot_range_filter == '150+':
+                query = query.having(func.coalesce(func.sum(OvertimeHistory.hours_worked), 0) > 150)
+        
+        # Apply multi-level sorting
+        if sort_levels:
+            for sort_field, sort_dir in sort_levels:
+                if sort_field == 'crew':
+                    order_func = Employee.crew.asc() if sort_dir == 'asc' else Employee.crew.desc()
+                elif sort_field == 'jobtitle':
+                    # Join with Position table if needed
+                    if not any(isinstance(j.left, type(Position.__table__)) for j in query._legacy_facade[0]._join_entities):
+                        query = query.outerjoin(Position, Employee.position_id == Position.id)
+                    order_func = Position.name.asc() if sort_dir == 'asc' else Position.name.desc()
+                elif sort_field == 'seniority':
+                    order_func = Employee.hire_date.asc() if sort_dir == 'asc' else Employee.hire_date.desc()
+                elif sort_field == 'overtime':
+                    order_func = func.coalesce(func.sum(OvertimeHistory.hours_worked), 0)
+                    order_func = order_func.asc() if sort_dir == 'asc' else order_func.desc()
+                else:
+                    continue
+                
+                query = query.order_by(order_func)
+        else:
+            # Default sort by overtime hours descending
+            query = query.order_by(func.coalesce(func.sum(OvertimeHistory.hours_worked), 0).desc())
+        
+        # Execute paginated query
+        paginated = query.paginate(page=page, per_page=per_page, error_out=False)
+        
+        # Process results for template
+        employees = []
+        total_overtime_hours = 0
+        employees_with_overtime = 0
+        high_overtime_employees = []
+        
+        for emp, total_ot in paginated.items:
+            # Get weekly breakdown for this employee
+            weekly_ot = OvertimeHistory.query.filter_by(
+                employee_id=emp.id
+            ).filter(
+                OvertimeHistory.week_ending >= start_date,
+                OvertimeHistory.week_ending <= end_date
+            ).order_by(OvertimeHistory.week_ending.desc()).all()
+            
+            # Calculate current week overtime
+            current_week_start = today - timedelta(days=today.weekday())
+            current_week_ot = sum(
+                ot.hours_worked for ot in weekly_ot 
+                if ot.week_ending >= current_week_start
+            )
+            
+            # Calculate average weekly overtime
+            avg_weekly_ot = round(total_ot / 13, 1) if total_ot > 0 else 0
+            
+            # Determine trend (simplified)
+            if len(weekly_ot) >= 4:
+                recent_avg = sum(ot.hours_worked for ot in weekly_ot[:4]) / 4
+                older_avg = sum(ot.hours_worked for ot in weekly_ot[-4:]) / 4
+                if recent_avg > older_avg * 1.1:
+                    trend = 'increasing'
+                elif recent_avg < older_avg * 0.9:
+                    trend = 'decreasing'
+                else:
+                    trend = 'stable'
+            else:
+                trend = 'stable'
+            
+            # Calculate years employed
+            if emp.hire_date:
+                years_employed = (today - emp.hire_date).days // 365
+            else:
+                years_employed = 0
+            
+            # Add employee data
+            employee_data = {
+                'id': emp.id,
+                'name': emp.name,
+                'employee_id': emp.employee_id,
+                'crew': emp.crew,
+                'position': emp.position,
+                'position_id': emp.position_id,
+                'hire_date': emp.hire_date,
+                'years_employed': years_employed,
+                'last_13_weeks_overtime': int(total_ot),
+                'current_week_overtime': int(current_week_ot),
+                'average_weekly_overtime': avg_weekly_ot,
+                'overtime_trend': trend,
+                'weekly_breakdown': weekly_ot
+            }
+            
+            employees.append(employee_data)
+            
+            # Update statistics
+            total_overtime_hours += total_ot
+            if total_ot > 0:
+                employees_with_overtime += 1
+            if avg_weekly_ot >= 15:  # High OT threshold
+                high_overtime_employees.append(employee_data)
+        
+        # Calculate overall statistics
+        all_employees_count = Employee.query.count()
+        avg_overtime = round(total_overtime_hours / all_employees_count, 1) if all_employees_count > 0 else 0
+        
+        # Get all positions for filter dropdown
+        positions = Position.query.order_by(Position.name).all()
+        
+        # Prepare template context
+        return render_template('overtime_management.html',
+            # Employee data
+            employees=employees,
+            # Pagination
+            page=page,
+            total_pages=paginated.pages,
+            total_employees=paginated.total,
+            # Filters
+            search_term=search_term,
+            crew_filter=crew_filter,
+            position_filter=position_filter,
+            ot_range_filter=ot_range_filter,
+            positions=positions,
+            # Statistics
+            total_overtime_hours=int(total_overtime_hours),
+            employees_with_overtime=employees_with_overtime,
+            avg_overtime=avg_overtime,
+            high_overtime_count=len(high_overtime_employees),
+            high_overtime_employees=high_overtime_employees,
+            # Date range
+            start_date=start_date,
+            end_date=end_date,
+            # Sort parameters (for maintaining state)
+            sort_levels=sort_levels
+        )
+        
+    except Exception as e:
+        print(f"Overtime management error: {str(e)}")
+        traceback.print_exc()
+        flash('Error loading overtime data. Please try again.', 'error')
+        
+        # Return empty template on error
+        return render_template('overtime_management.html',
+            employees=[],
+            page=1,
+            total_pages=0,
+            total_employees=0,
+            search_term='',
+            crew_filter='',
+            position_filter='',
+            ot_range_filter='',
+            positions=[],
+            total_overtime_hours=0,
+            employees_with_overtime=0,
+            avg_overtime=0,
+            high_overtime_count=0,
+            high_overtime_employees=[],
+            start_date=date.today() - timedelta(weeks=13),
+            end_date=date.today(),
+            sort_levels=[]
+        )
+
 # Keep existing utility routes below
 
 @main_bp.route('/test-dashboard')
@@ -412,41 +650,6 @@ def test_dashboard():
     </body>
     </html>
     """
-
-@main_bp.route('/overtime-management')
-@login_required
-def overtime_management():
-    """Enhanced overtime management page with multi-level sorting"""
-    # Check if user is supervisor
-    if not current_user.is_supervisor:
-        flash('You must be a supervisor to access this page.', 'danger')
-        return redirect(url_for('main.employee_dashboard'))
-    
-    # Get all employees ordered by overtime hours
-    employees = db.session.query(
-        Employee,
-        func.coalesce(func.sum(OvertimeHistory.hours_worked), 0).label('total_ot')
-    ).outerjoin(
-        OvertimeHistory,
-        Employee.id == OvertimeHistory.employee_id
-    ).group_by(Employee.id).order_by(func.sum(OvertimeHistory.hours_worked).desc().nullslast()).all()
-    
-    # Get overtime details for each employee
-    employee_overtime = []
-    for emp, total_ot in employees:
-        # Get weekly breakdown
-        weekly_ot = OvertimeHistory.query.filter_by(
-            employee_id=emp.id
-        ).order_by(OvertimeHistory.week_ending.desc()).limit(13).all()
-        
-        employee_overtime.append({
-            'employee': emp,
-            'total_ot': total_ot,
-            'weekly_ot': weekly_ot
-        })
-    
-    return render_template('overtime_management.html',
-                         employee_overtime=employee_overtime)
 
 @main_bp.route('/diagnostic')
 @login_required
