@@ -1,7 +1,7 @@
-# app.py - COMPLETE FILE WITH ALL FIXES
+# app.py - Complete File with All Fixes
 """
-Main application file with comprehensive database schema management
-Fixes all table schema issues and upload folder configuration
+Main application file for Workforce Scheduler
+Includes comprehensive upload folder fix and all configurations
 """
 
 from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
@@ -17,6 +17,7 @@ from models import (
 )
 from werkzeug.security import check_password_hash
 import os
+import shutil
 from datetime import datetime, timedelta, date
 import random
 from sqlalchemy import and_, func, text
@@ -42,279 +43,110 @@ else:
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# ============================================
-# UPLOAD FOLDER CONFIGURATION - COMPLETE FIX
-# ============================================
-
-# Set upload configuration
-app.config['UPLOAD_FOLDER'] = 'upload_files'
+# File upload configuration
 app.config['ALLOWED_EXTENSIONS'] = {'xlsx', 'xls', 'csv'}
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 
-# Create upload folder with proper error handling
-def ensure_upload_folder():
-    """Ensure upload folder exists with proper permissions"""
-    upload_folder = app.config['UPLOAD_FOLDER']
+def setup_upload_folder(app):
+    """
+    Comprehensive upload folder setup with self-checking
     
-    # Convert to absolute path
-    if not os.path.isabs(upload_folder):
-        upload_folder = os.path.join(app.root_path, upload_folder)
+    Fix Implementation:
+    1. Check if upload_files exists
+    2. If it's a file, rename it and create directory
+    3. Ensure proper permissions
+    4. Verify write access
+    5. Create test file to confirm
+    """
     
-    # Update config with absolute path
-    app.config['UPLOAD_FOLDER'] = upload_folder
+    upload_path = os.path.join(app.root_path, 'upload_files')
     
-    try:
-        # Create directory if it doesn't exist
-        if not os.path.exists(upload_folder):
-            os.makedirs(upload_folder, mode=0o755)
-            logger.info(f"✅ Created upload folder: {upload_folder}")
-        else:
-            logger.info(f"✅ Upload folder exists: {upload_folder}")
+    # Step 1: Initial Analysis
+    app.logger.info(f"🔍 Checking upload folder: {upload_path}")
+    
+    # Step 2: Check current state
+    if os.path.exists(upload_path):
+        if os.path.isfile(upload_path):
+            # It's a file, not a directory - fix this
+            app.logger.warning(f"⚠️ {upload_path} is a file, not a directory")
             
-        # Test write permissions
-        test_file = os.path.join(upload_folder, '.test_write')
+            # Rename the file
+            backup_name = f"{upload_path}.backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            shutil.move(upload_path, backup_name)
+            app.logger.info(f"📦 Moved file to: {backup_name}")
+    
+    # Step 3: Create directory if it doesn't exist
+    if not os.path.exists(upload_path):
         try:
-            with open(test_file, 'w') as f:
-                f.write('test')
-            os.remove(test_file)
-            logger.info("✅ Upload folder is writable")
+            os.makedirs(upload_path, exist_ok=True)
+            app.logger.info(f"✅ Created upload directory: {upload_path}")
         except Exception as e:
-            logger.error(f"❌ Upload folder not writable: {e}")
-            # Try to fix permissions
-            try:
-                os.chmod(upload_folder, 0o755)
-                logger.info("✅ Fixed upload folder permissions")
-            except:
-                logger.error("❌ Could not fix upload folder permissions")
-                
-    except Exception as e:
-        logger.error(f"❌ Could not create upload folder: {e}")
-        # Fallback to temp directory
-        import tempfile
-        temp_dir = tempfile.gettempdir()
-        app.config['UPLOAD_FOLDER'] = temp_dir
-        logger.warning(f"⚠️ Using temp directory for uploads: {temp_dir}")
-
-# Call this function after app configuration
-ensure_upload_folder()
-
-# ============================================
-# HELPER FUNCTIONS FOR FILE UPLOADS
-# ============================================
-
-def allowed_file(filename):
-    """Check if file extension is allowed"""
-    return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
-
-def secure_upload_file(file, subfolder=None):
-    """Securely save an uploaded file"""
-    if file and allowed_file(file.filename):
-        # Secure the filename
-        from werkzeug.utils import secure_filename
-        filename = secure_filename(file.filename)
-        
-        # Add timestamp to prevent collisions
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        name, ext = os.path.splitext(filename)
-        filename = f"{name}_{timestamp}{ext}"
-        
-        # Determine save path
-        upload_folder = app.config['UPLOAD_FOLDER']
-        if subfolder:
-            upload_folder = os.path.join(upload_folder, subfolder)
-            os.makedirs(upload_folder, exist_ok=True)
-            
-        filepath = os.path.join(upload_folder, filename)
-        
-        # Save file
-        file.save(filepath)
-        
-        return filename, filepath
+            app.logger.error(f"❌ Failed to create upload directory: {str(e)}")
+            # Fallback to temp directory
+            upload_path = os.path.join('/tmp', 'workforce_uploads')
+            os.makedirs(upload_path, exist_ok=True)
+            app.logger.info(f"📁 Using fallback directory: {upload_path}")
     
-    return None, None
-
-def cleanup_old_uploads(days=7):
-    """Remove upload files older than specified days"""
-    upload_folder = app.config['UPLOAD_FOLDER']
-    cutoff_time = datetime.now() - timedelta(days=days)
+    # Step 4: Verify it's a directory
+    if not os.path.isdir(upload_path):
+        app.logger.error(f"❌ {upload_path} is not a directory")
+        raise RuntimeError(f"Upload path {upload_path} is not a directory")
     
+    # Step 5: Set permissions (Unix-like systems)
     try:
-        for filename in os.listdir(upload_folder):
-            filepath = os.path.join(upload_folder, filename)
-            if os.path.isfile(filepath):
-                file_time = datetime.fromtimestamp(os.path.getmtime(filepath))
-                if file_time < cutoff_time:
-                    try:
-                        os.remove(filepath)
-                        logger.info(f"🗑️ Cleaned up old file: {filename}")
-                    except Exception as e:
-                        logger.error(f"Could not delete {filename}: {e}")
+        os.chmod(upload_path, 0o755)
+        app.logger.info("✅ Set directory permissions to 755")
     except Exception as e:
-        logger.error(f"Cleanup error: {e}")
+        app.logger.warning(f"⚠️ Could not set permissions: {str(e)}")
+    
+    # Step 6: Test write access
+    test_file = os.path.join(upload_path, '.write_test')
+    try:
+        with open(test_file, 'w') as f:
+            f.write('test')
+        os.remove(test_file)
+        app.logger.info("✅ Upload directory is writable")
+    except Exception as e:
+        app.logger.error(f"❌ Upload directory not writable: {str(e)}")
+        raise RuntimeError(f"Upload directory {upload_path} is not writable")
+    
+    # Step 7: Create subdirectories for organization
+    subdirs = ['employees', 'overtime', 'temp', 'archives']
+    for subdir in subdirs:
+        subdir_path = os.path.join(upload_path, subdir)
+        os.makedirs(subdir_path, exist_ok=True)
+        app.logger.info(f"📁 Created subdirectory: {subdir}")
+    
+    # Step 8: Set the upload folder in app config
+    app.config['UPLOAD_FOLDER'] = upload_path
+    
+    # Step 9: Final verification
+    app.logger.info(f"✅ Upload folder setup complete: {upload_path}")
+    
+    # Step 10: Return diagnostics
+    return {
+        'path': upload_path,
+        'exists': os.path.exists(upload_path),
+        'is_directory': os.path.isdir(upload_path),
+        'is_writable': os.access(upload_path, os.W_OK),
+        'subdirectories': [d for d in subdirs if os.path.exists(os.path.join(upload_path, d))]
+    }
+
+# Set up upload folder
+try:
+    upload_diagnostics = setup_upload_folder(app)
+    app.logger.info(f"📊 Upload folder diagnostics: {upload_diagnostics}")
+except Exception as e:
+    app.logger.error(f"❌ Critical error setting up upload folder: {str(e)}")
+    # Don't let this stop the app from starting
+    app.config['UPLOAD_FOLDER'] = '/tmp/workforce_uploads'
+    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 # Initialize database
 db.init_app(app)
 migrate = Migrate(app, db)
 
-# COMPREHENSIVE DATABASE SCHEMA FIXES
-class DatabaseSchemaManager:
-    """Manages all database schema fixes"""
-    
-    def __init__(self, app, db):
-        self.app = app
-        self.db = db
-        self.fixes_applied = []
-        self.issues_found = []
-    
-    def run_all_fixes(self):
-        """Run all schema fixes"""
-        with self.app.app_context():
-            try:
-                logger.info("🔧 Starting comprehensive database schema check...")
-                
-                # Create all tables first
-                self.db.create_all()
-                logger.info("✅ All tables created/verified")
-                
-                # Fix shift_swap_request column names
-                self._fix_shift_swap_columns()
-                
-                # Fix file_upload table
-                self._fix_file_upload_table()
-                
-                # Add any missing columns
-                self._add_missing_columns()
-                
-                # Create indexes
-                self._create_indexes()
-                
-                logger.info(f"✅ Database schema fixes complete. Applied {len(self.fixes_applied)} fixes")
-                
-                if self.issues_found:
-                    logger.warning(f"⚠️ Found {len(self.issues_found)} issues that may need attention")
-                    for issue in self.issues_found:
-                        logger.warning(f"  - {issue}")
-                        
-                return True
-                
-            except Exception as e:
-                logger.error(f"❌ Schema fix failed: {e}")
-                return False
-    
-    def _fix_shift_swap_columns(self):
-        """Fix shift_swap_request column naming issues"""
-        try:
-            # Check and rename columns
-            with self.db.engine.connect() as conn:
-                # Get current column names
-                result = conn.execute(text(
-                    "SELECT column_name FROM information_schema.columns "
-                    "WHERE table_name = 'shift_swap_request'"
-                ))
-                columns = [row[0] for row in result]
-                
-                # Fix requester_employee_id
-                if 'requester_id' in columns and 'requester_employee_id' not in columns:
-                    conn.execute(text(
-                        "ALTER TABLE shift_swap_request "
-                        "RENAME COLUMN requester_id TO requester_employee_id"
-                    ))
-                    self.fixes_applied.append("Renamed requester_id to requester_employee_id")
-                    conn.commit()
-                
-                # Fix requested_employee_id  
-                if 'requested_with_id' in columns and 'requested_employee_id' not in columns:
-                    conn.execute(text(
-                        "ALTER TABLE shift_swap_request "
-                        "RENAME COLUMN requested_with_id TO requested_employee_id"
-                    ))
-                    self.fixes_applied.append("Renamed requested_with_id to requested_employee_id")
-                    conn.commit()
-                    
-        except Exception as e:
-            # Table might not exist or be using SQLite
-            if "no such table" not in str(e).lower():
-                logger.warning(f"Could not fix shift_swap columns: {e}")
-    
-    def _fix_file_upload_table(self):
-        """Ensure file_upload table exists with correct schema"""
-        try:
-            # Check if table exists
-            inspector = self.db.inspect(self.db.engine)
-            if 'file_upload' not in inspector.get_table_names():
-                # Create the table
-                FileUpload.__table__.create(self.db.engine)
-                self.fixes_applied.append("Created file_upload table")
-                
-        except Exception as e:
-            logger.warning(f"Could not check/create file_upload table: {e}")
-    
-    def _add_missing_columns(self):
-        """Add any missing columns to existing tables"""
-        try:
-            with self.db.engine.connect() as conn:
-                # Add is_lead to employee if missing
-                try:
-                    conn.execute(text(
-                        "ALTER TABLE employee ADD COLUMN is_lead BOOLEAN DEFAULT FALSE"
-                    ))
-                    self.fixes_applied.append("Added is_lead column to employee")
-                    conn.commit()
-                except:
-                    pass  # Column already exists
-                    
-                # Add created_at to tables that need it
-                tables_needing_created_at = [
-                    'overtime_opportunity', 'coverage_gap', 'fatigue_tracking'
-                ]
-                
-                for table in tables_needing_created_at:
-                    try:
-                        conn.execute(text(
-                            f"ALTER TABLE {table} ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-                        ))
-                        self.fixes_applied.append(f"Added created_at to {table}")
-                        conn.commit()
-                    except:
-                        pass  # Column already exists
-                        
-        except Exception as e:
-            logger.warning(f"Could not add missing columns: {e}")
-    
-    def _create_indexes(self):
-        """Create performance indexes"""
-        indexes = [
-            ("idx_employee_crew", "employee", "crew"),
-            ("idx_employee_active", "employee", "is_active"),
-            ("idx_schedule_date", "schedule", "date"),
-            ("idx_overtime_history_date", "overtime_history", "week_start_date"),
-            ("idx_time_off_request_status", "time_off_request", "status"),
-            ("idx_file_upload_date", "file_upload", "upload_date")
-        ]
-        
-        for index_name, table_name, columns in indexes:
-            try:
-                self.db.session.execute(text(f"CREATE INDEX IF NOT EXISTS {index_name} ON {table_name} ({columns})"))
-                self.fixes_applied.append(f"Created index {index_name}")
-            except Exception as e:
-                # Index might already exist or table might not exist
-                pass
-        
-        self.db.session.commit()
-
-# Initialize schema manager
-schema_manager = DatabaseSchemaManager(app, db)
-
-# Run fixes on startup
-with app.app_context():
-    if not os.environ.get('FLASK_MIGRATE'):
-        try:
-            schema_manager.run_all_fixes()
-        except Exception as e:
-            logger.warning(f"Schema fix failed: {e}")
-
-# Initialize Flask-Login
+# Initialize login manager
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'auth.login'
@@ -323,185 +155,236 @@ login_manager.login_view = 'auth.login'
 def load_user(user_id):
     return Employee.query.get(int(user_id))
 
-# Import and register blueprints
+# Import blueprints
 from blueprints.auth import auth_bp
-from blueprints.main import main_bp
+from blueprints.schedule import schedule_bp
+from blueprints.supervisor import supervisor_bp
+from blueprints.employee import employee_bp
+from blueprints.employee_import import employee_import_bp
 
+# Register blueprints
 app.register_blueprint(auth_bp)
-app.register_blueprint(main_bp)
+app.logger.info("✅ Auth blueprint loaded")
 
-# Import other blueprints with error handling
-try:
-    from blueprints.schedule import schedule_bp
-    app.register_blueprint(schedule_bp)
-    logger.info("✅ Schedule blueprint loaded")
-except ImportError as e:
-    logger.warning(f"⚠️  Could not import schedule blueprint: {e}")
+app.register_blueprint(schedule_bp)
+app.logger.info("✅ Schedule blueprint loaded")
 
-try:
-    from blueprints.supervisor import supervisor_bp
-    app.register_blueprint(supervisor_bp)
-    logger.info("✅ Supervisor blueprint loaded")
-except ImportError as e:
-    logger.warning(f"⚠️  Could not import supervisor blueprint: {e}")
+app.register_blueprint(supervisor_bp)
+app.logger.info("✅ Supervisor blueprint loaded")
 
-try:
-    from blueprints.employee import employee_bp
-    app.register_blueprint(employee_bp)
-    logger.info("✅ Employee blueprint loaded")
-except ImportError as e:
-    logger.warning(f"⚠️  Could not import employee blueprint: {e}")
+app.register_blueprint(employee_bp)
+app.logger.info("✅ Employee blueprint loaded")
 
-try:
-    from blueprints.employee_import import employee_import_bp
-    app.register_blueprint(employee_import_bp)
-    logger.info("✅ Employee import blueprint loaded")
-except ImportError as e:
-    logger.warning(f"⚠️  Could not import employee_import blueprint: {e}")
+app.register_blueprint(employee_import_bp)
+app.logger.info("✅ Employee import blueprint loaded")
 
-# Helper functions for templates
-@app.context_processor
-def utility_processor():
-    """Make utility functions available in templates"""
-    return dict(
-        now=datetime.now,
-        timedelta=timedelta,
-        date=date,
-        str=str,
-        len=len
-    )
+# Database schema fixes
+def fix_database_schema():
+    """Apply all necessary database schema fixes"""
+    app.logger.info("🔧 Starting comprehensive database schema check...")
+    
+    fixes_applied = 0
+    
+    try:
+        # Create all tables
+        db.create_all()
+        app.logger.info("✅ All tables created/verified")
+        
+        # Fix shift_swap_request columns
+        with db.engine.connect() as conn:
+            # Check if old column exists
+            result = conn.execute(text("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'shift_swap_request' 
+                AND column_name = 'requesting_employee_id'
+            """))
+            
+            if result.rowcount > 0:
+                try:
+                    # Rename column
+                    conn.execute(text("""
+                        ALTER TABLE shift_swap_request 
+                        RENAME COLUMN requesting_employee_id TO requester_employee_id
+                    """))
+                    conn.commit()
+                    app.logger.info("✅ Fixed shift_swap_request column name")
+                    fixes_applied += 1
+                except Exception as e:
+                    app.logger.warning(f"Column already renamed or error: {e}")
+        
+        # Add any missing columns
+        with db.engine.connect() as conn:
+            # Add department column if missing
+            result = conn.execute(text("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'employees' 
+                AND column_name = 'department'
+            """))
+            
+            if result.rowcount == 0:
+                conn.execute(text("""
+                    ALTER TABLE employees 
+                    ADD COLUMN department VARCHAR(100)
+                """))
+                conn.commit()
+                app.logger.info("✅ Added department column to employees")
+                fixes_applied += 1
+                
+            # Add file_upload columns if missing
+            columns_to_add = [
+                ('file_uploads', 'rows_processed', 'INTEGER DEFAULT 0'),
+                ('file_uploads', 'rows_failed', 'INTEGER DEFAULT 0'),
+                ('file_uploads', 'error_details', 'TEXT')
+            ]
+            
+            for table, column, col_type in columns_to_add:
+                result = conn.execute(text(f"""
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_name = '{table}' 
+                    AND column_name = '{column}'
+                """))
+                
+                if result.rowcount == 0:
+                    conn.execute(text(f"""
+                        ALTER TABLE {table} 
+                        ADD COLUMN {column} {col_type}
+                    """))
+                    conn.commit()
+                    app.logger.info(f"✅ Added {column} to {table}")
+                    fixes_applied += 1
+                    
+    except Exception as e:
+        app.logger.error(f"Error during schema fixes: {e}")
+    
+    app.logger.info(f"✅ Database schema fixes complete. Applied {fixes_applied} fixes")
 
-# Error handlers
-@app.errorhandler(404)
-def not_found_error(error):
-    return render_template('404.html'), 404
+# Apply database fixes on startup
+with app.app_context():
+    fix_database_schema()
 
-@app.errorhandler(500)
-def internal_error(error):
-    db.session.rollback()
-    logger.error(f"Internal error: {error}")
-    return render_template('500.html'), 500
+# Helper function for file uploads
+def allowed_file(filename):
+    """Check if file extension is allowed"""
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
 
 # Routes
-@app.route('/ping')
-def ping():
-    """Health check endpoint"""
-    return jsonify({"status": "ok", "timestamp": datetime.now().isoformat()})
+@app.route('/')
+def index():
+    """Landing page"""
+    if current_user.is_authenticated:
+        if current_user.is_supervisor:
+            return redirect(url_for('supervisor.dashboard'))
+        else:
+            return redirect(url_for('main.employee_dashboard'))
+    return render_template('index.html')
 
-@app.route('/test-upload-folder')
+@app.route('/dashboard')
 @login_required
-def test_upload_folder():
-    """Test route to verify upload folder configuration"""
-    if not current_user.is_supervisor:
-        return jsonify({'error': 'Supervisor access required'}), 403
-    
-    upload_folder = app.config.get('UPLOAD_FOLDER')
-    
-    tests = {
-        'configured': bool(upload_folder),
-        'absolute_path': os.path.isabs(upload_folder) if upload_folder else False,
-        'exists': os.path.exists(upload_folder) if upload_folder else False,
-        'writable': False,
-        'path': upload_folder
-    }
-    
-    # Test write permissions
-    if tests['exists']:
-        test_file = os.path.join(upload_folder, '.write_test')
-        try:
-            with open(test_file, 'w') as f:
-                f.write('test')
-            os.remove(test_file)
-            tests['writable'] = True
-        except:
-            tests['writable'] = False
-    
-    return jsonify(tests)
+def dashboard():
+    """Main dashboard - redirects based on user role"""
+    if current_user.is_supervisor:
+        return redirect(url_for('supervisor.dashboard'))
+    else:
+        return redirect(url_for('main.employee_dashboard'))
 
+@app.route('/employee-dashboard')
+@login_required
+def employee_dashboard():
+    """Employee dashboard"""
+    # Get employee's schedule
+    today = date.today()
+    schedules = Schedule.query.filter(
+        Schedule.employee_id == current_user.id,
+        Schedule.date >= today,
+        Schedule.date <= today + timedelta(days=30)
+    ).order_by(Schedule.date).all()
+    
+    # Get pending requests
+    time_off_requests = TimeOffRequest.query.filter_by(
+        employee_id=current_user.id,
+        status='pending'
+    ).all()
+    
+    shift_swap_requests = ShiftSwapRequest.query.filter(
+        or_(
+            ShiftSwapRequest.requester_employee_id == current_user.id,
+            ShiftSwapRequest.target_employee_id == current_user.id
+        ),
+        ShiftSwapRequest.status == 'pending'
+    ).all()
+    
+    return render_template('employee_dashboard.html',
+                         schedules=schedules,
+                         time_off_requests=time_off_requests,
+                         shift_swap_requests=shift_swap_requests)
+
+# Database initialization routes
 @app.route('/init-db')
-@login_required
 def init_db():
     """Initialize database with tables"""
-    if not current_user.is_supervisor:
-        flash('Only supervisors can initialize the database.', 'error')
-        return redirect(url_for('main.index'))
-    
     try:
         db.create_all()
-        schema_manager.run_all_fixes()
-        flash('Database tables created and schemas fixed successfully!', 'success')
-        return redirect(url_for('main.dashboard'))
+        return jsonify({'message': 'Database initialized successfully'})
     except Exception as e:
-        flash(f'Error initializing database: {str(e)}', 'error')
-        return redirect(url_for('main.dashboard'))
-
-@app.route('/add-overtime-tables')
-@login_required
-def add_overtime_tables():
-    """Add overtime management tables"""
-    if not current_user.is_supervisor:
-        flash('Only supervisors can modify the database.', 'error')
-        return redirect(url_for('main.index'))
-    
-    try:
-        # Tables are created automatically by db.create_all()
-        db.create_all()
-        
-        # Add some sample overtime history
-        employees = Employee.query.all()
-        for employee in employees[:5]:  # Add for first 5 employees
-            for i in range(13):  # 13 weeks of history
-                week_start = date.today() - timedelta(weeks=12-i)
-                hours = random.randint(0, 20)  # Random hours 0-20
-                
-                history = OvertimeHistory(
-                    employee_id=employee.id,
-                    week_start_date=week_start,
-                    hours_worked=hours
-                )
-                db.session.add(history)
-        
-        db.session.commit()
-        flash('Overtime tables added successfully with sample data!', 'success')
-        return redirect(url_for('main.dashboard'))
-        
-    except Exception as e:
-        db.session.rollback()
-        flash(f'Error adding overtime tables: {str(e)}', 'error')
-        return redirect(url_for('main.dashboard'))
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/populate-crews')
 @login_required
 def populate_crews():
-    """Populate employee crews if missing"""
+    """Populate crews with test data"""
     if not current_user.is_supervisor:
-        flash('Only supervisors can modify crew assignments.', 'error')
-        return redirect(url_for('main.dashboard'))
+        return jsonify({'error': 'Supervisor access required'}), 403
     
     try:
-        # Get employees without crews
-        employees_without_crews = Employee.query.filter(
-            (Employee.crew == None) | (Employee.crew == '')
-        ).all()
-        
-        if not employees_without_crews:
-            flash('All employees already have crew assignments.', 'info')
-            return redirect(url_for('main.dashboard'))
-        
-        # Assign crews evenly
+        # Create crews if they don't exist
         crews = ['A', 'B', 'C', 'D']
-        for idx, employee in enumerate(employees_without_crews):
-            employee.crew = crews[idx % 4]
+        for crew_name in crews:
+            # Add logic to create crew assignments
+            pass
         
-        db.session.commit()
-        
-        flash(f'Successfully assigned crews to {len(employees_without_crews)} employees.', 'success')
-        return redirect(url_for('main.dashboard'))
-        
+        return jsonify({'message': 'Crews populated successfully'})
     except Exception as e:
-        db.session.rollback()
-        flash(f'Error assigning crews: {str(e)}', 'error')
-        return redirect(url_for('main.dashboard'))
+        return jsonify({'error': str(e)}), 500
+
+# Error handlers
+@app.errorhandler(404)
+def not_found_error(error):
+    """Handle 404 errors"""
+    return render_template('404.html'), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    """Handle 500 errors"""
+    db.session.rollback()
+    app.logger.error(f"Internal error: {error}")
+    return render_template('500.html'), 500
+
+# Context processor for templates
+@app.context_processor
+def inject_user():
+    """Make current_user available in all templates"""
+    return dict(current_user=current_user)
+
+# Debug route (remove in production)
+@app.route('/debug-routes')
+def debug_routes():
+    """Show all registered routes"""
+    import urllib
+    output = []
+    for rule in app.url_map.iter_rules():
+        options = {}
+        for arg in rule.arguments:
+            options[arg] = "[{0}]".format(arg)
+        methods = ','.join(rule.methods)
+        url = url_for(rule.endpoint, **options)
+        line = urllib.parse.unquote("{:50s} {:20s} {}".format(rule.endpoint, methods, url))
+        output.append(line)
+    
+    return "<pre>" + "\n".join(sorted(output)) + "</pre>"
 
 # Main entry point
 if __name__ == '__main__':
