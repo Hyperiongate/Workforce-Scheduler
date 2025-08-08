@@ -1,161 +1,50 @@
-<!-- templates/dashboard.html -->
 {% extends "base.html" %}
 
-{% block title %}Supervisor Dashboard{% endblock %}
+{% block title %}Supervisor Dashboard - Workforce Scheduler{% endblock %}
 
 {% block content %}
-<div class="container-fluid">
-    <!-- Navigation Bar -->
-    <nav class="navbar navbar-expand-lg navbar-dark bg-primary mb-4">
-        <div class="container-fluid">
-            <a class="navbar-brand" href="{{ url_for('supervisor.dashboard') }}">
-                <i class="bi bi-speedometer2"></i> Operations Center
-            </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav">
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
-                            <i class="bi bi-calendar3"></i> Scheduling
-                        </a>
-                        <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="{{ url_for('overtime_management') }}">
-                                <i class="bi bi-clock-history"></i> Overtime Management
-                            </a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('supervisor.time_off_requests') }}">
-                                <i class="bi bi-calendar-x"></i> Time Off Requests
-                            </a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('supervisor.swap_requests') }}">
-                                <i class="bi bi-arrow-left-right"></i> Swap Requests
-                            </a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('vacation_calendar') }}">
-                                <i class="bi bi-calendar-week"></i> Vacation Calendar
-                            </a></li>
-                        </ul>
-                    </li>
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
-                            <i class="bi bi-people"></i> Workforce
-                        </a>
-                        <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="{{ url_for('supervisor.coverage_gaps') }}">
-                                <i class="bi bi-exclamation-triangle"></i> Coverage Gaps
-                            </a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('supervisor.coverage_needs') }}">
-                                <i class="bi bi-clipboard-check"></i> Coverage Needs
-                            </a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('supervisor.overtime_distribution') }}">
-                                <i class="bi bi-graph-up"></i> Overtime Distribution
-                            </a></li>
-                            <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="{{ url_for('employee_management') }}">
-                                <i class="bi bi-person-badge"></i> Employee Management
-                            </a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('crew_management') }}">
-                                <i class="bi bi-people-fill"></i> Crew Management
-                            </a></li>
-                        </ul>
-                    </li>
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
-                            <i class="bi bi-upload"></i> Data Management
-                        </a>
-                        <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="{{ url_for('employee_import.upload_employees') }}">
-                                <i class="bi bi-upload"></i> Upload Employees
-                            </a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('employee_import.upload_overtime') }}">
-                                <i class="bi bi-clock-fill"></i> Upload Overtime
-                            </a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('employee_import.upload_history') }}">
-                                <i class="bi bi-clock-history"></i> Upload History
-                            </a></li>
-                            <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="{{ url_for('employee_import.export_current_employees') }}">
-                                <i class="bi bi-download"></i> Export Employees
-                            </a></li>
-                        </ul>
-                    </li>
-                </ul>
-                <ul class="navbar-nav ms-auto">
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
-                            <i class="bi bi-person-circle"></i> {{ current_user.name }}
-                        </a>
-                        <ul class="dropdown-menu dropdown-menu-end">
-                            <li><a class="dropdown-item" href="{{ url_for('profile') }}">
-                                <i class="bi bi-person"></i> Profile
-                            </a></li>
-                            <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="{{ url_for('auth.logout') }}">
-                                <i class="bi bi-box-arrow-right"></i> Logout
-                            </a></li>
-                        </ul>
-                    </li>
-                </ul>
-            </div>
+<div class="container-fluid mt-4">
+    <!-- Dashboard Header -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <h1>Supervisor Dashboard</h1>
+            <p class="text-muted">Welcome back, {{ current_user.name }}!</p>
         </div>
-    </nav>
+    </div>
 
-    <!-- Dashboard Content -->
-    <div class="row">
-        <!-- Quick Stats -->
-        <div class="col-md-3 mb-4">
-            <div class="card bg-primary text-white">
+    <!-- Quick Stats Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3 mb-3">
+            <div class="card text-white bg-primary">
                 <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <h6 class="card-title mb-0">Total Employees</h6>
-                            <h2 class="mb-0">{{ total_employees }}</h2>
-                        </div>
-                        <i class="bi bi-people-fill fs-1"></i>
-                    </div>
+                    <h5 class="card-title">Total Employees</h5>
+                    <h2>{{ total_employees }}</h2>
                 </div>
             </div>
         </div>
-
-        <div class="col-md-3 mb-4">
-            <div class="card bg-warning text-dark">
+        <div class="col-md-3 mb-3">
+            <div class="card text-white bg-warning">
                 <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <h6 class="card-title mb-0">Pending Time Off</h6>
-                            <h2 class="mb-0">{{ pending_time_off }}</h2>
-                        </div>
-                        <i class="bi bi-calendar-x fs-1"></i>
-                    </div>
+                    <h5 class="card-title">Pending Time Off</h5>
+                    <h2>{{ pending_time_off }}</h2>
                     <a href="{{ url_for('supervisor.time_off_requests') }}" class="stretched-link"></a>
                 </div>
             </div>
         </div>
-
-        <div class="col-md-3 mb-4">
-            <div class="card bg-info text-white">
+        <div class="col-md-3 mb-3">
+            <div class="card text-white bg-info">
                 <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <h6 class="card-title mb-0">Pending Swaps</h6>
-                            <h2 class="mb-0">{{ pending_swaps }}</h2>
-                        </div>
-                        <i class="bi bi-arrow-left-right fs-1"></i>
-                    </div>
+                    <h5 class="card-title">Pending Swaps</h5>
+                    <h2>{{ pending_swaps }}</h2>
                     <a href="{{ url_for('supervisor.swap_requests') }}" class="stretched-link"></a>
                 </div>
             </div>
         </div>
-
-        <div class="col-md-3 mb-4">
-            <div class="card bg-danger text-white">
+        <div class="col-md-3 mb-3">
+            <div class="card text-white bg-danger">
                 <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <h6 class="card-title mb-0">Coverage Gaps</h6>
-                            <h2 class="mb-0">{{ coverage_gaps }}</h2>
-                        </div>
-                        <i class="bi bi-exclamation-triangle fs-1"></i>
-                    </div>
+                    <h5 class="card-title">Coverage Gaps</h5>
+                    <h2>{{ coverage_gaps }}</h2>
                     <a href="{{ url_for('supervisor.coverage_gaps') }}" class="stretched-link"></a>
                 </div>
             </div>
@@ -167,27 +56,27 @@
         <div class="col-12">
             <div class="card">
                 <div class="card-header">
-                    <h5 class="mb-0"><i class="bi bi-lightning"></i> Quick Actions</h5>
+                    <h5 class="mb-0">Quick Actions</h5>
                 </div>
                 <div class="card-body">
                     <div class="row">
                         <div class="col-md-3 mb-2">
-                            <a href="{{ url_for('overtime_management') }}" class="btn btn-primary w-100">
-                                <i class="bi bi-clock-history"></i> Manage Overtime
+                            <a href="{{ url_for('main.overtime_management') }}" class="btn btn-primary w-100">
+                                <i class="bi bi-clock-history"></i> Overtime Management
                             </a>
                         </div>
                         <div class="col-md-3 mb-2">
-                            <a href="{{ url_for('supervisor.time_off_requests') }}" class="btn btn-warning w-100">
-                                <i class="bi bi-calendar-x"></i> Review Time Off
+                            <a href="{{ url_for('supervisor.vacation_calendar') }}" class="btn btn-info w-100">
+                                <i class="bi bi-calendar"></i> Vacation Calendar
                             </a>
                         </div>
                         <div class="col-md-3 mb-2">
-                            <a href="{{ url_for('supervisor.coverage_gaps') }}" class="btn btn-danger w-100">
-                                <i class="bi bi-exclamation-triangle"></i> View Coverage Gaps
+                            <a href="{{ url_for('supervisor.employee_management') }}" class="btn btn-success w-100">
+                                <i class="bi bi-people"></i> Employee Management
                             </a>
                         </div>
                         <div class="col-md-3 mb-2">
-                            <a href="{{ url_for('employee_import.upload_employees') }}" class="btn btn-success w-100">
+                            <a href="{{ url_for('employee_import.upload_employees') }}" class="btn btn-warning w-100">
                                 <i class="bi bi-upload"></i> Upload Data
                             </a>
                         </div>
@@ -197,132 +86,66 @@
         </div>
     </div>
 
-    <!-- Data Insights -->
-    <div class="row">
-        {% if employees_missing_ot is defined and employees_missing_ot > 0 %}
-        <div class="col-md-6 mb-4">
-            <div class="card">
-                <div class="card-header bg-warning">
-                    <h5 class="mb-0"><i class="bi bi-exclamation-circle"></i> Data Quality Alert</h5>
-                </div>
-                <div class="card-body">
-                    <p class="mb-0">
-                        <strong>{{ employees_missing_ot }}</strong> employees are missing overtime history data.
-                        <a href="{{ url_for('employee_import.upload_overtime') }}" class="btn btn-sm btn-warning float-end">
-                            Upload OT Data
-                        </a>
-                    </p>
-                </div>
-            </div>
-        </div>
-        {% endif %}
-
-        {% if high_ot_employees is defined and high_ot_employees %}
-        <div class="col-md-6 mb-4">
-            <div class="card">
-                <div class="card-header bg-danger text-white">
-                    <h5 class="mb-0"><i class="bi bi-graph-up-arrow"></i> High Overtime Alert</h5>
-                </div>
-                <div class="card-body">
-                    <p>Employees with >45 hours average overtime:</p>
-                    <ul class="mb-0">
-                        {% for emp in high_ot_employees[:3] %}
-                        <li>{{ emp.name }} (Crew {{ emp.crew }}): {{ emp.avg_hours }} hrs/week</li>
-                        {% endfor %}
-                    </ul>
-                    <a href="{{ url_for('supervisor.overtime_distribution') }}" class="btn btn-sm btn-danger float-end">
-                        View All
-                    </a>
-                </div>
-            </div>
-        </div>
-        {% endif %}
-    </div>
-
     <!-- Recent Activity -->
-    {% if recent_time_off is defined or recent_swaps is defined %}
     <div class="row">
-        <div class="col-12">
+        <div class="col-md-6">
             <div class="card">
                 <div class="card-header">
-                    <h5 class="mb-0"><i class="bi bi-activity"></i> Recent Activity</h5>
+                    <h5 class="mb-0">Recent Time Off Requests</h5>
                 </div>
                 <div class="card-body">
-                    <div class="row">
-                        {% if recent_time_off is defined %}
-                        <div class="col-md-6">
-                            <h6>Recent Time Off Requests</h6>
-                            <div class="list-group">
-                                {% for request in recent_time_off[:3] %}
-                                <div class="list-group-item">
-                                    <div class="d-flex justify-content-between">
-                                        <strong>{{ request.employee.name }}</strong>
-                                        <span class="badge bg-{{ 'warning' if request.status == 'pending' else 'success' if request.status == 'approved' else 'danger' }}">
-                                            {{ request.status.title() }}
-                                        </span>
-                                    </div>
-                                    <small>{{ request.start_date.strftime('%m/%d') }} - {{ request.end_date.strftime('%m/%d') }}</small>
+                    {% if recent_time_off %}
+                        <div class="list-group">
+                            {% for request in recent_time_off[:5] %}
+                            <div class="list-group-item">
+                                <div class="d-flex justify-content-between">
+                                    <strong>{{ request.employee.name }}</strong>
+                                    <span class="badge bg-{{ 'warning' if request.status == 'pending' else 'success' if request.status == 'approved' else 'danger' }}">
+                                        {{ request.status.title() }}
+                                    </span>
                                 </div>
-                                {% endfor %}
+                                <small>{{ request.start_date.strftime('%m/%d') }} - {{ request.end_date.strftime('%m/%d') }}</small>
                             </div>
+                            {% endfor %}
                         </div>
-                        {% endif %}
+                        <div class="mt-3">
+                            <a href="{{ url_for('supervisor.time_off_requests') }}" class="btn btn-sm btn-primary">View All</a>
+                        </div>
+                    {% else %}
+                        <p class="text-muted">No recent time off requests</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
 
-                        {% if recent_swaps is defined %}
-                        <div class="col-md-6">
-                            <h6>Recent Swap Requests</h6>
-                            <div class="list-group">
-                                {% for swap in recent_swaps[:3] %}
-                                <div class="list-group-item">
-                                    <div class="d-flex justify-content-between">
-                                        <strong>{{ swap.requester.name }}</strong>
-                                        <span class="badge bg-{{ 'warning' if swap.status == 'pending' else 'success' if swap.status == 'approved' else 'danger' }}">
-                                            {{ swap.status.title() }}
-                                        </span>
-                                    </div>
-                                    <small>Swap with {{ swap.target_employee.name if swap.target_employee else 'Open' }}</small>
-                                </div>
-                                {% endfor %}
-                            </div>
-                        </div>
-                        {% endif %}
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">System Alerts</h5>
+                </div>
+                <div class="card-body">
+                    {% if employees_missing_ot is defined and employees_missing_ot > 0 %}
+                    <div class="alert alert-warning">
+                        <i class="bi bi-exclamation-triangle"></i> 
+                        <strong>{{ employees_missing_ot }}</strong> employees are missing overtime data.
+                        <a href="{{ url_for('employee_import.upload_overtime') }}" class="btn btn-sm btn-warning float-end">Upload OT Data</a>
                     </div>
+                    {% endif %}
+                    
+                    {% if high_ot_employees is defined and high_ot_employees %}
+                    <div class="alert alert-danger">
+                        <i class="bi bi-graph-up"></i> 
+                        <strong>{{ high_ot_employees|length }}</strong> employees have >45 hours average overtime.
+                        <a href="{{ url_for('supervisor.overtime_distribution') }}" class="btn btn-sm btn-danger float-end">View Details</a>
+                    </div>
+                    {% endif %}
+                    
+                    {% if not employees_missing_ot and not high_ot_employees %}
+                    <p class="text-muted">No system alerts at this time</p>
+                    {% endif %}
                 </div>
             </div>
         </div>
     </div>
-    {% endif %}
 </div>
-
-<style>
-.card {
-    transition: transform 0.2s;
-    border: none;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-}
-
-.card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
-}
-
-.stretched-link::after {
-    position: absolute;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    left: 0;
-    z-index: 1;
-    content: "";
-}
-
-.navbar {
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-}
-
-.list-group-item {
-    border: 1px solid rgba(0,0,0,0.125);
-    margin-bottom: 5px;
-}
-</style>
 {% endblock %}
