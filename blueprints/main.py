@@ -1,12 +1,11 @@
-# blueprints/main.py - COMPLETE FIXED FILE
+# blueprints/main.py - COMPLETE FILE WITH ALL ROUTES
 """
-Main blueprint with proper routing and error handling
-Handles employee dashboard and shared functionality
+Main blueprint with all required routes for the dashboard
 """
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, current_app
 from flask_login import login_required, current_user
-from models import db, Employee, Schedule, TimeOffRequest, ShiftSwapRequest, Position
+from models import db, Employee, Schedule, TimeOffRequest, ShiftSwapRequest, Position, OvertimeHistory
 from datetime import date, datetime, timedelta
 from sqlalchemy import func, or_, and_
 import traceback
@@ -70,6 +69,7 @@ def employee_dashboard():
             ).order_by(Schedule.date).all()
         except Exception as e:
             current_app.logger.error(f"Error loading schedule: {e}")
+            db.session.rollback()
         
         # Get time-off requests
         try:
@@ -78,6 +78,7 @@ def employee_dashboard():
             ).order_by(TimeOffRequest.created_at.desc()).limit(5).all()
         except Exception as e:
             current_app.logger.error(f"Error loading time off requests: {e}")
+            db.session.rollback()
         
         # Get shift swaps
         try:
@@ -89,10 +90,10 @@ def employee_dashboard():
             ).order_by(ShiftSwapRequest.created_at.desc()).limit(5).all()
         except Exception as e:
             current_app.logger.error(f"Error loading shift swaps: {e}")
+            db.session.rollback()
         
         # Get overtime hours for current week
         try:
-            from models import OvertimeHistory
             context['current_week_overtime'] = db.session.query(
                 func.sum(OvertimeHistory.overtime_hours)
             ).filter(
@@ -101,6 +102,7 @@ def employee_dashboard():
             ).scalar() or 0
         except Exception as e:
             current_app.logger.error(f"Error loading overtime: {e}")
+            db.session.rollback()
         
         # Get leave balances
         try:
@@ -131,11 +133,92 @@ def employee_dashboard():
             personal_balance=0
         )
 
+@main_bp.route('/overtime-management')
+@login_required
+def overtime_management():
+    """Overtime management page"""
+    if not current_user.is_supervisor:
+        flash('Supervisor access required.', 'danger')
+        return redirect(url_for('main.employee_dashboard'))
+    
+    try:
+        db.session.rollback()  # Clear any bad transactions
+        
+        employees = Employee.query.filter_by(is_supervisor=False).all()
+        
+        # Get overtime data with error handling
+        overtime_data = []
+        for emp in employees:
+            try:
+                recent_ot = OvertimeHistory.query.filter_by(
+                    employee_id=emp.id
+                ).order_by(OvertimeHistory.week_start_date.desc()).first()
+                
+                total_ot = db.session.query(
+                    func.sum(OvertimeHistory.overtime_hours)
+                ).filter_by(employee_id=emp.id).scalar() or 0
+                
+                overtime_data.append({
+                    'employee': emp,
+                    'recent_overtime': recent_ot,
+                    'total_overtime': total_ot
+                })
+            except:
+                db.session.rollback()
+                overtime_data.append({
+                    'employee': emp,
+                    'recent_overtime': None,
+                    'total_overtime': 0
+                })
+        
+        return render_template('overtime_management.html', 
+                             overtime_data=overtime_data,
+                             is_supervisor=True)
+    except Exception as e:
+        current_app.logger.error(f"Error in overtime management: {e}")
+        flash('Error loading overtime data.', 'danger')
+        return redirect(url_for('supervisor.dashboard'))
+
+@main_bp.route('/vacation-calendar')
+@login_required
+def vacation_calendar():
+    """Redirect to supervisor vacation calendar"""
+    if not current_user.is_supervisor:
+        flash('Supervisor access required.', 'danger')
+        return redirect(url_for('main.employee_dashboard'))
+    return redirect(url_for('supervisor.vacation_calendar'))
+
+@main_bp.route('/employees/management')
+@login_required
+def employee_management():
+    """Redirect to supervisor employee management"""
+    if not current_user.is_supervisor:
+        flash('Supervisor access required.', 'danger')
+        return redirect(url_for('main.employee_dashboard'))
+    return redirect(url_for('supervisor.employee_management'))
+
+@main_bp.route('/employees/crew-management')
+@login_required
+def crew_management():
+    """Redirect to supervisor crew management"""
+    if not current_user.is_supervisor:
+        flash('Supervisor access required.', 'danger')
+        return redirect(url_for('main.employee_dashboard'))
+    return redirect(url_for('supervisor.crew_management'))
+
+@main_bp.route('/profile')
+@login_required
+def profile():
+    """User profile page"""
+    return render_template('profile.html', user=current_user)
+
 @main_bp.route('/api/employee-stats')
 @login_required
 def api_employee_stats():
     """API endpoint for employee statistics"""
     try:
+        db.session.rollback()  # Clear any bad state
+        
         stats = {
             'upcoming_shifts': 0,
             'pending_requests': 0,
@@ -151,7 +234,7 @@ def api_employee_stats():
                 Schedule.date <= date.today() + timedelta(days=7)
             ).count()
         except:
-            pass
+            db.session.rollback()
         
         # Count pending requests
         try:
@@ -160,12 +243,11 @@ def api_employee_stats():
                 status='pending'
             ).count()
         except:
-            pass
+            db.session.rollback()
         
         # Get overtime hours
         try:
             week_start = date.today() - timedelta(days=date.today().weekday())
-            from models import OvertimeHistory
             stats['overtime_hours'] = db.session.query(
                 func.sum(OvertimeHistory.overtime_hours)
             ).filter(
@@ -173,7 +255,7 @@ def api_employee_stats():
                 OvertimeHistory.week_start_date == week_start
             ).scalar() or 0
         except:
-            pass
+            db.session.rollback()
         
         # Get vacation balance
         try:
@@ -186,66 +268,6 @@ def api_employee_stats():
     except Exception as e:
         current_app.logger.error(f"Error in api_employee_stats: {e}")
         return jsonify({'error': 'Failed to load statistics'}), 500
-
-@main_bp.route('/overtime-management')
-@login_required
-def overtime_management():
-    """Overtime management page - redirects based on role"""
-    if current_user.is_supervisor:
-        # Supervisor sees all overtime
-        try:
-            employees = Employee.query.filter_by(is_supervisor=False).all()
-            
-            # Get overtime data
-            overtime_data = []
-            for emp in employees:
-                try:
-                    from models import OvertimeHistory
-                    recent_ot = OvertimeHistory.query.filter_by(
-                        employee_id=emp.id
-                    ).order_by(OvertimeHistory.week_start_date.desc()).first()
-                    
-                    overtime_data.append({
-                        'employee': emp,
-                        'recent_overtime': recent_ot,
-                        'total_overtime': db.session.query(
-                            func.sum(OvertimeHistory.overtime_hours)
-                        ).filter_by(employee_id=emp.id).scalar() or 0
-                    })
-                except:
-                    overtime_data.append({
-                        'employee': emp,
-                        'recent_overtime': None,
-                        'total_overtime': 0
-                    })
-            
-            return render_template('overtime_management.html', 
-                                 overtime_data=overtime_data,
-                                 is_supervisor=True)
-        except Exception as e:
-            current_app.logger.error(f"Error in overtime management: {e}")
-            flash('Error loading overtime data.', 'danger')
-            return redirect(url_for('supervisor.dashboard'))
-    else:
-        # Employee sees only their overtime
-        try:
-            from models import OvertimeHistory
-            my_overtime = OvertimeHistory.query.filter_by(
-                employee_id=current_user.id
-            ).order_by(OvertimeHistory.week_start_date.desc()).all()
-            
-            total_overtime = db.session.query(
-                func.sum(OvertimeHistory.overtime_hours)
-            ).filter_by(employee_id=current_user.id).scalar() or 0
-            
-            return render_template('overtime_management.html',
-                                 my_overtime=my_overtime,
-                                 total_overtime=total_overtime,
-                                 is_supervisor=False)
-        except Exception as e:
-            current_app.logger.error(f"Error loading personal overtime: {e}")
-            flash('Error loading overtime data.', 'danger')
-            return redirect(url_for('main.employee_dashboard'))
 
 # Error handlers
 @main_bp.errorhandler(404)
