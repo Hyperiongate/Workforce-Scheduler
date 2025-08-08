@@ -1,281 +1,203 @@
-# utils/helpers.py - Complete implementation with coverage gap detection
+# utils/helpers.py - COMPLETE FILE
+"""
+Helper functions for the workforce scheduler
+Includes coverage gap calculations and other utilities
+"""
 
+from models import db, Schedule, Position, Employee, TimeOffRequest
 from datetime import date, timedelta
-from sqlalchemy import func
-from flask import request
-from sqlalchemy import or_
+from sqlalchemy import func, and_
+import logging
 
-def get_coverage_gaps(start_date=None, end_date=None):
+logger = logging.getLogger(__name__)
+
+def get_coverage_gaps():
     """
-    Identify coverage gaps in the schedule
-    Returns a list of gaps with details
+    Calculate coverage gaps for the next 14 days
+    Returns a list of dates with staffing shortages
     """
-    from models import db, Schedule, Position, Employee, TimeOffRequest
-    from datetime import date, timedelta
-    from sqlalchemy import func
-    
-    if not start_date:
-        start_date = date.today()
-    if not end_date:
-        end_date = start_date + timedelta(days=14)  # Look 2 weeks ahead by default
-    
-    gaps = []
-    
-    # Check each day in the range
-    current_date = start_date
-    while current_date <= end_date:
-        # Get all positions and their requirements
-        positions = Position.query.all()
+    try:
+        gaps = []
+        today = date.today()
         
-        for position in positions:
-            # Skip positions that don't require coverage
-            if hasattr(position, 'requires_coverage') and not position.requires_coverage:
-                continue
-                
-            # Count scheduled employees for this position on this date
-            scheduled_count = db.session.query(func.count(Schedule.id)).join(
-                Employee, Schedule.employee_id == Employee.id
-            ).filter(
-                Schedule.date == current_date,
-                Employee.position_id == position.id
-            ).scalar() or 0
+        # Check next 14 days
+        for i in range(14):
+            check_date = today + timedelta(days=i)
             
-            # Count employees on approved time off
-            time_off_count = db.session.query(func.count(TimeOffRequest.id)).join(
-                Employee, TimeOffRequest.employee_id == Employee.id
-            ).filter(
-                TimeOffRequest.start_date <= current_date,
-                TimeOffRequest.end_date >= current_date,
+            # Get scheduled employees for this date
+            scheduled_count = Schedule.query.filter_by(date=check_date).count()
+            
+            # Get employees on approved time off
+            on_leave_count = TimeOffRequest.query.filter(
                 TimeOffRequest.status == 'approved',
-                Employee.position_id == position.id
-            ).scalar() or 0
+                TimeOffRequest.start_date <= check_date,
+                TimeOffRequest.end_date >= check_date
+            ).count()
             
-            # Get minimum coverage requirement
-            min_required = position.min_coverage or 1
+            # Get required coverage (sum of all position minimums)
+            required_coverage = db.session.query(
+                func.sum(Position.min_coverage)
+            ).scalar() or 0
             
             # Calculate actual available
-            actual_available = scheduled_count - time_off_count
+            actual_available = scheduled_count - on_leave_count
             
-            # Check if there's a gap
-            if actual_available < min_required:
-                gap = {
-                    'date': current_date,
-                    'position_id': position.id,
-                    'position_name': position.name,
+            if actual_available < required_coverage:
+                gaps.append({
+                    'date': check_date,
                     'scheduled': scheduled_count,
-                    'time_off': time_off_count,
+                    'on_leave': on_leave_count,
                     'available': actual_available,
-                    'required': min_required,
-                    'shortage': min_required - actual_available,
-                    'shift_type': 'day',  # You can enhance this to check actual shift types
-                    'critical': (min_required - actual_available) >= 2  # Critical if 2+ short
-                }
-                gaps.append(gap)
+                    'required': required_coverage,
+                    'gap': required_coverage - actual_available
+                })
         
-        current_date += timedelta(days=1)
-    
-    return gaps
-
-
-def get_overtime_opportunities():
-    """
-    Get available overtime opportunities
-    """
-    from models import OvertimeOpportunity
-    from datetime import date
-    
-    today = date.today()
-    
-    # Get open opportunities
-    opportunities = OvertimeOpportunity.query.filter(
-        OvertimeOpportunity.date >= today,
-        OvertimeOpportunity.status == 'open'
-    ).order_by(OvertimeOpportunity.date).all()
-    
-    return opportunities
-
-
-def calculate_trade_compatibility(requesting_employee, target_employee, date):
-    """
-    Calculate compatibility score for shift trades
-    """
-    from models import Schedule, OvertimeHistory
-    from datetime import timedelta
-    
-    score = 100  # Start with perfect score
-    
-    # Check if target employee is already scheduled
-    existing_schedule = Schedule.query.filter_by(
-        employee_id=target_employee.id,
-        date=date
-    ).first()
-    
-    if existing_schedule:
-        score -= 50  # Major deduction if already scheduled
-    
-    # Check overtime in current week
-    week_start = date - timedelta(days=date.weekday())
-    target_ot = db.session.query(func.sum(OvertimeHistory.overtime_hours)).filter(
-        OvertimeHistory.employee_id == target_employee.id,
-        OvertimeHistory.week_start_date == week_start
-    ).scalar() or 0
-    
-    # Deduct points for high overtime
-    if target_ot > 40:
-        score -= 20
-    elif target_ot > 20:
-        score -= 10
-    
-    # Check skill compatibility
-    if requesting_employee.position_id == target_employee.position_id:
-        score += 10  # Bonus for same position
-    
-    # Check crew compatibility (same crew is easier)
-    if requesting_employee.crew == target_employee.crew:
-        score += 5
-    
-    return max(0, score)  # Don't go below 0
-
-
-def build_overtime_query_filters(request_args):
-    """
-    Build filter conditions for overtime queries based on request arguments
-    """
-    filters = []
-    
-    # Search filter
-    search_term = request_args.get('search', '')
-    if search_term:
-        from models import Employee
-        filters.append(
-            or_(
-                Employee.name.ilike(f'%{search_term}%'),
-                Employee.employee_id.ilike(f'%{search_term}%')
-            )
-        )
-    
-    # Crew filter
-    crew_filter = request_args.get('crew', '')
-    if crew_filter and crew_filter != 'all':
-        from models import Employee
-        filters.append(Employee.crew == crew_filter)
-    
-    # Position filter
-    position_filter = request_args.get('position', '')
-    if position_filter and position_filter != 'all':
-        from models import Employee
-        filters.append(Employee.position_id == int(position_filter))
-    
-    return filters
-
-
-def apply_overtime_range_filter(query, ot_range, total_hours_column):
-    """
-    Apply overtime range filter to a query
-    """
-    if not ot_range or ot_range == 'all':
-        return query
+        return gaps
         
-    if ot_range == '0-50':
-        return query.having(total_hours_column.between(0, 50))
-    elif ot_range == '50-100':
-        return query.having(total_hours_column.between(50, 100))
-    elif ot_range == '100-150':
-        return query.having(total_hours_column.between(100, 150))
-    elif ot_range == '150+':
-        return query.having(total_hours_column > 150)
-    
-    return query
+    except Exception as e:
+        logger.error(f"Error calculating coverage gaps: {e}")
+        return []
 
+def get_crew_coverage(crew, check_date):
+    """
+    Get coverage information for a specific crew on a specific date
+    """
+    try:
+        # Get scheduled employees from this crew
+        scheduled = Schedule.query.join(Employee).filter(
+            Employee.crew == crew,
+            Schedule.date == check_date
+        ).count()
+        
+        # Get employees from this crew on leave
+        on_leave = TimeOffRequest.query.join(Employee).filter(
+            Employee.crew == crew,
+            TimeOffRequest.status == 'approved',
+            TimeOffRequest.start_date <= check_date,
+            TimeOffRequest.end_date >= check_date
+        ).count()
+        
+        # Get total employees in crew
+        total_in_crew = Employee.query.filter_by(
+            crew=crew,
+            is_supervisor=False
+        ).count()
+        
+        return {
+            'crew': crew,
+            'date': check_date,
+            'total': total_in_crew,
+            'scheduled': scheduled,
+            'on_leave': on_leave,
+            'available': scheduled - on_leave
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting crew coverage: {e}")
+        return None
 
-def get_crew_distribution():
+def calculate_overtime_average(employee_id, weeks=13):
     """
-    Get employee count by crew
+    Calculate average overtime hours for an employee over specified weeks
     """
-    from models import Employee, db
-    
-    distribution = db.session.query(
-        Employee.crew,
-        func.count(Employee.id).label('count')
-    ).group_by(Employee.crew).all()
-    
-    # Convert to dict
-    crew_counts = {}
-    for crew, count in distribution:
-        crew_name = crew if crew else 'Unassigned'
-        crew_counts[crew_name] = count
-    
-    return crew_counts
+    try:
+        from models import OvertimeHistory
+        
+        # Get date range
+        end_date = date.today()
+        start_date = end_date - timedelta(weeks=weeks)
+        
+        # Calculate average
+        result = db.session.query(
+            func.avg(OvertimeHistory.overtime_hours)
+        ).filter(
+            OvertimeHistory.employee_id == employee_id,
+            OvertimeHistory.week_start_date >= start_date
+        ).scalar()
+        
+        return round(result or 0, 2)
+        
+    except Exception as e:
+        logger.error(f"Error calculating overtime average: {e}")
+        return 0
 
+def get_position_coverage_status(position_id, check_date):
+    """
+    Check if a position has adequate coverage on a specific date
+    """
+    try:
+        position = Position.query.get(position_id)
+        if not position:
+            return None
+        
+        # Count scheduled employees for this position
+        scheduled = Schedule.query.join(Employee).filter(
+            Employee.position_id == position_id,
+            Schedule.date == check_date
+        ).count()
+        
+        # Count employees on leave
+        on_leave = TimeOffRequest.query.join(Employee).filter(
+            Employee.position_id == position_id,
+            TimeOffRequest.status == 'approved',
+            TimeOffRequest.start_date <= check_date,
+            TimeOffRequest.end_date >= check_date
+        ).count()
+        
+        available = scheduled - on_leave
+        
+        return {
+            'position': position.name,
+            'required': position.min_coverage,
+            'scheduled': scheduled,
+            'on_leave': on_leave,
+            'available': available,
+            'shortage': max(0, position.min_coverage - available),
+            'adequate': available >= position.min_coverage
+        }
+        
+    except Exception as e:
+        logger.error(f"Error checking position coverage: {e}")
+        return None
 
-def get_position_distribution():
+def format_date_range(start_date, end_date):
     """
-    Get employee count by position
+    Format a date range for display
     """
-    from models import Employee, Position, db
-    
-    distribution = db.session.query(
-        Position.name,
-        func.count(Employee.id).label('count')
-    ).join(
-        Employee, Employee.position_id == Position.id
-    ).group_by(Position.name).all()
-    
-    # Convert to dict
-    position_counts = {}
-    for position_name, count in distribution:
-        position_counts[position_name] = count
-    
-    return position_counts
-
-
-def calculate_weekly_overtime_average(employee_id, weeks=13):
-    """
-    Calculate average weekly overtime for an employee
-    """
-    from models import OvertimeHistory, db
-    from datetime import datetime, timedelta
-    
-    start_date = datetime.now().date() - timedelta(weeks=weeks)
-    
-    total_ot = db.session.query(
-        func.sum(OvertimeHistory.overtime_hours)
-    ).filter(
-        OvertimeHistory.employee_id == employee_id,
-        OvertimeHistory.week_start_date >= start_date
-    ).scalar() or 0
-    
-    return round(total_ot / weeks, 1)
-
-
-def get_employees_by_overtime_range(min_hours=0, max_hours=None):
-    """
-    Get employees within a specific overtime range
-    """
-    from models import Employee, OvertimeHistory, db
-    from datetime import datetime, timedelta
-    
-    thirteen_weeks_ago = datetime.now().date() - timedelta(weeks=13)
-    
-    query = db.session.query(
-        Employee,
-        func.sum(OvertimeHistory.overtime_hours).label('total_ot')
-    ).join(
-        OvertimeHistory, Employee.id == OvertimeHistory.employee_id
-    ).filter(
-        OvertimeHistory.week_start_date >= thirteen_weeks_ago
-    ).group_by(Employee.id)
-    
-    if max_hours:
-        query = query.having(
-            func.sum(OvertimeHistory.overtime_hours).between(min_hours, max_hours)
-        )
+    if start_date == end_date:
+        return start_date.strftime('%B %d, %Y')
+    elif start_date.month == end_date.month:
+        return f"{start_date.strftime('%B %d')} - {end_date.day}, {end_date.year}"
     else:
-        query = query.having(
-            func.sum(OvertimeHistory.overtime_hours) >= min_hours
-        )
-    
-    return query.all()
+        return f"{start_date.strftime('%B %d')} - {end_date.strftime('%B %d, %Y')}"
 
-
-# Add any other helper functions your application needs here
+def get_employee_availability(employee_id, check_date):
+    """
+    Check if an employee is available on a specific date
+    """
+    try:
+        # Check if scheduled
+        scheduled = Schedule.query.filter_by(
+            employee_id=employee_id,
+            date=check_date
+        ).first()
+        
+        if not scheduled:
+            return {'available': False, 'reason': 'Not scheduled'}
+        
+        # Check if on leave
+        on_leave = TimeOffRequest.query.filter(
+            TimeOffRequest.employee_id == employee_id,
+            TimeOffRequest.status == 'approved',
+            TimeOffRequest.start_date <= check_date,
+            TimeOffRequest.end_date >= check_date
+        ).first()
+        
+        if on_leave:
+            return {'available': False, 'reason': f'On {on_leave.request_type}'}
+        
+        return {'available': True, 'reason': None}
+        
+    except Exception as e:
+        logger.error(f"Error checking employee availability: {e}")
+        return {'available': False, 'reason': 'Error checking availability'}
