@@ -1,530 +1,328 @@
+<!-- templates/dashboard.html -->
 {% extends "base.html" %}
 
 {% block title %}Supervisor Dashboard{% endblock %}
 
 {% block content %}
-<div class="container-fluid mt-4">
-    <!-- Header Row -->
+<div class="container-fluid">
+    <!-- Navigation Bar -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary mb-4">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="{{ url_for('supervisor.dashboard') }}">
+                <i class="bi bi-speedometer2"></i> Operations Center
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                            <i class="bi bi-calendar3"></i> Scheduling
+                        </a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="{{ url_for('overtime_management') }}">
+                                <i class="bi bi-clock-history"></i> Overtime Management
+                            </a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('supervisor.time_off_requests') }}">
+                                <i class="bi bi-calendar-x"></i> Time Off Requests
+                            </a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('supervisor.swap_requests') }}">
+                                <i class="bi bi-arrow-left-right"></i> Swap Requests
+                            </a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('vacation_calendar') }}">
+                                <i class="bi bi-calendar-week"></i> Vacation Calendar
+                            </a></li>
+                        </ul>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                            <i class="bi bi-people"></i> Workforce
+                        </a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="{{ url_for('supervisor.coverage_gaps') }}">
+                                <i class="bi bi-exclamation-triangle"></i> Coverage Gaps
+                            </a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('supervisor.coverage_needs') }}">
+                                <i class="bi bi-clipboard-check"></i> Coverage Needs
+                            </a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('supervisor.overtime_distribution') }}">
+                                <i class="bi bi-graph-up"></i> Overtime Distribution
+                            </a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{{ url_for('employee_management') }}">
+                                <i class="bi bi-person-badge"></i> Employee Management
+                            </a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('crew_management') }}">
+                                <i class="bi bi-people-fill"></i> Crew Management
+                            </a></li>
+                        </ul>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                            <i class="bi bi-upload"></i> Data Management
+                        </a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="{{ url_for('employee_import.upload_employees') }}">
+                                <i class="bi bi-upload"></i> Upload Employees
+                            </a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('employee_import.upload_overtime') }}">
+                                <i class="bi bi-clock-fill"></i> Upload Overtime
+                            </a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('employee_import.upload_history') }}">
+                                <i class="bi bi-clock-history"></i> Upload History
+                            </a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{{ url_for('employee_import.export_current_employees') }}">
+                                <i class="bi bi-download"></i> Export Employees
+                            </a></li>
+                        </ul>
+                    </li>
+                </ul>
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                            <i class="bi bi-person-circle"></i> {{ current_user.name }}
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><a class="dropdown-item" href="{{ url_for('profile') }}">
+                                <i class="bi bi-person"></i> Profile
+                            </a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{{ url_for('auth.logout') }}">
+                                <i class="bi bi-box-arrow-right"></i> Logout
+                            </a></li>
+                        </ul>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Dashboard Content -->
+    <div class="row">
+        <!-- Quick Stats -->
+        <div class="col-md-3 mb-4">
+            <div class="card bg-primary text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="card-title mb-0">Total Employees</h6>
+                            <h2 class="mb-0">{{ total_employees }}</h2>
+                        </div>
+                        <i class="bi bi-people-fill fs-1"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3 mb-4">
+            <div class="card bg-warning text-dark">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="card-title mb-0">Pending Time Off</h6>
+                            <h2 class="mb-0">{{ pending_time_off }}</h2>
+                        </div>
+                        <i class="bi bi-calendar-x fs-1"></i>
+                    </div>
+                    <a href="{{ url_for('supervisor.time_off_requests') }}" class="stretched-link"></a>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3 mb-4">
+            <div class="card bg-info text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="card-title mb-0">Pending Swaps</h6>
+                            <h2 class="mb-0">{{ pending_swaps }}</h2>
+                        </div>
+                        <i class="bi bi-arrow-left-right fs-1"></i>
+                    </div>
+                    <a href="{{ url_for('supervisor.swap_requests') }}" class="stretched-link"></a>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3 mb-4">
+            <div class="card bg-danger text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="card-title mb-0">Coverage Gaps</h6>
+                            <h2 class="mb-0">{{ coverage_gaps }}</h2>
+                        </div>
+                        <i class="bi bi-exclamation-triangle fs-1"></i>
+                    </div>
+                    <a href="{{ url_for('supervisor.coverage_gaps') }}" class="stretched-link"></a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
     <div class="row mb-4">
         <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center">
-                <h1 class="h2"><i class="bi bi-speedometer2"></i> Supervisor Dashboard</h1>
-                <div class="btn-group" role="group">
-                    <button type="button" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown">
-                        <i class="bi bi-plus-circle"></i> Quick Actions
-                    </button>
-                    <ul class="dropdown-menu">
-                        <li><a class="dropdown-item" href="{{ url_for('schedule.create_schedule') }}">
-                            <i class="bi bi-calendar-plus"></i> Create Schedule
-                        </a></li>
-                        <li><a class="dropdown-item" href="{{ url_for('employee_import.upload_employees') }}">
-                            <i class="bi bi-cloud-upload"></i> Upload Employees
-                        </a></li>
-                        <li><a class="dropdown-item" href="{{ url_for('main.overtime_management') }}">
-                            <i class="bi bi-clock-history"></i> Manage Overtime
-                        </a></li>
-                        <li><hr class="dropdown-divider"></li>
-                        <li><a class="dropdown-item" href="{{ url_for('supervisor.time_off_requests') }}">
-                            <i class="bi bi-calendar-x"></i> Review Time Off
-                        </a></li>
-                    </ul>
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-lightning"></i> Quick Actions</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-3 mb-2">
+                            <a href="{{ url_for('overtime_management') }}" class="btn btn-primary w-100">
+                                <i class="bi bi-clock-history"></i> Manage Overtime
+                            </a>
+                        </div>
+                        <div class="col-md-3 mb-2">
+                            <a href="{{ url_for('supervisor.time_off_requests') }}" class="btn btn-warning w-100">
+                                <i class="bi bi-calendar-x"></i> Review Time Off
+                            </a>
+                        </div>
+                        <div class="col-md-3 mb-2">
+                            <a href="{{ url_for('supervisor.coverage_gaps') }}" class="btn btn-danger w-100">
+                                <i class="bi bi-exclamation-triangle"></i> View Coverage Gaps
+                            </a>
+                        </div>
+                        <div class="col-md-3 mb-2">
+                            <a href="{{ url_for('employee_import.upload_employees') }}" class="btn btn-success w-100">
+                                <i class="bi bi-upload"></i> Upload Data
+                            </a>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Flash Messages -->
-    {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-            {% for category, message in messages %}
-                <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
-                    {{ message }}
-                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    <!-- Data Insights -->
+    <div class="row">
+        {% if employees_missing_ot is defined and employees_missing_ot > 0 %}
+        <div class="col-md-6 mb-4">
+            <div class="card">
+                <div class="card-header bg-warning">
+                    <h5 class="mb-0"><i class="bi bi-exclamation-circle"></i> Data Quality Alert</h5>
                 </div>
-            {% endfor %}
+                <div class="card-body">
+                    <p class="mb-0">
+                        <strong>{{ employees_missing_ot }}</strong> employees are missing overtime history data.
+                        <a href="{{ url_for('employee_import.upload_overtime') }}" class="btn btn-sm btn-warning float-end">
+                            Upload OT Data
+                        </a>
+                    </p>
+                </div>
+            </div>
+        </div>
         {% endif %}
-    {% endwith %}
 
-    <!-- Statistics Cards Row -->
-    <div class="row mb-4">
-        <div class="col-xl-3 col-md-6 mb-4">
-            <div class="card border-left-primary shadow h-100 py-2">
-                <div class="card-body">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
-                                Total Employees
-                            </div>
-                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ employee_count }}</div>
-                        </div>
-                        <div class="col-auto">
-                            <i class="bi bi-people-fill fa-2x text-gray-300"></i>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-xl-3 col-md-6 mb-4">
-            <div class="card border-left-warning shadow h-100 py-2">
-                <div class="card-body">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">
-                                Pending Time Off
-                            </div>
-                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ pending_time_off_count }}</div>
-                        </div>
-                        <div class="col-auto">
-                            <i class="bi bi-calendar-x fa-2x text-gray-300"></i>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-xl-3 col-md-6 mb-4">
-            <div class="card border-left-info shadow h-100 py-2">
-                <div class="card-body">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-info text-uppercase mb-1">
-                                Pending Swaps
-                            </div>
-                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ pending_swap_count }}</div>
-                        </div>
-                        <div class="col-auto">
-                            <i class="bi bi-arrow-left-right fa-2x text-gray-300"></i>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-xl-3 col-md-6 mb-4">
-            <div class="card border-left-success shadow h-100 py-2">
-                <div class="card-body">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
-                                Coverage Gaps
-                            </div>
-                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ coverage_gaps_count }}</div>
-                        </div>
-                        <div class="col-auto">
-                            <i class="bi bi-exclamation-triangle fa-2x text-gray-300"></i>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Main Content Row -->
-    <div class="row">
-        <!-- Left Column -->
-        <div class="col-lg-4 mb-4">
-            <!-- Quick Actions Card -->
-            <div class="card shadow mb-4">
-                <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between">
-                    <h6 class="m-0 font-weight-bold text-primary">Quick Actions</h6>
+        {% if high_ot_employees is defined and high_ot_employees %}
+        <div class="col-md-6 mb-4">
+            <div class="card">
+                <div class="card-header bg-danger text-white">
+                    <h5 class="mb-0"><i class="bi bi-graph-up-arrow"></i> High Overtime Alert</h5>
                 </div>
                 <div class="card-body">
-                    <div class="list-group">
-                        <a href="{{ url_for('schedule.create_schedule') }}" class="list-group-item list-group-item-action">
-                            <i class="bi bi-calendar-plus"></i> Create New Schedule
-                        </a>
-                        <a href="{{ url_for('main.overtime_management') }}" class="list-group-item list-group-item-action">
-                            <i class="bi bi-clock-history"></i> Manage Overtime
-                        </a>
-                        <a href="{{ url_for('supervisor.time_off_requests') }}" class="list-group-item list-group-item-action">
-                            <div class="d-flex justify-content-between align-items-center">
-                                <span><i class="bi bi-calendar-x"></i> Review Time Off Requests</span>
-                                {% if pending_time_off_count > 0 %}
-                                    <span class="badge bg-warning rounded-pill">{{ pending_time_off_count }}</span>
-                                {% endif %}
-                            </div>
-                        </a>
-                        <a href="{{ url_for('supervisor.swap_requests') }}" class="list-group-item list-group-item-action">
-                            <div class="d-flex justify-content-between align-items-center">
-                                <span><i class="bi bi-arrow-left-right"></i> Review Swap Requests</span>
-                                {% if pending_swap_count > 0 %}
-                                    <span class="badge bg-info rounded-pill">{{ pending_swap_count }}</span>
-                                {% endif %}
-                            </div>
-                        </a>
-                        <a href="{{ url_for('supervisor.vacation_calendar') }}" class="list-group-item list-group-item-action">
-                            <i class="bi bi-calendar-month"></i> View Vacation Calendar
-                        </a>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Crew Distribution Card -->
-            <div class="card shadow mb-4">
-                <div class="card-header py-3">
-                    <h6 class="m-0 font-weight-bold text-primary">Crew Distribution</h6>
-                </div>
-                <div class="card-body">
-                    <canvas id="crewChart" width="100%" height="100"></canvas>
-                    <div class="mt-3">
-                        <small class="text-muted">
-                            <i class="bi bi-info-circle"></i> Current active employee distribution
-                        </small>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Middle Column -->
-        <div class="col-lg-4 mb-4">
-            <!-- Schedule Status Card -->
-            <div class="card shadow mb-4">
-                <div class="card-header py-3">
-                    <h6 class="m-0 font-weight-bold text-primary">Current Schedule Status</h6>
-                </div>
-                <div class="card-body">
-                    {% if current_schedule %}
-                        <h5 class="text-center mb-3">Week of {{ current_schedule.week_start_date.strftime('%B %d, %Y') }}</h5>
-                        <div class="row text-center">
-                            <div class="col-6 mb-3">
-                                <div class="text-xs font-weight-bold text-success text-uppercase mb-1">Day Shift</div>
-                                <div class="h5 mb-0">Crew {{ current_schedule.day_crew }}</div>
-                            </div>
-                            <div class="col-6 mb-3">
-                                <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">Night Shift</div>
-                                <div class="h5 mb-0">Crew {{ current_schedule.night_crew }}</div>
-                            </div>
-                        </div>
-                        <div class="text-center mt-3">
-                            <a href="{{ url_for('schedule.view_schedule') }}" class="btn btn-sm btn-primary">
-                                <i class="bi bi-calendar-week"></i> View Full Schedule
-                            </a>
-                        </div>
-                    {% else %}
-                        <div class="text-center py-4">
-                            <i class="bi bi-calendar-x fa-3x text-muted mb-3"></i>
-                            <p class="text-muted">No active schedule for this week</p>
-                            <a href="{{ url_for('schedule.create_schedule') }}" class="btn btn-primary">
-                                <i class="bi bi-calendar-plus"></i> Create Schedule
-                            </a>
-                        </div>
-                    {% endif %}
-                </div>
-            </div>
-
-            <!-- Recent Activity Card -->
-            <div class="card shadow mb-4">
-                <div class="card-header py-3">
-                    <h6 class="m-0 font-weight-bold text-primary">Recent Activity</h6>
-                </div>
-                <div class="card-body" style="max-height: 300px; overflow-y: auto;">
-                    <div class="timeline">
-                        {% for activity in recent_activities %}
-                            <div class="timeline-item">
-                                <div class="timeline-marker"></div>
-                                <div class="timeline-content">
-                                    <p class="mb-0"><small>{{ activity.timestamp.strftime('%m/%d %I:%M %p') }}</small></p>
-                                    <p class="mb-0">{{ activity.description }}</p>
-                                </div>
-                            </div>
-                        {% else %}
-                            <p class="text-muted text-center">No recent activity</p>
+                    <p>Employees with >45 hours average overtime:</p>
+                    <ul class="mb-0">
+                        {% for emp in high_ot_employees[:3] %}
+                        <li>{{ emp.name }} (Crew {{ emp.crew }}): {{ emp.avg_hours }} hrs/week</li>
                         {% endfor %}
-                    </div>
+                    </ul>
+                    <a href="{{ url_for('supervisor.overtime_distribution') }}" class="btn btn-sm btn-danger float-end">
+                        View All
+                    </a>
                 </div>
             </div>
         </div>
-
-        <!-- Right Column -->
-        <div class="col-lg-4 mb-4">
-            <!-- Data Management Center -->
-            <div class="card shadow mb-4">
-                <div class="card-header py-3">
-                    <h6 class="m-0 font-weight-bold text-primary">Data Management Center</h6>
-                </div>
-                <div class="card-body">
-                    <h6 class="font-weight-bold">Import Tools</h6>
-                    <div class="list-group mb-3">
-                        <a href="{{ url_for('employee_import.upload_employees') }}" class="list-group-item list-group-item-action">
-                            <div class="d-flex justify-content-between align-items-center">
-                                <span><i class="bi bi-cloud-upload"></i> Upload Employees</span>
-                                <span class="badge bg-primary rounded-pill">Excel</span>
-                            </div>
-                        </a>
-                        <a href="{{ url_for('employee_import.upload_overtime') }}" class="list-group-item list-group-item-action">
-                            <div class="d-flex justify-content-between align-items-center">
-                                <span><i class="bi bi-clock-history"></i> Upload Overtime History</span>
-                                <span class="badge bg-warning rounded-pill text-dark">13 weeks</span>
-                            </div>
-                        </a>
-                    </div>
-
-                    <h6 class="font-weight-bold">Export Options</h6>
-                    <div class="list-group">
-                        <a href="{{ url_for('employee_import.export_current_employees') }}" class="list-group-item list-group-item-action">
-                            <i class="bi bi-download"></i> Export Employee Data
-                        </a>
-                        <a href="{{ url_for('employee_import.export_current_overtime') }}" class="list-group-item list-group-item-action">
-                            <i class="bi bi-download"></i> Export Overtime Report
-                        </a>
-                        <a href="{{ url_for('employee_import.upload_history') }}" class="list-group-item list-group-item-action">
-                            <i class="bi bi-clock-history"></i> View Upload History
-                        </a>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Alerts & Notifications -->
-            <div class="card shadow mb-4">
-                <div class="card-header py-3">
-                    <h6 class="m-0 font-weight-bold text-danger">Alerts & Notifications</h6>
-                </div>
-                <div class="card-body">
-                    {% if coverage_gaps_count > 0 %}
-                        <div class="alert alert-danger d-flex align-items-center" role="alert">
-                            <i class="bi bi-exclamation-triangle-fill flex-shrink-0 me-2"></i>
-                            <div>
-                                <strong>{{ coverage_gaps_count }} Coverage Gaps</strong><br>
-                                <small>Immediate attention required</small>
-                            </div>
-                        </div>
-                    {% endif %}
-                    
-                    {% if employees_missing_ot > 0 %}
-                        <div class="alert alert-warning d-flex align-items-center" role="alert">
-                            <i class="bi bi-clock-history flex-shrink-0 me-2"></i>
-                            <div>
-                                <strong>{{ employees_missing_ot }} Employees Missing OT Data</strong><br>
-                                <small><a href="{{ url_for('employee_import.upload_overtime') }}">Upload overtime history</a></small>
-                            </div>
-                        </div>
-                    {% endif %}
-                    
-                    {% if high_overtime_employees|length > 0 %}
-                        <div class="alert alert-info d-flex align-items-center" role="alert">
-                            <i class="bi bi-person-exclamation flex-shrink-0 me-2"></i>
-                            <div>
-                                <strong>High Overtime Alert</strong><br>
-                                <small>{{ high_overtime_employees|length }} employees over 20 hrs/week avg</small>
-                            </div>
-                        </div>
-                    {% endif %}
-                    
-                    {% if not (coverage_gaps_count > 0 or employees_missing_ot > 0 or high_overtime_employees|length > 0) %}
-                        <p class="text-muted text-center mb-0">
-                            <i class="bi bi-check-circle"></i> All systems operating normally
-                        </p>
-                    {% endif %}
-                </div>
-            </div>
-        </div>
+        {% endif %}
     </div>
 
-    <!-- Tables Row -->
+    <!-- Recent Activity -->
+    {% if recent_time_off is defined or recent_swaps is defined %}
     <div class="row">
-        <!-- Pending Requests Table -->
-        <div class="col-lg-6 mb-4">
-            <div class="card shadow">
-                <div class="card-header py-3 d-flex justify-content-between align-items-center">
-                    <h6 class="m-0 font-weight-bold text-primary">Pending Requests</h6>
-                    <a href="{{ url_for('supervisor.time_off_requests') }}" class="btn btn-sm btn-outline-primary">
-                        View All <i class="bi bi-arrow-right"></i>
-                    </a>
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-activity"></i> Recent Activity</h5>
                 </div>
                 <div class="card-body">
-                    <div class="table-responsive">
-                        <table class="table table-hover">
-                            <thead>
-                                <tr>
-                                    <th>Employee</th>
-                                    <th>Type</th>
-                                    <th>Dates</th>
-                                    <th>Status</th>
-                                    <th>Action</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for request in recent_time_off_requests[:5] %}
-                                <tr>
-                                    <td>{{ request.employee.first_name }} {{ request.employee.last_name }}</td>
-                                    <td>
-                                        {% if request.request_type == 'vacation' %}
-                                            <span class="badge bg-primary">Vacation</span>
-                                        {% elif request.request_type == 'sick' %}
-                                            <span class="badge bg-warning">Sick</span>
-                                        {% else %}
-                                            <span class="badge bg-secondary">Personal</span>
-                                        {% endif %}
-                                    </td>
-                                    <td>{{ request.start_date.strftime('%m/%d') }} - {{ request.end_date.strftime('%m/%d') }}</td>
-                                    <td>
-                                        <span class="badge bg-warning">Pending</span>
-                                    </td>
-                                    <td>
-                                        <a href="{{ url_for('supervisor.time_off_requests') }}" class="btn btn-sm btn-outline-primary">
-                                            Review
-                                        </a>
-                                    </td>
-                                </tr>
-                                {% else %}
-                                <tr>
-                                    <td colspan="5" class="text-center text-muted">No pending requests</td>
-                                </tr>
+                    <div class="row">
+                        {% if recent_time_off is defined %}
+                        <div class="col-md-6">
+                            <h6>Recent Time Off Requests</h6>
+                            <div class="list-group">
+                                {% for request in recent_time_off[:3] %}
+                                <div class="list-group-item">
+                                    <div class="d-flex justify-content-between">
+                                        <strong>{{ request.employee.name }}</strong>
+                                        <span class="badge bg-{{ 'warning' if request.status == 'pending' else 'success' if request.status == 'approved' else 'danger' }}">
+                                            {{ request.status.title() }}
+                                        </span>
+                                    </div>
+                                    <small>{{ request.start_date.strftime('%m/%d') }} - {{ request.end_date.strftime('%m/%d') }}</small>
+                                </div>
                                 {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        </div>
+                            </div>
+                        </div>
+                        {% endif %}
 
-        <!-- Upcoming Schedule -->
-        <div class="col-lg-6 mb-4">
-            <div class="card shadow">
-                <div class="card-header py-3 d-flex justify-content-between align-items-center">
-                    <h6 class="m-0 font-weight-bold text-primary">Upcoming Schedule Changes</h6>
-                    <a href="{{ url_for('schedule.view_schedule') }}" class="btn btn-sm btn-outline-primary">
-                        View Schedule <i class="bi bi-arrow-right"></i>
-                    </a>
-                </div>
-                <div class="card-body">
-                    <div class="table-responsive">
-                        <table class="table table-hover">
-                            <thead>
-                                <tr>
-                                    <th>Week Starting</th>
-                                    <th>Day Crew</th>
-                                    <th>Night Crew</th>
-                                    <th>Status</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for schedule in upcoming_schedules[:4] %}
-                                <tr>
-                                    <td>{{ schedule.week_start_date.strftime('%m/%d/%Y') }}</td>
-                                    <td><span class="badge bg-success">Crew {{ schedule.day_crew }}</span></td>
-                                    <td><span class="badge bg-dark">Crew {{ schedule.night_crew }}</span></td>
-                                    <td>
-                                        {% if schedule.is_published %}
-                                            <span class="badge bg-success">Published</span>
-                                        {% else %}
-                                            <span class="badge bg-secondary">Draft</span>
-                                        {% endif %}
-                                    </td>
-                                </tr>
-                                {% else %}
-                                <tr>
-                                    <td colspan="4" class="text-center text-muted">No upcoming schedules</td>
-                                </tr>
+                        {% if recent_swaps is defined %}
+                        <div class="col-md-6">
+                            <h6>Recent Swap Requests</h6>
+                            <div class="list-group">
+                                {% for swap in recent_swaps[:3] %}
+                                <div class="list-group-item">
+                                    <div class="d-flex justify-content-between">
+                                        <strong>{{ swap.requester.name }}</strong>
+                                        <span class="badge bg-{{ 'warning' if swap.status == 'pending' else 'success' if swap.status == 'approved' else 'danger' }}">
+                                            {{ swap.status.title() }}
+                                        </span>
+                                    </div>
+                                    <small>Swap with {{ swap.target_employee.name if swap.target_employee else 'Open' }}</small>
+                                </div>
                                 {% endfor %}
-                            </tbody>
-                        </table>
+                            </div>
+                        </div>
+                        {% endif %}
                     </div>
                 </div>
             </div>
         </div>
     </div>
+    {% endif %}
 </div>
 
-<!-- Styles -->
 <style>
-    .border-left-primary {
-        border-left: 4px solid #007bff;
-    }
-    .border-left-warning {
-        border-left: 4px solid #ffc107;
-    }
-    .border-left-info {
-        border-left: 4px solid #17a2b8;
-    }
-    .border-left-success {
-        border-left: 4px solid #28a745;
-    }
-    .timeline {
-        position: relative;
-        padding: 0;
-        list-style: none;
-    }
-    .timeline-item {
-        position: relative;
-        padding-left: 40px;
-        margin-bottom: 20px;
-    }
-    .timeline-marker {
-        position: absolute;
-        left: 0;
-        top: 0;
-        width: 12px;
-        height: 12px;
-        border-radius: 50%;
-        background-color: #007bff;
-    }
-    .timeline-content {
-        background-color: #f8f9fa;
-        padding: 10px;
-        border-radius: 4px;
-    }
+.card {
+    transition: transform 0.2s;
+    border: none;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+.stretched-link::after {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 1;
+    content: "";
+}
+
+.navbar {
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.list-group-item {
+    border: 1px solid rgba(0,0,0,0.125);
+    margin-bottom: 5px;
+}
 </style>
-
-<!-- Scripts -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script>
-    // Crew Distribution Chart
-    const ctx = document.getElementById('crewChart').getContext('2d');
-    const crewChart = new Chart(ctx, {
-        type: 'doughnut',
-        data: {
-            labels: ['Crew A', 'Crew B', 'Crew C', 'Crew D'],
-            datasets: [{
-                data: [
-                    {{ crew_distribution.A|default(0) }},
-                    {{ crew_distribution.B|default(0) }},
-                    {{ crew_distribution.C|default(0) }},
-                    {{ crew_distribution.D|default(0) }}
-                ],
-                backgroundColor: [
-                    '#007bff',
-                    '#28a745',
-                    '#ffc107',
-                    '#dc3545'
-                ],
-                borderWidth: 2,
-                borderColor: '#fff'
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: true,
-            plugins: {
-                legend: {
-                    position: 'bottom',
-                    labels: {
-                        padding: 15,
-                        font: {
-                            size: 12
-                        }
-                    }
-                },
-                tooltip: {
-                    callbacks: {
-                        label: function(context) {
-                            let label = context.label || '';
-                            if (label) {
-                                label += ': ';
-                            }
-                            label += context.parsed + ' employees';
-                            return label;
-                        }
-                    }
-                }
-            }
-        }
-    });
-
-    // Auto-refresh page every 5 minutes
-    setTimeout(function() {
-        location.reload();
-    }, 300000);
-</script>
 {% endblock %}
