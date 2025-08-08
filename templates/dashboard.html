@@ -1,623 +1,530 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Operations Center - Workforce Scheduler</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
-    <style>
-        /* Custom Styles */
-        body {
-            background-color: #f5f6fa;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-        }
-        
-        /* Navbar */
-        .navbar {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        
-        .navbar-brand {
-            font-weight: 700;
-            font-size: 1.4rem;
-        }
-        
-        /* Dashboard Container */
-        .dashboard-container {
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 2rem;
-        }
-        
-        /* Dashboard Header */
-        .dashboard-header {
-            margin-bottom: 2rem;
-        }
-        
-        .dashboard-title {
-            font-size: 2.5rem;
-            font-weight: 700;
-            color: #2c3e50;
-            margin-bottom: 0.5rem;
-        }
-        
-        .dashboard-subtitle {
-            color: #7f8c8d;
-            font-size: 1.1rem;
-        }
-        
-        /* Stats Row */
-        .stats-row {
-            margin-bottom: 2rem;
-        }
-        
-        .stat-card {
-            background: white;
-            border-radius: 10px;
-            padding: 1.5rem;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.08);
-            position: relative;
-            overflow: hidden;
-            transition: transform 0.2s, box-shadow 0.2s;
-        }
-        
-        .stat-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-        }
-        
-        .stat-icon {
-            position: absolute;
-            top: 1rem;
-            right: 1rem;
-            font-size: 2rem;
-            color: #e9ecef;
-        }
-        
-        .stat-number {
-            font-size: 2.5rem;
-            font-weight: 700;
-            color: #11998e;
-            margin-bottom: 0.25rem;
-            line-height: 1;
-        }
-        
-        .stat-label {
-            color: #6c757d;
-            font-size: 0.9rem;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 0;
-        }
-        
-        /* Section Cards */
-        .section-card {
-            background: white;
-            border-radius: 10px;
-            padding: 2rem;
-            margin-bottom: 2rem;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.08);
-        }
-        
-        .section-title {
-            font-size: 1.5rem;
-            font-weight: 600;
-            color: #2c3e50;
-            margin-bottom: 1.5rem;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-        
-        /* Action Grid */
-        .action-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-            gap: 1rem;
-        }
-        
-        .action-card {
-            background: #f8f9fa;
-            border: 1px solid #e9ecef;
-            border-radius: 8px;
-            padding: 1.25rem;
-            text-decoration: none;
-            color: #495057;
-            transition: all 0.2s;
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-        }
-        
-        .action-card:hover {
-            background: #11998e;
-            color: white;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(17, 153, 142, 0.3);
-            border-color: #11998e;
-        }
-        
-        .action-card i {
-            font-size: 1.5rem;
-            color: #11998e;
-            min-width: 2rem;
-        }
-        
-        .action-card:hover i {
-            color: white;
-        }
-        
-        .action-content h4 {
-            font-size: 1.1rem;
-            font-weight: 600;
-            margin-bottom: 0.25rem;
-        }
-        
-        .action-content p {
-            font-size: 0.85rem;
-            margin-bottom: 0;
-            opacity: 0.9;
-        }
-        
-        /* Priority Actions */
-        .priority-actions {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border-radius: 10px;
-            padding: 2rem;
-            margin-bottom: 2rem;
-            color: white;
-        }
-        
-        .priority-title {
-            font-size: 1.5rem;
-            font-weight: 600;
-            margin-bottom: 1.5rem;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-        
-        .priority-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-            gap: 1rem;
-        }
-        
-        .priority-card {
-            background: rgba(255, 255, 255, 0.15);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            border-radius: 8px;
-            padding: 1.25rem;
-            text-decoration: none;
-            color: white;
-            transition: all 0.2s;
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-        }
-        
-        .priority-card:hover {
-            background: rgba(255, 255, 255, 0.25);
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-            color: white;
-        }
-        
-        .priority-card i {
-            font-size: 1.5rem;
-            min-width: 2rem;
-        }
-        
-        .priority-content h4 {
-            font-size: 1.1rem;
-            font-weight: 600;
-            margin-bottom: 0.25rem;
-        }
-        
-        .priority-content p {
-            font-size: 0.85rem;
-            margin-bottom: 0;
-            opacity: 0.9;
-        }
-        
-        /* Alert Custom */
-        .alert-custom {
-            border-radius: 8px;
-            border: none;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.08);
-        }
-        
-        /* Responsive */
-        @media (max-width: 768px) {
-            .dashboard-container {
-                padding: 1rem;
-            }
-            
-            .dashboard-title {
-                font-size: 2rem;
-            }
-            
-            .action-grid, .priority-grid {
-                grid-template-columns: 1fr;
-            }
-        }
-    </style>
-</head>
-<body>
-    <!-- Navbar -->
-    <nav class="navbar navbar-expand-lg navbar-dark">
-        <div class="container-fluid">
-            <a class="navbar-brand" href="/">
-                <i class="bi bi-gear-fill"></i> Workforce Scheduler
-            </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav me-auto">
-                    <li class="nav-item">
-                        <a class="nav-link active" href="/dashboard">
-                            <i class="bi bi-speedometer2"></i> Dashboard
-                        </a>
-                    </li>
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" id="navbarDropdownMenuLink" role="button" data-bs-toggle="dropdown">
-                            <i class="bi bi-tools"></i> Tools
-                        </a>
-                        <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="{{ url_for('employee_import.upload_employees') }}">
-                                <i class="bi bi-upload"></i> Upload Employees
-                            </a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('employee_import.upload_overtime') }}">
-                                <i class="bi bi-clock-history"></i> Upload Overtime
-                            </a></li>
-                            <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="{{ url_for('employee_import.export_current_employees') }}">
-                                <i class="bi bi-download"></i> Export Employees
-                            </a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('employee_import.export_current_overtime') }}">
-                                <i class="bi bi-download"></i> Export Overtime
-                            </a></li>
-                        </ul>
-                    </li>
-                </ul>
-                <ul class="navbar-nav">
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown">
-                            <i class="bi bi-person-circle"></i> {{ current_user.name }}
-                        </a>
-                        <ul class="dropdown-menu dropdown-menu-end">
-                            <li><a class="dropdown-item" href="/profile"><i class="bi bi-person"></i> Profile</a></li>
-                            <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="/logout"><i class="bi bi-box-arrow-right"></i> Logout</a></li>
-                        </ul>
-                    </li>
-                </ul>
-            </div>
-        </div>
-    </nav>
+{% extends "base.html" %}
 
-    <div class="dashboard-container">
-        <!-- Flash Messages -->
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                {% for category, message in messages %}
-                    <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show alert-custom" role="alert">
-                        {{ message }}
-                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                    </div>
-                {% endfor %}
-            {% endif %}
-        {% endwith %}
+{% block title %}Supervisor Dashboard{% endblock %}
 
-        <!-- Dashboard Header -->
-        <div class="dashboard-header">
-            <h1 class="dashboard-title">Supervisor Dashboard</h1>
-            <p class="dashboard-subtitle">Welcome back, {{ current_user.name }}! Here's your operations overview.</p>
-        </div>
-        
-        <!-- Statistics Row -->
-        <div class="row stats-row">
-            <div class="col-md-3 mb-3">
-                <div class="stat-card position-relative">
-                    <i class="bi bi-calendar-x stat-icon"></i>
-                    <div class="stat-number">{{ pending_time_off }}</div>
-                    <div class="stat-label">Pending Time Off</div>
+{% block content %}
+<div class="container-fluid mt-4">
+    <!-- Header Row -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <h1 class="h2"><i class="bi bi-speedometer2"></i> Supervisor Dashboard</h1>
+                <div class="btn-group" role="group">
+                    <button type="button" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown">
+                        <i class="bi bi-plus-circle"></i> Quick Actions
+                    </button>
+                    <ul class="dropdown-menu">
+                        <li><a class="dropdown-item" href="{{ url_for('schedule.create_schedule') }}">
+                            <i class="bi bi-calendar-plus"></i> Create Schedule
+                        </a></li>
+                        <li><a class="dropdown-item" href="{{ url_for('employee_import.upload_employees') }}">
+                            <i class="bi bi-cloud-upload"></i> Upload Employees
+                        </a></li>
+                        <li><a class="dropdown-item" href="{{ url_for('main.overtime_management') }}">
+                            <i class="bi bi-clock-history"></i> Manage Overtime
+                        </a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item" href="{{ url_for('supervisor.time_off_requests') }}">
+                            <i class="bi bi-calendar-x"></i> Review Time Off
+                        </a></li>
+                    </ul>
                 </div>
-            </div>
-            <div class="col-md-3 mb-3">
-                <div class="stat-card position-relative">
-                    <i class="bi bi-arrow-left-right stat-icon"></i>
-                    <div class="stat-number">{{ pending_swaps }}</div>
-                    <div class="stat-label">Pending Swaps</div>
-                </div>
-            </div>
-            <div class="col-md-3 mb-3">
-                <div class="stat-card position-relative">
-                    <i class="bi bi-people stat-icon"></i>
-                    <div class="stat-number">{{ total_employees }}</div>
-                    <div class="stat-label">Total Employees</div>
-                </div>
-            </div>
-            <div class="col-md-3 mb-3">
-                <div class="stat-card position-relative">
-                    <i class="bi bi-exclamation-triangle stat-icon"></i>
-                    <div class="stat-number">{{ coverage_gaps }}</div>
-                    <div class="stat-label">Coverage Gaps</div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Priority Actions -->
-        <div class="priority-actions">
-            <h2 class="priority-title">
-                <i class="bi bi-lightning-charge-fill"></i>
-                Priority Actions
-            </h2>
-            <div class="priority-grid">
-                <a href="/supervisor/overtime-management" class="priority-card">
-                    <i class="bi bi-graph-up-arrow"></i>
-                    <div class="priority-content">
-                        <h4>Overtime Distribution</h4>
-                        <p>Manage and track overtime assignments</p>
-                    </div>
-                </a>
-                <a href="/supervisor/coverage-gaps" class="priority-card">
-                    <i class="bi bi-exclamation-circle"></i>
-                    <div class="priority-content">
-                        <h4>Coverage Gaps</h4>
-                        <p>Address staffing shortages</p>
-                    </div>
-                </a>
-                <a href="/supervisor/time-off-requests" class="priority-card">
-                    <i class="bi bi-calendar-check"></i>
-                    <div class="priority-content">
-                        <h4>Time Off Requests</h4>
-                        <p>{{ pending_time_off }} pending approvals</p>
-                    </div>
-                </a>
-                <a href="/supervisor/swap-requests" class="priority-card">
-                    <i class="bi bi-arrow-left-right"></i>
-                    <div class="priority-content">
-                        <h4>Swap Requests</h4>
-                        <p>{{ pending_swaps }} pending reviews</p>
-                    </div>
-                </a>
-            </div>
-        </div>
-
-        <!-- Employee Management Section -->
-        <div class="section-card">
-            <h2 class="section-title">
-                <i class="bi bi-people-fill" style="color: #11998e;"></i>
-                Employee Management
-            </h2>
-            <div class="action-grid">
-                <a href="{{ url_for('employee_import.upload_employees') }}" class="action-card">
-                    <i class="bi bi-cloud-upload"></i>
-                    <div class="action-content">
-                        <h4>Upload Employee Data</h4>
-                        <p>Import employees & overtime from Excel</p>
-                    </div>
-                </a>
-                <a href="{{ url_for('employee_import.upload_overtime') }}" class="action-card">
-                    <i class="bi bi-clock-history"></i>
-                    <div class="action-content">
-                        <h4>Upload Overtime History</h4>
-                        <p>Import 13-week overtime data</p>
-                    </div>
-                </a>
-                <a href="{{ url_for('employee_import.upload_history') }}" class="action-card">
-                    <i class="bi bi-list-check"></i>
-                    <div class="action-content">
-                        <h4>Upload History</h4>
-                        <p>View all data imports</p>
-                    </div>
-                </a>
-                <a href="{{ url_for('main.overtime_management') }}" class="action-card">
-                    <i class="bi bi-graph-up-arrow"></i>
-                    <div class="action-content">
-                        <h4>Overtime Analytics</h4>
-                        <p>Analyze overtime distribution</p>
-                    </div>
-                </a>
-            </div>
-        </div>
-
-        <!-- Data Management Section -->
-        <div class="section-card">
-            <h2 class="section-title">
-                <i class="bi bi-database" style="color: #11998e;"></i>
-                Data Management
-            </h2>
-            <div class="action-grid">
-                <a href="{{ url_for('employee_import.download_employee_template') }}" class="action-card">
-                    <i class="bi bi-file-earmark-excel"></i>
-                    <div class="action-content">
-                        <h4>Employee Template</h4>
-                        <p>Download import template</p>
-                    </div>
-                </a>
-                <a href="{{ url_for('employee_import.download_overtime_template') }}" class="action-card">
-                    <i class="bi bi-file-earmark-clock"></i>
-                    <div class="action-content">
-                        <h4>Overtime Template</h4>
-                        <p>Download template</p>
-                    </div>
-                </a>
-                <a href="{{ url_for('employee_import.export_current_employees') }}" class="action-card">
-                    <i class="bi bi-box-arrow-up"></i>
-                    <div class="action-content">
-                        <h4>Export Employees</h4>
-                        <p>Download current data</p>
-                    </div>
-                </a>
-                <a href="{{ url_for('employee_import.export_current_overtime') }}" class="action-card">
-                    <i class="bi bi-box-arrow-in-up"></i>
-                    <div class="action-content">
-                        <h4>Export Overtime</h4>
-                        <p>Download OT history</p>
-                    </div>
-                </a>
-            </div>
-        </div>
-
-        <!-- Schedule Management Section -->
-        <div class="section-card">
-            <h2 class="section-title">
-                <i class="bi bi-calendar-week" style="color: #11998e;"></i>
-                Schedule Management
-            </h2>
-            <div class="action-grid">
-                <a href="/schedule/view" class="action-card">
-                    <i class="bi bi-calendar3"></i>
-                    <div class="action-content">
-                        <h4>View Schedule</h4>
-                        <p>Current schedule by crew</p>
-                    </div>
-                </a>
-                <a href="/schedule/create" class="action-card">
-                    <i class="bi bi-calendar-plus"></i>
-                    <div class="action-content">
-                        <h4>Create Schedule</h4>
-                        <p>Build new rotation schedules</p>
-                    </div>
-                </a>
-                <a href="/vacation-calendar" class="action-card">
-                    <i class="bi bi-calendar-heart"></i>
-                    <div class="action-content">
-                        <h4>Vacation Calendar</h4>
-                        <p>Team time-off overview</p>
-                    </div>
-                </a>
-                <a href="/supervisor/coverage-needs" class="action-card">
-                    <i class="bi bi-shield-exclamation"></i>
-                    <div class="action-content">
-                        <h4>Coverage Needs</h4>
-                        <p>Define staffing requirements</p>
-                    </div>
-                </a>
-            </div>
-        </div>
-
-        <!-- Communication Section -->
-        <div class="section-card">
-            <h2 class="section-title">
-                <i class="bi bi-chat-dots" style="color: #11998e;"></i>
-                Communication & Issues
-            </h2>
-            <div class="action-grid">
-                <a href="/maintenance/issues" class="action-card">
-                    <i class="bi bi-tools"></i>
-                    <div class="action-content">
-                        <h4>Maintenance Issues</h4>
-                        <p>Equipment & facility reports</p>
-                    </div>
-                </a>
-                <a href="/position/messages" class="action-card">
-                    <i class="bi bi-envelope"></i>
-                    <div class="action-content">
-                        <h4>Position Messages</h4>
-                        <p>Send targeted communications</p>
-                    </div>
-                </a>
-                <a href="/supervisor/messages" class="action-card">
-                    <i class="bi bi-chat-left-text"></i>
-                    <div class="action-content">
-                        <h4>Supervisor Messages</h4>
-                        <p>Supervisor-to-supervisor chat</p>
-                    </div>
-                </a>
-                <a href="/supervisor/suggestions" class="action-card">
-                    <i class="bi bi-lightbulb"></i>
-                    <div class="action-content">
-                        <h4>Employee Suggestions</h4>
-                        <p>Review schedule feedback</p>
-                    </div>
-                </a>
-            </div>
-        </div>
-
-        <!-- Reports & Analytics Section -->
-        <div class="section-card">
-            <h2 class="section-title">
-                <i class="bi bi-graph-up" style="color: #11998e;"></i>
-                Reports & Analytics
-            </h2>
-            <div class="action-grid">
-                <a href="/reports/overtime" class="action-card">
-                    <i class="bi bi-file-earmark-bar-graph"></i>
-                    <div class="action-content">
-                        <h4>Overtime Reports</h4>
-                        <p>Analyze overtime trends</p>
-                    </div>
-                </a>
-                <a href="/reports/attendance" class="action-card">
-                    <i class="bi bi-calendar-check"></i>
-                    <div class="action-content">
-                        <h4>Attendance Reports</h4>
-                        <p>Track attendance patterns</p>
-                    </div>
-                </a>
-                <a href="/reports/coverage" class="action-card">
-                    <i class="bi bi-pie-chart"></i>
-                    <div class="action-content">
-                        <h4>Coverage Analysis</h4>
-                        <p>Staffing level insights</p>
-                    </div>
-                </a>
-                <a href="/reports/export" class="action-card">
-                    <i class="bi bi-download"></i>
-                    <div class="action-content">
-                        <h4>Export Data</h4>
-                        <p>Download reports to Excel</p>
-                    </div>
-                </a>
-            </div>
-        </div>
-
-        <!-- System Tools Section -->
-        <div class="section-card">
-            <h2 class="section-title">
-                <i class="bi bi-gear" style="color: #11998e;"></i>
-                System Tools
-            </h2>
-            <div class="action-grid">
-                <a href="/view-crews" class="action-card">
-                    <i class="bi bi-people"></i>
-                    <div class="action-content">
-                        <h4>View All Crews</h4>
-                        <p>Complete crew roster</p>
-                    </div>
-                </a>
-                <a href="/employees/crew-management" class="action-card">
-                    <i class="bi bi-diagram-3"></i>
-                    <div class="action-content">
-                        <h4>Crew Management</h4>
-                        <p>Manage crew assignments</p>
-                    </div>
-                </a>
-                <a href="/casual-workers" class="action-card">
-                    <i class="bi bi-person-badge"></i>
-                    <div class="action-content">
-                        <h4>Casual Workers</h4>
-                        <p>Manage on-call staff</p>
-                    </div>
-                </a>
-                <a href="/test-dashboard" class="action-card">
-                    <i class="bi bi-bug"></i>
-                    <div class="action-content">
-                        <h4>Test Dashboard</h4>
-                        <p>System diagnostics</p>
-                    </div>
-                </a>
             </div>
         </div>
     </div>
 
-    <!-- Bootstrap Bundle with Popper -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-</body>
-</html>
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <!-- Statistics Cards Row -->
+    <div class="row mb-4">
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-left-primary shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
+                                Total Employees
+                            </div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ employee_count }}</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="bi bi-people-fill fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-left-warning shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">
+                                Pending Time Off
+                            </div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ pending_time_off_count }}</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="bi bi-calendar-x fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-left-info shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-info text-uppercase mb-1">
+                                Pending Swaps
+                            </div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ pending_swap_count }}</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="bi bi-arrow-left-right fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-left-success shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
+                                Coverage Gaps
+                            </div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ coverage_gaps_count }}</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="bi bi-exclamation-triangle fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content Row -->
+    <div class="row">
+        <!-- Left Column -->
+        <div class="col-lg-4 mb-4">
+            <!-- Quick Actions Card -->
+            <div class="card shadow mb-4">
+                <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between">
+                    <h6 class="m-0 font-weight-bold text-primary">Quick Actions</h6>
+                </div>
+                <div class="card-body">
+                    <div class="list-group">
+                        <a href="{{ url_for('schedule.create_schedule') }}" class="list-group-item list-group-item-action">
+                            <i class="bi bi-calendar-plus"></i> Create New Schedule
+                        </a>
+                        <a href="{{ url_for('main.overtime_management') }}" class="list-group-item list-group-item-action">
+                            <i class="bi bi-clock-history"></i> Manage Overtime
+                        </a>
+                        <a href="{{ url_for('supervisor.time_off_requests') }}" class="list-group-item list-group-item-action">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span><i class="bi bi-calendar-x"></i> Review Time Off Requests</span>
+                                {% if pending_time_off_count > 0 %}
+                                    <span class="badge bg-warning rounded-pill">{{ pending_time_off_count }}</span>
+                                {% endif %}
+                            </div>
+                        </a>
+                        <a href="{{ url_for('supervisor.swap_requests') }}" class="list-group-item list-group-item-action">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span><i class="bi bi-arrow-left-right"></i> Review Swap Requests</span>
+                                {% if pending_swap_count > 0 %}
+                                    <span class="badge bg-info rounded-pill">{{ pending_swap_count }}</span>
+                                {% endif %}
+                            </div>
+                        </a>
+                        <a href="{{ url_for('supervisor.vacation_calendar') }}" class="list-group-item list-group-item-action">
+                            <i class="bi bi-calendar-month"></i> View Vacation Calendar
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Crew Distribution Card -->
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">Crew Distribution</h6>
+                </div>
+                <div class="card-body">
+                    <canvas id="crewChart" width="100%" height="100"></canvas>
+                    <div class="mt-3">
+                        <small class="text-muted">
+                            <i class="bi bi-info-circle"></i> Current active employee distribution
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Middle Column -->
+        <div class="col-lg-4 mb-4">
+            <!-- Schedule Status Card -->
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">Current Schedule Status</h6>
+                </div>
+                <div class="card-body">
+                    {% if current_schedule %}
+                        <h5 class="text-center mb-3">Week of {{ current_schedule.week_start_date.strftime('%B %d, %Y') }}</h5>
+                        <div class="row text-center">
+                            <div class="col-6 mb-3">
+                                <div class="text-xs font-weight-bold text-success text-uppercase mb-1">Day Shift</div>
+                                <div class="h5 mb-0">Crew {{ current_schedule.day_crew }}</div>
+                            </div>
+                            <div class="col-6 mb-3">
+                                <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">Night Shift</div>
+                                <div class="h5 mb-0">Crew {{ current_schedule.night_crew }}</div>
+                            </div>
+                        </div>
+                        <div class="text-center mt-3">
+                            <a href="{{ url_for('schedule.view_schedule') }}" class="btn btn-sm btn-primary">
+                                <i class="bi bi-calendar-week"></i> View Full Schedule
+                            </a>
+                        </div>
+                    {% else %}
+                        <div class="text-center py-4">
+                            <i class="bi bi-calendar-x fa-3x text-muted mb-3"></i>
+                            <p class="text-muted">No active schedule for this week</p>
+                            <a href="{{ url_for('schedule.create_schedule') }}" class="btn btn-primary">
+                                <i class="bi bi-calendar-plus"></i> Create Schedule
+                            </a>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Recent Activity Card -->
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">Recent Activity</h6>
+                </div>
+                <div class="card-body" style="max-height: 300px; overflow-y: auto;">
+                    <div class="timeline">
+                        {% for activity in recent_activities %}
+                            <div class="timeline-item">
+                                <div class="timeline-marker"></div>
+                                <div class="timeline-content">
+                                    <p class="mb-0"><small>{{ activity.timestamp.strftime('%m/%d %I:%M %p') }}</small></p>
+                                    <p class="mb-0">{{ activity.description }}</p>
+                                </div>
+                            </div>
+                        {% else %}
+                            <p class="text-muted text-center">No recent activity</p>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Column -->
+        <div class="col-lg-4 mb-4">
+            <!-- Data Management Center -->
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">Data Management Center</h6>
+                </div>
+                <div class="card-body">
+                    <h6 class="font-weight-bold">Import Tools</h6>
+                    <div class="list-group mb-3">
+                        <a href="{{ url_for('employee_import.upload_employees') }}" class="list-group-item list-group-item-action">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span><i class="bi bi-cloud-upload"></i> Upload Employees</span>
+                                <span class="badge bg-primary rounded-pill">Excel</span>
+                            </div>
+                        </a>
+                        <a href="{{ url_for('employee_import.upload_overtime') }}" class="list-group-item list-group-item-action">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span><i class="bi bi-clock-history"></i> Upload Overtime History</span>
+                                <span class="badge bg-warning rounded-pill text-dark">13 weeks</span>
+                            </div>
+                        </a>
+                    </div>
+
+                    <h6 class="font-weight-bold">Export Options</h6>
+                    <div class="list-group">
+                        <a href="{{ url_for('employee_import.export_current_employees') }}" class="list-group-item list-group-item-action">
+                            <i class="bi bi-download"></i> Export Employee Data
+                        </a>
+                        <a href="{{ url_for('employee_import.export_current_overtime') }}" class="list-group-item list-group-item-action">
+                            <i class="bi bi-download"></i> Export Overtime Report
+                        </a>
+                        <a href="{{ url_for('employee_import.upload_history') }}" class="list-group-item list-group-item-action">
+                            <i class="bi bi-clock-history"></i> View Upload History
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Alerts & Notifications -->
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-danger">Alerts & Notifications</h6>
+                </div>
+                <div class="card-body">
+                    {% if coverage_gaps_count > 0 %}
+                        <div class="alert alert-danger d-flex align-items-center" role="alert">
+                            <i class="bi bi-exclamation-triangle-fill flex-shrink-0 me-2"></i>
+                            <div>
+                                <strong>{{ coverage_gaps_count }} Coverage Gaps</strong><br>
+                                <small>Immediate attention required</small>
+                            </div>
+                        </div>
+                    {% endif %}
+                    
+                    {% if employees_missing_ot > 0 %}
+                        <div class="alert alert-warning d-flex align-items-center" role="alert">
+                            <i class="bi bi-clock-history flex-shrink-0 me-2"></i>
+                            <div>
+                                <strong>{{ employees_missing_ot }} Employees Missing OT Data</strong><br>
+                                <small><a href="{{ url_for('employee_import.upload_overtime') }}">Upload overtime history</a></small>
+                            </div>
+                        </div>
+                    {% endif %}
+                    
+                    {% if high_overtime_employees|length > 0 %}
+                        <div class="alert alert-info d-flex align-items-center" role="alert">
+                            <i class="bi bi-person-exclamation flex-shrink-0 me-2"></i>
+                            <div>
+                                <strong>High Overtime Alert</strong><br>
+                                <small>{{ high_overtime_employees|length }} employees over 20 hrs/week avg</small>
+                            </div>
+                        </div>
+                    {% endif %}
+                    
+                    {% if not (coverage_gaps_count > 0 or employees_missing_ot > 0 or high_overtime_employees|length > 0) %}
+                        <p class="text-muted text-center mb-0">
+                            <i class="bi bi-check-circle"></i> All systems operating normally
+                        </p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tables Row -->
+    <div class="row">
+        <!-- Pending Requests Table -->
+        <div class="col-lg-6 mb-4">
+            <div class="card shadow">
+                <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                    <h6 class="m-0 font-weight-bold text-primary">Pending Requests</h6>
+                    <a href="{{ url_for('supervisor.time_off_requests') }}" class="btn btn-sm btn-outline-primary">
+                        View All <i class="bi bi-arrow-right"></i>
+                    </a>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Employee</th>
+                                    <th>Type</th>
+                                    <th>Dates</th>
+                                    <th>Status</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for request in recent_time_off_requests[:5] %}
+                                <tr>
+                                    <td>{{ request.employee.first_name }} {{ request.employee.last_name }}</td>
+                                    <td>
+                                        {% if request.request_type == 'vacation' %}
+                                            <span class="badge bg-primary">Vacation</span>
+                                        {% elif request.request_type == 'sick' %}
+                                            <span class="badge bg-warning">Sick</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">Personal</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ request.start_date.strftime('%m/%d') }} - {{ request.end_date.strftime('%m/%d') }}</td>
+                                    <td>
+                                        <span class="badge bg-warning">Pending</span>
+                                    </td>
+                                    <td>
+                                        <a href="{{ url_for('supervisor.time_off_requests') }}" class="btn btn-sm btn-outline-primary">
+                                            Review
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr>
+                                    <td colspan="5" class="text-center text-muted">No pending requests</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Upcoming Schedule -->
+        <div class="col-lg-6 mb-4">
+            <div class="card shadow">
+                <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                    <h6 class="m-0 font-weight-bold text-primary">Upcoming Schedule Changes</h6>
+                    <a href="{{ url_for('schedule.view_schedule') }}" class="btn btn-sm btn-outline-primary">
+                        View Schedule <i class="bi bi-arrow-right"></i>
+                    </a>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Week Starting</th>
+                                    <th>Day Crew</th>
+                                    <th>Night Crew</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for schedule in upcoming_schedules[:4] %}
+                                <tr>
+                                    <td>{{ schedule.week_start_date.strftime('%m/%d/%Y') }}</td>
+                                    <td><span class="badge bg-success">Crew {{ schedule.day_crew }}</span></td>
+                                    <td><span class="badge bg-dark">Crew {{ schedule.night_crew }}</span></td>
+                                    <td>
+                                        {% if schedule.is_published %}
+                                            <span class="badge bg-success">Published</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">Draft</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr>
+                                    <td colspan="4" class="text-center text-muted">No upcoming schedules</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Styles -->
+<style>
+    .border-left-primary {
+        border-left: 4px solid #007bff;
+    }
+    .border-left-warning {
+        border-left: 4px solid #ffc107;
+    }
+    .border-left-info {
+        border-left: 4px solid #17a2b8;
+    }
+    .border-left-success {
+        border-left: 4px solid #28a745;
+    }
+    .timeline {
+        position: relative;
+        padding: 0;
+        list-style: none;
+    }
+    .timeline-item {
+        position: relative;
+        padding-left: 40px;
+        margin-bottom: 20px;
+    }
+    .timeline-marker {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background-color: #007bff;
+    }
+    .timeline-content {
+        background-color: #f8f9fa;
+        padding: 10px;
+        border-radius: 4px;
+    }
+</style>
+
+<!-- Scripts -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    // Crew Distribution Chart
+    const ctx = document.getElementById('crewChart').getContext('2d');
+    const crewChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Crew A', 'Crew B', 'Crew C', 'Crew D'],
+            datasets: [{
+                data: [
+                    {{ crew_distribution.A|default(0) }},
+                    {{ crew_distribution.B|default(0) }},
+                    {{ crew_distribution.C|default(0) }},
+                    {{ crew_distribution.D|default(0) }}
+                ],
+                backgroundColor: [
+                    '#007bff',
+                    '#28a745',
+                    '#ffc107',
+                    '#dc3545'
+                ],
+                borderWidth: 2,
+                borderColor: '#fff'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: {
+                        padding: 15,
+                        font: {
+                            size: 12
+                        }
+                    }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            let label = context.label || '';
+                            if (label) {
+                                label += ': ';
+                            }
+                            label += context.parsed + ' employees';
+                            return label;
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    // Auto-refresh page every 5 minutes
+    setTimeout(function() {
+        location.reload();
+    }, 300000);
+</script>
+{% endblock %}
