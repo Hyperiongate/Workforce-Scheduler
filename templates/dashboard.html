@@ -18,7 +18,7 @@
             <div class="card text-white bg-primary">
                 <div class="card-body">
                     <h5 class="card-title">Total Employees</h5>
-                    <h2>{{ total_employees }}</h2>
+                    <h2>{{ total_employees|default(0) }}</h2>
                 </div>
             </div>
         </div>
@@ -26,7 +26,7 @@
             <div class="card text-white bg-warning">
                 <div class="card-body">
                     <h5 class="card-title">Pending Time Off</h5>
-                    <h2>{{ pending_time_off }}</h2>
+                    <h2>{{ pending_time_off|default(0) }}</h2>
                     <a href="{{ url_for('supervisor.time_off_requests') }}" class="stretched-link"></a>
                 </div>
             </div>
@@ -35,8 +35,7 @@
             <div class="card text-white bg-info">
                 <div class="card-body">
                     <h5 class="card-title">Pending Swaps</h5>
-                    <h2>{{ pending_swaps }}</h2>
-                    <a href="{{ url_for('supervisor.swap_requests') }}" class="stretched-link"></a>
+                    <h2>{{ pending_swaps|default(0) }}</h2>
                 </div>
             </div>
         </div>
@@ -44,7 +43,7 @@
             <div class="card text-white bg-danger">
                 <div class="card-body">
                     <h5 class="card-title">Coverage Gaps</h5>
-                    <h2>{{ coverage_gaps }}</h2>
+                    <h2>{{ coverage_gaps|default(0) }}</h2>
                     <a href="{{ url_for('supervisor.coverage_gaps') }}" class="stretched-link"></a>
                 </div>
             </div>
@@ -66,12 +65,12 @@
                             </a>
                         </div>
                         <div class="col-md-3 mb-2">
-                            <a href="{{ url_for('supervisor.vacation_calendar') }}" class="btn btn-info w-100">
+                            <a href="{{ url_for('vacation_calendar') }}" class="btn btn-info w-100">
                                 <i class="bi bi-calendar"></i> Vacation Calendar
                             </a>
                         </div>
                         <div class="col-md-3 mb-2">
-                            <a href="{{ url_for('supervisor.employee_management') }}" class="btn btn-success w-100">
+                            <a href="{{ url_for('employees.management') }}" class="btn btn-success w-100">
                                 <i class="bi bi-people"></i> Employee Management
                             </a>
                         </div>
@@ -140,9 +139,50 @@
                     </div>
                     {% endif %}
                     
-                    {% if not employees_missing_ot and not high_ot_employees %}
+                    {% if coverage_gaps > 0 %}
+                    <div class="alert alert-info">
+                        <i class="bi bi-people"></i> 
+                        <strong>{{ coverage_gaps }}</strong> coverage gaps detected today.
+                        <a href="{{ url_for('supervisor.coverage_gaps') }}" class="btn btn-sm btn-info float-end">View Gaps</a>
+                    </div>
+                    {% endif %}
+                    
+                    {% if not employees_missing_ot and not high_ot_employees and coverage_gaps == 0 %}
                     <p class="text-muted">No system alerts at this time</p>
                     {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Navigation Links -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Management Tools</h5>
+                </div>
+                <div class="card-body">
+                    <div class="list-group">
+                        <a href="{{ url_for('supervisor.time_off_requests') }}" class="list-group-item list-group-item-action">
+                            <i class="bi bi-calendar-x"></i> Time Off Requests
+                        </a>
+                        <a href="{{ url_for('supervisor.coverage_gaps') }}" class="list-group-item list-group-item-action">
+                            <i class="bi bi-exclamation-triangle"></i> Coverage Gaps
+                        </a>
+                        <a href="{{ url_for('supervisor.coverage_needs') }}" class="list-group-item list-group-item-action">
+                            <i class="bi bi-clipboard-check"></i> Coverage Needs
+                        </a>
+                        <a href="{{ url_for('supervisor.overtime_distribution') }}" class="list-group-item list-group-item-action">
+                            <i class="bi bi-graph-up"></i> Overtime Distribution
+                        </a>
+                        <a href="{{ url_for('employee_import.upload_employees') }}" class="list-group-item list-group-item-action">
+                            <i class="bi bi-upload"></i> Upload Employee Data
+                        </a>
+                        <a href="{{ url_for('employee_import.upload_overtime') }}" class="list-group-item list-group-item-action">
+                            <i class="bi bi-clock-history"></i> Upload Overtime History
+                        </a>
+                    </div>
                 </div>
             </div>
         </div>
