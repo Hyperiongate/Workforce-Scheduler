@@ -18,9 +18,9 @@ def index():
     """Landing page - redirect to login or appropriate dashboard"""
     if current_user.is_authenticated:
         if current_user.is_supervisor:
-            return redirect(url_for('dashboard'))
+            return redirect(url_for('main.dashboard'))
         else:
-            return redirect(url_for('employee_dashboard'))
+            return redirect(url_for('main.employee_dashboard'))
     
     # Show the landing page for non-authenticated users
     return render_template('index.html')
@@ -31,9 +31,9 @@ def login():
     # If already logged in, redirect to appropriate dashboard
     if current_user.is_authenticated:
         if current_user.is_supervisor:
-            return redirect(url_for('dashboard'))
+            return redirect(url_for('main.dashboard'))
         else:
-            return redirect(url_for('employee_dashboard'))
+            return redirect(url_for('main.employee_dashboard'))
     
     if request.method == 'POST':
         email = request.form.get('email')
@@ -84,9 +84,9 @@ def login():
             
             # Default redirects based on role
             if employee.is_supervisor:
-                return redirect(url_for('dashboard'))
+                return redirect(url_for('main.dashboard'))
             else:
-                return redirect(url_for('employee_dashboard'))
+                return redirect(url_for('main.employee_dashboard'))
         else:
             # Handle failed login attempt (if method exists)
             if employee and hasattr(employee, 'record_failed_login'):
@@ -160,9 +160,9 @@ def change_password():
         
         # Redirect to appropriate dashboard
         if current_user.is_supervisor:
-            return redirect(url_for('dashboard'))
+            return redirect(url_for('main.dashboard'))
         else:
-            return redirect(url_for('employee_dashboard'))
+            return redirect(url_for('main.employee_dashboard'))
     
     # GET request - show change password form
     return render_template('change_password.html')
