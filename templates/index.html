@@ -3,124 +3,94 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Workforce Scheduler</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.8.1/font/bootstrap-icons.css">
+    <title>Workforce Scheduler - Welcome</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .welcome-container {
+            background: white;
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            max-width: 500px;
+            width: 90%;
+        }
+        
+        h1 {
+            color: #11998e;
+            margin-bottom: 10px;
+        }
+        
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 18px;
+        }
+        
+        .features {
+            text-align: left;
+            margin: 30px 0;
+        }
+        
+        .features li {
+            margin: 10px 0;
+            color: #555;
+        }
+        
+        .btn-login {
+            display: inline-block;
+            background: #11998e;
+            color: white;
+            padding: 12px 30px;
+            text-decoration: none;
+            border-radius: 5px;
+            font-size: 16px;
+            transition: background 0.3s;
+            margin-top: 20px;
+        }
+        
+        .btn-login:hover {
+            background: #0d7a6c;
+        }
+        
+        .logo {
+            font-size: 48px;
+            margin-bottom: 20px;
+        }
+    </style>
 </head>
 <body>
-    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
-        <div class="container">
-            <a class="navbar-brand" href="/">Workforce Scheduler</a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto">
-                    <li class="nav-item">
-                        <a class="nav-link" href="/dashboard">Dashboard</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/schedule">Schedule</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link btn btn-warning text-dark ms-2" href="/register-casual">
-                            <i class="bi bi-person-plus"></i> Join as Casual Worker
-                        </a>
-                    </li>
-                </ul>
-            </div>
-        </div>
-    </nav>
-    
-    <div class="container mt-5">
-        <div class="row">
-            <div class="col-md-8 mx-auto text-center">
-                <h1 class="display-4">Welcome to Workforce Scheduler</h1>
-                <p class="lead">Efficient scheduling and shift management for your team</p>
-                <div class="mt-4">
-                    <a href="/dashboard" class="btn btn-primary btn-lg">Go to Dashboard</a>
-                </div>
-            </div>
+    <div class="welcome-container">
+        <div class="logo">⏰</div>
+        <h1>Workforce Scheduler</h1>
+        <p class="subtitle">24/7 Operations Management System</p>
+        
+        <div class="features">
+            <h3>Welcome to your scheduling solution:</h3>
+            <ul>
+                <li>✓ Manage 4-crew rotating schedules</li>
+                <li>✓ Track overtime and time-off requests</li>
+                <li>✓ Handle shift swaps and coverage</li>
+                <li>✓ Monitor crew assignments</li>
+                <li>✓ Streamline workforce operations</li>
+            </ul>
         </div>
         
-        <!-- New Casual Worker Section -->
-        <div class="row mt-5">
-            <div class="col-md-12">
-                <div class="card bg-light border-primary">
-                    <div class="card-body text-center py-4">
-                        <h3 class="card-title">
-                            <i class="bi bi-people-fill text-primary"></i> 
-                            Looking for Flexible Work?
-                        </h3>
-                        <p class="card-text lead">
-                            Join our casual worker pool and get notified when temporary shifts become available
-                        </p>
-                        <div class="row mt-3">
-                            <div class="col-md-3">
-                                <i class="bi bi-clock-history display-6 text-primary"></i>
-                                <p class="mt-2">Work on your schedule</p>
-                            </div>
-                            <div class="col-md-3">
-                                <i class="bi bi-phone-vibrate display-6 text-primary"></i>
-                                <p class="mt-2">Get instant notifications</p>
-                            </div>
-                            <div class="col-md-3">
-                                <i class="bi bi-cash-stack display-6 text-primary"></i>
-                                <p class="mt-2">Competitive hourly rates</p>
-                            </div>
-                            <div class="col-md-3">
-                                <i class="bi bi-shield-check display-6 text-primary"></i>
-                                <p class="mt-2">No long-term commitment</p>
-                            </div>
-                        </div>
-                        <a href="/register-casual" class="btn btn-warning btn-lg mt-3">
-                            <i class="bi bi-person-plus"></i> Register as Casual Worker
-                        </a>
-                    </div>
-                </div>
-            </div>
-        </div>
+        <a href="/login" class="btn-login">Login to Continue</a>
         
-        <div class="row mt-5">
-            <div class="col-md-4">
-                <div class="card h-100">
-                    <div class="card-body">
-                        <h5 class="card-title">
-                            <i class="bi bi-calendar-check text-primary"></i> Easy Scheduling
-                        </h5>
-                        <p class="card-text">Create and manage employee schedules with drag-and-drop simplicity</p>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="card h-100">
-                    <div class="card-body">
-                        <h5 class="card-title">
-                            <i class="bi bi-lightning-charge text-primary"></i> Instant Coverage
-                        </h5>
-                        <p class="card-text">Fill shifts quickly by notifying available employees and casual workers automatically</p>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="card h-100">
-                    <div class="card-body">
-                        <h5 class="card-title">
-                            <i class="bi bi-person-workspace text-primary"></i> Employee Self-Service
-                        </h5>
-                        <p class="card-text">Let employees view schedules, request time off, and pick up shifts</p>
-                    </div>
-                </div>
-            </div>
-        </div>
+        <p style="margin-top: 30px; color: #999; font-size: 14px;">
+            For supervisors and employees of the production facility
+        </p>
     </div>
-    
-    <footer class="mt-5 py-4 bg-light">
-        <div class="container text-center">
-            <p class="text-muted mb-0">© 2024 Workforce Scheduler. Simplifying shift management.</p>
-        </div>
-    </footer>
-    
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
