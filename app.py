@@ -4,25 +4,28 @@ Main application file for Workforce Scheduler
 Includes comprehensive upload folder fix and all configurations
 """
 
-from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
+from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, send_file, session
 from flask_login import LoginManager, login_required, login_user, logout_user, current_user 
 from flask_migrate import Migrate, stamp
 from models import (
     db, Employee, TimeOffRequest, ShiftSwapRequest, ScheduleSuggestion, VacationCalendar, 
     Position, Skill, OvertimeHistory, Schedule, PositionCoverage,
-    # New models for staffing management
+    # Additional models
     OvertimeOpportunity, OvertimeResponse, CoverageGap, EmployeeSkill,
     FatigueTracking, MandatoryOvertimeLog, ShiftPattern, CoverageNotificationResponse,
-    FileUpload  # Added FileUpload model
+    FileUpload, CircadianProfile, SleepLog, PositionMessage, MessageReadReceipt,
+    MaintenanceIssue, ShiftTradePost, ShiftTradeProposal, ShiftTrade, CasualWorker,
+    CoverageRequest, CoverageNotification, CrewCoverageRequirement, Availability
 )
 from werkzeug.security import check_password_hash
 import os
 import shutil
 from datetime import datetime, timedelta, date
 import random
-from sqlalchemy import and_, func, text
+from sqlalchemy import and_, func, text, or_
 from sqlalchemy.exc import ProgrammingError, OperationalError
 import logging
+import traceback
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -146,7 +149,186 @@ except Exception as e:
 db.init_app(app)
 migrate = Migrate(app, db)
 
-# Initialize login manager
+# Database Schema Manager
+class DatabaseSchemaManager:
+    """Handle database schema migrations and fixes"""
+    def __init__(self, app, db):
+        self.app = app
+        self.db = db
+        self.fixes_applied = []
+        self.issues_found = []
+    
+    def run_all_fixes(self):
+        """Run all database schema fixes"""
+        logger.info("🔧 Starting comprehensive database schema check...")
+        
+        try:
+            # Create all tables first
+            self.db.create_all()
+            logger.info("✅ All tables created/verified")
+            
+            # Run specific fixes
+            self.fix_missing_columns()
+            self.fix_shift_swap_columns()
+            self.fix_file_upload_table()
+            self.create_indexes()
+            
+            logger.info(f"✅ Database schema fixes complete. Applied {len(self.fixes_applied)} fixes")
+            
+        except Exception as e:
+            logger.error(f"Error during schema fixes: {e}")
+            self.db.session.rollback()
+    
+    def fix_missing_columns(self):
+        """Add missing columns to existing tables"""
+        # FIXED: Changed 'employees' to 'employee' (singular)
+        alterations = [
+            ("employee", "department", "VARCHAR(100)"),
+            ("employee", "seniority_date", "DATE"),
+            ("employee", "default_shift", "VARCHAR(20) DEFAULT 'day'"),
+            ("employee", "max_consecutive_days", "INTEGER DEFAULT 14"),
+            ("employee", "vacation_days", "FLOAT DEFAULT 10.0"),
+            ("employee", "sick_days", "FLOAT DEFAULT 5.0"),
+            ("employee", "personal_days", "FLOAT DEFAULT 3.0"),
+            ("position", "default_skills", "TEXT"),
+            ("schedule", "notes", "TEXT"),
+            ("schedule", "overtime_reason", "VARCHAR(200)"),
+            ("schedule", "is_overtime", "BOOLEAN DEFAULT FALSE"),
+            ("schedule", "original_employee_id", "INTEGER REFERENCES employee(id)"),
+            ("overtime_history", "reason", "VARCHAR(200)"),
+            ("overtime_history", "approved_by_id", "INTEGER REFERENCES employee(id)"),
+            ("overtime_history", "approved_date", "TIMESTAMP"),
+            ("overtime_opportunity", "reason", "TEXT"),
+            ("overtime_opportunity", "max_hours", "FLOAT"),
+            ("overtime_opportunity", "priority", "VARCHAR(20) DEFAULT 'normal'"),
+            ("coverage_request", "priority", "VARCHAR(20) DEFAULT 'normal'"),
+            ("coverage_request", "reason", "TEXT"),
+            ("coverage_request", "incentive_offered", "VARCHAR(200)"),
+            ("time_off_request", "coverage_arranged", "BOOLEAN DEFAULT FALSE"),
+            ("time_off_request", "coverage_notes", "TEXT"),
+            ("file_upload", "processed", "BOOLEAN DEFAULT FALSE"),
+            ("file_upload", "error_details", "TEXT")
+        ]
+        
+        for table_name, column_name, column_type in alterations:
+            try:
+                # Check if column exists first
+                check_query = text("""
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_name = :table_name 
+                    AND column_name = :column_name
+                """)
+                
+                result = self.db.session.execute(
+                    check_query,
+                    {"table_name": table_name, "column_name": column_name}
+                ).fetchone()
+                
+                if not result:
+                    # Column doesn't exist, add it
+                    alter_query = text(f"""
+                        ALTER TABLE {table_name} 
+                        ADD COLUMN {column_name} {column_type}
+                    """)
+                    self.db.session.execute(alter_query)
+                    self.fixes_applied.append(f"Added {column_name} to {table_name}")
+                    
+            except Exception as e:
+                # Log the error but continue with other columns
+                if "does not exist" not in str(e):
+                    logger.warning(f"Could not add {column_name} to {table_name}: {e}")
+        
+        self.db.session.commit()
+    
+    def fix_shift_swap_columns(self):
+        """Fix shift swap request column naming"""
+        try:
+            # Check if old column exists
+            result = self.db.session.execute(text("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'shift_swap_request' 
+                AND column_name = 'requesting_employee_id'
+            """)).fetchone()
+            
+            if result:
+                # Rename column
+                self.db.session.execute(text("""
+                    ALTER TABLE shift_swap_request 
+                    RENAME COLUMN requesting_employee_id TO requester_employee_id
+                """))
+                self.fixes_applied.append("Renamed requesting_employee_id to requester_employee_id")
+            
+            self.db.session.commit()
+        except Exception as e:
+            logger.warning(f"Shift swap column fix skipped: {e}")
+    
+    def fix_file_upload_table(self):
+        """Ensure file_upload table has all required columns"""
+        columns = [
+            ("rows_processed", "INTEGER DEFAULT 0"),
+            ("rows_failed", "INTEGER DEFAULT 0"),
+            ("error_details", "TEXT"),
+            ("upload_type", "VARCHAR(50)"),
+            ("status", "VARCHAR(20) DEFAULT 'pending'")
+        ]
+        
+        for column_name, column_type in columns:
+            try:
+                result = self.db.session.execute(text("""
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_name = 'file_upload' 
+                    AND column_name = :column_name
+                """), {"column_name": column_name}).fetchone()
+                
+                if not result:
+                    self.db.session.execute(text(f"""
+                        ALTER TABLE file_upload 
+                        ADD COLUMN {column_name} {column_type}
+                    """))
+                    self.fixes_applied.append(f"Added {column_name} to file_upload")
+                    
+            except Exception as e:
+                logger.warning(f"Could not add {column_name} to file_upload: {e}")
+        
+        self.db.session.commit()
+    
+    def create_indexes(self):
+        """Create performance indexes"""
+        indexes = [
+            ("idx_employee_email", "employee", "email"),
+            ("idx_employee_crew", "employee", "crew"),
+            ("idx_schedule_date", "schedule", "date"),
+            ("idx_schedule_employee", "schedule", "employee_id"),
+            ("idx_time_off_request_employee", "time_off_request", "employee_id"),
+            ("idx_time_off_request_status", "time_off_request", "status"),
+            ("idx_file_upload_date", "file_upload", "upload_date")
+        ]
+        
+        for index_name, table_name, columns in indexes:
+            try:
+                self.db.session.execute(text(f"CREATE INDEX IF NOT EXISTS {index_name} ON {table_name} ({columns})"))
+                self.fixes_applied.append(f"Created index {index_name}")
+            except Exception as e:
+                # Index might already exist or table might not exist
+                pass
+        
+        self.db.session.commit()
+
+# Initialize schema manager
+schema_manager = DatabaseSchemaManager(app, db)
+
+# Run fixes on startup
+with app.app_context():
+    if not os.environ.get('FLASK_MIGRATE'):
+        try:
+            schema_manager.run_all_fixes()
+        except Exception as e:
+            logger.warning(f"Schema fix failed: {e}")
+
+# Initialize Flask-Login
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'auth.login'
@@ -155,237 +337,298 @@ login_manager.login_view = 'auth.login'
 def load_user(user_id):
     return Employee.query.get(int(user_id))
 
-# Import blueprints
+# Import and register blueprints
 from blueprints.auth import auth_bp
-from blueprints.schedule import schedule_bp
-from blueprints.supervisor import supervisor_bp
-from blueprints.employee import employee_bp
-from blueprints.employee_import import employee_import_bp
+from blueprints.main import main_bp
 
-# Register blueprints
 app.register_blueprint(auth_bp)
-app.logger.info("✅ Auth blueprint loaded")
+app.register_blueprint(main_bp)
 
-app.register_blueprint(schedule_bp)
-app.logger.info("✅ Schedule blueprint loaded")
+# Import other blueprints with error handling
+try:
+    from blueprints.schedule import schedule_bp
+    app.register_blueprint(schedule_bp)
+    logger.info("✅ Schedule blueprint loaded")
+except ImportError as e:
+    logger.warning(f"⚠️  Could not import schedule blueprint: {e}")
 
-app.register_blueprint(supervisor_bp)
-app.logger.info("✅ Supervisor blueprint loaded")
+try:
+    from blueprints.supervisor import supervisor_bp
+    app.register_blueprint(supervisor_bp)
+    logger.info("✅ Supervisor blueprint loaded")
+except ImportError as e:
+    logger.warning(f"⚠️  Could not import supervisor blueprint: {e}")
 
-app.register_blueprint(employee_bp)
-app.logger.info("✅ Employee blueprint loaded")
+try:
+    from blueprints.employee import employee_bp
+    app.register_blueprint(employee_bp)
+    logger.info("✅ Employee blueprint loaded")
+except ImportError as e:
+    logger.warning(f"⚠️  Could not import employee blueprint: {e}")
 
-app.register_blueprint(employee_import_bp)
-app.logger.info("✅ Employee import blueprint loaded")
+try:
+    from blueprints.employee_import import employee_import_bp
+    app.register_blueprint(employee_import_bp)
+    logger.info("✅ Employee import blueprint loaded")
+except ImportError as e:
+    logger.warning(f"⚠️  Could not import employee_import blueprint: {e}")
 
-# Database schema fixes
-def fix_database_schema():
-    """Apply all necessary database schema fixes"""
-    app.logger.info("🔧 Starting comprehensive database schema check...")
-    
-    fixes_applied = 0
-    
-    try:
-        # Create all tables
-        db.create_all()
-        app.logger.info("✅ All tables created/verified")
-        
-        # Fix shift_swap_request columns
-        with db.engine.connect() as conn:
-            # Check if old column exists
-            result = conn.execute(text("""
-                SELECT column_name 
-                FROM information_schema.columns 
-                WHERE table_name = 'shift_swap_request' 
-                AND column_name = 'requesting_employee_id'
-            """))
-            
-            if result.rowcount > 0:
-                try:
-                    # Rename column
-                    conn.execute(text("""
-                        ALTER TABLE shift_swap_request 
-                        RENAME COLUMN requesting_employee_id TO requester_employee_id
-                    """))
-                    conn.commit()
-                    app.logger.info("✅ Fixed shift_swap_request column name")
-                    fixes_applied += 1
-                except Exception as e:
-                    app.logger.warning(f"Column already renamed or error: {e}")
-        
-        # Add any missing columns
-        with db.engine.connect() as conn:
-            # Add department column if missing
-            result = conn.execute(text("""
-                SELECT column_name 
-                FROM information_schema.columns 
-                WHERE table_name = 'employees' 
-                AND column_name = 'department'
-            """))
-            
-            if result.rowcount == 0:
-                conn.execute(text("""
-                    ALTER TABLE employees 
-                    ADD COLUMN department VARCHAR(100)
-                """))
-                conn.commit()
-                app.logger.info("✅ Added department column to employees")
-                fixes_applied += 1
-                
-            # Add file_upload columns if missing
-            columns_to_add = [
-                ('file_uploads', 'rows_processed', 'INTEGER DEFAULT 0'),
-                ('file_uploads', 'rows_failed', 'INTEGER DEFAULT 0'),
-                ('file_uploads', 'error_details', 'TEXT')
-            ]
-            
-            for table, column, col_type in columns_to_add:
-                result = conn.execute(text(f"""
-                    SELECT column_name 
-                    FROM information_schema.columns 
-                    WHERE table_name = '{table}' 
-                    AND column_name = '{column}'
-                """))
-                
-                if result.rowcount == 0:
-                    conn.execute(text(f"""
-                        ALTER TABLE {table} 
-                        ADD COLUMN {column} {col_type}
-                    """))
-                    conn.commit()
-                    app.logger.info(f"✅ Added {column} to {table}")
-                    fixes_applied += 1
-                    
-    except Exception as e:
-        app.logger.error(f"Error during schema fixes: {e}")
-    
-    app.logger.info(f"✅ Database schema fixes complete. Applied {fixes_applied} fixes")
-
-# Apply database fixes on startup
-with app.app_context():
-    fix_database_schema()
-
-# Helper function for file uploads
-def allowed_file(filename):
-    """Check if file extension is allowed"""
-    return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
-
-# Routes
-@app.route('/')
-def index():
-    """Landing page"""
-    if current_user.is_authenticated:
-        if current_user.is_supervisor:
-            return redirect(url_for('supervisor.dashboard'))
-        else:
-            return redirect(url_for('main.employee_dashboard'))
-    return render_template('index.html')
-
-@app.route('/dashboard')
-@login_required
-def dashboard():
-    """Main dashboard - redirects based on user role"""
-    if current_user.is_supervisor:
-        return redirect(url_for('supervisor.dashboard'))
-    else:
-        return redirect(url_for('main.employee_dashboard'))
-
-@app.route('/employee-dashboard')
-@login_required
-def employee_dashboard():
-    """Employee dashboard"""
-    # Get employee's schedule
-    today = date.today()
-    schedules = Schedule.query.filter(
-        Schedule.employee_id == current_user.id,
-        Schedule.date >= today,
-        Schedule.date <= today + timedelta(days=30)
-    ).order_by(Schedule.date).all()
-    
-    # Get pending requests
-    time_off_requests = TimeOffRequest.query.filter_by(
-        employee_id=current_user.id,
-        status='pending'
-    ).all()
-    
-    shift_swap_requests = ShiftSwapRequest.query.filter(
-        or_(
-            ShiftSwapRequest.requester_employee_id == current_user.id,
-            ShiftSwapRequest.target_employee_id == current_user.id
-        ),
-        ShiftSwapRequest.status == 'pending'
-    ).all()
-    
-    return render_template('employee_dashboard.html',
-                         schedules=schedules,
-                         time_off_requests=time_off_requests,
-                         shift_swap_requests=shift_swap_requests)
-
-# Database initialization routes
-@app.route('/init-db')
-def init_db():
-    """Initialize database with tables"""
-    try:
-        db.create_all()
-        return jsonify({'message': 'Database initialized successfully'})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/populate-crews')
-@login_required
-def populate_crews():
-    """Populate crews with test data"""
-    if not current_user.is_supervisor:
-        return jsonify({'error': 'Supervisor access required'}), 403
-    
-    try:
-        # Create crews if they don't exist
-        crews = ['A', 'B', 'C', 'D']
-        for crew_name in crews:
-            # Add logic to create crew assignments
-            pass
-        
-        return jsonify({'message': 'Crews populated successfully'})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+# Helper functions for templates
+@app.context_processor
+def utility_processor():
+    """Make utility functions available in templates"""
+    return dict(
+        now=datetime.now,
+        timedelta=timedelta,
+        date=date,
+        str=str,
+        len=len
+    )
 
 # Error handlers
 @app.errorhandler(404)
 def not_found_error(error):
-    """Handle 404 errors"""
     return render_template('404.html'), 404
 
 @app.errorhandler(500)
 def internal_error(error):
-    """Handle 500 errors"""
     db.session.rollback()
-    app.logger.error(f"Internal error: {error}")
+    logger.error(f"Internal error: {error}")
     return render_template('500.html'), 500
 
-# Context processor for templates
-@app.context_processor
-def inject_user():
-    """Make current_user available in all templates"""
-    return dict(current_user=current_user)
+# Routes
+@app.route('/ping')
+def ping():
+    """Health check endpoint"""
+    return jsonify({"status": "ok", "timestamp": datetime.now().isoformat()})
 
-# Debug route (remove in production)
-@app.route('/debug-routes')
-def debug_routes():
-    """Show all registered routes"""
-    import urllib
-    output = []
-    for rule in app.url_map.iter_rules():
-        options = {}
-        for arg in rule.arguments:
-            options[arg] = "[{0}]".format(arg)
-        methods = ','.join(rule.methods)
-        url = url_for(rule.endpoint, **options)
-        line = urllib.parse.unquote("{:50s} {:20s} {}".format(rule.endpoint, methods, url))
-        output.append(line)
+@app.route('/init-db')
+@login_required
+def init_db():
+    """Initialize database with tables"""
+    if not current_user.is_supervisor:
+        flash('Only supervisors can initialize the database.', 'error')
+        return redirect(url_for('main.index'))
     
-    return "<pre>" + "\n".join(sorted(output)) + "</pre>"
+    try:
+        db.create_all()
+        schema_manager.run_all_fixes()
+        flash('Database tables created and schemas fixed successfully!', 'success')
+        return redirect(url_for('main.dashboard'))
+    except Exception as e:
+        flash(f'Error initializing database: {str(e)}', 'error')
+        return redirect(url_for('main.dashboard'))
 
-# Main entry point
+@app.route('/add-overtime-tables')
+@login_required
+def add_overtime_tables():
+    """Add overtime management tables"""
+    if not current_user.is_supervisor:
+        flash('Only supervisors can modify database tables.', 'error')
+        return redirect(url_for('main.index'))
+    
+    try:
+        db.create_all()
+        flash('Overtime tables added successfully!', 'success')
+        return redirect(url_for('main.dashboard'))
+    except Exception as e:
+        flash(f'Error adding overtime tables: {str(e)}', 'error')
+        return redirect(url_for('main.dashboard'))
+
+@app.route('/populate-crews')
+@login_required
+def populate_crews():
+    """Populate database with test crew data"""
+    if not current_user.is_supervisor:
+        flash('Only supervisors can populate test data.', 'error')
+        return redirect(url_for('main.index'))
+    
+    try:
+        # Check if we already have data
+        if Employee.query.count() > 5:
+            flash('Database already contains employee data.', 'warning')
+            return redirect(url_for('main.dashboard'))
+        
+        # Create positions
+        positions = [
+            {'name': 'Operator', 'department': 'Production'},
+            {'name': 'Maintenance Tech', 'department': 'Maintenance'},
+            {'name': 'Lead Operator', 'department': 'Production'},
+            {'name': 'Supervisor', 'department': 'Management'},
+            {'name': 'Electrician', 'department': 'Maintenance'},
+            {'name': 'Mechanic', 'department': 'Maintenance'}
+        ]
+        
+        for pos_data in positions:
+            position = Position.query.filter_by(name=pos_data['name']).first()
+            if not position:
+                position = Position(**pos_data)
+                db.session.add(position)
+        
+        db.session.commit()
+        
+        # Create skills
+        skills_list = [
+            'Forklift Operation', 'Machine Setup', 'Quality Control',
+            'Electrical Work', 'Welding', 'PLC Programming',
+            'Hydraulics', 'Pneumatics', 'Safety Training'
+        ]
+        
+        skills = []
+        for skill_name in skills_list:
+            skill = Skill.query.filter_by(name=skill_name).first()
+            if not skill:
+                skill = Skill(name=skill_name, description=f"Certified in {skill_name}")
+                db.session.add(skill)
+            skills.append(skill)
+        
+        db.session.commit()
+        
+        # Create employees for each crew
+        crews = ['A', 'B', 'C', 'D']
+        test_employees = [
+            # Crew A
+            {
+                'name': 'John Smith',
+                'email': 'john.smith@company.com',
+                'crew': 'A',
+                'is_supervisor': True,
+                'position': 'Supervisor'
+            },
+            {
+                'name': 'Jane Doe',
+                'email': 'jane.doe@company.com',
+                'crew': 'A',
+                'is_supervisor': False,
+                'position': 'Lead Operator'
+            },
+            {
+                'name': 'Mike Johnson',
+                'email': 'mike.johnson@company.com',
+                'crew': 'A',
+                'is_supervisor': False,
+                'position': 'Operator'
+            },
+            # Crew B
+            {
+                'name': 'Sarah Williams',
+                'email': 'sarah.williams@company.com',
+                'crew': 'B',
+                'is_supervisor': True,
+                'position': 'Supervisor'
+            },
+            {
+                'name': 'Tom Brown',
+                'email': 'tom.brown@company.com',
+                'crew': 'B',
+                'is_supervisor': False,
+                'position': 'Maintenance Tech'
+            },
+            # Crew C
+            {
+                'name': 'Emily Davis',
+                'email': 'emily.davis@company.com',
+                'crew': 'C',
+                'is_supervisor': True,
+                'position': 'Supervisor'
+            },
+            {
+                'name': 'Chris Wilson',
+                'email': 'chris.wilson@company.com',
+                'crew': 'C',
+                'is_supervisor': False,
+                'position': 'Electrician'
+            },
+            # Crew D
+            {
+                'name': 'Lisa Martinez',
+                'email': 'lisa.martinez@company.com',
+                'crew': 'D',
+                'is_supervisor': True,
+                'position': 'Supervisor'
+            },
+            {
+                'name': 'David Garcia',
+                'email': 'david.garcia@company.com',
+                'crew': 'D',
+                'is_supervisor': False,
+                'position': 'Mechanic'
+            },
+            # Admin users
+            {
+                'name': 'Admin User',
+                'email': 'admin@company.com',
+                'crew': 'A',
+                'is_supervisor': True,
+                'position': 'Supervisor'
+            },
+            {
+                'name': 'Test Supervisor',
+                'email': 'supervisor.a@company.com',
+                'crew': 'A',
+                'is_supervisor': True,
+                'position': 'Supervisor'
+            },
+            {
+                'name': 'Test Supervisor B',
+                'email': 'supervisor.b@company.com',
+                'crew': 'B',
+                'is_supervisor': True,
+                'position': 'Supervisor'
+            },
+            {
+                'name': 'Test Supervisor C',
+                'email': 'supervisor.c@company.com',
+                'crew': 'C',
+                'is_supervisor': True,
+                'position': 'Supervisor'
+            },
+            {
+                'name': 'Test Supervisor D',
+                'email': 'supervisor.d@company.com',
+                'crew': 'D',
+                'is_supervisor': True,
+                'position': 'Supervisor'
+            }
+        ]
+        
+        # Add test employees
+        for emp_data in test_employees:
+            position = Position.query.filter_by(name=emp_data['position']).first()
+            
+            employee = Employee(
+                name=emp_data['name'],
+                email=emp_data['email'],
+                employee_id=f"EMP{random.randint(1000, 9999)}",
+                crew=emp_data['crew'],
+                is_supervisor=emp_data['is_supervisor'],
+                position_id=position.id if position else None,
+                department=position.department if position else 'Production',
+                hire_date=date.today() - timedelta(days=random.randint(365, 3650)),
+                is_active=True,
+                vacation_days=10,
+                sick_days=5,
+                personal_days=3
+            )
+            
+            # Set password
+            employee.set_password('admin123')
+            
+            # Add some skills
+            employee.skills.append(random.choice(skills))
+            
+            db.session.add(employee)
+        
+        db.session.commit()
+        
+        flash('Test data populated successfully!', 'success')
+        return redirect(url_for('main.dashboard'))
+        
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error populating test data: {str(e)}', 'error')
+        return redirect(url_for('main.dashboard'))
+
 if __name__ == '__main__':
-    app.run(debug=True)
+    # Only run in development
+    app.run(debug=True, host='0.0.0.0', port=5000)
