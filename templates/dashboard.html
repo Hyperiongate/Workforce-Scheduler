@@ -27,7 +27,6 @@
                 <div class="card-body">
                     <h5 class="card-title">Pending Time Off</h5>
                     <h2>{{ pending_time_off|default(0) }}</h2>
-                    <a href="{{ url_for('supervisor.time_off_requests') }}" class="stretched-link"></a>
                 </div>
             </div>
         </div>
@@ -44,7 +43,6 @@
                 <div class="card-body">
                     <h5 class="card-title">Coverage Gaps</h5>
                     <h2>{{ coverage_gaps|default(0) }}</h2>
-                    <a href="{{ url_for('supervisor.coverage_gaps') }}" class="stretched-link"></a>
                 </div>
             </div>
         </div>
@@ -70,13 +68,13 @@
                             </a>
                         </div>
                         <div class="col-md-3 mb-2">
-                            <a href="{{ url_for('employees.management') }}" class="btn btn-success w-100">
-                                <i class="bi bi-people"></i> Employee Management
+                            <a href="{{ url_for('employee_import.upload_employees') }}" class="btn btn-warning w-100">
+                                <i class="bi bi-upload"></i> Upload Data
                             </a>
                         </div>
                         <div class="col-md-3 mb-2">
-                            <a href="{{ url_for('employee_import.upload_employees') }}" class="btn btn-warning w-100">
-                                <i class="bi bi-upload"></i> Upload Data
+                            <a href="{{ url_for('main.view_crews') }}" class="btn btn-success w-100">
+                                <i class="bi bi-people"></i> View Crews
                             </a>
                         </div>
                     </div>
@@ -85,8 +83,31 @@
         </div>
     </div>
 
-    <!-- Recent Activity -->
+    <!-- Available Management Tools -->
     <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Management Tools</h5>
+                </div>
+                <div class="card-body">
+                    <p>The following supervisor tools are available:</p>
+                    <ul>
+                        <li><a href="/supervisor/time-off-requests">Time Off Requests</a></li>
+                        <li><a href="/supervisor/overtime-distribution">Overtime Distribution</a></li>
+                        <li><a href="/vacation-calendar">Vacation Calendar</a></li>
+                        <li><a href="/overtime-management">Overtime Management</a></li>
+                        <li><a href="/upload-employees">Upload Employee Data</a></li>
+                        <li><a href="/view-crews">View All Crews</a></li>
+                    </ul>
+                    <p class="text-muted">Additional features may require enabling specific routes in your supervisor blueprint.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Activity -->
+    <div class="row mt-4">
         <div class="col-md-6">
             <div class="card">
                 <div class="card-header">
@@ -107,9 +128,6 @@
                             </div>
                             {% endfor %}
                         </div>
-                        <div class="mt-3">
-                            <a href="{{ url_for('supervisor.time_off_requests') }}" class="btn btn-sm btn-primary">View All</a>
-                        </div>
                     {% else %}
                         <p class="text-muted">No recent time off requests</p>
                     {% endif %}
@@ -120,69 +138,18 @@
         <div class="col-md-6">
             <div class="card">
                 <div class="card-header">
-                    <h5 class="mb-0">System Alerts</h5>
+                    <h5 class="mb-0">System Status</h5>
                 </div>
                 <div class="card-body">
-                    {% if employees_missing_ot is defined and employees_missing_ot > 0 %}
-                    <div class="alert alert-warning">
-                        <i class="bi bi-exclamation-triangle"></i> 
-                        <strong>{{ employees_missing_ot }}</strong> employees are missing overtime data.
-                        <a href="{{ url_for('employee_import.upload_overtime') }}" class="btn btn-sm btn-warning float-end">Upload OT Data</a>
-                    </div>
-                    {% endif %}
+                    <p><strong>Employees Missing OT Data:</strong> {{ employees_missing_ot|default(0) }}</p>
+                    <p><strong>High OT Employees:</strong> {{ high_ot_employees|length if high_ot_employees else 0 }}</p>
+                    <p><strong>Coverage Gaps Today:</strong> {{ coverage_gaps|default(0) }}</p>
                     
-                    {% if high_ot_employees is defined and high_ot_employees %}
-                    <div class="alert alert-danger">
-                        <i class="bi bi-graph-up"></i> 
-                        <strong>{{ high_ot_employees|length }}</strong> employees have >45 hours average overtime.
-                        <a href="{{ url_for('supervisor.overtime_distribution') }}" class="btn btn-sm btn-danger float-end">View Details</a>
-                    </div>
+                    {% if employees_missing_ot > 0 %}
+                    <a href="{{ url_for('employee_import.upload_overtime') }}" class="btn btn-sm btn-warning">
+                        Upload Overtime Data
+                    </a>
                     {% endif %}
-                    
-                    {% if coverage_gaps > 0 %}
-                    <div class="alert alert-info">
-                        <i class="bi bi-people"></i> 
-                        <strong>{{ coverage_gaps }}</strong> coverage gaps detected today.
-                        <a href="{{ url_for('supervisor.coverage_gaps') }}" class="btn btn-sm btn-info float-end">View Gaps</a>
-                    </div>
-                    {% endif %}
-                    
-                    {% if not employees_missing_ot and not high_ot_employees and coverage_gaps == 0 %}
-                    <p class="text-muted">No system alerts at this time</p>
-                    {% endif %}
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Navigation Links -->
-    <div class="row mt-4">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-header">
-                    <h5 class="mb-0">Management Tools</h5>
-                </div>
-                <div class="card-body">
-                    <div class="list-group">
-                        <a href="{{ url_for('supervisor.time_off_requests') }}" class="list-group-item list-group-item-action">
-                            <i class="bi bi-calendar-x"></i> Time Off Requests
-                        </a>
-                        <a href="{{ url_for('supervisor.coverage_gaps') }}" class="list-group-item list-group-item-action">
-                            <i class="bi bi-exclamation-triangle"></i> Coverage Gaps
-                        </a>
-                        <a href="{{ url_for('supervisor.coverage_needs') }}" class="list-group-item list-group-item-action">
-                            <i class="bi bi-clipboard-check"></i> Coverage Needs
-                        </a>
-                        <a href="{{ url_for('supervisor.overtime_distribution') }}" class="list-group-item list-group-item-action">
-                            <i class="bi bi-graph-up"></i> Overtime Distribution
-                        </a>
-                        <a href="{{ url_for('employee_import.upload_employees') }}" class="list-group-item list-group-item-action">
-                            <i class="bi bi-upload"></i> Upload Employee Data
-                        </a>
-                        <a href="{{ url_for('employee_import.upload_overtime') }}" class="list-group-item list-group-item-action">
-                            <i class="bi bi-clock-history"></i> Upload Overtime History
-                        </a>
-                    </div>
                 </div>
             </div>
         </div>
