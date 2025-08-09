@@ -14,23 +14,18 @@ auth_bp = Blueprint('auth', __name__)
 
 @auth_bp.route('/')
 def index():
-    """Landing page - redirect to login or dashboard"""
+    """Landing page - redirect to login or working page"""
     if current_user.is_authenticated:
-        if current_user.is_supervisor:
-            # FIXED: Use supervisor.dashboard instead of main.dashboard
-            return redirect(url_for('supervisor.dashboard'))
-        else:
-            return redirect(url_for('main.employee_dashboard'))
+        # Since supervisor.dashboard doesn't exist, show a simple working page
+        return render_template('home.html', user=current_user)
     return redirect(url_for('auth.login'))
 
 @auth_bp.route('/login', methods=['GET', 'POST'])
 def login():
     """Handle user login with proper error handling"""
     if current_user.is_authenticated:
-        if current_user.is_supervisor:
-            return redirect(url_for('supervisor.dashboard'))
-        else:
-            return redirect(url_for('main.employee_dashboard'))
+        # Redirect to home page instead of non-existent dashboards
+        return redirect(url_for('auth.index'))
     
     if request.method == 'POST':
         email = request.form.get('email', '').lower().strip()
@@ -59,14 +54,12 @@ def login():
             
             flash(f'Welcome back, {employee.name}!', 'success')
             
-            # Redirect to appropriate dashboard
+            # Redirect to home page
             next_page = request.args.get('next')
             if next_page:
                 return redirect(next_page)
-            elif employee.is_supervisor:
-                return redirect(url_for('supervisor.dashboard'))
             else:
-                return redirect(url_for('main.employee_dashboard'))
+                return redirect(url_for('auth.index'))
         else:
             flash('Invalid email or password.', 'danger')
     
@@ -116,10 +109,7 @@ def change_password():
         
         flash('Your password has been changed successfully!', 'success')
         
-        # Redirect to appropriate dashboard
-        if current_user.is_supervisor:
-            return redirect(url_for('supervisor.dashboard'))
-        else:
-            return redirect(url_for('main.employee_dashboard'))
+        # Redirect to home page
+        return redirect(url_for('auth.index'))
     
     return render_template('change_password.html')
