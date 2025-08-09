@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block title %}Home - Workforce Scheduler{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row">
+        <div class="col-12">
+            <h1>Welcome, {{ current_user.name }}!</h1>
+            <p class="lead">You are logged in as a {{ "Supervisor" if current_user.is_supervisor else "Employee" }}</p>
+            <hr>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h3>Quick Links</h3>
+                </div>
+                <div class="card-body">
+                    <div class="list-group">
+                        <a href="/vacation-calendar" class="list-group-item list-group-item-action">
+                            <i class="bi bi-calendar"></i> Vacation Calendar
+                        </a>
+                        <a href="/view-crews" class="list-group-item list-group-item-action">
+                            <i class="bi bi-people"></i> View Crews
+                        </a>
+                        {% if current_user.is_supervisor %}
+                        <a href="/upload-employees" class="list-group-item list-group-item-action">
+                            <i class="bi bi-upload"></i> Upload Employee Data
+                        </a>
+                        <a href="/supervisor/time-off-requests" class="list-group-item list-group-item-action">
+                            <i class="bi bi-calendar-x"></i> Time Off Requests
+                        </a>
+                        <a href="/supervisor/overtime-distribution" class="list-group-item list-group-item-action">
+                            <i class="bi bi-clock"></i> Overtime Distribution
+                        </a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h3>Account Information</h3>
+                </div>
+                <div class="card-body">
+                    <p><strong>Name:</strong> {{ current_user.name }}</p>
+                    <p><strong>Email:</strong> {{ current_user.email }}</p>
+                    <p><strong>Crew:</strong> {{ current_user.crew or 'Not Assigned' }}</p>
+                    <p><strong>Position:</strong> {{ current_user.position.name if current_user.position else 'Not Assigned' }}</p>
+                    <hr>
+                    <a href="{{ url_for('auth.change_password') }}" class="btn btn-primary">Change Password</a>
+                    <a href="{{ url_for('auth.logout') }}" class="btn btn-danger">Logout</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
