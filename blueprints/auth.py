@@ -22,12 +22,8 @@ def index():
         else:
             return redirect(url_for('main.employee_dashboard'))
     
-    # For non-authenticated users, show a landing page or redirect to login
-    # Option 1: Redirect directly to login
-    return redirect(url_for('auth.login'))
-    
-    # Option 2: Show a landing page (uncomment below and comment above)
-    # return render_template('index.html')
+    # Show the landing page for non-authenticated users
+    return render_template('index.html')
 
 @auth_bp.route('/login', methods=['GET', 'POST'])
 def login():
