@@ -1,7 +1,7 @@
-# app.py - Complete File with SSL Connection Fix
+# app.py - Complete File with SQLAlchemy 2.0 Compatibility Fix
 """
 Main application file for Workforce Scheduler
-Includes database connection pooling and SSL fixes for Render deployment
+Fixed for SQLAlchemy 2.0 compatibility and database initialization issues
 """
 
 from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, send_file, session
@@ -22,7 +22,7 @@ import os
 import shutil
 from datetime import datetime, timedelta, date
 import random
-from sqlalchemy import and_, func, text, or_, create_engine
+from sqlalchemy import and_, func, text, or_, inspect
 from sqlalchemy.exc import ProgrammingError, OperationalError
 from sqlalchemy.pool import NullPool
 import logging
@@ -44,7 +44,6 @@ if database_url:
         database_url = database_url.replace('postgres://', 'postgresql://', 1)
     
     # Add connection parameters for SSL and pooling
-    # Use NullPool to prevent connection reuse issues
     app.config['SQLALCHEMY_DATABASE_URI'] = database_url
     app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
         'pool_pre_ping': True,  # Verify connections before using
@@ -108,34 +107,31 @@ def setup_upload_folder(app):
     
     return app.config['UPLOAD_FOLDER']
 
-# Initialize database with retry logic
-def init_db_with_retry(app, retries=3, delay=2):
-    """Initialize database with retry logic for connection issues"""
-    for attempt in range(retries):
-        try:
-            db.init_app(app)
-            with app.app_context():
-                # Test the connection
-                db.engine.execute(text("SELECT 1"))
-                logger.info("Database connection successful")
-                return True
-        except Exception as e:
-            logger.error(f"Database connection attempt {attempt + 1} failed: {str(e)}")
-            if attempt < retries - 1:
-                time.sleep(delay)
-            else:
-                raise
-    return False
-
-# Initialize extensions
-init_db_with_retry(app)
+# Initialize database WITHOUT retry logic here - just init
+db.init_app(app)
 migrate = Migrate(app, db)
+
+# Initialize login manager
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'auth.login'
 
 # Setup upload folder
 upload_folder = setup_upload_folder(app)
+
+# Test database connection with proper SQLAlchemy 2.0 syntax
+def test_db_connection():
+    """Test database connection using SQLAlchemy 2.0 syntax"""
+    try:
+        with app.app_context():
+            with db.engine.connect() as conn:
+                result = conn.execute(text("SELECT 1"))
+                result.scalar()
+                logger.info("Database connection successful")
+                return True
+    except Exception as e:
+        logger.error(f"Database connection test failed: {str(e)}")
+        return False
 
 # Database error handler decorator
 def handle_db_errors(f):
@@ -257,8 +253,8 @@ def init_database():
     """Initialize database schema if needed"""
     with app.app_context():
         try:
-            # Check if tables exist
-            inspector = db.inspect(db.engine)
+            # Check if tables exist using SQLAlchemy 2.0 syntax
+            inspector = inspect(db.engine)
             if not inspector.has_table('employee'):
                 logger.info("Creating database tables...")
                 db.create_all()
@@ -290,8 +286,11 @@ def inject_user_permissions():
 def health_check():
     """Health check endpoint"""
     try:
-        # Test database connection
-        db.session.execute(text('SELECT 1'))
+        # Test database connection using SQLAlchemy 2.0 syntax
+        with db.engine.connect() as conn:
+            conn.execute(text('SELECT 1'))
+            conn.commit()
+        
         return jsonify({
             'status': 'healthy',
             'database': 'connected',
@@ -328,11 +327,19 @@ def upload_status(upload_id):
         'uploaded_at': upload.uploaded_at.isoformat() if upload.uploaded_at else None
     })
 
+# Create tables and test connection when app starts
+with app.app_context():
+    try:
+        # Initialize database if needed
+        init_database()
+        # Test the connection
+        test_db_connection()
+    except Exception as e:
+        logger.error(f"Failed to initialize database: {str(e)}")
+        # Continue anyway - database might be initialized later
+
 # Run the application
 if __name__ == '__main__':
-    # Initialize database on startup
-    init_database()
-    
     # Run the app
     port = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('FLASK_ENV') == 'development'
