@@ -1,340 +1,321 @@
-# app.py - Complete File with SSL Connection Fix
+# blueprints/auth.py - Proper implementation without database initialization
 """
-Main application file for Workforce Scheduler
-Includes database connection pooling and SSL fixes for Render deployment
+Authentication Blueprint
+Handles login, logout, and password management
+NO DATABASE INITIALIZATION HERE - that belongs in app.py
 """
 
-from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, send_file, session
-from flask_login import LoginManager, login_required, login_user, logout_user, current_user 
-from flask_migrate import Migrate, stamp
-from models import (
-    db, Employee, TimeOffRequest, ShiftSwapRequest, ScheduleSuggestion, VacationCalendar, 
-    Position, Skill, OvertimeHistory, Schedule, PositionCoverage,
-    # Additional models
-    OvertimeOpportunity, OvertimeResponse, CoverageGap, EmployeeSkill,
-    FatigueTracking, MandatoryOvertimeLog, ShiftPattern, CoverageNotificationResponse,
-    FileUpload, CircadianProfile, SleepLog, PositionMessage, MessageReadReceipt,
-    MaintenanceIssue, ShiftTradePost, ShiftTradeProposal, ShiftTrade, CasualWorker,
-    CoverageRequest, CoverageNotification, CrewCoverageRequirement, Availability
-)
-from werkzeug.security import check_password_hash
-import os
-import shutil
-from datetime import datetime, timedelta, date
-import random
-from sqlalchemy import and_, func, text, or_, create_engine
-from sqlalchemy.exc import ProgrammingError, OperationalError
-from sqlalchemy.pool import NullPool
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session
+from flask_login import login_user, logout_user, login_required, current_user
+from werkzeug.security import check_password_hash, generate_password_hash
+from models import db, Employee
+from datetime import datetime, timedelta
 import logging
-import traceback
-import time
+from sqlalchemy.exc import OperationalError
+from functools import wraps
 
 # Set up logging
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Create Flask app
-app = Flask(__name__)
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key-here')
+# Create blueprint
+auth_bp = Blueprint('auth', __name__)
 
-# Database configuration with connection pooling and SSL fixes
-database_url = os.environ.get('DATABASE_URL')
-if database_url:
-    if database_url.startswith('postgres://'):
-        database_url = database_url.replace('postgres://', 'postgresql://', 1)
-    
-    # Add connection parameters for SSL and pooling
-    # Use NullPool to prevent connection reuse issues
-    app.config['SQLALCHEMY_DATABASE_URI'] = database_url
-    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-        'pool_pre_ping': True,  # Verify connections before using
-        'pool_recycle': 300,    # Recycle connections after 5 minutes
-        'poolclass': NullPool,  # Don't maintain a pool - create new connections
-        'connect_args': {
-            'sslmode': 'require',
-            'keepalives': 1,
-            'keepalives_idle': 30,
-            'keepalives_interval': 10,
-            'keepalives_count': 5,
-        }
-    }
-else:
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///workforce.db'
-    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {}
-
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
-# File upload configuration
-app.config['ALLOWED_EXTENSIONS'] = {'xlsx', 'xls', 'csv'}
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
-
-def setup_upload_folder(app):
-    """
-    Comprehensive upload folder setup with self-checking
-    """
-    # Use absolute path to avoid issues
-    if os.environ.get('RENDER'):
-        # On Render, use /tmp for temporary files
-        upload_path = '/tmp/upload_files'
-    else:
-        # Local development
-        upload_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'upload_files')
-    
-    app.config['UPLOAD_FOLDER'] = upload_path
-    
-    # Setup the folder
-    if os.path.exists(upload_path):
-        if os.path.isfile(upload_path):
-            # If it's a file, rename it
-            logger.warning(f"'{upload_path}' exists as a file, renaming...")
-            os.rename(upload_path, f"{upload_path}.backup")
-            os.makedirs(upload_path)
-    else:
-        # Create the directory
-        os.makedirs(upload_path, exist_ok=True)
-    
-    # Verify write access
-    test_file = os.path.join(upload_path, '.test_write')
-    try:
-        with open(test_file, 'w') as f:
-            f.write('test')
-        os.remove(test_file)
-        logger.info(f"Upload folder configured successfully: {upload_path}")
-    except Exception as e:
-        logger.error(f"Cannot write to upload folder {upload_path}: {str(e)}")
-        # Fallback to temp directory
-        app.config['UPLOAD_FOLDER'] = '/tmp'
-        logger.info("Using /tmp as fallback upload directory")
-    
-    return app.config['UPLOAD_FOLDER']
-
-# Initialize database with retry logic
-def init_db_with_retry(app, retries=3, delay=2):
-    """Initialize database with retry logic for connection issues"""
-    for attempt in range(retries):
-        try:
-            db.init_app(app)
-            with app.app_context():
-                # Test the connection
-                db.engine.execute(text("SELECT 1"))
-                logger.info("Database connection successful")
-                return True
-        except Exception as e:
-            logger.error(f"Database connection attempt {attempt + 1} failed: {str(e)}")
-            if attempt < retries - 1:
-                time.sleep(delay)
-            else:
-                raise
-    return False
-
-# Initialize extensions
-init_db_with_retry(app)
-migrate = Migrate(app, db)
-login_manager = LoginManager()
-login_manager.init_app(app)
-login_manager.login_view = 'auth.login'
-
-# Setup upload folder
-upload_folder = setup_upload_folder(app)
-
-# Database error handler decorator
-def handle_db_errors(f):
-    """Decorator to handle database connection errors"""
-    def decorated_function(*args, **kwargs):
-        try:
-            return f(*args, **kwargs)
-        except OperationalError as e:
-            logger.error(f"Database operational error: {str(e)}")
-            db.session.rollback()
-            # Try to reconnect
-            try:
-                db.session.remove()
-                db.engine.dispose()
-                return f(*args, **kwargs)
-            except Exception:
-                flash('Database connection error. Please try again.', 'danger')
-                return redirect(url_for('home'))
-        except Exception as e:
-            logger.error(f"Unexpected error: {str(e)}")
-            db.session.rollback()
-            flash('An unexpected error occurred. Please try again.', 'danger')
-            return redirect(url_for('home'))
-    decorated_function.__name__ = f.__name__
-    return decorated_function
-
-@login_manager.user_loader
-def load_user(user_id):
-    try:
-        return Employee.query.get(int(user_id))
-    except Exception as e:
-        logger.error(f"Error loading user: {str(e)}")
-        return None
-
-# Import blueprints (must be after db initialization)
-from blueprints.auth import auth_bp
-from blueprints.supervisor import supervisor_bp
-from blueprints.schedule_management import schedule_bp
-from blueprints.time_off_management import time_off_bp
-from blueprints.shift_swap import shift_swap_bp
-from blueprints.overtime_opportunities import overtime_bp
-from blueprints.employee_dashboard import employee_bp
-from blueprints.fatigue_tracking import fatigue_bp
-from blueprints.holiday_management import holiday_bp
-from blueprints.position_messages import position_messages_bp
-from blueprints.sleep_tracking import sleep_tracking_bp
-from blueprints.maintenance_issues import maintenance_bp
-from blueprints.shift_trade_board import shift_trade_bp
-from blueprints.casual_workers import casual_workers_bp
-from blueprints.employee_self_service import self_service_bp
-from blueprints.crew_coverage import crew_coverage_bp
-from blueprints.employee_import import employee_import_bp
-from blueprints.availability_management import availability_bp
-
-# Register blueprints
-app.register_blueprint(auth_bp)
-app.register_blueprint(supervisor_bp, url_prefix='/supervisor')
-app.register_blueprint(schedule_bp, url_prefix='/schedule')
-app.register_blueprint(time_off_bp, url_prefix='/time-off')
-app.register_blueprint(shift_swap_bp, url_prefix='/shift-swap')
-app.register_blueprint(overtime_bp, url_prefix='/overtime')
-app.register_blueprint(employee_bp, url_prefix='/employee')
-app.register_blueprint(fatigue_bp, url_prefix='/fatigue')
-app.register_blueprint(holiday_bp, url_prefix='/holiday')
-app.register_blueprint(position_messages_bp, url_prefix='/position-messages')
-app.register_blueprint(sleep_tracking_bp, url_prefix='/sleep')
-app.register_blueprint(maintenance_bp, url_prefix='/maintenance')
-app.register_blueprint(shift_trade_bp, url_prefix='/shift-trade')
-app.register_blueprint(casual_workers_bp, url_prefix='/casual-workers')
-app.register_blueprint(self_service_bp, url_prefix='/self-service')
-app.register_blueprint(crew_coverage_bp, url_prefix='/crew-coverage')
-app.register_blueprint(employee_import_bp)
-app.register_blueprint(availability_bp, url_prefix='/availability')
-
-# Routes
-@app.route('/')
-@handle_db_errors
-def home():
+@auth_bp.route('/login', methods=['GET', 'POST'])
+def login():
+    """Handle user login"""
+    # If already logged in, redirect appropriately
     if current_user.is_authenticated:
-        return redirect(url_for('employee.dashboard'))
-    return render_template('home.html')
-
-@app.route('/dashboard')
-@login_required
-@handle_db_errors
-def dashboard():
-    return redirect(url_for('employee.dashboard'))
-
-# Error handlers
-@app.errorhandler(404)
-def not_found_error(error):
-    return render_template('errors/404.html'), 404
-
-@app.errorhandler(500)
-def internal_error(error):
-    db.session.rollback()
-    return render_template('errors/500.html'), 500
-
-@app.errorhandler(OperationalError)
-def handle_db_operational_error(error):
-    logger.error(f"Database operational error: {str(error)}")
-    db.session.rollback()
-    try:
-        # Try to reconnect
-        db.session.remove()
-        db.engine.dispose()
-    except Exception:
-        pass
-    return render_template('errors/500.html', 
-                         message="Database connection error. Please try again."), 500
-
-# Utility function to check if uploaded file is allowed
-def allowed_file(filename):
-    return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
-
-# Initialize database schema on first run
-def init_database():
-    """Initialize database schema if needed"""
-    with app.app_context():
+        if current_user.is_supervisor:
+            return redirect(url_for('supervisor.dashboard'))
+        else:
+            return redirect(url_for('employee.dashboard'))
+    
+    if request.method == 'POST':
+        email = request.form.get('email', '').strip().lower()
+        password = request.form.get('password', '')
+        remember = request.form.get('remember', False)
+        
+        if not email or not password:
+            flash('Please enter both email and password.', 'warning')
+            return render_template('login.html')
+        
         try:
-            # Check if tables exist
-            inspector = db.inspect(db.engine)
-            if not inspector.has_table('employee'):
-                logger.info("Creating database tables...")
-                db.create_all()
+            # Find employee by email or username
+            employee = Employee.query.filter(
+                db.or_(Employee.email == email, Employee.username == email)
+            ).first()
+            
+            if not employee:
+                flash('Invalid email/username or password.', 'danger')
+                logger.warning(f"Failed login attempt for: {email}")
+                return render_template('login.html')
+            
+            # Check if account is active
+            if hasattr(employee, 'account_active') and not employee.account_active:
+                flash('Your account has been deactivated. Please contact your supervisor.', 'danger')
+                return render_template('login.html')
+            
+            # Check if account is locked
+            if hasattr(employee, 'locked_until') and employee.locked_until:
+                if employee.locked_until > datetime.utcnow():
+                    remaining = (employee.locked_until - datetime.utcnow()).seconds // 60
+                    flash(f'Account is locked. Please try again in {remaining} minutes.', 'danger')
+                    return render_template('login.html')
+                else:
+                    # Unlock the account
+                    employee.locked_until = None
+                    employee.login_attempts = 0
+            
+            # Verify password
+            if not employee.password_hash:
+                flash('Password not set. Please contact your supervisor.', 'danger')
+                return render_template('login.html')
+            
+            if check_password_hash(employee.password_hash, password):
+                # Reset login attempts
+                if hasattr(employee, 'login_attempts'):
+                    employee.login_attempts = 0
                 
-                # Run any migrations
-                try:
-                    stamp()
-                except Exception as e:
-                    logger.warning(f"Migration stamp failed: {str(e)}")
+                # Update last login
+                if hasattr(employee, 'last_login'):
+                    employee.last_login = datetime.utcnow()
                 
-                logger.info("Database tables created successfully")
+                # Check if first login
+                first_login = False
+                if hasattr(employee, 'first_login') and employee.first_login:
+                    employee.first_login = False
+                    first_login = True
+                
+                # Commit changes
+                db.session.commit()
+                
+                # Log the user in
+                login_user(employee, remember=remember)
+                
+                # Check if password change required
+                if hasattr(employee, 'must_change_password') and employee.must_change_password:
+                    flash('You must change your password before continuing.', 'info')
+                    return redirect(url_for('auth.change_password'))
+                
+                # Welcome message
+                if first_login:
+                    flash(f'Welcome to the Workforce Scheduler, {employee.name}!', 'success')
+                else:
+                    flash(f'Welcome back, {employee.name}!', 'success')
+                
+                # Redirect to appropriate dashboard
+                next_page = request.args.get('next')
+                if next_page and next_page.startswith('/'):
+                    return redirect(next_page)
+                
+                if employee.is_supervisor:
+                    return redirect(url_for('supervisor.dashboard'))
+                else:
+                    return redirect(url_for('employee.dashboard'))
             else:
-                logger.info("Database tables already exist")
+                # Failed login
+                if hasattr(employee, 'login_attempts'):
+                    employee.login_attempts = (employee.login_attempts or 0) + 1
+                    
+                    if employee.login_attempts >= 5:
+                        employee.locked_until = datetime.utcnow() + timedelta(minutes=30)
+                        db.session.commit()
+                        flash('Too many failed attempts. Account locked for 30 minutes.', 'danger')
+                    else:
+                        remaining = 5 - employee.login_attempts
+                        db.session.commit()
+                        flash(f'Invalid password. {remaining} attempts remaining.', 'danger')
+                else:
+                    flash('Invalid email/username or password.', 'danger')
+                
+                logger.warning(f"Failed login attempt for user: {employee.email}")
+                return render_template('login.html')
+                
+        except OperationalError as e:
+            logger.error(f"Database error during login: {e}")
+            flash('Database connection error. Please try again later.', 'danger')
+            return render_template('login.html')
+        except Exception as e:
+            logger.error(f"Unexpected login error: {e}")
+            db.session.rollback()
+            flash('An error occurred. Please try again.', 'danger')
+            return render_template('login.html')
+    
+    # GET request - show login form
+    return render_template('login.html')
+
+@auth_bp.route('/logout')
+@login_required
+def logout():
+    """Handle user logout"""
+    try:
+        user_name = current_user.name
+        logout_user()
+        flash(f'Goodbye, {user_name}! You have been logged out.', 'info')
+    except Exception as e:
+        logger.error(f"Logout error: {e}")
+        logout_user()
+        flash('You have been logged out.', 'info')
+    
+    return redirect(url_for('auth.login'))
+
+@auth_bp.route('/change-password', methods=['GET', 'POST'])
+@login_required
+def change_password():
+    """Allow users to change their password"""
+    if request.method == 'POST':
+        current_password = request.form.get('current_password', '')
+        new_password = request.form.get('new_password', '')
+        confirm_password = request.form.get('confirm_password', '')
+        
+        # Validate all fields provided
+        if not all([current_password, new_password, confirm_password]):
+            flash('All fields are required.', 'warning')
+            return render_template('change_password.html')
+        
+        # Verify current password
+        if not check_password_hash(current_user.password_hash, current_password):
+            flash('Current password is incorrect.', 'danger')
+            return render_template('change_password.html')
+        
+        # Validate new password
+        if len(new_password) < 8:
+            flash('New password must be at least 8 characters long.', 'warning')
+            return render_template('change_password.html')
+        
+        if new_password != confirm_password:
+            flash('New passwords do not match.', 'warning')
+            return render_template('change_password.html')
+        
+        if current_password == new_password:
+            flash('New password must be different from current password.', 'warning')
+            return render_template('change_password.html')
+        
+        try:
+            # Update password
+            current_user.password_hash = generate_password_hash(new_password)
+            
+            # Update password metadata if fields exist
+            if hasattr(current_user, 'must_change_password'):
+                current_user.must_change_password = False
+            if hasattr(current_user, 'last_password_change'):
+                current_user.last_password_change = datetime.utcnow()
+            
+            db.session.commit()
+            
+            flash('Password changed successfully!', 'success')
+            
+            # Redirect to appropriate dashboard
+            if current_user.is_supervisor:
+                return redirect(url_for('supervisor.dashboard'))
+            else:
+                return redirect(url_for('employee.dashboard'))
                 
         except Exception as e:
-            logger.error(f"Error initializing database: {str(e)}")
-            raise
+            logger.error(f"Password change error: {e}")
+            db.session.rollback()
+            flash('An error occurred. Please try again.', 'danger')
+            return render_template('change_password.html')
+    
+    # GET request - show change password form
+    return render_template('change_password.html')
 
-# Add template context processors
-@app.context_processor
-def inject_user_permissions():
-    """Inject user permissions into all templates"""
-    return dict(
-        is_supervisor=lambda: current_user.is_authenticated and current_user.is_supervisor
-    )
+@auth_bp.route('/forgot-password', methods=['GET', 'POST'])
+def forgot_password():
+    """Handle forgotten password requests"""
+    if current_user.is_authenticated:
+        return redirect(url_for('home'))
+    
+    if request.method == 'POST':
+        email = request.form.get('email', '').strip().lower()
+        
+        if not email:
+            flash('Please enter your email address.', 'warning')
+            return render_template('forgot_password.html')
+        
+        try:
+            employee = Employee.query.filter_by(email=email).first()
+            
+            # Always show the same message to prevent email enumeration
+            flash('If the email exists in our system, you will receive password reset instructions.', 'info')
+            
+            if employee:
+                # In production, generate token and send email
+                # For now, just log it
+                logger.info(f"Password reset requested for: {email}")
+                
+                # TODO: Implement email sending
+                # - Generate secure token
+                # - Save token with expiration
+                # - Send email with reset link
+            
+            return redirect(url_for('auth.login'))
+            
+        except Exception as e:
+            logger.error(f"Forgot password error: {e}")
+            flash('An error occurred. Please try again later.', 'danger')
+            return render_template('forgot_password.html')
+    
+    # GET request - show forgot password form
+    return render_template('forgot_password.html')
 
-# Health check endpoint for Render
-@app.route('/health')
-def health_check():
-    """Health check endpoint"""
+@auth_bp.route('/reset-password/<token>', methods=['GET', 'POST'])
+def reset_password(token):
+    """Reset password using token"""
+    if current_user.is_authenticated:
+        return redirect(url_for('home'))
+    
     try:
-        # Test database connection
-        db.session.execute(text('SELECT 1'))
-        return jsonify({
-            'status': 'healthy',
-            'database': 'connected',
-            'timestamp': datetime.utcnow().isoformat()
-        }), 200
+        # Find user with valid token
+        employee = Employee.query.filter_by(reset_token=token).first()
+        
+        if not employee:
+            flash('Invalid or expired reset link.', 'danger')
+            return redirect(url_for('auth.login'))
+        
+        # Check token expiration
+        if hasattr(employee, 'reset_token_expires'):
+            if not employee.reset_token_expires or employee.reset_token_expires < datetime.utcnow():
+                flash('Reset link has expired. Please request a new one.', 'danger')
+                return redirect(url_for('auth.forgot_password'))
+        
+        if request.method == 'POST':
+            new_password = request.form.get('new_password', '')
+            confirm_password = request.form.get('confirm_password', '')
+            
+            # Validate passwords
+            if not new_password or not confirm_password:
+                flash('Both password fields are required.', 'warning')
+                return render_template('reset_password.html', token=token)
+            
+            if len(new_password) < 8:
+                flash('Password must be at least 8 characters long.', 'warning')
+                return render_template('reset_password.html', token=token)
+            
+            if new_password != confirm_password:
+                flash('Passwords do not match.', 'warning')
+                return render_template('reset_password.html', token=token)
+            
+            # Reset password
+            employee.password_hash = generate_password_hash(new_password)
+            employee.reset_token = None
+            employee.reset_token_expires = None
+            
+            # Update password metadata
+            if hasattr(employee, 'must_change_password'):
+                employee.must_change_password = False
+            if hasattr(employee, 'last_password_change'):
+                employee.last_password_change = datetime.utcnow()
+            
+            db.session.commit()
+            
+            flash('Password reset successfully! You can now login.', 'success')
+            return redirect(url_for('auth.login'))
+        
+        # GET request - show reset form
+        return render_template('reset_password.html', token=token)
+        
     except Exception as e:
-        return jsonify({
-            'status': 'unhealthy',
-            'database': 'disconnected',
-            'error': str(e),
-            'timestamp': datetime.utcnow().isoformat()
-        }), 503
-
-# API endpoint for checking upload status
-@app.route('/api/upload-status/<int:upload_id>')
-@login_required
-@handle_db_errors
-def upload_status(upload_id):
-    """Check the status of a file upload"""
-    upload = FileUpload.query.get_or_404(upload_id)
-    
-    # Check permissions
-    if not current_user.is_supervisor and upload.uploaded_by != current_user.id:
-        return jsonify({'error': 'Unauthorized'}), 403
-    
-    return jsonify({
-        'id': upload.id,
-        'filename': upload.filename,
-        'status': upload.status,
-        'upload_type': upload.upload_type,
-        'records_processed': upload.records_processed,
-        'records_failed': upload.records_failed,
-        'error_details': upload.error_details,
-        'uploaded_at': upload.uploaded_at.isoformat() if upload.uploaded_at else None
-    })
-
-# Run the application
-if __name__ == '__main__':
-    # Initialize database on startup
-    init_database()
-    
-    # Run the app
-    port = int(os.environ.get('PORT', 5000))
-    debug = os.environ.get('FLASK_ENV') == 'development'
-    
-    app.run(host='0.0.0.0', port=port, debug=debug)
+        logger.error(f"Reset password error: {e}")
+        flash('An error occurred. Please try again later.', 'danger')
+        return redirect(url_for('auth.login'))
