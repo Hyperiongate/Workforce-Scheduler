@@ -72,6 +72,79 @@ def load_user(user_id):
     except:
         return None
 
+# Emergency database fix function
+def apply_emergency_database_fixes():
+    """Apply critical database fixes for shift_swap_request table"""
+    try:
+        with app.app_context():
+            inspector = inspect(db.engine)
+            
+            # Check if shift_swap_request table exists
+            if inspector.has_table('shift_swap_request'):
+                logger.info("Checking shift_swap_request table structure...")
+                
+                # Get existing columns
+                existing_columns = [col['name'] for col in inspector.get_columns('shift_swap_request')]
+                
+                # Define required columns with their definitions
+                required_columns = [
+                    ('requester_id', 'INTEGER REFERENCES employee(id)'),
+                    ('requested_with_id', 'INTEGER REFERENCES employee(id)'),
+                    ('requester_schedule_id', 'INTEGER REFERENCES schedule(id)'),
+                    ('requested_schedule_id', 'INTEGER REFERENCES schedule(id)'),
+                    ('status', "VARCHAR(20) DEFAULT 'pending'"),
+                    ('reason', 'TEXT'),
+                    ('created_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP'),
+                    ('reviewed_by_id', 'INTEGER REFERENCES employee(id)'),
+                    ('reviewed_at', 'TIMESTAMP'),
+                    ('reviewer_notes', 'TEXT')
+                ]
+                
+                # Add missing columns
+                with db.engine.connect() as conn:
+                    for column_name, column_definition in required_columns:
+                        if column_name not in existing_columns:
+                            try:
+                                conn.execute(text(f"""
+                                    ALTER TABLE shift_swap_request 
+                                    ADD COLUMN {column_name} {column_definition}
+                                """))
+                                conn.commit()
+                                logger.info(f"✅ Added column shift_swap_request.{column_name}")
+                            except Exception as e:
+                                logger.warning(f"Could not add column {column_name}: {e}")
+                                conn.rollback()
+            else:
+                # Create the table if it doesn't exist
+                logger.info("Creating shift_swap_request table...")
+                with db.engine.connect() as conn:
+                    try:
+                        conn.execute(text("""
+                            CREATE TABLE shift_swap_request (
+                                id SERIAL PRIMARY KEY,
+                                requester_id INTEGER REFERENCES employee(id),
+                                requested_with_id INTEGER REFERENCES employee(id),
+                                requester_schedule_id INTEGER REFERENCES schedule(id),
+                                requested_schedule_id INTEGER REFERENCES schedule(id),
+                                status VARCHAR(20) DEFAULT 'pending',
+                                reason TEXT,
+                                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                reviewed_by_id INTEGER REFERENCES employee(id),
+                                reviewed_at TIMESTAMP,
+                                reviewer_notes TEXT
+                            )
+                        """))
+                        conn.commit()
+                        logger.info("✅ Created shift_swap_request table")
+                    except Exception as e:
+                        logger.error(f"Could not create shift_swap_request table: {e}")
+                        conn.rollback()
+            
+            logger.info("Database fixes applied successfully")
+            
+    except Exception as e:
+        logger.error(f"Error applying database fixes: {e}")
+
 # Import and register blueprints
 try:
     from blueprints.auth import auth_bp
@@ -315,6 +388,9 @@ with app.app_context():
                     """))
                     conn.commit()
                 logger.info("Added status column to vacation_calendar")
+        
+        # Apply emergency database fixes for shift_swap_request
+        apply_emergency_database_fixes()
                 
     except Exception as e:
         logger.error(f"Startup database error: {e}")
