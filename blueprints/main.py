@@ -1,4 +1,4 @@
-# blueprints/main.py - COMPLETE FILE WITH ALL ROUTES
+# blueprints/main.py
 """
 Main blueprint with all required routes for the dashboard
 """
@@ -179,6 +179,151 @@ def overtime_management():
         flash('Error loading overtime data.', 'danger')
         return redirect(url_for('supervisor.dashboard'))
 
+@main_bp.route('/view-crews')
+@login_required
+def view_crews():
+    """View all crews and their members"""
+    try:
+        # Get all employees grouped by crew
+        crews = {
+            'A': [],
+            'B': [],
+            'C': [],
+            'D': [],
+            'Unassigned': []
+        }
+        
+        all_employees = Employee.query.order_by(Employee.crew, Employee.name).all()
+        
+        for employee in all_employees:
+            crew_key = employee.crew if employee.crew in ['A', 'B', 'C', 'D'] else 'Unassigned'
+            crews[crew_key].append(employee)
+        
+        # Get crew statistics
+        crew_stats = {}
+        crew_supervisors = {}
+        
+        for crew_name in ['A', 'B', 'C', 'D']:
+            crew_employees = crews[crew_name]
+            
+            # Find supervisor for this crew
+            supervisor = next((e for e in crew_employees if e.is_supervisor), None)
+            crew_supervisors[crew_name] = supervisor
+            
+            # Calculate stats
+            operators = len([e for e in crew_employees if e.position and 'Operator' in e.position.name])
+            supervisors = len([e for e in crew_employees if e.is_supervisor])
+            maintenance = len([e for e in crew_employees if e.position and e.position.department == 'Maintenance'])
+            
+            crew_stats[crew_name] = {
+                'total': len(crew_employees),
+                'operators': operators,
+                'supervisors': supervisors,
+                'maintenance': maintenance,
+                'positions': len(set(e.position_id for e in crew_employees if e.position_id))
+            }
+        
+        # Handle unassigned
+        crew_stats['Unassigned'] = {
+            'total': len(crews['Unassigned']),
+            'operators': 0,
+            'supervisors': 0,
+            'maintenance': 0,
+            'positions': 0
+        }
+        crew_supervisors['Unassigned'] = None
+        
+        return render_template('view_crews.html',
+                             crews=crews,
+                             crew_stats=crew_stats,
+                             crew_supervisors=crew_supervisors)
+                             
+    except Exception as e:
+        current_app.logger.error(f"Error in view_crews: {e}")
+        flash('Error loading crew information.', 'danger')
+        return redirect(url_for('main.dashboard'))
+
+@main_bp.route('/diagnostic')
+@login_required
+def diagnostic():
+    """System diagnostic page"""
+    if not current_user.is_supervisor:
+        flash('Supervisor access required.', 'danger')
+        return redirect(url_for('main.employee_dashboard'))
+    
+    try:
+        # Get database statistics
+        stats = {
+            'employees': Employee.query.count(),
+            'supervisors': Employee.query.filter_by(is_supervisor=True).count(),
+            'schedules': Schedule.query.count(),
+            'time_off_requests': TimeOffRequest.query.count(),
+            'positions': Position.query.count(),
+            'overtime_records': OvertimeHistory.query.count()
+        }
+        
+        # Get crew distribution
+        crew_dist = {}
+        for crew in ['A', 'B', 'C', 'D', None]:
+            count = Employee.query.filter_by(crew=crew).count()
+            crew_dist[crew or 'Unassigned'] = count
+        
+        # Check for common issues
+        issues = []
+        
+        # Check for employees without crews
+        no_crew = Employee.query.filter(or_(Employee.crew == None, Employee.crew == '')).count()
+        if no_crew > 0:
+            issues.append(f"{no_crew} employees without crew assignment")
+        
+        # Check for employees without positions
+        no_position = Employee.query.filter_by(position_id=None).count()
+        if no_position > 0:
+            issues.append(f"{no_position} employees without position assignment")
+        
+        # Check for missing OT data
+        employees_with_ot = db.session.query(OvertimeHistory.employee_id).distinct().count()
+        employees_without_ot = stats['employees'] - employees_with_ot
+        if employees_without_ot > 0:
+            issues.append(f"{employees_without_ot} employees without overtime history")
+        
+        return render_template('diagnostic.html',
+                             stats=stats,
+                             crew_dist=crew_dist,
+                             issues=issues)
+                             
+    except Exception as e:
+        current_app.logger.error(f"Error in diagnostic: {e}")
+        flash('Error loading diagnostic information.', 'danger')
+        return redirect(url_for('main.dashboard'))
+
+@main_bp.route('/debug-routes')
+@login_required
+def debug_routes():
+    """Show all registered routes"""
+    if not current_user.is_supervisor:
+        flash('Supervisor access required.', 'danger')
+        return redirect(url_for('main.employee_dashboard'))
+    
+    try:
+        routes = []
+        for rule in current_app.url_map.iter_rules():
+            if rule.endpoint != 'static':
+                routes.append({
+                    'endpoint': rule.endpoint,
+                    'url': str(rule),
+                    'methods': ', '.join(rule.methods - {'HEAD', 'OPTIONS'})
+                })
+        
+        routes.sort(key=lambda x: x['url'])
+        
+        return render_template('debug_routes.html', routes=routes)
+        
+    except Exception as e:
+        current_app.logger.error(f"Error in debug_routes: {e}")
+        return jsonify({'error': str(e)}), 500
+
+# Redirect routes for backward compatibility
 @main_bp.route('/vacation-calendar')
 @login_required
 def vacation_calendar():
