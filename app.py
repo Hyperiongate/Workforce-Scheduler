@@ -108,6 +108,13 @@ try:
 except ImportError as e:
     logger.error(f"❌ Could not import employee_import blueprint: {e}")
 
+try:
+    from blueprints.schedule import schedule_bp
+    app.register_blueprint(schedule_bp)
+    logger.info("✅ Schedule blueprint loaded")
+except ImportError as e:
+    logger.error(f"❌ Could not import schedule blueprint: {e}")
+
 # Routes
 @app.route('/')
 def home():
@@ -146,6 +153,116 @@ def init_db():
         flash(f'Error initializing database: {str(e)}', 'error')
     
     return redirect(url_for('supervisor.dashboard'))
+
+@app.route('/add-overtime-tables')
+@login_required
+def add_overtime_tables():
+    """Add overtime management tables"""
+    if not current_user.is_supervisor:
+        flash('Only supervisors can modify database tables.', 'error')
+        return redirect(url_for('main.index'))
+    
+    try:
+        db.create_all()
+        flash('Overtime tables added successfully!', 'success')
+        return redirect(url_for('main.dashboard'))
+    except Exception as e:
+        flash(f'Error adding overtime tables: {str(e)}', 'error')
+        return redirect(url_for('main.dashboard'))
+
+@app.route('/populate-crews')
+@login_required
+def populate_crews():
+    """Populate database with test crew data"""
+    if not current_user.is_supervisor:
+        flash('Only supervisors can populate test data.', 'error')
+        return redirect(url_for('main.index'))
+    
+    try:
+        # Check if we already have data
+        if Employee.query.count() > 5:
+            flash('Database already contains employee data.', 'warning')
+            return redirect(url_for('main.dashboard'))
+        
+        # Import models we need
+        from models import Position, Skill
+        
+        # Create positions
+        positions = [
+            {'name': 'Operator', 'department': 'Production'},
+            {'name': 'Maintenance Tech', 'department': 'Maintenance'},
+            {'name': 'Lead Operator', 'department': 'Production'},
+            {'name': 'Supervisor', 'department': 'Management'},
+            {'name': 'Electrician', 'department': 'Maintenance'},
+            {'name': 'Mechanic', 'department': 'Maintenance'}
+        ]
+        
+        for pos_data in positions:
+            position = Position.query.filter_by(name=pos_data['name']).first()
+            if not position:
+                position = Position(**pos_data)
+                db.session.add(position)
+        
+        db.session.commit()
+        
+        # Create skills
+        skills_list = [
+            'Forklift Operation', 'Machine Setup', 'Quality Control',
+            'Electrical Work', 'Welding', 'PLC Programming',
+            'Hydraulics', 'Pneumatics', 'Safety Training'
+        ]
+        
+        skills = []
+        for skill_name in skills_list:
+            skill = Skill.query.filter_by(name=skill_name).first()
+            if not skill:
+                skill = Skill(name=skill_name, description=f"Certified in {skill_name}")
+                db.session.add(skill)
+            skills.append(skill)
+        
+        db.session.commit()
+        
+        # Create employees for each crew
+        crews = ['A', 'B', 'C', 'D']
+        positions_list = Position.query.all()
+        
+        employee_names = [
+            'John Smith', 'Jane Doe', 'Mike Johnson', 'Sarah Williams',
+            'Tom Brown', 'Lisa Davis', 'Chris Wilson', 'Amy Martinez',
+            'Robert Taylor', 'Jennifer Anderson', 'David Thomas', 'Maria Garcia',
+            'James Rodriguez', 'Patricia Lee', 'Michael White', 'Linda Harris'
+        ]
+        
+        for i, name in enumerate(employee_names):
+            crew = crews[i % 4]
+            position = positions_list[i % len(positions_list)]
+            
+            employee = Employee(
+                employee_id=f'EMP{str(i+1).zfill(3)}',
+                name=name,
+                email=f'{name.lower().replace(" ", ".")}@company.com',
+                crew=crew,
+                position_id=position.id,
+                is_supervisor=(i % 4 == 0),  # Every 4th employee is a supervisor
+                vacation_days=10,
+                sick_days=5,
+                personal_days=2
+            )
+            employee.set_password('password123')  # Default password
+            
+            # Add some skills
+            employee.skills.extend(skills[:3])
+            
+            db.session.add(employee)
+        
+        db.session.commit()
+        flash('Test crew data populated successfully!', 'success')
+        return redirect(url_for('main.dashboard'))
+        
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error populating crews: {str(e)}', 'error')
+        return redirect(url_for('main.dashboard'))
 
 # Error handlers
 @app.errorhandler(404)
