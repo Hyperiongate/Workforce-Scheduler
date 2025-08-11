@@ -1,13 +1,13 @@
 # blueprints/supervisor.py
 """
-Supervisor blueprint with all required routes
+Supervisor blueprint with all required routes and proper error handling
 """
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, current_app, send_file
 from flask_login import login_required, current_user
 from models import db, Employee, TimeOffRequest, ShiftSwapRequest, Schedule, Position, OvertimeHistory, PositionCoverage, VacationCalendar
 from datetime import date, datetime, timedelta
-from sqlalchemy import func, and_, or_
+from sqlalchemy import func, and_, or_, inspect
 from functools import wraps
 import traceback
 import pandas as pd
@@ -32,7 +32,7 @@ def supervisor_required(f):
 @login_required
 @supervisor_required
 def dashboard():
-    """Supervisor dashboard with complete data"""
+    """Supervisor dashboard with complete data and proper error handling"""
     try:
         # Initialize context with all required variables
         context = {
@@ -55,12 +55,42 @@ def dashboard():
             'now': datetime.now()
         }
         
-        # Get pending counts
+        # CRITICAL: Clear any failed transactions first
+        try:
+            db.session.rollback()
+            db.session.close()
+            db.session.remove()
+        except:
+            pass
+        
+        # Get pending time off counts
         try:
             context['pending_time_off'] = TimeOffRequest.query.filter_by(status='pending').count()
-            context['pending_swaps'] = ShiftSwapRequest.query.filter_by(status='pending').count()
         except Exception as e:
-            current_app.logger.error(f"Error getting pending counts: {e}")
+            current_app.logger.error(f"Error getting pending time off: {e}")
+            db.session.rollback()
+        
+        # Get pending swaps - with schema check
+        try:
+            # Check if table exists and has required columns
+            inspector = inspect(db.engine)
+            
+            if 'shift_swap_request' in inspector.get_table_names():
+                columns = [col['name'] for col in inspector.get_columns('shift_swap_request')]
+                
+                if 'status' in columns:
+                    context['pending_swaps'] = ShiftSwapRequest.query.filter_by(status='pending').count()
+                else:
+                    current_app.logger.warning("shift_swap_request table missing 'status' column")
+                    context['pending_swaps'] = 0
+            else:
+                current_app.logger.warning("shift_swap_request table does not exist")
+                context['pending_swaps'] = 0
+                
+        except Exception as e:
+            current_app.logger.error(f"Error getting pending swaps: {e}")
+            db.session.rollback()
+            context['pending_swaps'] = 0
         
         # Get employee counts
         try:
@@ -69,11 +99,17 @@ def dashboard():
             
             # Count employees missing OT data
             for emp in all_employees:
-                ot_count = OvertimeHistory.query.filter_by(employee_id=emp.id).count()
-                if ot_count == 0:
-                    context['employees_missing_ot'] += 1
+                try:
+                    ot_count = OvertimeHistory.query.filter_by(employee_id=emp.id).count()
+                    if ot_count == 0:
+                        context['employees_missing_ot'] += 1
+                except:
+                    # Skip if error
+                    pass
+                    
         except Exception as e:
             current_app.logger.error(f"Error counting employees: {e}")
+            db.session.rollback()
         
         # Get high OT employees (>10 hours this week)
         try:
@@ -83,9 +119,10 @@ def dashboard():
                 OvertimeHistory.overtime_hours > 10
             ).all()
             
-            context['high_ot_employees'] = [ot.employee for ot in high_ot]
+            context['high_ot_employees'] = [ot.employee for ot in high_ot if ot.employee]
         except Exception as e:
             current_app.logger.error(f"Error getting high OT employees: {e}")
+            db.session.rollback()
         
         # Get recent time off requests
         try:
@@ -94,38 +131,78 @@ def dashboard():
             ).limit(5).all()
         except Exception as e:
             current_app.logger.error(f"Error getting recent time off: {e}")
+            db.session.rollback()
         
         # Calculate coverage gaps
         try:
             today = date.today()
             scheduled_today = Schedule.query.filter_by(date=today).count()
-            required = db.session.query(func.sum(Position.min_coverage)).scalar() or 0
+            
+            # Check if Position table has min_coverage column
+            inspector = inspect(db.engine)
+            position_columns = [col['name'] for col in inspector.get_columns('position')]
+            
+            if 'min_coverage' in position_columns:
+                required = db.session.query(func.sum(Position.min_coverage)).scalar() or 0
+            else:
+                # Use a default if column doesn't exist
+                required = 20
+                
             context['coverage_gaps'] = max(0, required - scheduled_today)
         except Exception as e:
             current_app.logger.error(f"Error calculating coverage gaps: {e}")
+            db.session.rollback()
         
-        # Try different template names
+        # Try different template names in order of preference
         template_names = [
             'supervisor_dashboard.html',
+            'dashboard_classic.html',
+            'supervisor_dashboard_simple.html',
             'dashboard.html', 
-            'supervisor/dashboard.html'
+            'supervisor/dashboard.html',
+            'basic_dashboard.html'  # Emergency fallback
         ]
         
         for template_name in template_names:
             try:
                 return render_template(template_name, **context)
-            except:
+            except Exception as e:
+                current_app.logger.debug(f"Template {template_name} not found: {e}")
                 continue
-                
-        # If no template found, return a basic response
-        flash('Dashboard template not found', 'warning')
-        return render_template('basic_dashboard.html', **context)
+        
+        # If no template found, create a minimal response
+        flash('Dashboard template not found. Using emergency view.', 'warning')
+        return f"""
+        <html>
+            <head><title>Supervisor Dashboard</title></head>
+            <body>
+                <h1>Supervisor Dashboard</h1>
+                <p>Welcome, {current_user.name}!</p>
+                <ul>
+                    <li>Pending Time Off: {context['pending_time_off']}</li>
+                    <li>Pending Swaps: {context['pending_swaps']}</li>
+                    <li>Total Employees: {context['total_employees']}</li>
+                    <li>Coverage Gaps: {context['coverage_gaps']}</li>
+                </ul>
+                <a href="/auth/logout">Logout</a>
+            </body>
+        </html>
+        """
         
     except Exception as e:
         current_app.logger.error(f"Critical error in supervisor dashboard: {e}")
         current_app.logger.error(traceback.format_exc())
-        flash('Error loading dashboard', 'danger')
-        return redirect(url_for('main.index'))
+        
+        # Ensure database session is clean
+        try:
+            db.session.rollback()
+            db.session.close()
+            db.session.remove()
+        except:
+            pass
+        
+        flash('An error occurred loading the dashboard. Please try again.', 'danger')
+        return redirect(url_for('main.home') if hasattr(current_app, 'main') else '/')
 
 @supervisor_bp.route('/supervisor/time-off-requests')
 @login_required
@@ -133,6 +210,9 @@ def dashboard():
 def time_off_requests():
     """View and manage time off requests"""
     try:
+        # Clear any failed transactions
+        db.session.rollback()
+        
         # Get filter parameters
         status_filter = request.args.get('status', 'all')
         crew_filter = request.args.get('crew', 'all')
@@ -157,13 +237,20 @@ def time_off_requests():
                 TimeOffRequest.status == 'approved',
                 TimeOffRequest.created_at >= datetime.now() - timedelta(days=7)
             ).count(),
-            'total_days_requested': db.session.query(
+            'total_days_requested': 0
+        }
+        
+        # Calculate total days with error handling
+        try:
+            result = db.session.query(
                 func.sum(
                     func.julianday(TimeOffRequest.end_date) - 
                     func.julianday(TimeOffRequest.start_date) + 1
                 )
-            ).filter_by(status='pending').scalar() or 0
-        }
+            ).filter_by(status='pending').scalar()
+            stats['total_days_requested'] = result or 0
+        except:
+            pass
         
         return render_template('time_off_requests.html', 
                              requests=requests,
@@ -173,6 +260,7 @@ def time_off_requests():
     
     except Exception as e:
         current_app.logger.error(f"Error in time_off_requests: {e}")
+        db.session.rollback()
         flash('Error loading time off requests.', 'danger')
         return redirect(url_for('supervisor.dashboard'))
 
@@ -192,16 +280,31 @@ def approve_time_off(request_id):
         time_off.approved_by_id = current_user.id
         time_off.approved_date = datetime.now()
         
-        # Add to vacation calendar
-        vacation_entry = VacationCalendar(
-            employee_id=time_off.employee_id,
-            start_date=time_off.start_date,
-            end_date=time_off.end_date,
-            type=time_off.request_type,
-            status='approved',
-            time_off_request_id=time_off.id
-        )
-        db.session.add(vacation_entry)
+        # Check if VacationCalendar has all required columns
+        inspector = inspect(db.engine)
+        if 'vacation_calendar' in inspector.get_table_names():
+            vacation_columns = [col['name'] for col in inspector.get_columns('vacation_calendar')]
+            
+            # Create vacation entry with available columns
+            vacation_data = {
+                'employee_id': time_off.employee_id,
+                'date': time_off.start_date,  # Single date entry
+                'type': time_off.request_type
+            }
+            
+            if 'status' in vacation_columns:
+                vacation_data['status'] = 'approved'
+            
+            if 'request_id' in vacation_columns:
+                vacation_data['request_id'] = time_off.id
+                
+            # Create an entry for each day
+            current_date = time_off.start_date
+            while current_date <= time_off.end_date:
+                vacation_entry = VacationCalendar(**vacation_data)
+                vacation_entry.date = current_date
+                db.session.add(vacation_entry)
+                current_date += timedelta(days=1)
         
         db.session.commit()
         
@@ -229,7 +332,12 @@ def deny_time_off(request_id):
         time_off.status = 'denied'
         time_off.approved_by_id = current_user.id
         time_off.approved_date = datetime.now()
-        time_off.denial_reason = request.form.get('denial_reason', 'No reason provided')
+        
+        # Check if denial_reason column exists
+        inspector = inspect(db.engine)
+        columns = [col['name'] for col in inspector.get_columns('time_off_request')]
+        if 'denial_reason' in columns:
+            time_off.denial_reason = request.form.get('denial_reason', 'No reason provided')
         
         db.session.commit()
         
@@ -248,22 +356,37 @@ def deny_time_off(request_id):
 def swap_requests():
     """View and manage shift swap requests"""
     try:
-        swaps = ShiftSwapRequest.query.order_by(
-            ShiftSwapRequest.created_at.desc()
-        ).all()
+        # Clear any failed transactions
+        db.session.rollback()
         
+        # Check if table exists and has required columns
+        inspector = inspect(db.engine)
+        
+        swaps = []
         stats = {
-            'pending_count': ShiftSwapRequest.query.filter_by(status='pending').count(),
-            'approved_this_week': ShiftSwapRequest.query.filter(
-                ShiftSwapRequest.status == 'approved',
-                ShiftSwapRequest.created_at >= datetime.now() - timedelta(days=7)
-            ).count()
+            'pending_count': 0,
+            'approved_this_week': 0
         }
+        
+        if 'shift_swap_request' in inspector.get_table_names():
+            columns = [col['name'] for col in inspector.get_columns('shift_swap_request')]
+            
+            if 'status' in columns and 'created_at' in columns:
+                swaps = ShiftSwapRequest.query.order_by(
+                    ShiftSwapRequest.created_at.desc()
+                ).all()
+                
+                stats['pending_count'] = ShiftSwapRequest.query.filter_by(status='pending').count()
+                stats['approved_this_week'] = ShiftSwapRequest.query.filter(
+                    ShiftSwapRequest.status == 'approved',
+                    ShiftSwapRequest.created_at >= datetime.now() - timedelta(days=7)
+                ).count()
         
         return render_template('swap_requests.html', swaps=swaps, stats=stats)
     
     except Exception as e:
         current_app.logger.error(f"Error in swap_requests: {e}")
+        db.session.rollback()
         flash('Error loading swap requests.', 'danger')
         return redirect(url_for('supervisor.dashboard'))
 
@@ -273,6 +396,9 @@ def swap_requests():
 def coverage_gaps():
     """View coverage gaps"""
     try:
+        # Clear any failed transactions
+        db.session.rollback()
+        
         # Get date range
         start_date = request.args.get('start_date', date.today())
         end_date = request.args.get('end_date', date.today() + timedelta(days=7))
@@ -284,7 +410,18 @@ def coverage_gaps():
         
         # Get all positions and their requirements
         positions = Position.query.all()
-        position_requirements = {p.id: p.min_coverage for p in positions}
+        
+        # Check if min_coverage column exists
+        inspector = inspect(db.engine)
+        position_columns = [col['name'] for col in inspector.get_columns('position')]
+        has_min_coverage = 'min_coverage' in position_columns
+        
+        position_requirements = {}
+        for p in positions:
+            if has_min_coverage:
+                position_requirements[p.id] = p.min_coverage or 0
+            else:
+                position_requirements[p.id] = 2  # Default requirement
         
         # Get schedules in date range
         schedules = Schedule.query.filter(
@@ -300,7 +437,7 @@ def coverage_gaps():
             for position in positions:
                 scheduled = len([s for s in schedules 
                                if s.date == current_date and s.position_id == position.id])
-                required = position.min_coverage or 0
+                required = position_requirements.get(position.id, 0)
                 
                 if scheduled < required:
                     gaps.append({
@@ -320,6 +457,7 @@ def coverage_gaps():
     
     except Exception as e:
         current_app.logger.error(f"Error in coverage_gaps: {e}")
+        db.session.rollback()
         flash('Error loading coverage gaps.', 'danger')
         return redirect(url_for('supervisor.dashboard'))
 
@@ -329,20 +467,36 @@ def coverage_gaps():
 def coverage_needs():
     """View and manage coverage needs"""
     try:
+        # Clear any failed transactions
+        db.session.rollback()
+        
         # Get all positions
         positions = Position.query.order_by(Position.name).all()
+        
+        # Check if PositionCoverage table exists
+        inspector = inspect(db.engine)
+        has_position_coverage = 'position_coverage' in inspector.get_table_names()
         
         # Get coverage requirements by crew
         coverage_data = []
         for position in positions:
-            # Get current requirements
-            crew_coverage = PositionCoverage.query.filter_by(position_id=position.id).all()
-            crew_dict = {pc.crew: pc.required_count for pc in crew_coverage}
+            crew_dict = {}
+            
+            if has_position_coverage:
+                # Get current requirements
+                crew_coverage = PositionCoverage.query.filter_by(position_id=position.id).all()
+                crew_dict = {pc.crew: pc.required_count for pc in crew_coverage}
+            
+            # Check if position has min_coverage
+            position_columns = [col['name'] for col in inspector.get_columns('position')]
+            min_coverage = 0
+            if 'min_coverage' in position_columns:
+                min_coverage = position.min_coverage or 0
             
             coverage_data.append({
                 'position': position,
-                'department': position.department,
-                'min_coverage': position.min_coverage or 0,
+                'department': getattr(position, 'department', 'Unknown'),
+                'min_coverage': min_coverage,
                 'crew_coverage': {
                     'A': crew_dict.get('A', 0),
                     'B': crew_dict.get('B', 0),
@@ -371,6 +525,7 @@ def coverage_needs():
     
     except Exception as e:
         current_app.logger.error(f"Error in coverage_needs: {e}")
+        db.session.rollback()
         flash('Error loading coverage needs.', 'danger')
         return redirect(url_for('supervisor.dashboard'))
 
@@ -383,30 +538,37 @@ def update_coverage():
         position_id = request.form.get('position_id')
         position = Position.query.get_or_404(position_id)
         
-        # Update minimum coverage
-        min_coverage = request.form.get('min_coverage', type=int)
-        if min_coverage is not None:
-            position.min_coverage = min_coverage
+        # Check if columns exist
+        inspector = inspect(db.engine)
+        position_columns = [col['name'] for col in inspector.get_columns('position')]
+        has_position_coverage = 'position_coverage' in inspector.get_table_names()
         
-        # Update crew-specific coverage
-        for crew in ['A', 'B', 'C', 'D']:
-            required = request.form.get(f'crew_{crew}', type=int)
-            if required is not None:
-                # Find or create coverage record
-                coverage = PositionCoverage.query.filter_by(
-                    position_id=position_id,
-                    crew=crew
-                ).first()
-                
-                if coverage:
-                    coverage.required_count = required
-                else:
-                    coverage = PositionCoverage(
+        # Update minimum coverage if column exists
+        if 'min_coverage' in position_columns:
+            min_coverage = request.form.get('min_coverage', type=int)
+            if min_coverage is not None:
+                position.min_coverage = min_coverage
+        
+        # Update crew-specific coverage if table exists
+        if has_position_coverage:
+            for crew in ['A', 'B', 'C', 'D']:
+                required = request.form.get(f'crew_{crew}', type=int)
+                if required is not None:
+                    # Find or create coverage record
+                    coverage = PositionCoverage.query.filter_by(
                         position_id=position_id,
-                        crew=crew,
-                        required_count=required
-                    )
-                    db.session.add(coverage)
+                        crew=crew
+                    ).first()
+                    
+                    if coverage:
+                        coverage.required_count = required
+                    else:
+                        coverage = PositionCoverage(
+                            position_id=position_id,
+                            crew=crew,
+                            required_count=required
+                        )
+                        db.session.add(coverage)
         
         db.session.commit()
         flash(f'Coverage requirements updated for {position.name}', 'success')
@@ -424,36 +586,49 @@ def update_coverage():
 def overtime_distribution():
     """View overtime distribution"""
     try:
+        # Clear any failed transactions
+        db.session.rollback()
+        
         # Get all employees with their OT data
         employees = Employee.query.filter_by(is_supervisor=False).all()
         
         # Calculate OT statistics
         ot_data = []
         for emp in employees:
-            # Get last 13 weeks of OT
-            thirteen_weeks_ago = date.today() - timedelta(weeks=13)
-            ot_records = OvertimeHistory.query.filter(
-                OvertimeHistory.employee_id == emp.id,
-                OvertimeHistory.week_start_date >= thirteen_weeks_ago
-            ).all()
-            
-            total_ot = sum(record.overtime_hours for record in ot_records)
-            avg_ot = total_ot / 13 if ot_records else 0
-            
-            # Get current week OT
-            current_week_start = date.today() - timedelta(days=date.today().weekday())
-            current_ot = OvertimeHistory.query.filter_by(
-                employee_id=emp.id,
-                week_start_date=current_week_start
-            ).first()
-            
-            ot_data.append({
-                'employee': emp,
-                'total_13_weeks': total_ot,
-                'average_weekly': round(avg_ot, 1),
-                'current_week': current_ot.overtime_hours if current_ot else 0,
-                'weeks_with_data': len(ot_records)
-            })
+            try:
+                # Get last 13 weeks of OT
+                thirteen_weeks_ago = date.today() - timedelta(weeks=13)
+                ot_records = OvertimeHistory.query.filter(
+                    OvertimeHistory.employee_id == emp.id,
+                    OvertimeHistory.week_start_date >= thirteen_weeks_ago
+                ).all()
+                
+                total_ot = sum(record.overtime_hours for record in ot_records)
+                avg_ot = total_ot / 13 if ot_records else 0
+                
+                # Get current week OT
+                current_week_start = date.today() - timedelta(days=date.today().weekday())
+                current_ot = OvertimeHistory.query.filter_by(
+                    employee_id=emp.id,
+                    week_start_date=current_week_start
+                ).first()
+                
+                ot_data.append({
+                    'employee': emp,
+                    'total_13_weeks': total_ot,
+                    'average_weekly': round(avg_ot, 1),
+                    'current_week': current_ot.overtime_hours if current_ot else 0,
+                    'weeks_with_data': len(ot_records)
+                })
+            except:
+                # If error, add employee with zero data
+                ot_data.append({
+                    'employee': emp,
+                    'total_13_weeks': 0,
+                    'average_weekly': 0,
+                    'current_week': 0,
+                    'weeks_with_data': 0
+                })
         
         # Sort by total OT (ascending for fair distribution)
         ot_data.sort(key=lambda x: x['total_13_weeks'])
@@ -463,6 +638,7 @@ def overtime_distribution():
     
     except Exception as e:
         current_app.logger.error(f"Error in overtime_distribution: {e}")
+        db.session.rollback()
         flash('Error loading overtime distribution.', 'danger')
         return redirect(url_for('supervisor.dashboard'))
 
@@ -472,6 +648,9 @@ def overtime_distribution():
 def vacation_calendar():
     """Display vacation calendar"""
     try:
+        # Clear any failed transactions
+        db.session.rollback()
+        
         # Get month and year from request
         month = request.args.get('month', type=int, default=date.today().month)
         year = request.args.get('year', type=int, default=date.today().year)
@@ -483,16 +662,40 @@ def vacation_calendar():
         else:
             end_date = date(year, month + 1, 1) - timedelta(days=1)
         
-        vacations = VacationCalendar.query.filter(
-            or_(
-                and_(VacationCalendar.start_date >= start_date, 
-                     VacationCalendar.start_date <= end_date),
-                and_(VacationCalendar.end_date >= start_date, 
-                     VacationCalendar.end_date <= end_date),
-                and_(VacationCalendar.start_date < start_date, 
-                     VacationCalendar.end_date > end_date)
+        # Check if VacationCalendar table exists
+        inspector = inspect(db.engine)
+        if 'vacation_calendar' not in inspector.get_table_names():
+            flash('Vacation calendar not available.', 'warning')
+            return redirect(url_for('supervisor.dashboard'))
+        
+        # Build query based on available columns
+        columns = [col['name'] for col in inspector.get_columns('vacation_calendar')]
+        
+        query = VacationCalendar.query
+        
+        # Filter by date range
+        if 'date' in columns:
+            query = query.filter(
+                VacationCalendar.date >= start_date,
+                VacationCalendar.date <= end_date
             )
-        ).filter_by(status='approved').all()
+        elif 'start_date' in columns and 'end_date' in columns:
+            query = query.filter(
+                or_(
+                    and_(VacationCalendar.start_date >= start_date, 
+                         VacationCalendar.start_date <= end_date),
+                    and_(VacationCalendar.end_date >= start_date, 
+                         VacationCalendar.end_date <= end_date),
+                    and_(VacationCalendar.start_date < start_date, 
+                         VacationCalendar.end_date > end_date)
+                )
+            )
+        
+        # Filter by status if column exists
+        if 'status' in columns:
+            query = query.filter_by(status='approved')
+        
+        vacations = query.all()
         
         # Group by crew
         crew_vacations = {'A': [], 'B': [], 'C': [], 'D': []}
@@ -509,6 +712,7 @@ def vacation_calendar():
     
     except Exception as e:
         current_app.logger.error(f"Error in vacation_calendar: {e}")
+        db.session.rollback()
         flash('Error loading vacation calendar.', 'danger')
         return redirect(url_for('supervisor.dashboard'))
 
@@ -518,6 +722,9 @@ def vacation_calendar():
 def api_vacation_calendar():
     """API endpoint for vacation calendar data"""
     try:
+        # Clear any failed transactions
+        db.session.rollback()
+        
         start_date = request.args.get('start')
         end_date = request.args.get('end')
         
@@ -531,17 +738,37 @@ def api_vacation_calendar():
         else:
             end_date = (start_date + timedelta(days=32)).replace(day=1) - timedelta(days=1)
         
-        # Get vacation entries
-        vacations = VacationCalendar.query.filter(
-            or_(
-                and_(VacationCalendar.start_date >= start_date, 
-                     VacationCalendar.start_date <= end_date),
-                and_(VacationCalendar.end_date >= start_date, 
-                     VacationCalendar.end_date <= end_date),
-                and_(VacationCalendar.start_date < start_date, 
-                     VacationCalendar.end_date > end_date)
+        # Check table structure
+        inspector = inspect(db.engine)
+        if 'vacation_calendar' not in inspector.get_table_names():
+            return jsonify([])
+        
+        columns = [col['name'] for col in inspector.get_columns('vacation_calendar')]
+        
+        # Build query based on available columns
+        query = VacationCalendar.query
+        
+        if 'date' in columns:
+            query = query.filter(
+                VacationCalendar.date >= start_date,
+                VacationCalendar.date <= end_date
             )
-        ).filter_by(status='approved').all()
+        elif 'start_date' in columns and 'end_date' in columns:
+            query = query.filter(
+                or_(
+                    and_(VacationCalendar.start_date >= start_date, 
+                         VacationCalendar.start_date <= end_date),
+                    and_(VacationCalendar.end_date >= start_date, 
+                         VacationCalendar.end_date <= end_date),
+                    and_(VacationCalendar.start_date < start_date, 
+                         VacationCalendar.end_date > end_date)
+                )
+            )
+        
+        if 'status' in columns:
+            query = query.filter_by(status='approved')
+        
+        vacations = query.all()
         
         # Format for FullCalendar
         events = []
@@ -554,11 +781,21 @@ def api_vacation_calendar():
                     'D': '#dc3545'
                 }.get(vacation.employee.crew, '#6c757d')
                 
+                # Determine date range
+                if hasattr(vacation, 'date'):
+                    start = vacation.date
+                    end = vacation.date + timedelta(days=1)
+                elif hasattr(vacation, 'start_date') and hasattr(vacation, 'end_date'):
+                    start = vacation.start_date
+                    end = vacation.end_date + timedelta(days=1)
+                else:
+                    continue
+                
                 events.append({
                     'id': vacation.id,
                     'title': f"{vacation.employee.name} ({vacation.type})",
-                    'start': vacation.start_date.isoformat(),
-                    'end': (vacation.end_date + timedelta(days=1)).isoformat(),
+                    'start': start.isoformat(),
+                    'end': end.isoformat(),
                     'color': color,
                     'crew': vacation.employee.crew,
                     'employee_id': vacation.employee_id,
@@ -569,6 +806,7 @@ def api_vacation_calendar():
         
     except Exception as e:
         current_app.logger.error(f"Error in api_vacation_calendar: {e}")
+        db.session.rollback()
         return jsonify({'error': 'Failed to load calendar data'}), 500
 
 @supervisor_bp.route('/supervisor/employee-management')
@@ -577,6 +815,9 @@ def api_vacation_calendar():
 def employee_management():
     """Employee management page"""
     try:
+        # Clear any failed transactions
+        db.session.rollback()
+        
         employees = Employee.query.order_by(Employee.crew, Employee.name).all()
         positions = Position.query.order_by(Position.name).all()
         
@@ -596,6 +837,7 @@ def employee_management():
     
     except Exception as e:
         current_app.logger.error(f"Error in employee_management: {e}")
+        db.session.rollback()
         flash('Error loading employee management.', 'danger')
         return redirect(url_for('supervisor.dashboard'))
 
@@ -605,6 +847,9 @@ def employee_management():
 def crew_management():
     """Crew management interface"""
     try:
+        # Clear any failed transactions
+        db.session.rollback()
+        
         # Get all employees grouped by crew
         crews = {}
         for crew_name in ['A', 'B', 'C', 'D', 'Unassigned']:
@@ -643,6 +888,7 @@ def crew_management():
     
     except Exception as e:
         current_app.logger.error(f"Error in crew_management: {e}")
+        db.session.rollback()
         flash('Error loading crew management.', 'danger')
         return redirect(url_for('supervisor.dashboard'))
 
@@ -677,6 +923,9 @@ def update_crew():
 def download_employee_template():
     """Download employee upload template"""
     try:
+        # Clear any failed transactions
+        db.session.rollback()
+        
         from utils.excel_templates_generator import generate_employee_template
         
         filepath = generate_employee_template()
@@ -694,6 +943,9 @@ def download_employee_template():
 def download_current_employees():
     """Export current employee list"""
     try:
+        # Clear any failed transactions
+        db.session.rollback()
+        
         employees = Employee.query.filter_by(is_supervisor=False).all()
         
         # Create DataFrame
@@ -706,13 +958,16 @@ def download_current_employees():
                 'Email': emp.email,
                 'Crew': emp.crew or '',
                 'Position': emp.position.name if emp.position else '',
-                'Department': emp.position.department if emp.position else ''
+                'Department': getattr(emp.position, 'department', '') if emp.position else ''
             })
         
         df = pd.DataFrame(data)
         
         # Save to Excel
-        filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], 
+        upload_folder = current_app.config.get('UPLOAD_FOLDER', 'upload_files')
+        os.makedirs(upload_folder, exist_ok=True)
+        
+        filepath = os.path.join(upload_folder, 
                                f'employees_export_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx')
         df.to_excel(filepath, index=False)
         
@@ -720,6 +975,7 @@ def download_current_employees():
         
     except Exception as e:
         current_app.logger.error(f"Error exporting employees: {e}")
+        db.session.rollback()
         flash('Error exporting employee data.', 'danger')
         return redirect(url_for('supervisor.employee_management'))
 
@@ -730,20 +986,53 @@ def download_current_employees():
 def api_dashboard_stats():
     """API endpoint for real-time dashboard statistics"""
     try:
+        # Clear any failed transactions
+        db.session.rollback()
+        
         stats = {
-            'pending_time_off': TimeOffRequest.query.filter_by(status='pending').count(),
-            'pending_swaps': ShiftSwapRequest.query.filter_by(status='pending').count(),
+            'pending_time_off': 0,
+            'pending_swaps': 0,
             'coverage_gaps': 0,
-            'total_employees': Employee.query.filter_by(is_supervisor=False).count(),
+            'total_employees': 0,
             'employees_on_leave': 0,
             'last_updated': datetime.now().strftime('%H:%M:%S')
         }
+        
+        # Get basic counts with error handling
+        try:
+            stats['pending_time_off'] = TimeOffRequest.query.filter_by(status='pending').count()
+        except:
+            pass
+            
+        try:
+            # Check if shift_swap_request has status column
+            inspector = inspect(db.engine)
+            if 'shift_swap_request' in inspector.get_table_names():
+                columns = [col['name'] for col in inspector.get_columns('shift_swap_request')]
+                if 'status' in columns:
+                    stats['pending_swaps'] = ShiftSwapRequest.query.filter_by(status='pending').count()
+        except:
+            pass
+            
+        try:
+            stats['total_employees'] = Employee.query.filter_by(is_supervisor=False).count()
+        except:
+            pass
         
         # Calculate coverage gaps
         try:
             today = date.today()
             scheduled = Schedule.query.filter_by(date=today).count()
-            required = db.session.query(func.sum(Position.min_coverage)).scalar() or 0
+            
+            # Check if Position has min_coverage
+            inspector = inspect(db.engine)
+            position_columns = [col['name'] for col in inspector.get_columns('position')]
+            
+            if 'min_coverage' in position_columns:
+                required = db.session.query(func.sum(Position.min_coverage)).scalar() or 0
+            else:
+                required = 20  # Default
+                
             stats['coverage_gaps'] = max(0, required - scheduled)
         except:
             pass
