@@ -10,7 +10,7 @@ from flask_migrate import Migrate
 from models import db, Employee
 import os
 import logging
-from datetime import datetime
+from datetime import datetime, date, timedelta
 from sqlalchemy import text, inspect
 from sqlalchemy.pool import NullPool
 from sqlalchemy.exc import OperationalError
@@ -73,32 +73,55 @@ def load_user(user_id):
         return None
 
 # Import and register blueprints
-from blueprints.auth import auth_bp
-from blueprints.main import main_bp
-from blueprints.supervisor import supervisor_bp
-from blueprints.employee import employee_bp
-from blueprints.employee_import import employee_import_bp
+try:
+    from blueprints.auth import auth_bp
+    app.register_blueprint(auth_bp)
+    logger.info("✅ Auth blueprint loaded")
+except ImportError as e:
+    logger.error(f"❌ Could not import auth blueprint: {e}")
 
-app.register_blueprint(auth_bp)
-app.register_blueprint(main_bp)
-app.register_blueprint(supervisor_bp)
-app.register_blueprint(employee_bp)
-app.register_blueprint(employee_import_bp)
+try:
+    from blueprints.main import main_bp
+    app.register_blueprint(main_bp)
+    logger.info("✅ Main blueprint loaded")
+except ImportError as e:
+    logger.error(f"❌ Could not import main blueprint: {e}")
 
-logger.info("All blueprints registered successfully")
+try:
+    from blueprints.supervisor import supervisor_bp
+    app.register_blueprint(supervisor_bp)
+    logger.info("✅ Supervisor blueprint loaded")
+except ImportError as e:
+    logger.error(f"❌ Could not import supervisor blueprint: {e}")
+
+try:
+    from blueprints.employee import employee_bp
+    app.register_blueprint(employee_bp)
+    logger.info("✅ Employee blueprint loaded")
+except ImportError as e:
+    logger.error(f"❌ Could not import employee blueprint: {e}")
+
+try:
+    from blueprints.employee_import import employee_import_bp
+    app.register_blueprint(employee_import_bp)
+    logger.info("✅ Employee import blueprint loaded")
+except ImportError as e:
+    logger.error(f"❌ Could not import employee_import blueprint: {e}")
 
 # Routes
 @app.route('/')
 def home():
+    """Root route - redirect based on authentication"""
     if current_user.is_authenticated:
         if current_user.is_supervisor:
             return redirect(url_for('supervisor.dashboard'))
         else:
-            return redirect(url_for('employee.dashboard'))
-    return render_template('home.html')
+            return redirect(url_for('main.employee_dashboard'))
+    return redirect(url_for('auth.login'))
 
 @app.route('/health')
 def health_check():
+    """Health check endpoint"""
     try:
         with db.engine.connect() as conn:
             result = conn.execute(text('SELECT 1'))
@@ -110,6 +133,7 @@ def health_check():
 @app.route('/init-db')
 @login_required
 def init_db():
+    """Initialize database tables"""
     if not current_user.is_supervisor:
         flash('Only supervisors can initialize the database.', 'error')
         return redirect(url_for('home'))
@@ -126,18 +150,18 @@ def init_db():
 # Error handlers
 @app.errorhandler(404)
 def not_found_error(error):
-    return render_template('errors/404.html'), 404
+    return render_template('404.html'), 404
 
 @app.errorhandler(500)
 def internal_error(error):
     db.session.rollback()
-    return render_template('errors/500.html'), 500
+    return render_template('500.html'), 500
 
 @app.errorhandler(OperationalError)
 def handle_db_error(error):
     logger.error(f"Database error: {error}")
     db.session.rollback()
-    return render_template('errors/500.html'), 500
+    return render_template('500.html'), 500
 
 # Context processors
 @app.context_processor
@@ -145,7 +169,12 @@ def inject_user_permissions():
     return dict(
         is_supervisor=lambda: current_user.is_authenticated and current_user.is_supervisor,
         today=datetime.today(),
-        now=datetime.now()
+        now=datetime.now(),
+        date=date,
+        timedelta=timedelta,
+        str=str,
+        len=len,
+        url_for=url_for
     )
 
 # Initialize database on startup
