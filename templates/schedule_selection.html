@@ -1,200 +1,423 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Schedule Management</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
-    <style>
-        .action-card {
-            transition: transform 0.2s;
-            height: 100%;
-        }
-        .action-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-        }
-        .icon-large {
-            font-size: 3rem;
-            margin-bottom: 1rem;
-        }
-        .stats-card {
-            background-color: #f8f9fa;
-            border-left: 4px solid #0d6efd;
-        }
-    </style>
-</head>
-<body>
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
-        <div class="container-fluid">
-            <a class="navbar-brand" href="/">
-                <i class="bi bi-calendar3"></i> Workforce Scheduler
-            </a>
-            <div class="navbar-nav ms-auto">
-                <a class="nav-link" href="/dashboard">
-                    <i class="bi bi-speedometer2"></i> Dashboard
-                </a>
-                <a class="nav-link" href="/logout">
-                    <i class="bi bi-box-arrow-right"></i> Logout
-                </a>
-            </div>
-        </div>
-    </nav>
+{% extends "base.html" %}
 
-    <div class="container">
-        <div class="row mb-4">
-            <div class="col-12">
-                <h1 class="h2 mb-3">
-                    <i class="bi bi-calendar-week"></i> Schedule Management
-                </h1>
-                <p class="text-muted">Create new schedules or view existing ones</p>
-            </div>
-        </div>
+{% block title %}Select Schedule Pattern - Workforce Scheduler{% endblock %}
 
-        <!-- Quick Stats -->
-        <div class="row mb-5">
-            <div class="col-md-3">
-                <div class="card stats-card">
-                    <div class="card-body">
-                        <h6 class="text-muted">Active Schedules</h6>
-                        <h3>{{ active_schedules|default(4) }}</h3>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card stats-card">
-                    <div class="card-body">
-                        <h6 class="text-muted">Total Employees</h6>
-                        <h3>{{ total_employees|default(40) }}</h3>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card stats-card">
-                    <div class="card-body">
-                        <h6 class="text-muted">Coverage Rate</h6>
-                        <h3>{{ coverage_rate|default(98) }}%</h3>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card stats-card">
-                    <div class="card-body">
-                        <h6 class="text-muted">Next Rotation</h6>
-                        <h3>{{ next_rotation|default("Sun") }}</h3>
-                    </div>
-                </div>
-            </div>
-        </div>
+{% block extra_head %}
+<style>
+    .pattern-selection {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 2rem;
+    }
+    
+    .pattern-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+        gap: 1.5rem;
+        margin-top: 2rem;
+    }
+    
+    .pattern-card {
+        background: white;
+        border: 2px solid #dee2e6;
+        border-radius: 10px;
+        padding: 1.5rem;
+        transition: all 0.3s;
+        cursor: pointer;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .pattern-card:hover {
+        border-color: #007bff;
+        transform: translateY(-5px);
+        box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+    }
+    
+    .pattern-card.recommended::before {
+        content: 'RECOMMENDED';
+        position: absolute;
+        top: 10px;
+        right: -30px;
+        background: #28a745;
+        color: white;
+        padding: 5px 40px;
+        font-size: 0.75rem;
+        font-weight: bold;
+        transform: rotate(45deg);
+    }
+    
+    .pattern-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: start;
+        margin-bottom: 1rem;
+    }
+    
+    .pattern-title {
+        font-size: 1.25rem;
+        font-weight: bold;
+        color: #333;
+        margin: 0;
+    }
+    
+    .pattern-badge {
+        display: inline-block;
+        padding: 0.25rem 0.75rem;
+        border-radius: 20px;
+        font-size: 0.75rem;
+        font-weight: 500;
+    }
+    
+    .hours-12 { background: #e3f2fd; color: #1565c0; }
+    .hours-8 { background: #fff3e0; color: #e65100; }
+    
+    .pattern-description {
+        color: #666;
+        font-size: 0.9rem;
+        margin-bottom: 1rem;
+    }
+    
+    .pattern-details {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.5rem;
+        margin-bottom: 1rem;
+        font-size: 0.875rem;
+    }
+    
+    .detail-item {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    
+    .detail-label {
+        color: #666;
+    }
+    
+    .pattern-pros-cons {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+        margin-top: 1rem;
+        padding-top: 1rem;
+        border-top: 1px solid #dee2e6;
+    }
+    
+    .pros, .cons {
+        font-size: 0.875rem;
+    }
+    
+    .pros h6 {
+        color: #28a745;
+        font-size: 0.875rem;
+        margin-bottom: 0.5rem;
+    }
+    
+    .cons h6 {
+        color: #dc3545;
+        font-size: 0.875rem;
+        margin-bottom: 0.5rem;
+    }
+    
+    .pros ul, .cons ul {
+        margin: 0;
+        padding-left: 1.25rem;
+    }
+    
+    .pattern-action {
+        margin-top: 1rem;
+        text-align: center;
+    }
+    
+    .comparison-toggle {
+        position: fixed;
+        bottom: 2rem;
+        right: 2rem;
+        z-index: 1000;
+    }
+    
+    .filter-section {
+        background: #f8f9fa;
+        border-radius: 10px;
+        padding: 1.5rem;
+        margin-bottom: 2rem;
+    }
+    
+    .filter-chips {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        margin-top: 1rem;
+    }
+    
+    .filter-chip {
+        padding: 0.5rem 1rem;
+        border: 1px solid #dee2e6;
+        border-radius: 20px;
+        background: white;
+        cursor: pointer;
+        transition: all 0.3s;
+    }
+    
+    .filter-chip:hover {
+        border-color: #007bff;
+    }
+    
+    .filter-chip.active {
+        background: #007bff;
+        color: white;
+        border-color: #007bff;
+    }
+    
+    .info-banner {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 2rem;
+        border-radius: 10px;
+        margin-bottom: 2rem;
+    }
+    
+    .info-banner h2 {
+        margin-bottom: 0.5rem;
+    }
+</style>
+{% endblock %}
 
-        <!-- Main Actions -->
-        <div class="row mb-5">
-            <div class="col-md-6 mb-4">
-                <div class="card action-card border-primary">
-                    <div class="card-body text-center p-5">
-                        <i class="bi bi-plus-circle text-primary icon-large"></i>
-                        <h4 class="card-title">Create New Schedule</h4>
-                        <p class="card-text mb-4">Use the schedule wizard to create a new rotation schedule for your crews</p>
-                        <a href="/schedule/create" class="btn btn-primary btn-lg">
-                            <i class="bi bi-magic"></i> Start Schedule Wizard
-                        </a>
-                    </div>
+{% block content %}
+<div class="pattern-selection">
+    <div class="info-banner">
+        <h2>Select a Schedule Pattern</h2>
+        <p class="mb-0">Choose the shift pattern that best fits your operational needs. Each pattern has unique characteristics for coverage, work-life balance, and overtime management.</p>
+    </div>
+
+    <!-- Filters -->
+    <div class="filter-section">
+        <h5>Quick Filters</h5>
+        <div class="filter-chips">
+            <div class="filter-chip active" onclick="filterPatterns('all')">All Patterns</div>
+            <div class="filter-chip" onclick="filterPatterns('12-hour')">12-Hour Shifts</div>
+            <div class="filter-chip" onclick="filterPatterns('8-hour')">8-Hour Shifts</div>
+            <div class="filter-chip" onclick="filterPatterns('fixed')">Fixed Shifts</div>
+            <div class="filter-chip" onclick="filterPatterns('rotating')">Rotating Shifts</div>
+            <div class="filter-chip" onclick="filterPatterns('popular')">Most Popular</div>
+        </div>
+    </div>
+
+    <!-- Pattern Grid -->
+    <div class="pattern-grid">
+        {% for pattern in patterns %}
+        <div class="pattern-card {% if pattern.id == 'pitman' %}recommended{% endif %}" 
+             data-pattern="{{ pattern.id }}"
+             data-shift-length="{{ pattern.shift_length }}"
+             data-variations="{{ pattern.variations|join(',') }}"
+             onclick="selectPattern('{{ pattern.id }}')">
+            
+            <div class="pattern-header">
+                <h3 class="pattern-title">{{ pattern.name }}</h3>
+                <span class="pattern-badge hours-{{ pattern.shift_length.split('-')[0] }}">
+                    {{ pattern.shift_length }}
+                </span>
+            </div>
+            
+            <p class="pattern-description">{{ pattern.description }}</p>
+            
+            <div class="pattern-details">
+                <div class="detail-item">
+                    <i class="bi bi-calendar3"></i>
+                    <span class="detail-label">Cycle:</span>
+                    <strong>{{ pattern.cycle_days }} days</strong>
+                </div>
+                <div class="detail-item">
+                    <i class="bi bi-arrow-repeat"></i>
+                    <span class="detail-label">Type:</span>
+                    <strong>
+                        {% if 'Fixed' in pattern.variations and 'Rotating' not in pattern.variations[0] %}
+                            Fixed
+                        {% elif 'Fixed' not in pattern.variations %}
+                            Rotating
+                        {% else %}
+                            Flexible
+                        {% endif %}
+                    </strong>
                 </div>
             </div>
             
-            <div class="col-md-6 mb-4">
-                <div class="card action-card">
-                    <div class="card-body text-center p-5">
-                        <i class="bi bi-calendar-check text-success icon-large"></i>
-                        <h4 class="card-title">View Existing Schedules</h4>
-                        <p class="card-text mb-4">Review and manage your current crew schedules</p>
-                        <a href="/schedule/view" class="btn btn-success btn-lg">
-                            <i class="bi bi-eye"></i> View Schedules
-                        </a>
-                    </div>
+            <div class="pattern-pros-cons">
+                <div class="pros">
+                    <h6><i class="bi bi-check-circle"></i> Pros</h6>
+                    <ul>
+                        {% for pro in pattern.pros[:2] %}
+                        <li>{{ pro }}</li>
+                        {% endfor %}
+                    </ul>
                 </div>
+                <div class="cons">
+                    <h6><i class="bi bi-x-circle"></i> Cons</h6>
+                    <ul>
+                        {% for con in pattern.cons[:2] %}
+                        <li>{{ con }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="pattern-action">
+                <button class="btn btn-primary btn-sm">
+                    Select This Pattern <i class="bi bi-arrow-right"></i>
+                </button>
             </div>
         </div>
+        {% endfor %}
+    </div>
 
-        <!-- Additional Options -->
-        <div class="row">
-            <div class="col-12">
-                <h3 class="h5 mb-3">Quick Links</h3>
-            </div>
-            <div class="col-md-4 mb-3">
-                <div class="card">
-                    <div class="card-body">
-                        <h6 class="card-title">
-                            <i class="bi bi-people text-info"></i> Crew Management
-                        </h6>
-                        <p class="card-text small">View and manage crew assignments</p>
-                        <a href="/crews" class="btn btn-sm btn-outline-info">View Crews</a>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4 mb-3">
-                <div class="card">
-                    <div class="card-body">
-                        <h6 class="card-title">
-                            <i class="bi bi-calendar-x text-warning"></i> Time Off Requests
-                        </h6>
-                        <p class="card-text small">Review pending time off requests</p>
-                        <a href="/supervisor/time-off-requests" class="btn btn-sm btn-outline-warning">Review Requests</a>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4 mb-3">
-                <div class="card">
-                    <div class="card-body">
-                        <h6 class="card-title">
-                            <i class="bi bi-graph-up text-danger"></i> Schedule Analytics
-                        </h6>
-                        <p class="card-text small">View overtime and coverage reports</p>
-                        <a href="/supervisor/overtime-distribution" class="btn btn-sm btn-outline-danger">View Analytics</a>
-                    </div>
-                </div>
-            </div>
-        </div>
+    <!-- Additional Patterns Coming Soon -->
+    <div class="text-center mt-5">
+        <h4>More Patterns Coming Soon</h4>
+        <p class="text-muted">Continental, Metropolitan, and custom patterns will be available in future updates.</p>
+    </div>
+</div>
 
-        <!-- Recent Schedules -->
-        {% if recent_schedules %}
-        <div class="row mt-5">
-            <div class="col-12">
-                <h3 class="h5 mb-3">Recent Schedules</h3>
+<!-- Pattern Comparison Modal -->
+<div class="modal fade" id="comparisonModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Compare Schedule Patterns</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
                 <div class="table-responsive">
-                    <table class="table table-hover">
+                    <table class="table table-bordered">
                         <thead>
                             <tr>
-                                <th>Schedule Name</th>
                                 <th>Pattern</th>
-                                <th>Start Date</th>
-                                <th>Crews</th>
-                                <th>Actions</th>
+                                <th>Shift Length</th>
+                                <th>Cycle Days</th>
+                                <th>Avg Hours/Week</th>
+                                <th>Weekends Off</th>
+                                <th>Best For</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {% for schedule in recent_schedules %}
                             <tr>
-                                <td>{{ schedule.name }}</td>
-                                <td>{{ schedule.pattern }}</td>
-                                <td>{{ schedule.start_date.strftime('%b %d, %Y') }}</td>
-                                <td>{{ schedule.crews|join(', ') }}</td>
-                                <td>
-                                    <a href="/schedule/view?id={{ schedule.id }}" class="btn btn-sm btn-outline-primary">
-                                        <i class="bi bi-eye"></i> View
-                                    </a>
-                                </td>
+                                <td><strong>Pitman (2-2-3)</strong></td>
+                                <td>12 hours</td>
+                                <td>14 days</td>
+                                <td>42 hours</td>
+                                <td>Every other</td>
+                                <td>Most operations</td>
                             </tr>
-                            {% endfor %}
+                            <tr>
+                                <td><strong>DuPont</strong></td>
+                                <td>12 hours</td>
+                                <td>28 days</td>
+                                <td>42 hours</td>
+                                <td>Varies</td>
+                                <td>Long breaks needed</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Southern Swing</strong></td>
+                                <td>8 hours</td>
+                                <td>28 days</td>
+                                <td>40 hours</td>
+                                <td>1 per month</td>
+                                <td>3-shift operations</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Fixed Teams</strong></td>
+                                <td>12 hours</td>
+                                <td>7 days</td>
+                                <td>36-48 hours</td>
+                                <td>All or none</td>
+                                <td>Lifestyle preference</td>
+                            </tr>
+                            <tr>
+                                <td><strong>4-on-4-off</strong></td>
+                                <td>12 hours</td>
+                                <td>8 days</td>
+                                <td>42 hours</td>
+                                <td>Varies</td>
+                                <td>Simple pattern</td>
+                            </tr>
+                            <tr>
+                                <td><strong>5 & 2</strong></td>
+                                <td>12 hours</td>
+                                <td>14 days</td>
+                                <td>42 hours</td>
+                                <td>Mixed</td>
+                                <td>Coverage balance</td>
+                            </tr>
                         </tbody>
                     </table>
                 </div>
             </div>
         </div>
-        {% endif %}
     </div>
+</div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-</body>
-</html>
+<!-- Comparison Toggle Button -->
+<button class="btn btn-info comparison-toggle" onclick="showComparison()">
+    <i class="bi bi-table"></i> Compare All Patterns
+</button>
+
+<script>
+function selectPattern(patternId) {
+    window.location.href = `/schedule/wizard/${patternId}`;
+}
+
+function filterPatterns(filter) {
+    // Update active filter
+    document.querySelectorAll('.filter-chip').forEach(chip => {
+        chip.classList.remove('active');
+    });
+    event.target.classList.add('active');
+    
+    // Filter cards
+    const cards = document.querySelectorAll('.pattern-card');
+    
+    cards.forEach(card => {
+        let show = true;
+        
+        switch(filter) {
+            case '12-hour':
+                show = card.dataset.shiftLength.includes('12-hour');
+                break;
+            case '8-hour':
+                show = card.dataset.shiftLength.includes('8-hour');
+                break;
+            case 'fixed':
+                show = card.dataset.variations.toLowerCase().includes('fixed') && 
+                       !card.dataset.variations.toLowerCase().includes('rotating');
+                break;
+            case 'rotating':
+                show = !card.dataset.variations.toLowerCase().includes('fixed') ||
+                       card.dataset.variations.toLowerCase().includes('rotating');
+                break;
+            case 'popular':
+                show = ['pitman', 'dupont', 'four_on_four_off'].includes(card.dataset.pattern);
+                break;
+        }
+        
+        card.style.display = show ? 'block' : 'none';
+    });
+}
+
+function showComparison() {
+    const modal = new bootstrap.Modal(document.getElementById('comparisonModal'));
+    modal.show();
+}
+
+// Keyboard navigation
+document.addEventListener('keydown', function(e) {
+    if (e.key >= '1' && e.key <= '6') {
+        const index = parseInt(e.key) - 1;
+        const cards = document.querySelectorAll('.pattern-card');
+        if (cards[index]) {
+            cards[index].click();
+        }
+    }
+});
+</script>
+{% endblock %}
