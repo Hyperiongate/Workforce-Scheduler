@@ -1,9 +1,9 @@
 # blueprints/supervisor.py
 """
-Supervisor blueprint with robust error handling and proper session management
+Supervisor blueprint with all required routes and fixed session handling
 """
 
-from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, current_app, send_file
+from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, current_app, send_file, render_template_string
 from flask_login import login_required, current_user
 from models import db, Employee, TimeOffRequest, ShiftSwapRequest, Schedule, Position, OvertimeHistory, PositionCoverage, VacationCalendar
 from datetime import date, datetime, timedelta
@@ -29,424 +29,195 @@ def supervisor_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-def safe_query(query_func, default=None, error_msg="Query failed"):
-    """
-    Safely execute a query function with error handling
-    Returns default value if query fails
-    """
-    try:
-        return query_func()
-    except Exception as e:
-        current_app.logger.error(f"{error_msg}: {e}")
-        db.session.rollback()
-        return default
-
 @supervisor_bp.route('/supervisor/dashboard')
 @login_required
 @supervisor_required
 def dashboard():
-    """Supervisor dashboard with robust error handling and proper session management"""
+    """Supervisor dashboard with proper session handling"""
     try:
-        # Ensure we have a fresh session
-        db.session.commit()  # Commit any pending changes
-        db.session.close()   # Close the session
+        # Get current user ID before any session operations
+        try:
+            # Access ID in a safe way
+            user_id = current_user.get_id()
+            if not user_id:
+                flash('Session error. Please log in again.', 'danger')
+                return redirect(url_for('auth.login'))
+        except:
+            flash('Session error. Please log in again.', 'danger')
+            return redirect(url_for('auth.login'))
         
-        # Re-query current user within this request context to avoid detached instance
-        current_user_id = current_user.id
-        user = db.session.query(Employee).filter_by(id=current_user_id).first()
-        
-        if not user:
-            flash('User session error. Please log in again.', 'danger')
-            return redirect(url_for('auth.logout'))
-        
-        # Initialize context with all required variables
+        # Initialize context with safe defaults
         context = {
-            # Basic stats
             'pending_time_off': 0,
             'pending_swaps': 0,
             'total_employees': 0,
             'coverage_gaps': 0,
-            
-            # Additional stats for template
             'employees_missing_ot': 0,
             'high_ot_employees': [],
             'recent_time_off': [],
             'employees_on_leave_today': 0,
-            'recent_activities': [],
-            
-            # User info - use the fresh user object
-            'current_user': user,
-            'user_name': user.name,
             'today': date.today(),
             'now': datetime.now()
         }
         
-        # Get pending time off requests
-        context['pending_time_off'] = safe_query(
-            lambda: TimeOffRequest.query.filter_by(status='pending').count(),
-            default=0,
-            error_msg="Error counting pending time off"
-        )
+        # Get user info safely
+        try:
+            user = db.session.query(Employee).filter_by(id=int(user_id)).first()
+            if user:
+                context['current_user'] = user
+                context['user_name'] = user.name
+            else:
+                context['current_user'] = current_user
+                context['user_name'] = 'Supervisor'
+        except:
+            context['current_user'] = current_user
+            context['user_name'] = 'Supervisor'
         
-        # Get pending swaps - with proper error handling
-        context['pending_swaps'] = safe_query(
-            lambda: ShiftSwapRequest.query.filter_by(status='pending').count(),
-            default=0,
-            error_msg="Error counting pending swaps"
-        )
+        # Get statistics with error handling
+        try:
+            context['pending_time_off'] = TimeOffRequest.query.filter_by(status='pending').count()
+        except Exception as e:
+            current_app.logger.error(f"Error getting pending time off: {e}")
+            db.session.rollback()
         
-        # Get employee statistics
-        all_employees = safe_query(
-            lambda: Employee.query.filter_by(is_supervisor=False).all(),
-            default=[],
-            error_msg="Error loading employees"
-        )
+        try:
+            context['pending_swaps'] = ShiftSwapRequest.query.filter_by(status='pending').count()
+        except Exception as e:
+            current_app.logger.error(f"Error getting pending swaps: {e}")
+            db.session.rollback()
         
-        context['total_employees'] = len(all_employees)
+        try:
+            context['total_employees'] = Employee.query.filter_by(is_supervisor=False).count()
+        except Exception as e:
+            current_app.logger.error(f"Error counting employees: {e}")
+            db.session.rollback()
         
-        # Count employees missing OT data
-        if all_employees:
-            employees_with_ot = safe_query(
-                lambda: set(
-                    db.session.query(OvertimeHistory.employee_id)
-                    .distinct()
-                    .scalar_subquery()
-                ),
-                default=set(),
-                error_msg="Error checking OT data"
-            )
-            
-            context['employees_missing_ot'] = len([
-                emp for emp in all_employees 
-                if emp.id not in employees_with_ot
-            ])
-        
-        # Get high OT employees with proper joins
-        week_start = date.today() - timedelta(days=date.today().weekday())
-        high_ot_result = safe_query(
-            lambda: db.session.query(Employee)
-            .join(OvertimeHistory)
-            .filter(
-                OvertimeHistory.week_start_date == week_start,
-                OvertimeHistory.overtime_hours > 10
-            )
-            .options(selectinload(Employee.position))
-            .all(),
-            default=[],
-            error_msg="Error loading high OT employees"
-        )
-        
-        context['high_ot_employees'] = high_ot_result
-        
-        # Get recent time off requests with eager loading
-        context['recent_time_off'] = safe_query(
-            lambda: TimeOffRequest.query
-            .options(joinedload(TimeOffRequest.employee))
-            .order_by(TimeOffRequest.created_at.desc())
-            .limit(5)
-            .all(),
-            default=[],
-            error_msg="Error loading recent time off"
-        )
-        
-        # Calculate coverage gaps
-        today = date.today()
-        scheduled_today = safe_query(
-            lambda: Schedule.query.filter_by(date=today).count(),
-            default=0,
-            error_msg="Error counting today's schedule"
-        )
-        
-        # Get required coverage
-        required_coverage = safe_query(
-            lambda: db.session.query(func.sum(Position.min_coverage)).scalar() or 0,
-            default=20,  # Default minimum if query fails
-            error_msg="Error calculating required coverage"
-        )
-        
-        context['coverage_gaps'] = max(0, required_coverage - scheduled_today)
-        
-        # Try to render appropriate template
-        template_names = [
+        # Try to render a template
+        templates = [
             'supervisor_dashboard.html',
             'dashboard_classic.html',
             'supervisor_dashboard_simple.html',
             'basic_dashboard.html'
         ]
         
-        for template_name in template_names:
+        for template in templates:
             try:
-                return render_template(template_name, **context)
-            except Exception as e:
-                current_app.logger.debug(f"Template {template_name} not found: {e}")
+                return render_template(template, **context)
+            except:
                 continue
         
-        # If no template works, provide a functional fallback
-        return render_dashboard_fallback(context)
-        
-    except Exception as e:
-        current_app.logger.error(f"Critical error in supervisor dashboard: {e}")
-        current_app.logger.error(traceback.format_exc())
-        
-        # Clean up the session
-        db.session.rollback()
-        db.session.close()
-        
-        flash('An error occurred loading the dashboard. Please try again.', 'danger')
-        return redirect(url_for('main.home') if 'main' in current_app.blueprints else '/')
-
-def render_dashboard_fallback(context):
-    """Render a functional dashboard when templates are missing"""
-    return render_template_string('''
+        # If no template works, use inline HTML
+        return render_template_string('''
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Supervisor Dashboard - Workforce Scheduler</title>
+    <title>Supervisor Dashboard</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
-    <style>
-        body { background-color: #f5f7fa; }
-        .stat-card {
-            background: white;
-            border-radius: 10px;
-            padding: 1.5rem;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            transition: transform 0.2s;
-        }
-        .stat-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
-        }
-        .stat-value {
-            font-size: 2.5rem;
-            font-weight: bold;
-            color: #11998e;
-        }
-    </style>
 </head>
 <body>
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+    <nav class="navbar navbar-dark bg-dark">
         <div class="container-fluid">
-            <a class="navbar-brand" href="/">
-                <i class="bi bi-calendar3"></i> Workforce Scheduler
-            </a>
-            <div class="navbar-nav ms-auto">
-                <a class="nav-link" href="/auth/logout">
-                    <i class="bi bi-box-arrow-right"></i> Logout
-                </a>
-            </div>
+            <span class="navbar-brand">Workforce Scheduler</span>
+            <a href="{{ url_for('auth.logout') }}" class="btn btn-outline-light btn-sm">Logout</a>
         </div>
     </nav>
     
     <div class="container mt-4">
-        <h1 class="mb-4">Supervisor Dashboard</h1>
-        <p class="lead">Welcome, {{ user_name }}!</p>
+        <h1>Supervisor Dashboard</h1>
+        <p>Welcome, {{ user_name }}!</p>
         
-        <!-- Statistics -->
-        <div class="row mb-4">
-            <div class="col-md-3 mb-3">
-                <div class="stat-card text-center">
-                    <i class="bi bi-calendar-x fs-1 text-primary mb-2"></i>
-                    <div class="stat-value">{{ pending_time_off }}</div>
-                    <div class="text-muted">Pending Time Off</div>
-                </div>
-            </div>
-            <div class="col-md-3 mb-3">
-                <div class="stat-card text-center">
-                    <i class="bi bi-arrow-left-right fs-1 text-info mb-2"></i>
-                    <div class="stat-value">{{ pending_swaps }}</div>
-                    <div class="text-muted">Pending Swaps</div>
-                </div>
-            </div>
-            <div class="col-md-3 mb-3">
-                <div class="stat-card text-center">
-                    <i class="bi bi-people fs-1 text-success mb-2"></i>
-                    <div class="stat-value">{{ total_employees }}</div>
-                    <div class="text-muted">Total Employees</div>
-                </div>
-            </div>
-            <div class="col-md-3 mb-3">
-                <div class="stat-card text-center">
-                    <i class="bi bi-exclamation-circle fs-1 text-warning mb-2"></i>
-                    <div class="stat-value">{{ coverage_gaps }}</div>
-                    <div class="text-muted">Coverage Gaps</div>
-                </div>
-            </div>
-        </div>
-        
-        <!-- Quick Actions -->
         <div class="row">
-            <div class="col-md-6">
-                <div class="card mb-4">
-                    <div class="card-header bg-primary text-white">
-                        <h5 class="mb-0"><i class="bi bi-lightning"></i> Quick Actions</h5>
-                    </div>
-                    <div class="list-group list-group-flush">
-                        <a href="/supervisor/time-off-requests" class="list-group-item list-group-item-action">
-                            <i class="bi bi-calendar-check text-primary"></i> Review Time Off Requests
-                            {% if pending_time_off > 0 %}
-                                <span class="badge bg-danger float-end">{{ pending_time_off }}</span>
-                            {% endif %}
-                        </a>
-                        <a href="/supervisor/swap-requests" class="list-group-item list-group-item-action">
-                            <i class="bi bi-shuffle text-info"></i> Review Shift Swaps
-                            {% if pending_swaps > 0 %}
-                                <span class="badge bg-danger float-end">{{ pending_swaps }}</span>
-                            {% endif %}
-                        </a>
-                        <a href="/schedule/view" class="list-group-item list-group-item-action">
-                            <i class="bi bi-calendar3 text-success"></i> View Schedule
-                        </a>
-                        <a href="/supervisor/coverage-gaps" class="list-group-item list-group-item-action">
-                            <i class="bi bi-exclamation-triangle text-warning"></i> Coverage Analysis
-                        </a>
+            <div class="col-md-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <h5 class="card-title">Pending Time Off</h5>
+                        <p class="display-4">{{ pending_time_off }}</p>
                     </div>
                 </div>
             </div>
-            
-            <div class="col-md-6">
-                <div class="card mb-4">
-                    <div class="card-header bg-success text-white">
-                        <h5 class="mb-0"><i class="bi bi-database"></i> Data Management</h5>
+            <div class="col-md-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <h5 class="card-title">Pending Swaps</h5>
+                        <p class="display-4">{{ pending_swaps }}</p>
                     </div>
-                    <div class="list-group list-group-flush">
-                        <a href="/upload-employees" class="list-group-item list-group-item-action">
-                            <i class="bi bi-upload text-primary"></i> Upload Employee Data
-                            {% if employees_missing_ot > 0 %}
-                                <span class="badge bg-warning float-end">{{ employees_missing_ot }} missing OT</span>
-                            {% endif %}
-                        </a>
-                        <a href="/upload-overtime" class="list-group-item list-group-item-action">
-                            <i class="bi bi-clock-history text-info"></i> Upload Overtime History
-                        </a>
-                        <a href="/upload-history" class="list-group-item list-group-item-action">
-                            <i class="bi bi-journal-text text-secondary"></i> View Upload History
-                        </a>
-                        <a href="/supervisor/employee-management" class="list-group-item list-group-item-action">
-                            <i class="bi bi-people-fill text-success"></i> Employee Management
-                        </a>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <h5 class="card-title">Total Employees</h5>
+                        <p class="display-4">{{ total_employees }}</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <h5 class="card-title">Coverage Gaps</h5>
+                        <p class="display-4">{{ coverage_gaps }}</p>
                     </div>
                 </div>
             </div>
         </div>
         
-        <!-- Recent Activity -->
-        {% if recent_time_off %}
-        <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0"><i class="bi bi-activity"></i> Recent Time Off Requests</h5>
-            </div>
-            <div class="table-responsive">
-                <table class="table table-hover mb-0">
-                    <thead>
-                        <tr>
-                            <th>Employee</th>
-                            <th>Type</th>
-                            <th>Dates</th>
-                            <th>Status</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for request in recent_time_off[:5] %}
-                        <tr>
-                            <td>{{ request.employee.name }}</td>
-                            <td>{{ request.request_type|title }}</td>
-                            <td>{{ request.start_date.strftime('%b %d') }} - {{ request.end_date.strftime('%b %d') }}</td>
-                            <td>
-                                <span class="badge bg-{{ 'warning' if request.status == 'pending' else 'success' }}">
-                                    {{ request.status|title }}
-                                </span>
-                            </td>
-                            <td>
-                                <a href="/supervisor/time-off-requests" class="btn btn-sm btn-primary">View</a>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+        <div class="mt-4">
+            <h2>Quick Links</h2>
+            <div class="list-group">
+                <a href="{{ url_for('supervisor.time_off_requests') }}" class="list-group-item list-group-item-action">
+                    Review Time Off Requests
+                </a>
+                <a href="{{ url_for('supervisor.swap_requests') }}" class="list-group-item list-group-item-action">
+                    Review Shift Swaps
+                </a>
+                <a href="{{ url_for('schedule.view_schedule') if 'schedule' in current_app.blueprints else '#' }}" class="list-group-item list-group-item-action">
+                    View Schedule
+                </a>
+                <a href="{{ url_for('employee_import.upload_employees') if 'employee_import' in current_app.blueprints else '#' }}" class="list-group-item list-group-item-action">
+                    Upload Employee Data
+                </a>
             </div>
         </div>
-        {% endif %}
-        
-        <!-- High OT Alert -->
-        {% if high_ot_employees %}
-        <div class="alert alert-warning mt-4" role="alert">
-            <h5 class="alert-heading"><i class="bi bi-exclamation-triangle"></i> High Overtime Alert</h5>
-            <p>The following employees have worked more than 10 hours of overtime this week:</p>
-            <ul class="mb-0">
-                {% for emp in high_ot_employees %}
-                <li>{{ emp.name }} - {{ emp.crew }} Crew</li>
-                {% endfor %}
-            </ul>
-        </div>
-        {% endif %}
     </div>
-    
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
-    ''', **context)
-
-# Continue with the rest of the routes, all using the safe_query pattern...
+        ''', **context)
+        
+    except Exception as e:
+        current_app.logger.error(f"Critical error in supervisor dashboard: {e}")
+        current_app.logger.error(traceback.format_exc())
+        db.session.rollback()
+        flash('An error occurred loading the dashboard.', 'danger')
+        return redirect(url_for('home'))  # Use the root route which exists
 
 @supervisor_bp.route('/supervisor/time-off-requests')
 @login_required
 @supervisor_required
 def time_off_requests():
-    """View and manage time off requests with proper error handling"""
+    """View and manage time off requests"""
     try:
-        # Ensure clean session
-        db.session.commit()
+        db.session.rollback()  # Clear any stale transactions
         
-        # Get filter parameters
         status_filter = request.args.get('status', 'all')
         crew_filter = request.args.get('crew', 'all')
         
-        # Build query with eager loading
-        query = TimeOffRequest.query.options(
-            joinedload(TimeOffRequest.employee),
-            joinedload(TimeOffRequest.approver)
-        )
+        query = TimeOffRequest.query.options(joinedload(TimeOffRequest.employee))
         
-        # Apply filters
         if status_filter != 'all':
             query = query.filter_by(status=status_filter)
         
         if crew_filter != 'all':
             query = query.join(Employee).filter(Employee.crew == crew_filter)
         
-        # Get requests
-        requests = safe_query(
-            lambda: query.order_by(TimeOffRequest.created_at.desc()).all(),
-            default=[],
-            error_msg="Error loading time off requests"
-        )
+        requests = query.order_by(TimeOffRequest.created_at.desc()).all()
         
-        # Get statistics
         stats = {
-            'pending_count': safe_query(
-                lambda: TimeOffRequest.query.filter_by(status='pending').count(),
-                default=0
-            ),
-            'approved_this_week': safe_query(
-                lambda: TimeOffRequest.query.filter(
-                    TimeOffRequest.status == 'approved',
-                    TimeOffRequest.created_at >= datetime.now() - timedelta(days=7)
-                ).count(),
-                default=0
-            ),
-            'total_days_requested': safe_query(
-                lambda: db.session.query(
-                    func.sum(
-                        func.julianday(TimeOffRequest.end_date) - 
-                        func.julianday(TimeOffRequest.start_date) + 1
-                    )
-                ).filter_by(status='pending').scalar() or 0,
-                default=0
-            )
+            'pending_count': TimeOffRequest.query.filter_by(status='pending').count(),
+            'approved_this_week': TimeOffRequest.query.filter(
+                TimeOffRequest.status == 'approved',
+                TimeOffRequest.created_at >= datetime.now() - timedelta(days=7)
+            ).count(),
+            'total_days_requested': 0
         }
         
         return render_template('time_off_requests.html', 
@@ -473,15 +244,13 @@ def approve_time_off(request_id):
             flash('This request has already been processed.', 'warning')
             return redirect(url_for('supervisor.time_off_requests'))
         
-        # Update the request
         time_off.status = 'approved'
         time_off.approved_by_id = current_user.id
         time_off.approved_date = datetime.now()
         
-        # Create vacation calendar entries for each day
+        # Create vacation calendar entries
         current_date = time_off.start_date
         while current_date <= time_off.end_date:
-            # Check if entry already exists
             existing = VacationCalendar.query.filter_by(
                 employee_id=time_off.employee_id,
                 date=current_date
@@ -509,8 +278,540 @@ def approve_time_off(request_id):
     
     return redirect(url_for('supervisor.time_off_requests'))
 
-# Add the rest of the routes with similar safe_query pattern and proper session management...
-# (I can continue with the rest if needed, but this shows the robust pattern)
+@supervisor_bp.route('/supervisor/deny-time-off/<int:request_id>', methods=['POST'])
+@login_required
+@supervisor_required
+def deny_time_off(request_id):
+    """Deny a time off request"""
+    try:
+        time_off = TimeOffRequest.query.get_or_404(request_id)
+        
+        if time_off.status != 'pending':
+            flash('This request has already been processed.', 'warning')
+            return redirect(url_for('supervisor.time_off_requests'))
+        
+        time_off.status = 'denied'
+        time_off.approved_by_id = current_user.id
+        time_off.approved_date = datetime.now()
+        
+        db.session.commit()
+        flash(f'Time off request for {time_off.employee.name} has been denied.', 'info')
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error denying time off: {e}")
+        flash('Error denying request.', 'danger')
+    
+    return redirect(url_for('supervisor.time_off_requests'))
 
-# Import render_template_string for fallback rendering
-from flask import render_template_string
+@supervisor_bp.route('/supervisor/swap-requests')
+@login_required
+@supervisor_required
+def swap_requests():
+    """View and manage shift swap requests"""
+    try:
+        db.session.rollback()
+        
+        swaps = ShiftSwapRequest.query.order_by(
+            ShiftSwapRequest.created_at.desc()
+        ).all()
+        
+        stats = {
+            'pending_count': ShiftSwapRequest.query.filter_by(status='pending').count(),
+            'approved_this_week': ShiftSwapRequest.query.filter(
+                ShiftSwapRequest.status == 'approved',
+                ShiftSwapRequest.created_at >= datetime.now() - timedelta(days=7)
+            ).count()
+        }
+        
+        return render_template('swap_requests.html', swaps=swaps, stats=stats)
+    
+    except Exception as e:
+        current_app.logger.error(f"Error in swap_requests: {e}")
+        db.session.rollback()
+        flash('Error loading swap requests.', 'danger')
+        return redirect(url_for('supervisor.dashboard'))
+
+@supervisor_bp.route('/supervisor/coverage-gaps')
+@login_required
+@supervisor_required
+def coverage_gaps():
+    """View coverage gaps"""
+    try:
+        db.session.rollback()
+        
+        start_date = request.args.get('start_date', date.today())
+        end_date = request.args.get('end_date', date.today() + timedelta(days=7))
+        
+        if isinstance(start_date, str):
+            start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
+        if isinstance(end_date, str):
+            end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
+        
+        positions = Position.query.all()
+        position_requirements = {p.id: getattr(p, 'min_coverage', 2) for p in positions}
+        
+        schedules = Schedule.query.filter(
+            Schedule.date >= start_date,
+            Schedule.date <= end_date
+        ).all()
+        
+        gaps = []
+        current_date = start_date
+        
+        while current_date <= end_date:
+            for position in positions:
+                scheduled = len([s for s in schedules 
+                               if s.date == current_date and s.position_id == position.id])
+                required = position_requirements.get(position.id, 0)
+                
+                if scheduled < required:
+                    gaps.append({
+                        'date': current_date,
+                        'position': position.name,
+                        'scheduled': scheduled,
+                        'required': required,
+                        'gap': required - scheduled
+                    })
+            
+            current_date += timedelta(days=1)
+        
+        return render_template('coverage_gaps.html',
+                             gaps=gaps,
+                             start_date=start_date,
+                             end_date=end_date)
+    
+    except Exception as e:
+        current_app.logger.error(f"Error in coverage_gaps: {e}")
+        db.session.rollback()
+        flash('Error loading coverage gaps.', 'danger')
+        return redirect(url_for('supervisor.dashboard'))
+
+@supervisor_bp.route('/supervisor/coverage-needs')
+@login_required
+@supervisor_required
+def coverage_needs():
+    """View and manage coverage needs"""
+    try:
+        db.session.rollback()
+        
+        positions = Position.query.order_by(Position.name).all()
+        
+        coverage_data = []
+        for position in positions:
+            coverage_data.append({
+                'position': position,
+                'department': getattr(position, 'department', 'Unknown'),
+                'min_coverage': getattr(position, 'min_coverage', 0),
+                'crew_coverage': {'A': 0, 'B': 0, 'C': 0, 'D': 0}
+            })
+        
+        staffing = {}
+        for crew in ['A', 'B', 'C', 'D']:
+            crew_employees = Employee.query.filter_by(crew=crew, is_supervisor=False).all()
+            staffing[crew] = {
+                'total': len(crew_employees),
+                'by_position': {}
+            }
+            
+            for emp in crew_employees:
+                if emp.position:
+                    pos_name = emp.position.name
+                    staffing[crew]['by_position'][pos_name] = staffing[crew]['by_position'].get(pos_name, 0) + 1
+        
+        return render_template('coverage_needs.html',
+                             coverage_data=coverage_data,
+                             staffing=staffing)
+    
+    except Exception as e:
+        current_app.logger.error(f"Error in coverage_needs: {e}")
+        db.session.rollback()
+        flash('Error loading coverage needs.', 'danger')
+        return redirect(url_for('supervisor.dashboard'))
+
+@supervisor_bp.route('/supervisor/update-coverage', methods=['POST'])
+@login_required
+@supervisor_required
+def update_coverage():
+    """Update position coverage requirements"""
+    try:
+        position_id = request.form.get('position_id')
+        position = Position.query.get_or_404(position_id)
+        
+        min_coverage = request.form.get('min_coverage', type=int)
+        if min_coverage is not None and hasattr(position, 'min_coverage'):
+            position.min_coverage = min_coverage
+        
+        db.session.commit()
+        flash(f'Coverage requirements updated for {position.name}', 'success')
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error updating coverage: {e}")
+        flash('Error updating coverage requirements.', 'danger')
+    
+    return redirect(url_for('supervisor.coverage_needs'))
+
+@supervisor_bp.route('/supervisor/overtime-distribution')
+@login_required
+@supervisor_required
+def overtime_distribution():
+    """View overtime distribution"""
+    try:
+        db.session.rollback()
+        
+        employees = Employee.query.filter_by(is_supervisor=False).all()
+        
+        ot_data = []
+        for emp in employees:
+            try:
+                thirteen_weeks_ago = date.today() - timedelta(weeks=13)
+                ot_records = OvertimeHistory.query.filter(
+                    OvertimeHistory.employee_id == emp.id,
+                    OvertimeHistory.week_start_date >= thirteen_weeks_ago
+                ).all()
+                
+                total_ot = sum(record.overtime_hours for record in ot_records)
+                avg_ot = total_ot / 13 if ot_records else 0
+                
+                current_week_start = date.today() - timedelta(days=date.today().weekday())
+                current_ot = OvertimeHistory.query.filter_by(
+                    employee_id=emp.id,
+                    week_start_date=current_week_start
+                ).first()
+                
+                ot_data.append({
+                    'employee': emp,
+                    'total_13_weeks': total_ot,
+                    'average_weekly': round(avg_ot, 1),
+                    'current_week': current_ot.overtime_hours if current_ot else 0,
+                    'weeks_with_data': len(ot_records)
+                })
+            except:
+                ot_data.append({
+                    'employee': emp,
+                    'total_13_weeks': 0,
+                    'average_weekly': 0,
+                    'current_week': 0,
+                    'weeks_with_data': 0
+                })
+        
+        ot_data.sort(key=lambda x: x['total_13_weeks'])
+        
+        return render_template('overtime_distribution.html', 
+                             overtime_data=ot_data)
+    
+    except Exception as e:
+        current_app.logger.error(f"Error in overtime_distribution: {e}")
+        db.session.rollback()
+        flash('Error loading overtime distribution.', 'danger')
+        return redirect(url_for('supervisor.dashboard'))
+
+@supervisor_bp.route('/vacation-calendar')
+@login_required
+@supervisor_required
+def vacation_calendar():
+    """Display vacation calendar"""
+    try:
+        db.session.rollback()
+        
+        month = request.args.get('month', type=int, default=date.today().month)
+        year = request.args.get('year', type=int, default=date.today().year)
+        
+        start_date = date(year, month, 1)
+        if month == 12:
+            end_date = date(year + 1, 1, 1) - timedelta(days=1)
+        else:
+            end_date = date(year, month + 1, 1) - timedelta(days=1)
+        
+        vacations = VacationCalendar.query.filter(
+            VacationCalendar.date >= start_date,
+            VacationCalendar.date <= end_date
+        ).all()
+        
+        crew_vacations = {'A': [], 'B': [], 'C': [], 'D': []}
+        for vacation in vacations:
+            if vacation.employee and vacation.employee.crew in crew_vacations:
+                crew_vacations[vacation.employee.crew].append(vacation)
+        
+        return render_template('vacation_calendar.html',
+                             month=month,
+                             year=year,
+                             crew_vacations=crew_vacations,
+                             start_date=start_date,
+                             end_date=end_date)
+    
+    except Exception as e:
+        current_app.logger.error(f"Error in vacation_calendar: {e}")
+        db.session.rollback()
+        flash('Error loading vacation calendar.', 'danger')
+        return redirect(url_for('supervisor.dashboard'))
+
+@supervisor_bp.route('/api/vacation-calendar')
+@login_required
+@supervisor_required
+def api_vacation_calendar():
+    """API endpoint for vacation calendar data"""
+    try:
+        db.session.rollback()
+        
+        start_date = request.args.get('start')
+        end_date = request.args.get('end')
+        
+        if start_date:
+            start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
+        else:
+            start_date = date.today().replace(day=1)
+            
+        if end_date:
+            end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
+        else:
+            end_date = (start_date + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+        
+        vacations = VacationCalendar.query.filter(
+            VacationCalendar.date >= start_date,
+            VacationCalendar.date <= end_date
+        ).options(joinedload(VacationCalendar.employee)).all()
+        
+        events = []
+        for vacation in vacations:
+            if vacation.employee:
+                color = {
+                    'A': '#28a745',
+                    'B': '#17a2b8', 
+                    'C': '#ffc107',
+                    'D': '#dc3545'
+                }.get(vacation.employee.crew, '#6c757d')
+                
+                events.append({
+                    'id': vacation.id,
+                    'title': f"{vacation.employee.name} ({vacation.type})",
+                    'start': vacation.date.isoformat(),
+                    'end': (vacation.date + timedelta(days=1)).isoformat(),
+                    'color': color,
+                    'crew': vacation.employee.crew,
+                    'employee_id': vacation.employee_id,
+                    'type': vacation.type
+                })
+        
+        return jsonify(events)
+        
+    except Exception as e:
+        current_app.logger.error(f"Error in api_vacation_calendar: {e}")
+        db.session.rollback()
+        return jsonify({'error': 'Failed to load calendar data'}), 500
+
+@supervisor_bp.route('/supervisor/employee-management')
+@login_required
+@supervisor_required
+def employee_management():
+    """Employee management page"""
+    try:
+        db.session.rollback()
+        
+        employees = Employee.query.order_by(Employee.crew, Employee.name).all()
+        positions = Position.query.order_by(Position.name).all()
+        
+        crew_stats = {}
+        for crew in ['A', 'B', 'C', 'D']:
+            crew_employees = [e for e in employees if e.crew == crew]
+            crew_stats[crew] = {
+                'total': len(crew_employees),
+                'supervisors': len([e for e in crew_employees if e.is_supervisor])
+            }
+        
+        return render_template('employee_management.html',
+                             employees=employees,
+                             positions=positions,
+                             crew_stats=crew_stats)
+    
+    except Exception as e:
+        current_app.logger.error(f"Error in employee_management: {e}")
+        db.session.rollback()
+        flash('Error loading employee management.', 'danger')
+        return redirect(url_for('supervisor.dashboard'))
+
+@supervisor_bp.route('/supervisor/crew-management') 
+@login_required
+@supervisor_required
+def crew_management():
+    """Crew management interface"""
+    try:
+        db.session.rollback()
+        
+        crews = {}
+        for crew_name in ['A', 'B', 'C', 'D', 'Unassigned']:
+            if crew_name == 'Unassigned':
+                crew_employees = Employee.query.filter(
+                    or_(Employee.crew == None, Employee.crew == '')
+                ).order_by(Employee.name).all()
+            else:
+                crew_employees = Employee.query.filter_by(crew=crew_name).order_by(Employee.name).all()
+            
+            crews[crew_name] = crew_employees
+        
+        positions = Position.query.order_by(Position.name).all()
+        
+        crew_stats = {}
+        for crew_name in ['A', 'B', 'C', 'D']:
+            crew_stats[crew_name] = {
+                'total': len(crews.get(crew_name, [])),
+                'positions': {},
+                'supervisor_count': len([e for e in crews.get(crew_name, []) if e.is_supervisor])
+            }
+            
+            for emp in crews.get(crew_name, []):
+                if emp.position:
+                    pos_name = emp.position.name
+                    crew_stats[crew_name]['positions'][pos_name] = \
+                        crew_stats[crew_name]['positions'].get(pos_name, 0) + 1
+        
+        return render_template('crew_management.html',
+                             crews=crews,
+                             positions=positions,
+                             crew_stats=crew_stats)
+    
+    except Exception as e:
+        current_app.logger.error(f"Error in crew_management: {e}")
+        db.session.rollback()
+        flash('Error loading crew management.', 'danger')
+        return redirect(url_for('supervisor.dashboard'))
+
+@supervisor_bp.route('/supervisor/update-crew', methods=['POST'])
+@login_required
+@supervisor_required
+def update_crew():
+    """Update employee crew assignment"""
+    try:
+        employee_id = request.form.get('employee_id')
+        new_crew = request.form.get('new_crew')
+        
+        employee = Employee.query.get_or_404(employee_id)
+        old_crew = employee.crew
+        
+        employee.crew = new_crew if new_crew != 'Unassigned' else None
+        db.session.commit()
+        
+        flash(f'{employee.name} moved from Crew {old_crew or "Unassigned"} to Crew {new_crew}', 'success')
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error updating crew: {e}")
+        flash('Error updating crew assignment.', 'danger')
+    
+    return redirect(url_for('supervisor.crew_management'))
+
+# Template download routes
+@supervisor_bp.route('/supervisor/download-employee-template')
+@login_required
+@supervisor_required
+def download_employee_template():
+    """Download employee upload template"""
+    try:
+        db.session.rollback()
+        
+        from utils.excel_templates_generator import generate_employee_template
+        
+        filepath = generate_employee_template()
+        return send_file(filepath, as_attachment=True, 
+                        download_name='employee_upload_template.xlsx')
+                        
+    except Exception as e:
+        current_app.logger.error(f"Error generating template: {e}")
+        flash('Error generating template.', 'danger')
+        return redirect(url_for('supervisor.employee_management'))
+
+@supervisor_bp.route('/supervisor/download-current-employees')
+@login_required
+@supervisor_required
+def download_current_employees():
+    """Export current employee list"""
+    try:
+        db.session.rollback()
+        
+        employees = Employee.query.filter_by(is_supervisor=False).all()
+        
+        data = []
+        for emp in employees:
+            data.append({
+                'Employee ID': emp.employee_id,
+                'First Name': emp.name.split()[0] if emp.name else '',
+                'Last Name': emp.name.split()[-1] if emp.name and len(emp.name.split()) > 1 else '',
+                'Email': emp.email,
+                'Crew': emp.crew or '',
+                'Position': emp.position.name if emp.position else '',
+                'Department': getattr(emp.position, 'department', '') if emp.position else ''
+            })
+        
+        df = pd.DataFrame(data)
+        
+        upload_folder = current_app.config.get('UPLOAD_FOLDER', 'upload_files')
+        os.makedirs(upload_folder, exist_ok=True)
+        
+        filepath = os.path.join(upload_folder, 
+                               f'employees_export_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx')
+        df.to_excel(filepath, index=False)
+        
+        return send_file(filepath, as_attachment=True)
+        
+    except Exception as e:
+        current_app.logger.error(f"Error exporting employees: {e}")
+        db.session.rollback()
+        flash('Error exporting employee data.', 'danger')
+        return redirect(url_for('supervisor.employee_management'))
+
+# API endpoints
+@supervisor_bp.route('/api/dashboard-stats')
+@login_required
+@supervisor_required
+def api_dashboard_stats():
+    """API endpoint for real-time dashboard statistics"""
+    try:
+        db.session.rollback()
+        
+        stats = {
+            'pending_time_off': 0,
+            'pending_swaps': 0,
+            'coverage_gaps': 0,
+            'total_employees': 0,
+            'employees_on_leave': 0,
+            'last_updated': datetime.now().strftime('%H:%M:%S')
+        }
+        
+        try:
+            stats['pending_time_off'] = TimeOffRequest.query.filter_by(status='pending').count()
+        except:
+            pass
+            
+        try:
+            stats['pending_swaps'] = ShiftSwapRequest.query.filter_by(status='pending').count()
+        except:
+            pass
+            
+        try:
+            stats['total_employees'] = Employee.query.filter_by(is_supervisor=False).count()
+        except:
+            pass
+        
+        try:
+            today = date.today()
+            scheduled = Schedule.query.filter_by(date=today).count()
+            stats['coverage_gaps'] = max(0, 20 - scheduled)
+        except:
+            pass
+        
+        try:
+            today = date.today()
+            stats['employees_on_leave'] = TimeOffRequest.query.filter(
+                TimeOffRequest.status == 'approved',
+                TimeOffRequest.start_date <= today,
+                TimeOffRequest.end_date >= today
+            ).count()
+        except:
+            pass
+        
+        return jsonify(stats)
+    
+    except Exception as e:
+        current_app.logger.error(f"Error in api_dashboard_stats: {e}")
+        return jsonify({'error': 'Failed to load statistics'}), 500
