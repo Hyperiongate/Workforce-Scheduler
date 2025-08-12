@@ -188,6 +188,45 @@ try:
 except ImportError as e:
     logger.error(f"❌ Could not import schedule blueprint: {e}")
 
+try:
+    from blueprints.communications import communications_bp
+    app.register_blueprint(communications_bp)
+    logger.info("✅ Communications blueprint loaded")
+except ImportError as e:
+    logger.error(f"❌ Could not import communications blueprint: {e}")
+
+# Context processor for communications
+@app.context_processor
+def inject_communications_data():
+    """Inject communications data into all templates"""
+    if current_user.is_authenticated:
+        try:
+            from blueprints.communications import get_unread_counts
+            unread = get_unread_counts()
+            return {
+                'unread_total': unread['total'],
+                'unread_plantwide': unread['plantwide'],
+                'unread_hr': unread['hr'],
+                'unread_maintenance': unread['maintenance'],
+                'unread_hourly': unread['hourly']
+            }
+        except Exception as e:
+            logger.error(f"Error getting unread counts: {e}")
+            return {
+                'unread_total': 0,
+                'unread_plantwide': 0,
+                'unread_hr': 0,
+                'unread_maintenance': 0,
+                'unread_hourly': 0
+            }
+    return {
+        'unread_total': 0,
+        'unread_plantwide': 0,
+        'unread_hr': 0,
+        'unread_maintenance': 0,
+        'unread_hourly': 0
+    }
+
 # Routes
 @app.route('/')
 def home():
