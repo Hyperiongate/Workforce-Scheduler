@@ -243,6 +243,42 @@ def view_crews():
         flash('Error loading crew information.', 'danger')
         return redirect(url_for('main.dashboard'))
 
+@main_bp.route('/init-communications')
+@login_required
+def init_communications():
+    """Initialize the communications system - TEMPORARY ROUTE"""
+    if not current_user.is_supervisor:
+        flash('Supervisor access required.', 'danger')
+        return redirect(url_for('main.employee_dashboard'))
+    
+    try:
+        # Import the initialization function
+        import sys
+        import os
+        sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        
+        from init_communications_db import init_message_categories, create_sample_messages
+        from models import MessageCategory
+        
+        # Check if already initialized
+        existing_categories = MessageCategory.query.count()
+        if existing_categories > 0:
+            flash('Communications system already initialized!', 'info')
+            return redirect(url_for('communications.hub'))
+        
+        # Run initialization
+        init_message_categories()
+        create_sample_messages()
+        
+        flash('Communications system initialized successfully! You can now remove the /init-communications route.', 'success')
+        return redirect(url_for('communications.hub'))
+        
+    except Exception as e:
+        current_app.logger.error(f"Error initializing communications: {e}")
+        current_app.logger.error(traceback.format_exc())
+        flash(f'Error initializing communications system: {str(e)}', 'danger')
+        return redirect(url_for('supervisor.dashboard'))
+
 @main_bp.route('/diagnostic')
 @login_required
 def diagnostic():
@@ -322,6 +358,35 @@ def debug_routes():
     except Exception as e:
         current_app.logger.error(f"Error in debug_routes: {e}")
         return jsonify({'error': str(e)}), 500
+
+@main_bp.route('/system-health')
+@login_required
+def system_health():
+    """System health check page"""
+    if not current_user.is_supervisor:
+        flash('Supervisor access required.', 'danger')
+        return redirect(url_for('main.employee_dashboard'))
+    
+    try:
+        # Import the models we need
+        from models import MessageCategory, CommunicationMessage
+        
+        health_info = {
+            'database': 'connected',
+            'employees': Employee.query.count(),
+            'schedules': Schedule.query.count(),
+            'communications': {
+                'categories': MessageCategory.query.count() if hasattr(db.Model._decl_class_registry, 'MessageCategory') else 0,
+                'messages': CommunicationMessage.query.count() if hasattr(db.Model._decl_class_registry, 'CommunicationMessage') else 0
+            }
+        }
+        
+        return render_template('system_health.html', health=health_info)
+        
+    except Exception as e:
+        current_app.logger.error(f"Error in system_health: {e}")
+        flash('Error checking system health.', 'danger')
+        return redirect(url_for('supervisor.dashboard'))
 
 # Redirect routes for backward compatibility
 @main_bp.route('/vacation-calendar')
