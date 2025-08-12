@@ -1,581 +1,413 @@
-{% extends "base.html" %}
-
-{% block title %}Upload Overtime History{% endblock %}
-
-{% block content %}
-<div class="container-fluid mt-4">
-    <div class="row">
-        <div class="col-lg-3">
-            <!-- Statistics Sidebar -->
-            <div class="card mb-4">
-                <div class="card-header bg-warning text-dark">
-                    <h5 class="mb-0"><i class="bi bi-graph-up"></i> Overtime Statistics</h5>
-                </div>
-                <div class="card-body">
-                    <div class="mb-3">
-                        <label class="text-muted small">Total OT Hours (13 weeks)</label>
-                        <h4 class="mb-0">{{ total_ot_hours|default(0) }}</h4>
-                    </div>
-                    <div class="mb-3">
-                        <label class="text-muted small">Average per Employee</label>
-                        <h4 class="mb-0">{{ avg_ot_hours|default(0) }}</h4>
-                    </div>
-                    <div class="mb-3">
-                        <label class="text-muted small">Employees Missing OT Data</label>
-                        <h4 class="mb-0 text-danger">{{ missing_ot_count|default(0) }}</h4>
-                    </div>
-                    <div>
-                        <label class="text-muted small">OT Distribution</label>
-                        <canvas id="otChart" width="100%" height="150"></canvas>
-                    </div>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload Overtime History</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        .upload-zone {
+            border: 3px dashed #28a745;
+            border-radius: 10px;
+            padding: 3rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background-color: #f8f9fa;
+        }
+        
+        .upload-zone:hover {
+            border-color: #218838;
+            background-color: #e8f5e9;
+        }
+        
+        .upload-zone.dragover {
+            border-color: #1e7e34;
+            background-color: #c3e6cb;
+            transform: scale(1.02);
+        }
+        
+        .stat-card {
+            border-left: 4px solid #28a745;
+            padding: 1rem;
+            background-color: #f8f9fa;
+            margin-bottom: 1rem;
+        }
+        
+        .stat-card h4 {
+            color: #28a745;
+            margin-bottom: 0;
+        }
+        
+        .ot-warning {
+            background-color: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+        
+        .ot-danger {
+            background-color: #f8d7da;
+            border-left: 4px solid #dc3545;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+    </style>
+</head>
+<body>
+    {% extends "base.html" %}
+    {% block content %}
+    
+    <div class="container-fluid">
+        <div class="row mb-4">
+            <div class="col-12">
+                <h1 class="h2"><i class="bi bi-clock-history"></i> Upload Overtime History</h1>
+                <nav aria-label="breadcrumb">
+                    <ol class="breadcrumb">
+                        <li class="breadcrumb-item"><a href="{{ url_for('supervisor.dashboard') }}">Dashboard</a></li>
+                        <li class="breadcrumb-item active">Upload Overtime</li>
+                    </ol>
+                </nav>
+            </div>
+        </div>
+        
+        <!-- Statistics Row -->
+        <div class="row mb-4">
+            <div class="col-md-4">
+                <div class="stat-card">
+                    <h6 class="text-muted">Total OT Hours (Last 13 Weeks)</h6>
+                    <h4>{{ "{:,.0f}".format(stats.total_ot_hours) }}</h4>
+                    <small class="text-muted">Across all employees</small>
                 </div>
             </div>
-
-            <!-- Quick Actions -->
-            <div class="card">
-                <div class="card-header bg-secondary text-white">
-                    <h5 class="mb-0"><i class="bi bi-lightning"></i> Quick Actions</h5>
+            <div class="col-md-4">
+                <div class="stat-card">
+                    <h6 class="text-muted">Employees with OT Data</h6>
+                    <h4>{{ stats.employees_with_ot }}</h4>
+                    <small class="text-muted">Have overtime records</small>
                 </div>
-                <div class="list-group list-group-flush">
-                    <a href="{{ url_for('employee_import.download_overtime_template') }}" class="list-group-item list-group-item-action">
-                        <i class="bi bi-download"></i> Download OT Template
-                    </a>
-                    <a href="{{ url_for('main.overtime_management') }}" class="list-group-item list-group-item-action">
-                        <i class="bi bi-speedometer2"></i> View OT Dashboard
-                    </a>
-                    <a href="{{ url_for('employee_import.upload_history') }}?file_type=overtime_import" class="list-group-item list-group-item-action">
-                        <i class="bi bi-clock-history"></i> OT Upload History
-                    </a>
+            </div>
+            <div class="col-md-4">
+                <div class="stat-card">
+                    <h6 class="text-muted">Average OT per Employee</h6>
+                    <h4>{{ "{:.1f}".format(stats.total_ot_hours / stats.employees_with_ot if stats.employees_with_ot > 0 else 0) }} hrs</h4>
+                    <small class="text-muted">Per week average</small>
                 </div>
             </div>
         </div>
-
-        <div class="col-lg-9">
-            <!-- Main Upload Area -->
-            <div class="card">
-                <div class="card-header bg-warning text-dark">
-                    <h4 class="mb-0"><i class="bi bi-clock-history"></i> Upload Overtime History</h4>
-                </div>
-                <div class="card-body">
-                    <!-- Instructions Alert -->
-                    <div class="alert alert-info">
-                        <i class="bi bi-info-circle"></i> <strong>Important:</strong> Upload 13 weeks of overtime history for fair distribution calculations.
-                        This data helps prevent fatigue and ensures equitable overtime assignments.
+        
+        <!-- Main Upload Card -->
+        <div class="row">
+            <div class="col-lg-8">
+                <div class="card">
+                    <div class="card-header bg-success text-white">
+                        <h5 class="mb-0"><i class="bi bi-file-earmark-excel"></i> Upload Overtime Data</h5>
                     </div>
-
-                    <!-- Flash Messages -->
-                    {% with messages = get_flashed_messages(with_categories=true) %}
-                        {% if messages %}
-                            {% for category, message in messages %}
-                                <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
-                                    {{ message }}
-                                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    <div class="card-body">
+                        <form method="POST" enctype="multipart/form-data" id="uploadForm">
+                            <!-- File Upload Zone -->
+                            <div class="upload-zone" id="uploadZone">
+                                <i class="bi bi-cloud-arrow-up" style="font-size: 3rem; color: #28a745;"></i>
+                                <h4 class="mt-3">Drag & Drop Overtime Excel File</h4>
+                                <p class="text-muted">Upload 13 weeks of overtime history</p>
+                                <input type="file" id="fileInput" name="file" accept=".xlsx,.xls" style="display: none;">
+                                
+                                <div id="selectedFile" class="d-none mt-3">
+                                    <div class="alert alert-success">
+                                        <i class="bi bi-file-earmark-excel"></i>
+                                        <span id="fileName"></span>
+                                        <button type="button" class="btn-close float-end" onclick="clearFileSelection()"></button>
+                                    </div>
                                 </div>
-                            {% endfor %}
-                        {% endif %}
-                    {% endwith %}
-
-                    <!-- Upload Form -->
-                    <form id="overtimeUploadForm" method="POST" enctype="multipart/form-data">
-                        <!-- File Upload Zone -->
-                        <div class="upload-zone" id="uploadZone">
-                            <i class="bi bi-file-earmark-excel display-1 text-warning"></i>
-                            <h5>Drag & Drop Overtime Excel File</h5>
-                            <p class="text-muted">Excel file with Employee ID and 13 week columns</p>
-                            <input type="file" id="fileInput" name="file" class="d-none" accept=".xlsx,.xls">
-                        </div>
-
-                        <!-- Selected File Display -->
-                        <div id="selectedFile" class="alert alert-warning d-none">
-                            <i class="bi bi-file-earmark-excel"></i>
-                            <span id="fileName"></span>
-                            <button type="button" class="btn-close float-end" onclick="clearFileSelection()"></button>
-                        </div>
-
-                        <!-- Upload Options -->
-                        <div class="mt-4" id="optionsSection" style="display: none;">
-                            <h5>Import Options</h5>
-                            <div class="form-check">
-                                <input class="form-check-input" type="radio" name="replace_all" id="replaceAll" value="true" checked>
-                                <label class="form-check-label" for="replaceAll">
-                                    <strong>Replace All Overtime History</strong>
-                                    <br>
-                                    <small class="text-muted">Clear existing history and load new 13-week data (Recommended)</small>
-                                </label>
                             </div>
-                            <div class="form-check mt-2">
-                                <input class="form-check-input" type="radio" name="replace_all" id="appendData" value="false">
-                                <label class="form-check-label" for="appendData">
-                                    <strong>Append to Existing Data</strong>
-                                    <br>
-                                    <small class="text-muted">Add new records without removing existing ones</small>
-                                </label>
+                            
+                            <!-- Options -->
+                            <div id="optionsSection" style="display: none;" class="mt-4">
+                                <h5>Import Options</h5>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="replaceAll" name="replace_all" value="true" checked>
+                                    <label class="form-check-label" for="replaceAll">
+                                        <strong>Replace All Existing Overtime Data</strong>
+                                        <br>
+                                        <small class="text-muted">Recommended for initial import or complete refresh</small>
+                                    </label>
+                                </div>
+                                <div class="form-check mt-2">
+                                    <input class="form-check-input" type="checkbox" id="validateOnly" name="validate_only" value="true">
+                                    <label class="form-check-label" for="validateOnly">
+                                        <strong>Validate Only</strong>
+                                        <br>
+                                        <small class="text-muted">Check for errors without importing</small>
+                                    </label>
+                                </div>
                             </div>
+                            
+                            <!-- Validation Results -->
+                            <div id="validationResults" style="display: none;" class="mt-4">
+                                <h5>Validation Results</h5>
+                                <div id="validationContent"></div>
+                            </div>
+                            
+                            <!-- Action Buttons -->
+                            <div id="actionButtons" style="display: none;" class="mt-4">
+                                <button type="button" class="btn btn-secondary" onclick="clearFileSelection()">
+                                    <i class="bi bi-x-circle"></i> Cancel
+                                </button>
+                                <button type="button" class="btn btn-primary" onclick="validateFile()">
+                                    <i class="bi bi-check-circle"></i> Validate
+                                </button>
+                                <button type="submit" class="btn btn-success d-none" id="importBtn">
+                                    <i class="bi bi-cloud-upload"></i> Import Overtime Data
+                                </button>
+                            </div>
+                        </form>
+                        
+                        <!-- Progress Bar -->
+                        <div class="progress mt-4 d-none" id="progressBar">
+                            <div class="progress-bar bg-success progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
                         </div>
-
-                        <!-- Validation Results -->
-                        <div id="validationResults" class="mt-4 d-none"></div>
-
-                        <!-- Action Buttons -->
-                        <div class="mt-4" id="actionButtons" style="display: none;">
-                            <button type="button" class="btn btn-secondary" onclick="resetUpload()">
-                                <i class="bi bi-arrow-counterclockwise"></i> Start Over
-                            </button>
-                            <button type="button" class="btn btn-primary" id="validateBtn" onclick="validateFile()">
-                                <i class="bi bi-check-circle"></i> Validate File
-                            </button>
-                            <button type="submit" class="btn btn-success d-none" id="importBtn">
-                                <i class="bi bi-cloud-upload"></i> Import Overtime Data
-                            </button>
-                        </div>
-                    </form>
-
-                    <!-- Progress Bar -->
-                    <div class="progress mt-4 d-none" id="progressBar">
-                        <div class="progress-bar progress-bar-striped progress-bar-animated bg-warning" role="progressbar" style="width: 0%"></div>
                     </div>
                 </div>
+                
+                <!-- Recent Uploads -->
+                {% if stats.recent_uploads %}
+                <div class="card mt-4">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="bi bi-clock-history"></i> Recent Overtime Uploads</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>File</th>
+                                        <th>Status</th>
+                                        <th>Records</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for upload in stats.recent_uploads %}
+                                    <tr>
+                                        <td>{{ upload.upload_date.strftime('%Y-%m-%d %H:%M') }}</td>
+                                        <td>{{ upload.filename }}</td>
+                                        <td>
+                                            {% if upload.status == 'completed' %}
+                                                <span class="badge bg-success">Success</span>
+                                            {% else %}
+                                                <span class="badge bg-warning">Partial</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>{{ upload.records_processed or 0 }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
             </div>
-
-            <!-- Tips and Format Guide -->
-            <div class="card mt-4">
-                <div class="card-header">
-                    <h5 class="mb-0"><i class="bi bi-lightbulb"></i> Format Requirements & Tips</h5>
-                </div>
-                <div class="card-body">
-                    <div class="row">
-                        <div class="col-md-6">
-                            <h6>Required Format:</h6>
-                            <ul>
-                                <li><strong>Column 1:</strong> Employee ID</li>
-                                <li><strong>Columns 2-14:</strong> Week data (13 weeks)</li>
-                                <li>Week columns named: "Week YYYY-MM-DD"</li>
-                                <li>Enter overtime hours as numbers (0 for no OT)</li>
-                            </ul>
-                        </div>
-                        <div class="col-md-6">
-                            <h6>Best Practices:</h6>
-                            <ul>
-                                <li>Include all active employees, even with 0 hours</li>
-                                <li>Use the most recent 13 weeks for accuracy</li>
-                                <li>Double-check employee IDs match system records</li>
-                                <li>Maximum 168 hours per week (safety check)</li>
-                            </ul>
-                        </div>
+            
+            <!-- Sidebar -->
+            <div class="col-lg-4">
+                <!-- Instructions Card -->
+                <div class="card mb-4">
+                    <div class="card-header bg-info text-white">
+                        <h5 class="mb-0"><i class="bi bi-info-circle"></i> Instructions</h5>
                     </div>
-                    
-                    <div class="alert alert-warning mt-3">
-                        <i class="bi bi-exclamation-triangle"></i> <strong>Note:</strong> 
-                        Employees with consistently high overtime (>20 hrs/week average) will be flagged for fatigue management.
+                    <div class="card-body">
+                        <h6>File Requirements:</h6>
+                        <ul>
+                            <li>Excel format (.xlsx or .xls)</li>
+                            <li>Must include 13 weeks of data</li>
+                            <li>One row per employee per week</li>
+                            <li>Week dates must be consecutive</li>
+                        </ul>
+                        
+                        <h6 class="mt-3">Required Columns:</h6>
+                        <ul>
+                            <li><strong>Employee ID</strong> - Must match existing employees</li>
+                            <li><strong>Week Start Date</strong> - Monday of the week</li>
+                            <li><strong>Week End Date</strong> - Sunday of the week</li>
+                            <li><strong>Hours Worked</strong> - Total hours for the week</li>
+                        </ul>
+                        
+                        <a href="{{ url_for('employee_import.download_overtime_template') }}" class="btn btn-primary w-100">
+                            <i class="bi bi-download"></i> Download Template
+                        </a>
                     </div>
                 </div>
-            </div>
-
-            <!-- Recent Overtime Uploads -->
-            <div class="card mt-4">
-                <div class="card-header">
-                    <h5 class="mb-0"><i class="bi bi-clock-history"></i> Recent Overtime Uploads</h5>
-                </div>
-                <div class="card-body">
-                    <div class="table-responsive">
-                        <table class="table table-sm">
-                            <thead>
-                                <tr>
-                                    <th>Upload Date</th>
-                                    <th>Uploaded By</th>
-                                    <th>Employees</th>
-                                    <th>Total Hours</th>
-                                    <th>Status</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody id="recentUploads">
-                                <!-- Populated via JavaScript -->
-                            </tbody>
-                        </table>
+                
+                <!-- Warnings Card -->
+                <div class="card">
+                    <div class="card-header bg-warning">
+                        <h5 class="mb-0"><i class="bi bi-exclamation-triangle"></i> Important Notes</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="ot-warning mb-3">
+                            <strong>High Overtime Alert</strong><br>
+                            Employees with >60 hours/week will be flagged for review
+                        </div>
+                        
+                        <div class="ot-danger">
+                            <strong>Missing Data Warning</strong><br>
+                            Employees without 13 weeks of data may affect overtime calculations
+                        </div>
+                        
+                        <p class="mt-3 mb-0">
+                            <small>The system uses overtime history for fair distribution of future overtime opportunities.</small>
+                        </p>
                     </div>
                 </div>
             </div>
         </div>
     </div>
-</div>
-
-<style>
-.upload-zone {
-    border: 3px dashed #ffc107;
-    border-radius: 10px;
-    padding: 40px;
-    text-align: center;
-    cursor: pointer;
-    transition: all 0.3s;
-    background-color: #fffbf0;
-}
-
-.upload-zone:hover {
-    border-color: #ff9800;
-    background-color: #fff8e1;
-}
-
-.upload-zone.dragover {
-    border-color: #ff6f00;
-    background-color: #ffe0b2;
-}
-
-.validation-error {
-    background-color: #f8d7da;
-    border-left: 4px solid #dc3545;
-    padding: 10px;
-    margin-bottom: 10px;
-}
-
-.validation-warning {
-    background-color: #fff3cd;
-    border-left: 4px solid #ffc107;
-    padding: 10px;
-    margin-bottom: 10px;
-}
-
-.validation-success {
-    background-color: #d4edda;
-    border-left: 4px solid #28a745;
-    padding: 10px;
-    margin-bottom: 10px;
-}
-
-.high-overtime {
-    background-color: #fff3cd;
-}
-</style>
-
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script>
-// File upload handling
-const uploadZone = document.getElementById('uploadZone');
-const fileInput = document.getElementById('fileInput');
-const selectedFile = document.getElementById('selectedFile');
-const fileName = document.getElementById('fileName');
-const optionsSection = document.getElementById('optionsSection');
-const actionButtons = document.getElementById('actionButtons');
-
-// Click to select file
-uploadZone.addEventListener('click', () => {
-    fileInput.click();
-});
-
-// Drag and drop handlers
-uploadZone.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    uploadZone.classList.add('dragover');
-});
-
-uploadZone.addEventListener('dragleave', () => {
-    uploadZone.classList.remove('dragover');
-});
-
-uploadZone.addEventListener('drop', (e) => {
-    e.preventDefault();
-    uploadZone.classList.remove('dragover');
     
-    const files = e.dataTransfer.files;
-    if (files.length > 0) {
-        handleFileSelect(files[0]);
-    }
-});
-
-// File input change
-fileInput.addEventListener('change', (e) => {
-    if (e.target.files.length > 0) {
-        handleFileSelect(e.target.files[0]);
-    }
-});
-
-function handleFileSelect(file) {
-    if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
-        alert('Please select an Excel file (.xlsx or .xls)');
-        return;
-    }
+    <script>
+    // File upload handling
+    const uploadZone = document.getElementById('uploadZone');
+    const fileInput = document.getElementById('fileInput');
+    const selectedFile = document.getElementById('selectedFile');
+    const fileName = document.getElementById('fileName');
+    const optionsSection = document.getElementById('optionsSection');
+    const actionButtons = document.getElementById('actionButtons');
     
-    fileName.textContent = file.name;
-    selectedFile.classList.remove('d-none');
-    optionsSection.style.display = 'block';
-    actionButtons.style.display = 'block';
-}
-
-function clearFileSelection() {
-    fileInput.value = '';
-    selectedFile.classList.add('d-none');
-    optionsSection.style.display = 'none';
-    actionButtons.style.display = 'none';
-    document.getElementById('validationResults').classList.add('d-none');
-    resetButtons();
-}
-
-function resetButtons() {
-    document.getElementById('validateBtn').classList.remove('d-none');
-    document.getElementById('importBtn').classList.add('d-none');
-}
-
-function resetUpload() {
-    clearFileSelection();
-}
-
-function validateFile() {
-    if (!fileInput.files[0]) {
-        alert('Please select a file first');
-        return;
-    }
-    
-    const formData = new FormData();
-    formData.append('file', fileInput.files[0]);
-    formData.append('type', 'overtime');
-    
-    // Show progress
-    document.getElementById('progressBar').classList.remove('d-none');
-    const progressBar = document.querySelector('.progress-bar');
-    progressBar.style.width = '50%';
-    
-    // Disable validate button
-    const validateBtn = document.getElementById('validateBtn');
-    validateBtn.disabled = true;
-    validateBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Validating...';
-    
-    fetch('{{ url_for("employee_import.validate_upload") }}', {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => response.json())
-    .then(data => {
-        progressBar.style.width = '100%';
-        setTimeout(() => {
-            document.getElementById('progressBar').classList.add('d-none');
-            progressBar.style.width = '0%';
-            displayValidationResults(data);
-            validateBtn.disabled = false;
-            validateBtn.innerHTML = '<i class="bi bi-check-circle"></i> Validate File';
-        }, 500);
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('Error validating file: ' + error.message);
-        document.getElementById('progressBar').classList.add('d-none');
-        validateBtn.disabled = false;
-        validateBtn.innerHTML = '<i class="bi bi-check-circle"></i> Validate File';
+    // Click to select file
+    uploadZone.addEventListener('click', () => {
+        fileInput.click();
     });
-}
-
-function displayValidationResults(data) {
-    const validationResults = document.getElementById('validationResults');
-    validationResults.classList.remove('d-none');
     
-    let html = '';
-    
-    if (data.success) {
-        html += '<div class="validation-success">';
-        html += '<i class="bi bi-check-circle-fill"></i> Validation passed! ';
-        html += `Found ${data.row_count} employees with overtime data.`;
-        html += '</div>';
-        
-        if (data.warnings && data.warnings.length > 0) {
-            html += '<div class="validation-warning mt-2">';
-            html += '<strong>Warnings:</strong><ul class="mb-0">';
-            data.warnings.forEach(warning => {
-                html += `<li>${warning}</li>`;
-            });
-            html += '</ul></div>';
-        }
-        
-        // Show preview if available
-        if (data.preview && data.preview.length > 0) {
-            html += '<h6 class="mt-3">Data Preview:</h6>';
-            html += '<div class="table-responsive">';
-            html += '<table class="table table-sm table-bordered">';
-            html += '<thead><tr>';
-            
-            // Show first few columns
-            const columns = Object.keys(data.preview[0]).slice(0, 5);
-            columns.forEach(col => {
-                html += `<th>${col}</th>`;
-            });
-            if (Object.keys(data.preview[0]).length > 5) {
-                html += '<th>...</th>';
-            }
-            html += '</tr></thead><tbody>';
-            
-            data.preview.forEach(row => {
-                html += '<tr>';
-                columns.forEach(col => {
-                    html += `<td>${row[col]}</td>`;
-                });
-                if (Object.keys(row).length > 5) {
-                    html += '<td>...</td>';
-                }
-                html += '</tr>';
-            });
-            html += '</tbody></table></div>';
-        }
-        
-        // Enable import button
-        document.getElementById('validateBtn').classList.add('d-none');
-        document.getElementById('importBtn').classList.remove('d-none');
-        
-    } else {
-        html += '<div class="validation-error">';
-        html += '<i class="bi bi-x-circle-fill"></i> Validation failed! ';
-        if (data.error) {
-            html += data.error;
-        }
-        html += '</div>';
-        
-        if (data.errors && data.errors.length > 0) {
-            html += '<ul class="mt-2 text-danger">';
-            data.errors.forEach(error => {
-                html += `<li>${error}</li>`;
-            });
-            html += '</ul>';
-        }
-    }
-    
-    validationResults.innerHTML = html;
-}
-
-// Handle form submission
-document.getElementById('overtimeUploadForm').addEventListener('submit', function(e) {
-    e.preventDefault();
-    
-    if (!fileInput.files[0]) {
-        alert('Please select a file');
-        return;
-    }
-    
-    // Show progress
-    document.getElementById('progressBar').classList.remove('d-none');
-    const progressBar = document.querySelector('.progress-bar');
-    progressBar.style.width = '0%';
-    
-    // Disable import button
-    const importBtn = document.getElementById('importBtn');
-    importBtn.disabled = true;
-    importBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Importing...';
-    
-    const formData = new FormData(this);
-    formData.append('upload_type', 'overtime');
-    
-    // Animate progress
-    let progress = 0;
-    const progressInterval = setInterval(() => {
-        progress += 10;
-        progressBar.style.width = progress + '%';
-        if (progress >= 90) {
-            clearInterval(progressInterval);
-        }
-    }, 200);
-    
-    fetch('{{ url_for("employee_import.upload_overtime") }}', {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => response.json())
-    .then(data => {
-        clearInterval(progressInterval);
-        progressBar.style.width = '100%';
-        
-        setTimeout(() => {
-            if (data.success) {
-                // Show success message and redirect
-                alert(data.message || 'Overtime data imported successfully!');
-                window.location.href = '{{ url_for("main.overtime_management") }}';
-            } else {
-                // Show error
-                alert('Import failed: ' + (data.error || 'Unknown error'));
-                document.getElementById('progressBar').classList.add('d-none');
-                importBtn.disabled = false;
-                importBtn.innerHTML = '<i class="bi bi-cloud-upload"></i> Import Overtime Data';
-            }
-        }, 500);
-    })
-    .catch(error => {
-        clearInterval(progressInterval);
-        console.error('Error:', error);
-        alert('Error importing data: ' + error.message);
-        document.getElementById('progressBar').classList.add('d-none');
-        importBtn.disabled = false;
-        importBtn.innerHTML = '<i class="bi bi-cloud-upload"></i> Import Overtime Data';
+    // Drag and drop
+    uploadZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        uploadZone.classList.add('dragover');
     });
-});
-
-// Load recent uploads
-function loadRecentUploads() {
-    fetch('{{ url_for("employee_import.upload_history") }}?file_type=overtime_import&format=json')
+    
+    uploadZone.addEventListener('dragleave', () => {
+        uploadZone.classList.remove('dragover');
+    });
+    
+    uploadZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        uploadZone.classList.remove('dragover');
+        
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+            handleFileSelect(files[0]);
+        }
+    });
+    
+    // File input change
+    fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+            handleFileSelect(e.target.files[0]);
+        }
+    });
+    
+    function handleFileSelect(file) {
+        if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
+            alert('Please select an Excel file (.xlsx or .xls)');
+            return;
+        }
+        
+        fileInput.files = new DataTransfer().files;
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        fileInput.files = dt.files;
+        
+        fileName.textContent = file.name;
+        selectedFile.classList.remove('d-none');
+        optionsSection.style.display = 'block';
+        actionButtons.style.display = 'block';
+    }
+    
+    function clearFileSelection() {
+        fileInput.value = '';
+        selectedFile.classList.add('d-none');
+        optionsSection.style.display = 'none';
+        actionButtons.style.display = 'none';
+        document.getElementById('validationResults').style.display = 'none';
+        document.getElementById('importBtn').classList.add('d-none');
+    }
+    
+    function validateFile() {
+        if (!fileInput.files[0]) {
+            alert('Please select a file first');
+            return;
+        }
+        
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+        formData.append('type', 'overtime');
+        
+        // Show progress
+        document.getElementById('progressBar').classList.remove('d-none');
+        const progressBar = document.querySelector('.progress-bar');
+        progressBar.style.width = '50%';
+        
+        // Make AJAX request to validate
+        fetch('{{ url_for("employee_import.validate_upload") }}', {
+            method: 'POST',
+            body: formData
+        })
         .then(response => response.json())
-        .then(uploads => {
-            const tbody = document.getElementById('recentUploads');
-            if (uploads.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No recent uploads</td></tr>';
-                return;
-            }
-            
-            tbody.innerHTML = uploads.slice(0, 5).map(upload => `
-                <tr>
-                    <td>${new Date(upload.upload_date).toLocaleDateString()}</td>
-                    <td>${upload.uploaded_by_name}</td>
-                    <td>${upload.records_processed || 0}</td>
-                    <td>${upload.total_hours || 0}</td>
-                    <td>
-                        <span class="badge bg-${upload.status === 'completed' ? 'success' : 'warning'}">
-                            ${upload.status}
-                        </span>
-                    </td>
-                    <td>
-                        <a href="{{ url_for('employee_import.download_upload_file', upload_id=0) }}${upload.id}" 
-                           class="btn btn-sm btn-outline-primary" title="Download">
-                            <i class="bi bi-download"></i>
-                        </a>
-                    </td>
-                </tr>
-            `).join('');
+        .then(data => {
+            progressBar.style.width = '100%';
+            setTimeout(() => {
+                document.getElementById('progressBar').classList.add('d-none');
+                displayValidationResults(data);
+            }, 500);
         })
         .catch(error => {
-            console.error('Error loading recent uploads:', error);
+            console.error('Error:', error);
+            alert('Error validating file: ' + error.message);
+            document.getElementById('progressBar').classList.add('d-none');
         });
-}
-
-// Overtime distribution chart
-const ctx = document.getElementById('otChart').getContext('2d');
-new Chart(ctx, {
-    type: 'bar',
-    data: {
-        labels: ['0-10 hrs', '10-20 hrs', '20-40 hrs', '40+ hrs'],
-        datasets: [{
-            label: 'Employees',
-            data: [
-                {{ ot_0_10|default(0) }},
-                {{ ot_10_20|default(0) }},
-                {{ ot_20_40|default(0) }},
-                {{ ot_40_plus|default(0) }}
-            ],
-            backgroundColor: ['#28a745', '#17a2b8', '#ffc107', '#dc3545']
-        }]
-    },
-    options: {
-        responsive: true,
-        maintainAspectRatio: true,
-        scales: {
-            y: {
-                beginAtZero: true,
-                ticks: {
-                    stepSize: 1
+    }
+    
+    function displayValidationResults(data) {
+        const validationResults = document.getElementById('validationResults');
+        const validationContent = document.getElementById('validationContent');
+        
+        validationResults.style.display = 'block';
+        
+        let html = '';
+        
+        if (data.success) {
+            html += '<div class="alert alert-success">';
+            html += '<i class="bi bi-check-circle"></i> <strong>Validation passed!</strong><br>';
+            html += `Found ${data.row_count} overtime records for ${data.employee_count || 0} employees.`;
+            html += '</div>';
+            
+            // Enable import button
+            document.getElementById('importBtn').classList.remove('d-none');
+        } else {
+            html += '<div class="alert alert-danger">';
+            html += '<i class="bi bi-x-circle"></i> <strong>Validation failed!</strong><br>';
+            
+            if (data.error) {
+                html += `Error: ${data.error}<br>`;
+            }
+            
+            if (data.errors && data.errors.length > 0) {
+                html += '<br><strong>Errors found:</strong><ul>';
+                data.errors.forEach(error => {
+                    html += `<li>${error}</li>`;
+                });
+                html += '</ul>';
+                
+                if (data.total_errors > data.errors.length) {
+                    html += `<p class="text-muted">...and ${data.total_errors - data.errors.length} more errors</p>`;
                 }
             }
-        },
-        plugins: {
-            legend: {
-                display: false
-            }
+            
+            html += '</div>';
         }
+        
+        validationContent.innerHTML = html;
     }
-});
-
-// Load recent uploads on page load
-document.addEventListener('DOMContentLoaded', loadRecentUploads);
-</script>
-{% endblock %}
+    </script>
+    
+    {% endblock %}
