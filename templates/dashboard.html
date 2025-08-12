@@ -160,7 +160,7 @@
         </div>
     </div>
 
-    <!-- Recent Activity -->
+    <!-- Recent Activity and Communications -->
     <div class="row mt-4">
         <div class="col-md-6">
             <div class="card">
@@ -190,32 +190,76 @@
         </div>
 
         <div class="col-md-6">
-            <div class="card">
-                <div class="card-header">
-                    <h5 class="mb-0">System Status</h5>
+            <!-- Communications Hub (Replacing System Status) -->
+            <div class="card shadow-sm">
+                <div class="card-header bg-gradient" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                    <h5 class="text-white mb-0">
+                        <i class="bi bi-megaphone"></i> Communications Center
+                    </h5>
                 </div>
                 <div class="card-body">
-                    <p><strong>Employees Missing OT Data:</strong> {{ employees_missing_ot|default(0) }}</p>
-                    <p><strong>High OT Employees:</strong> {{ high_ot_employees|length if high_ot_employees else 0 }}</p>
-                    <p><strong>Coverage Gaps Today:</strong> {{ coverage_gaps|default(0) }}</p>
-                    
-                    {% if employees_missing_ot > 0 %}
-                    <a href="{{ url_for('employee_import.upload_overtime') }}" class="btn btn-sm btn-warning">
-                        Upload Overtime Data
-                    </a>
-                    {% endif %}
+                    <div class="row g-2">
+                        <div class="col-6">
+                            <a href="/communications" class="btn btn-sm btn-outline-primary w-100">
+                                <i class="bi bi-chat-dots"></i> View All
+                                {% if unread_total > 0 %}
+                                <span class="badge bg-danger">{{ unread_total }}</span>
+                                {% endif %}
+                            </a>
+                        </div>
+                        <div class="col-6">
+                            <a href="/communications/compose" class="btn btn-sm btn-primary w-100">
+                                <i class="bi bi-pencil-square"></i> Compose
+                            </a>
+                        </div>
+                    </div>
                     
                     <div class="mt-3">
+                        <small class="text-muted">Quick Stats:</small>
+                        <div class="row g-1 mt-1">
+                            <div class="col-6">
+                                <div class="text-center p-2 border rounded">
+                                    <div class="text-primary fw-bold">{{ unread_plantwide|default(0) }}</div>
+                                    <small class="text-muted">Plantwide</small>
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <div class="text-center p-2 border rounded">
+                                    <div class="text-danger fw-bold">{{ unread_hr|default(0) }}</div>
+                                    <small class="text-muted">HR</small>
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <div class="text-center p-2 border rounded">
+                                    <div class="text-info fw-bold">{{ unread_maintenance|default(0) }}</div>
+                                    <small class="text-muted">Maintenance</small>
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <div class="text-center p-2 border rounded">
+                                    <div class="text-success fw-bold">{{ unread_hourly|default(0) }}</div>
+                                    <small class="text-muted">Hourly</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <hr>
+                    
+                    <div class="mt-3">
+                        <small class="text-muted">System Info:</small>
+                        <p class="mb-1"><small>Employees Missing OT: {{ employees_missing_ot|default(0) }}</small></p>
+                        <p class="mb-1"><small>High OT Employees: {{ high_ot_employees|length if high_ot_employees else 0 }}</small></p>
+                        
                         {% if current_user.is_supervisor %}
-                        <a href="{{ url_for('main.system_health') }}" class="btn btn-sm btn-info">
-                            <i class="bi bi-heart-pulse"></i> System Health
-                        </a>
-                        <a href="{{ url_for('main.diagnostic') }}" class="btn btn-sm btn-secondary">
-                            <i class="bi bi-gear"></i> Diagnostic
-                        </a>
-                        <a href="{{ url_for('main.debug_routes') }}" class="btn btn-sm btn-secondary">
-                            <i class="bi bi-bug"></i> Debug Routes
-                        </a>
+                        <div class="mt-2">
+                            <a href="{{ url_for('main.system_health') }}" class="btn btn-sm btn-outline-secondary">
+                                <i class="bi bi-heart-pulse"></i> Health
+                            </a>
+                            <a href="{{ url_for('main.init_communications') }}" class="btn btn-sm btn-outline-warning">
+                                <i class="bi bi-arrow-clockwise"></i> Init Comms
+                            </a>
+                        </div>
                         {% endif %}
                     </div>
                 </div>
