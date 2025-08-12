@@ -1,35 +1,86 @@
-{% extends "base.html" %}
-
-{% block title %}Upload History{% endblock %}
-
-{% block content %}
-<div class="container-fluid mt-4">
-    <div class="row">
-        <div class="col-12">
-            <!-- Header -->
-            <div class="d-flex justify-content-between align-items-center mb-4">
-                <h2><i class="bi bi-clock-history"></i> Upload History</h2>
-                <div>
-                    <a href="{{ url_for('employee_import.upload_employees') }}" class="btn btn-primary">
-                        <i class="bi bi-cloud-upload"></i> New Upload
-                    </a>
-                    <a href="{{ url_for('main.dashboard') }}" class="btn btn-secondary">
-                        <i class="bi bi-house"></i> Dashboard
-                    </a>
-                </div>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload History</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        .status-badge {
+            font-size: 0.875rem;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+        }
+        
+        .status-completed {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        
+        .status-completed_with_errors {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+        
+        .status-failed {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        
+        .status-processing {
+            background-color: #cce5ff;
+            color: #004085;
+        }
+        
+        .table-hover tbody tr:hover {
+            background-color: #f8f9fa;
+            cursor: pointer;
+        }
+        
+        .filter-card {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 1.5rem;
+        }
+        
+        .detail-modal .modal-body dt {
+            font-weight: 600;
+            color: #495057;
+        }
+        
+        .detail-modal .modal-body dd {
+            margin-bottom: 1rem;
+        }
+    </style>
+</head>
+<body>
+    {% extends "base.html" %}
+    {% block content %}
+    
+    <div class="container-fluid">
+        <div class="row mb-4">
+            <div class="col-12">
+                <h1 class="h2"><i class="bi bi-clock-history"></i> Upload History</h1>
+                <nav aria-label="breadcrumb">
+                    <ol class="breadcrumb">
+                        <li class="breadcrumb-item"><a href="{{ url_for('supervisor.dashboard') }}">Dashboard</a></li>
+                        <li class="breadcrumb-item active">Upload History</li>
+                    </ol>
+                </nav>
             </div>
-
-            <!-- Filters -->
-            <div class="card mb-4">
-                <div class="card-header">
-                    <h5 class="mb-0"><i class="bi bi-funnel"></i> Filters</h5>
-                </div>
-                <div class="card-body">
-                    <form method="GET" action="{{ url_for('employee_import.upload_history') }}" id="filterForm">
-                        <div class="row">
+        </div>
+        
+        <!-- Filters -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="filter-card">
+                    <form method="GET" id="filterForm">
+                        <div class="row g-3">
                             <div class="col-md-3">
-                                <label for="file_type" class="form-label">Upload Type</label>
-                                <select class="form-select" id="file_type" name="file_type">
+                                <label for="file_type" class="form-label">File Type</label>
+                                <select name="file_type" id="file_type" class="form-select">
                                     <option value="">All Types</option>
                                     <option value="employee_import" {% if request.args.get('file_type') == 'employee_import' %}selected{% endif %}>Employee Import</option>
                                     <option value="overtime_import" {% if request.args.get('file_type') == 'overtime_import' %}selected{% endif %}>Overtime Import</option>
@@ -38,30 +89,30 @@
                             </div>
                             <div class="col-md-3">
                                 <label for="status" class="form-label">Status</label>
-                                <select class="form-select" id="status" name="status">
+                                <select name="status" id="status" class="form-select">
                                     <option value="">All Statuses</option>
                                     <option value="completed" {% if request.args.get('status') == 'completed' %}selected{% endif %}>Completed</option>
+                                    <option value="completed_with_errors" {% if request.args.get('status') == 'completed_with_errors' %}selected{% endif %}>Completed with Errors</option>
                                     <option value="failed" {% if request.args.get('status') == 'failed' %}selected{% endif %}>Failed</option>
                                     <option value="processing" {% if request.args.get('status') == 'processing' %}selected{% endif %}>Processing</option>
-                                    <option value="completed_with_errors" {% if request.args.get('status') == 'completed_with_errors' %}selected{% endif %}>Completed with Errors</option>
                                 </select>
                             </div>
                             <div class="col-md-2">
-                                <label for="start_date" class="form-label">From Date</label>
-                                <input type="date" class="form-control" id="start_date" name="start_date" value="{{ request.args.get('start_date', '') }}">
+                                <label for="start_date" class="form-label">Start Date</label>
+                                <input type="date" name="start_date" id="start_date" class="form-control" value="{{ request.args.get('start_date', '') }}">
                             </div>
                             <div class="col-md-2">
-                                <label for="end_date" class="form-label">To Date</label>
-                                <input type="date" class="form-control" id="end_date" name="end_date" value="{{ request.args.get('end_date', '') }}">
+                                <label for="end_date" class="form-label">End Date</label>
+                                <input type="date" name="end_date" id="end_date" class="form-control" value="{{ request.args.get('end_date', '') }}">
                             </div>
                             <div class="col-md-2">
                                 <label class="form-label">&nbsp;</label>
                                 <div>
                                     <button type="submit" class="btn btn-primary">
-                                        <i class="bi bi-search"></i> Filter
+                                        <i class="bi bi-funnel"></i> Filter
                                     </button>
                                     <a href="{{ url_for('employee_import.upload_history') }}" class="btn btn-secondary">
-                                        <i class="bi bi-x-circle"></i> Clear
+                                        <i class="bi bi-arrow-counterclockwise"></i> Clear
                                     </a>
                                 </div>
                             </div>
@@ -69,454 +120,218 @@
                     </form>
                 </div>
             </div>
-
-            <!-- Upload History Table -->
-            <div class="card">
-                <div class="card-header">
-                    <h5 class="mb-0">
-                        <i class="bi bi-list-ul"></i> Upload Records 
-                        <span class="badge bg-secondary">{{ uploads|length }}</span>
-                    </h5>
-                </div>
-                <div class="card-body">
-                    {% if uploads %}
-                    <div class="table-responsive">
-                        <table class="table table-hover" id="uploadTable">
-                            <thead>
-                                <tr>
-                                    <th>Date & Time</th>
-                                    <th>File Name</th>
-                                    <th>Type</th>
-                                    <th>Uploaded By</th>
-                                    <th>Status</th>
-                                    <th>Records</th>
-                                    <th>Size</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for upload in uploads %}
-                                <tr>
-                                    <td>
-                                        <span class="text-nowrap">{{ upload.upload_date.strftime('%Y-%m-%d') }}</span><br>
-                                        <small class="text-muted">{{ upload.upload_date.strftime('%H:%M:%S') }}</small>
-                                    </td>
-                                    <td>
-                                        <i class="bi bi-file-earmark-excel text-success"></i>
-                                        {{ upload.filename }}
-                                    </td>
-                                    <td>
-                                        {% if upload.file_type == 'employee_import' %}
-                                            <span class="badge bg-primary">Employee Import</span>
-                                        {% elif upload.file_type == 'overtime_import' %}
-                                            <span class="badge bg-warning text-dark">Overtime Import</span>
-                                        {% elif upload.file_type == 'bulk_update' %}
-                                            <span class="badge bg-info">Bulk Update</span>
-                                        {% else %}
-                                            <span class="badge bg-secondary">{{ upload.file_type }}</span>
-                                        {% endif %}
-                                    </td>
-                                    <td>{{ upload.uploaded_by.first_name }} {{ upload.uploaded_by.last_name }}</td>
-                                    <td>
-                                        {% if upload.status == 'completed' %}
-                                            <span class="badge bg-success">
-                                                <i class="bi bi-check-circle"></i> Completed
-                                            </span>
-                                        {% elif upload.status == 'failed' %}
-                                            <span class="badge bg-danger">
-                                                <i class="bi bi-x-circle"></i> Failed
-                                            </span>
-                                        {% elif upload.status == 'processing' %}
-                                            <span class="badge bg-primary">
-                                                <i class="bi bi-arrow-repeat spin"></i> Processing
-                                            </span>
-                                        {% elif upload.status == 'completed_with_errors' %}
-                                            <span class="badge bg-warning text-dark">
-                                                <i class="bi bi-exclamation-triangle"></i> Partial
-                                            </span>
-                                        {% else %}
-                                            <span class="badge bg-secondary">{{ upload.status }}</span>
-                                        {% endif %}
-                                    </td>
-                                    <td>
-                                        {% if upload.records_processed %}
-                                            <span class="text-nowrap">
-                                                <i class="bi bi-file-text"></i> {{ upload.records_processed }}
-                                            </span>
-                                            {% if upload.records_created %}
-                                                <br><small class="text-success">+{{ upload.records_created }} new</small>
+        </div>
+        
+        <!-- Upload History Table -->
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">Upload Records</h5>
+                    </div>
+                    <div class="card-body">
+                        {% if uploads %}
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>File Name</th>
+                                        <th>Type</th>
+                                        <th>Uploaded By</th>
+                                        <th>Status</th>
+                                        <th>Records</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for upload in uploads %}
+                                    <tr onclick="showUploadDetails({{ upload.id }})" style="cursor: pointer;">
+                                        <td>{{ upload.upload_date.strftime('%Y-%m-%d %H:%M') }}</td>
+                                        <td>{{ upload.filename }}</td>
+                                        <td>
+                                            {% if upload.file_type == 'employee_import' %}
+                                                <i class="bi bi-people-fill text-primary"></i> Employee
+                                            {% elif upload.file_type == 'overtime_import' %}
+                                                <i class="bi bi-clock-history text-success"></i> Overtime
+                                            {% elif upload.file_type == 'bulk_update' %}
+                                                <i class="bi bi-pencil-square text-warning"></i> Bulk Update
+                                            {% else %}
+                                                {{ upload.file_type }}
                                             {% endif %}
-                                            {% if upload.records_updated %}
-                                                <br><small class="text-info">↻{{ upload.records_updated }} updated</small>
+                                        </td>
+                                        <td>{{ upload.uploaded_by.name }}</td>
+                                        <td>
+                                            <span class="status-badge status-{{ upload.status }}">
+                                                {{ upload.status.replace('_', ' ').title() }}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            {% if upload.records_processed %}
+                                                {{ upload.records_processed }}
+                                                {% if upload.records_created %}
+                                                    <small class="text-muted">({{ upload.records_created }} new)</small>
+                                                {% endif %}
+                                            {% else %}
+                                                -
                                             {% endif %}
-                                        {% else %}
-                                            <span class="text-muted">-</span>
-                                        {% endif %}
-                                    </td>
-                                    <td>
-                                        {% if upload.file_size %}
-                                            {{ (upload.file_size / 1024)|round(1) }} KB
-                                        {% else %}
-                                            <span class="text-muted">-</span>
-                                        {% endif %}
-                                    </td>
-                                    <td>
-                                        <div class="btn-group btn-group-sm" role="group">
-                                            <button type="button" class="btn btn-outline-primary" 
-                                                    onclick="viewDetails({{ upload.id }})"
-                                                    title="View Details">
+                                        </td>
+                                        <td onclick="event.stopPropagation();">
+                                            <button class="btn btn-sm btn-info" onclick="showUploadDetails({{ upload.id }})" title="View Details">
                                                 <i class="bi bi-eye"></i>
                                             </button>
                                             <a href="{{ url_for('employee_import.download_upload_file', upload_id=upload.id) }}" 
-                                               class="btn btn-outline-success"
-                                               title="Download Original File">
+                                               class="btn btn-sm btn-secondary" title="Download Original File">
                                                 <i class="bi bi-download"></i>
                                             </a>
-                                            <button type="button" class="btn btn-outline-danger" 
-                                                    onclick="deleteUpload({{ upload.id }})"
-                                                    title="Delete Record">
+                                            {% if current_user.is_supervisor %}
+                                            <button class="btn btn-sm btn-danger" onclick="deleteUpload({{ upload.id }})" title="Delete Record">
                                                 <i class="bi bi-trash"></i>
                                             </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        
+                        <!-- Pagination could go here -->
+                        
+                        {% else %}
+                        <div class="text-center py-5">
+                            <i class="bi bi-inbox" style="font-size: 3rem; color: #dee2e6;"></i>
+                            <p class="mt-3 text-muted">No upload records found</p>
+                            <a href="{{ url_for('employee_import.upload_employees') }}" class="btn btn-primary">
+                                <i class="bi bi-upload"></i> Upload Files
+                            </a>
+                        </div>
+                        {% endif %}
                     </div>
-                    {% else %}
-                    <div class="text-center py-5">
-                        <i class="bi bi-inbox display-1 text-muted"></i>
-                        <p class="text-muted mt-3">No upload records found</p>
-                        <a href="{{ url_for('employee_import.upload_employees') }}" class="btn btn-primary">
-                            <i class="bi bi-cloud-upload"></i> Upload Data
-                        </a>
-                    </div>
-                    {% endif %}
                 </div>
             </div>
         </div>
     </div>
-</div>
-
-<!-- Details Modal -->
-<div class="modal fade" id="detailsModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Upload Details</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body" id="modalContent">
-                <!-- Content loaded dynamically -->
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+    
+    <!-- Upload Details Modal -->
+    <div class="modal fade detail-modal" id="uploadDetailsModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Upload Details</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="uploadDetailsContent">
+                        <div class="text-center">
+                            <div class="spinner-border" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
             </div>
         </div>
     </div>
-</div>
-
-<style>
-.table th {
-    background-color: #f8f9fa;
-    font-weight: 600;
-}
-
-.spin {
-    animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
-
-.btn-group-sm .btn {
-    padding: 0.25rem 0.5rem;
-}
-
-#uploadTable tbody tr:hover {
-    background-color: #f8f9fa;
-}
-
-.modal-body .detail-row {
-    padding: 0.5rem 0;
-    border-bottom: 1px solid #dee2e6;
-}
-
-.modal-body .detail-row:last-child {
-    border-bottom: none;
-}
-
-.modal-body .detail-label {
-    font-weight: 600;
-    color: #495057;
-}
-</style>
-
-<script>
-// Auto-submit form on filter change
-document.querySelectorAll('#filterForm select').forEach(select => {
-    select.addEventListener('change', () => {
-        document.getElementById('filterForm').submit();
-    });
-});
-
-// View upload details
-function viewDetails(uploadId) {
-    const modal = new bootstrap.Modal(document.getElementById('detailsModal'));
-    const modalContent = document.getElementById('modalContent');
     
-    // Show loading state
-    modalContent.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary"></div></div>';
-    modal.show();
-    
-    // Fetch details
-    fetch(`/api/upload/details/${uploadId}`)
-        .then(response => response.json())
-        .then(data => {
-            let html = '<div class="container-fluid">';
-            
-            // Basic Information
-            html += '<h6 class="mb-3">Basic Information</h6>';
-            html += '<div class="row mb-4">';
-            html += `<div class="col-md-6">
-                        <div class="detail-row">
-                            <span class="detail-label">File Name:</span><br>
-                            ${data.filename}
-                        </div>
-                        <div class="detail-row">
-                            <span class="detail-label">Upload Type:</span><br>
-                            <span class="badge bg-primary">${data.file_type.replace('_', ' ').toUpperCase()}</span>
-                        </div>
-                        <div class="detail-row">
-                            <span class="detail-label">Upload Date:</span><br>
-                            ${new Date(data.upload_date).toLocaleString()}
-                        </div>
-                    </div>`;
-            
-            html += `<div class="col-md-6">
-                        <div class="detail-row">
-                            <span class="detail-label">Uploaded By:</span><br>
-                            ${data.uploaded_by_name}
-                        </div>
-                        <div class="detail-row">
-                            <span class="detail-label">File Size:</span><br>
-                            ${(data.file_size / 1024).toFixed(1)} KB
-                        </div>
-                        <div class="detail-row">
-                            <span class="detail-label">Status:</span><br>
-                            ${getStatusBadge(data.status)}
-                        </div>
-                    </div>`;
-            html += '</div>';
-            
-            // Processing Statistics
-            if (data.records_processed) {
-                html += '<h6 class="mb-3">Processing Statistics</h6>';
-                html += '<div class="row mb-4">';
-                html += `<div class="col-md-4">
-                            <div class="text-center">
-                                <h3 class="text-primary">${data.records_processed}</h3>
-                                <small class="text-muted">Total Processed</small>
-                            </div>
-                        </div>`;
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+    function showUploadDetails(uploadId) {
+        const modal = new bootstrap.Modal(document.getElementById('uploadDetailsModal'));
+        modal.show();
+        
+        // Fetch upload details
+        fetch(`{{ url_for('employee_import.get_upload_details', upload_id=0) }}`.replace('0', uploadId))
+            .then(response => response.json())
+            .then(data => {
+                let html = '<dl class="row">';
+                
+                html += '<dt class="col-sm-4">File Name:</dt>';
+                html += `<dd class="col-sm-8">${data.filename}</dd>`;
+                
+                html += '<dt class="col-sm-4">Upload Date:</dt>';
+                html += `<dd class="col-sm-8">${new Date(data.upload_date).toLocaleString()}</dd>`;
+                
+                html += '<dt class="col-sm-4">Uploaded By:</dt>';
+                html += `<dd class="col-sm-8">${data.uploaded_by_name} (${data.uploaded_by_email})</dd>`;
+                
+                html += '<dt class="col-sm-4">File Type:</dt>';
+                html += `<dd class="col-sm-8">${data.file_type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}</dd>`;
+                
+                html += '<dt class="col-sm-4">File Size:</dt>';
+                html += `<dd class="col-sm-8">${(data.file_size / 1024).toFixed(2)} KB</dd>`;
+                
+                html += '<dt class="col-sm-4">Status:</dt>';
+                html += `<dd class="col-sm-8"><span class="status-badge status-${data.status}">${data.status.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}</span></dd>`;
+                
+                if (data.records_processed) {
+                    html += '<dt class="col-sm-4">Records Processed:</dt>';
+                    html += `<dd class="col-sm-8">${data.records_processed}</dd>`;
+                }
                 
                 if (data.records_created) {
-                    html += `<div class="col-md-4">
-                                <div class="text-center">
-                                    <h3 class="text-success">${data.records_created}</h3>
-                                    <small class="text-muted">New Records</small>
-                                </div>
-                            </div>`;
+                    html += '<dt class="col-sm-4">Records Created:</dt>';
+                    html += `<dd class="col-sm-8">${data.records_created}</dd>`;
                 }
                 
                 if (data.records_updated) {
-                    html += `<div class="col-md-4">
-                                <div class="text-center">
-                                    <h3 class="text-info">${data.records_updated}</h3>
-                                    <small class="text-muted">Updated Records</small>
-                                </div>
-                            </div>`;
+                    html += '<dt class="col-sm-4">Records Updated:</dt>';
+                    html += `<dd class="col-sm-8">${data.records_updated}</dd>`;
                 }
-                html += '</div>';
+                
+                if (data.total_overtime_hours !== undefined) {
+                    html += '<dt class="col-sm-4">Total OT Hours:</dt>';
+                    html += `<dd class="col-sm-8">${data.total_overtime_hours.toFixed(1)}</dd>`;
+                }
+                
+                if (data.error_details) {
+                    html += '<dt class="col-sm-4">Errors:</dt>';
+                    html += `<dd class="col-sm-8"><pre class="bg-light p-2" style="max-height: 200px; overflow-y: auto;">${data.error_details}</pre></dd>`;
+                }
+                
+                if (data.notes) {
+                    html += '<dt class="col-sm-4">Notes:</dt>';
+                    html += `<dd class="col-sm-8">${data.notes}</dd>`;
+                }
+                
+                html += '</dl>';
+                
+                document.getElementById('uploadDetailsContent').innerHTML = html;
+            })
+            .catch(error => {
+                document.getElementById('uploadDetailsContent').innerHTML = 
+                    '<div class="alert alert-danger">Error loading details: ' + error.message + '</div>';
+            });
+    }
+    
+    function deleteUpload(uploadId) {
+        if (!confirm('Are you sure you want to delete this upload record? This action cannot be undone.')) {
+            return;
+        }
+        
+        fetch(`{{ url_for('employee_import.delete_upload', upload_id=0) }}`.replace('0', uploadId), {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json'
             }
-            
-            // Error Details
-            if (data.error_details) {
-                html += '<h6 class="mb-3 text-danger">Error Details</h6>';
-                html += '<div class="alert alert-danger">';
-                html += `<pre class="mb-0">${data.error_details}</pre>`;
-                html += '</div>';
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                window.location.reload();
+            } else {
+                alert('Error deleting upload: ' + (data.error || 'Unknown error'));
             }
-            
-            // Notes
-            if (data.notes) {
-                html += '<h6 class="mb-3">Notes</h6>';
-                html += `<p>${data.notes}</p>`;
-            }
-            
-            html += '</div>';
-            
-            modalContent.innerHTML = html;
         })
         .catch(error => {
-            modalContent.innerHTML = '<div class="alert alert-danger">Failed to load details</div>';
-            console.error('Error loading details:', error);
+            alert('Error deleting upload: ' + error.message);
         });
-}
-
-// Delete upload record
-function deleteUpload(uploadId) {
-    if (!confirm('Are you sure you want to delete this upload record? This will not affect the imported data.')) {
-        return;
     }
+    </script>
     
-    fetch(`/api/upload/delete/${uploadId}`, {
-        method: 'DELETE',
-        headers: {
-            'Content-Type': 'application/json',
-        }
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            // Reload page to show updated list
-            window.location.reload();
-        } else {
-            alert('Failed to delete upload: ' + (data.error || 'Unknown error'));
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('Error deleting upload');
-    });
-}
-
-// Helper function to get status badge HTML
-function getStatusBadge(status) {
-    const badges = {
-        'completed': '<span class="badge bg-success"><i class="bi bi-check-circle"></i> Completed</span>',
-        'failed': '<span class="badge bg-danger"><i class="bi bi-x-circle"></i> Failed</span>',
-        'processing': '<span class="badge bg-primary"><i class="bi bi-arrow-repeat"></i> Processing</span>',
-        'completed_with_errors': '<span class="badge bg-warning text-dark"><i class="bi bi-exclamation-triangle"></i> Partial</span>'
-    };
-    return badges[status] || `<span class="badge bg-secondary">${status}</span>`;
-}
-
-// Add pagination if there are many records
-document.addEventListener('DOMContentLoaded', function() {
-    const rowsPerPage = 20;
-    const table = document.getElementById('uploadTable');
-    
-    if (table) {
-        const tbody = table.querySelector('tbody');
-        const rows = Array.from(tbody.querySelectorAll('tr'));
-        
-        if (rows.length > rowsPerPage) {
-            // Add pagination controls
-            const paginationDiv = document.createElement('div');
-            paginationDiv.className = 'mt-3 d-flex justify-content-between align-items-center';
-            
-            const info = document.createElement('span');
-            info.className = 'text-muted';
-            
-            const nav = document.createElement('nav');
-            nav.innerHTML = '<ul class="pagination mb-0"></ul>';
-            
-            paginationDiv.appendChild(info);
-            paginationDiv.appendChild(nav);
-            
-            table.parentElement.appendChild(paginationDiv);
-            
-            const totalPages = Math.ceil(rows.length / rowsPerPage);
-            let currentPage = 1;
-            
-            function showPage(page) {
-                rows.forEach((row, index) => {
-                    const startIndex = (page - 1) * rowsPerPage;
-                    const endIndex = page * rowsPerPage;
-                    
-                    if (index >= startIndex && index < endIndex) {
-                        row.style.display = '';
-                    } else {
-                        row.style.display = 'none';
-                    }
-                });
-                
-                // Update info
-                const start = (page - 1) * rowsPerPage + 1;
-                const end = Math.min(page * rowsPerPage, rows.length);
-                info.textContent = `Showing ${start} to ${end} of ${rows.length} uploads`;
-                
-                // Update pagination buttons
-                updatePaginationButtons(page, totalPages);
-            }
-            
-            function updatePaginationButtons(current, total) {
-                const ul = nav.querySelector('ul');
-                ul.innerHTML = '';
-                
-                // Previous button
-                const prevLi = document.createElement('li');
-                prevLi.className = `page-item ${current === 1 ? 'disabled' : ''}`;
-                prevLi.innerHTML = '<a class="page-link" href="#" tabindex="-1">Previous</a>';
-                prevLi.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    if (current > 1) {
-                        currentPage--;
-                        showPage(currentPage);
-                    }
-                });
-                ul.appendChild(prevLi);
-                
-                // Page numbers
-                for (let i = 1; i <= total; i++) {
-                    if (i === 1 || i === total || (i >= current - 2 && i <= current + 2)) {
-                        const li = document.createElement('li');
-                        li.className = `page-item ${i === current ? 'active' : ''}`;
-                        li.innerHTML = `<a class="page-link" href="#">${i}</a>`;
-                        li.addEventListener('click', (e) => {
-                            e.preventDefault();
-                            currentPage = i;
-                            showPage(currentPage);
-                        });
-                        ul.appendChild(li);
-                    } else if (i === current - 3 || i === current + 3) {
-                        const li = document.createElement('li');
-                        li.className = 'page-item disabled';
-                        li.innerHTML = '<span class="page-link">...</span>';
-                        ul.appendChild(li);
-                    }
-                }
-                
-                // Next button
-                const nextLi = document.createElement('li');
-                nextLi.className = `page-item ${current === total ? 'disabled' : ''}`;
-                nextLi.innerHTML = '<a class="page-link" href="#">Next</a>';
-                nextLi.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    if (current < total) {
-                        currentPage++;
-                        showPage(currentPage);
-                    }
-                });
-                ul.appendChild(nextLi);
-            }
-            
-            // Show first page
-            showPage(1);
-        }
-    }
-});
-
-// Export functionality (if needed)
-function exportHistory() {
-    const params = new URLSearchParams(window.location.search);
-    params.append('export', 'csv');
-    
-    window.location.href = `{{ url_for('employee_import.upload_history') }}?${params.toString()}`;
-}
-</script>
-{% endblock %}
+    {% endblock %}
+</body>
+</html>
