@@ -691,7 +691,7 @@ class UploadHistory(db.Model):
     # Additional info
     file_path = db.Column(db.String(500))
     error_log = db.Column(db.JSON)
-    metadata = db.Column(db.JSON)
+    upload_metadata = db.Column(db.JSON)  # Renamed from metadata to avoid conflict
     
     # Timestamps
     uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
