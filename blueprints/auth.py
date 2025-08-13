@@ -1,8 +1,7 @@
 # blueprints/auth.py
 """
 Authentication Blueprint
-Handles login, logout, and password management ONLY
-NO DATABASE INITIALIZATION HERE
+Handles login, logout, and password management
 """
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash
@@ -24,7 +23,7 @@ def login():
         if current_user.is_supervisor:
             return redirect(url_for('supervisor.dashboard'))
         else:
-            return redirect(url_for('employee.dashboard'))
+            return redirect(url_for('main.employee_dashboard'))
     
     if request.method == 'POST':
         email = request.form.get('email', '').strip().lower()
@@ -36,27 +35,27 @@ def login():
             return render_template('login.html')
         
         try:
-            # Find employee by email or username
-            employee = Employee.query.filter(
-                db.or_(Employee.email == email, Employee.username == email)
-            ).first()
+            # Find employee by email (no username field in model)
+            employee = Employee.query.filter_by(email=email).first()
             
             if not employee:
-                flash('Invalid email/username or password.', 'danger')
+                flash('Invalid email or password.', 'danger')
                 return render_template('login.html')
             
             if not employee.password_hash:
                 flash('Account not properly configured. Please contact your supervisor.', 'danger')
                 return render_template('login.html')
             
-            if check_password_hash(employee.password_hash, password):
+            if employee.check_password(password):
                 # Successful login
                 login_user(employee, remember=remember)
                 
                 # Update last login if field exists
-                if hasattr(employee, 'last_login'):
+                try:
                     employee.last_login = datetime.utcnow()
                     db.session.commit()
+                except:
+                    pass  # Field might not exist
                 
                 flash(f'Welcome back, {employee.name}!', 'success')
                 
@@ -68,9 +67,9 @@ def login():
                 if employee.is_supervisor:
                     return redirect(url_for('supervisor.dashboard'))
                 else:
-                    return redirect(url_for('employee.dashboard'))
+                    return redirect(url_for('main.employee_dashboard'))
             else:
-                flash('Invalid email/username or password.', 'danger')
+                flash('Invalid email or password.', 'danger')
                 return render_template('login.html')
                 
         except Exception as e:
@@ -108,7 +107,7 @@ def change_password():
             flash('All fields are required.', 'warning')
             return render_template('change_password.html')
         
-        if not check_password_hash(current_user.password_hash, current_password):
+        if not current_user.check_password(current_password):
             flash('Current password is incorrect.', 'danger')
             return render_template('change_password.html')
         
@@ -121,19 +120,29 @@ def change_password():
             return render_template('change_password.html')
         
         try:
-            current_user.password_hash = generate_password_hash(new_password)
+            current_user.set_password(new_password)
             db.session.commit()
             flash('Password changed successfully!', 'success')
             
             if current_user.is_supervisor:
                 return redirect(url_for('supervisor.dashboard'))
             else:
-                return redirect(url_for('employee.dashboard'))
+                return redirect(url_for('main.employee_dashboard'))
                 
         except Exception as e:
             logger.error(f"Password change error: {e}")
             db.session.rollback()
-            flash('An error occurred. Please try again.', 'danger')
+            flash('An error occurred while changing your password. Please try again.', 'danger')
             return render_template('change_password.html')
     
     return render_template('change_password.html')
+
+@auth_bp.route('/')
+def index():
+    """Root route - redirect to login or dashboard"""
+    if current_user.is_authenticated:
+        if current_user.is_supervisor:
+            return redirect(url_for('supervisor.dashboard'))
+        else:
+            return redirect(url_for('main.employee_dashboard'))
+    return redirect(url_for('auth.login'))
