@@ -1,420 +1,466 @@
 # blueprints/communications.py
-"""
-Communications Blueprint - Complete implementation
-Handles all company communications (Plantwide, HR, Maintenance, Hourly)
-"""
-
-from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, send_file, current_app
+from flask import Blueprint, render_template, request, jsonify, flash, redirect, url_for
 from flask_login import login_required, current_user
-from werkzeug.utils import secure_filename
-from models import db, Employee, Position, CommunicationMessage, CommunicationReadReceipt, CommunicationAttachment, MessageTemplate, MessageCategory
+from models import (db, CommunicationCategory, CommunicationMessage, 
+                   CommunicationReadReceipt, CommunicationAttachment, Employee)
 from datetime import datetime, timedelta
-from sqlalchemy import or_, and_, func
+from werkzeug.utils import secure_filename
 import os
-import logging
+from functools import wraps
 
-# Set up logging
-logger = logging.getLogger(__name__)
+communications_bp = Blueprint('communications', __name__)
 
-# Create blueprint
-communications_bp = Blueprint('communications', __name__, url_prefix='/communications')
+# Decorator for supervisor access
+def supervisor_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated or not current_user.is_supervisor:
+            flash('Access denied. Supervisor privileges required.', 'danger')
+            return redirect(url_for('main.employee_dashboard'))
+        return f(*args, **kwargs)
+    return decorated_function
 
-# ============================================
-# HELPER FUNCTIONS
-# ============================================
+# ==========================================
+# MAIN COMMUNICATIONS VIEWS
+# ==========================================
 
-def allowed_file(filename):
-    """Check if file extension is allowed"""
-    ALLOWED_EXTENSIONS = {'pdf', 'doc', 'docx', 'xlsx', 'xls', 'png', 'jpg', 'jpeg'}
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
-def get_unread_counts():
-    """Get unread message counts for current user"""
-    if not current_user.is_authenticated:
-        return {'total': 0, 'plantwide': 0, 'hr': 0, 'maintenance': 0, 'hourly': 0}
-    
+@communications_bp.route('/communications')
+@login_required
+def index():
+    """Main communications dashboard"""
     try:
-        # Get all messages targeted to current user
-        messages = get_user_messages()
+        # Get all active categories
+        categories = CommunicationCategory.query.filter_by(is_active=True).all()
         
-        # Count unread by category
-        unread = {'plantwide': 0, 'hr': 0, 'maintenance': 0, 'hourly': 0}
+        # Get recent messages for each category
+        recent_messages = {}
+        unread_counts = {}
         
-        for msg in messages:
-            if not is_message_read(msg.id, current_user.id):
-                if msg.category in unread:
-                    unread[msg.category] += 1
-        
-        unread['total'] = sum(unread.values())
-        return unread
-    except Exception as e:
-        logger.error(f"Error getting unread counts: {e}")
-        return {'total': 0, 'plantwide': 0, 'hr': 0, 'maintenance': 0, 'hourly': 0}
-
-def get_user_messages(category=None):
-    """Get all messages visible to current user"""
-    query = CommunicationMessage.query.filter(
-        CommunicationMessage.is_archived == False,
-        or_(
-            CommunicationMessage.expires_at == None,
-            CommunicationMessage.expires_at > datetime.utcnow()
-        )
-    )
-    
-    if category:
-        query = query.filter(CommunicationMessage.category == category)
-    
-    # Filter by target audience
-    query = query.filter(
-        or_(
-            CommunicationMessage.target_audience == 'all',
-            and_(
-                CommunicationMessage.target_audience == 'department',
-                CommunicationMessage.target_department == current_user.department
-            ),
-            and_(
-                CommunicationMessage.target_audience == 'crew',
-                CommunicationMessage.target_crew == current_user.crew
-            ),
-            and_(
-                CommunicationMessage.target_audience == 'position',
-                CommunicationMessage.target_position_id == current_user.position_id
-            ),
-            and_(
-                CommunicationMessage.target_audience == 'individual',
-                CommunicationMessage.recipient_id == current_user.id
+        for category in categories:
+            # Get messages targeted to this user
+            messages_query = CommunicationMessage.query.filter_by(
+                category_id=category.id,
+                is_archived=False
+            ).filter(
+                db.or_(
+                    CommunicationMessage.target_all == True,
+                    CommunicationMessage.target_crews.contains(current_user.crew),
+                    CommunicationMessage.target_departments.contains(current_user.department),
+                    CommunicationMessage.target_positions.contains(str(current_user.position_id))
+                )
+            ).order_by(
+                CommunicationMessage.is_pinned.desc(),
+                CommunicationMessage.created_at.desc()
             )
-        )
-    )
-    
-    return query.order_by(
-        CommunicationMessage.is_pinned.desc(),
-        CommunicationMessage.created_at.desc()
-    ).all()
+            
+            # Get recent messages
+            recent_messages[category.id] = messages_query.limit(5).all()
+            
+            # Count unread messages
+            unread_count = 0
+            for message in messages_query.all():
+                if not message.is_read_by(current_user.id):
+                    unread_count += 1
+            unread_counts[category.id] = unread_count
+        
+        # Get messages requiring acknowledgment
+        pending_acknowledgments = CommunicationMessage.query.filter(
+            CommunicationMessage.requires_acknowledgment == True,
+            CommunicationMessage.is_archived == False
+        ).filter(
+            db.or_(
+                CommunicationMessage.target_all == True,
+                CommunicationMessage.target_crews.contains(current_user.crew),
+                CommunicationMessage.target_departments.contains(current_user.department),
+                CommunicationMessage.target_positions.contains(str(current_user.position_id))
+            )
+        ).all()
+        
+        # Filter out already acknowledged
+        pending_acknowledgments = [
+            msg for msg in pending_acknowledgments 
+            if not msg.is_acknowledged_by(current_user.id)
+        ]
+        
+        return render_template('communications/index.html',
+                             categories=categories,
+                             recent_messages=recent_messages,
+                             unread_counts=unread_counts,
+                             pending_acknowledgments=pending_acknowledgments)
+                             
+    except Exception as e:
+        flash(f'Error loading communications: {str(e)}', 'danger')
+        return redirect(url_for('main.employee_dashboard'))
 
-def is_message_read(message_id, employee_id):
-    """Check if a message has been read by an employee"""
-    return CommunicationReadReceipt.query.filter_by(
-        message_id=message_id,
-        employee_id=employee_id
-    ).first() is not None
-
-def mark_message_read(message_id, employee_id):
-    """Mark a message as read by an employee"""
-    if not is_message_read(message_id, employee_id):
-        receipt = CommunicationReadReceipt(
-            message_id=message_id,
-            employee_id=employee_id
-        )
-        db.session.add(receipt)
-        db.session.commit()
-
-def can_send_in_category(category):
-    """Check if current user can send messages in a category"""
-    cat = MessageCategory.query.filter_by(name=category).first()
-    if not cat:
-        return False
-    
-    # Supervisors can send to any category
-    if current_user.is_supervisor:
-        return True
-    
-    # Check specific requirements
-    if cat.require_supervisor:
-        return False
-    
-    if cat.require_department and current_user.department != cat.require_department:
-        return False
-    
-    if cat.require_position and current_user.position.name != cat.require_position:
-        return False
-    
-    return True
-
-# ============================================
-# ROUTES
-# ============================================
-
-@communications_bp.route('/')
+@communications_bp.route('/communications/category/<int:category_id>')
 @login_required
-def hub():
-    """Main communications hub showing all categories"""
-    categories = MessageCategory.query.filter_by(is_active=True).all()
-    unread = get_unread_counts()
-    
-    # Get recent messages for each category
-    recent_messages = {}
-    for cat in categories:
-        messages = get_user_messages(cat.name)[:3]
-        recent_messages[cat.name] = messages
-    
-    return render_template('communications_hub.html',
-                         categories=categories,
-                         unread=unread,
-                         recent_messages=recent_messages)
+def category_view(category_id):
+    """View all messages in a category"""
+    try:
+        category = CommunicationCategory.query.get_or_404(category_id)
+        
+        # Get messages for this category
+        messages_query = CommunicationMessage.query.filter_by(
+            category_id=category_id,
+            is_archived=False
+        ).filter(
+            db.or_(
+                CommunicationMessage.target_all == True,
+                CommunicationMessage.target_crews.contains(current_user.crew),
+                CommunicationMessage.target_departments.contains(current_user.department),
+                CommunicationMessage.target_positions.contains(str(current_user.position_id))
+            )
+        ).order_by(
+            CommunicationMessage.is_pinned.desc(),
+            CommunicationMessage.created_at.desc()
+        )
+        
+        # Pagination
+        page = request.args.get('page', 1, type=int)
+        messages = messages_query.paginate(page=page, per_page=20, error_out=False)
+        
+        return render_template('communications/category.html',
+                             category=category,
+                             messages=messages)
+                             
+    except Exception as e:
+        flash(f'Error loading category: {str(e)}', 'danger')
+        return redirect(url_for('communications.index'))
 
-@communications_bp.route('/category/<category>')
-@login_required
-def category_view(category):
-    """View all messages in a specific category"""
-    # Validate category
-    cat = MessageCategory.query.filter_by(name=category).first()
-    if not cat:
-        flash('Invalid category', 'error')
-        return redirect(url_for('communications.hub'))
-    
-    # Get filters
-    priority = request.args.get('priority')
-    search = request.args.get('search')
-    
-    # Get messages
-    messages = get_user_messages(category)
-    
-    # Apply filters
-    if priority:
-        messages = [m for m in messages if m.priority == priority]
-    
-    if search:
-        search_lower = search.lower()
-        messages = [m for m in messages if search_lower in m.subject.lower() or search_lower in m.content.lower()]
-    
-    # Mark messages as read for current page
-    for msg in messages[:10]:  # Only mark first page as read
-        mark_message_read(msg.id, current_user.id)
-    
-    return render_template('communications_category.html',
-                         category=cat,
-                         messages=messages,
-                         can_send=can_send_in_category(category))
-
-@communications_bp.route('/message/<int:message_id>')
+@communications_bp.route('/communications/message/<int:message_id>')
 @login_required
 def view_message(message_id):
     """View a single message"""
-    message = CommunicationMessage.query.get_or_404(message_id)
-    
-    # Check if user can view this message
-    messages = get_user_messages()
-    if message not in messages:
-        flash('You do not have permission to view this message', 'error')
-        return redirect(url_for('communications.hub'))
-    
-    # Mark as read
-    mark_message_read(message_id, current_user.id)
-    
-    # Get read receipts if sender
-    read_receipts = []
-    if message.sender_id == current_user.id:
-        read_receipts = CommunicationReadReceipt.query.filter_by(message_id=message_id).all()
-    
-    return render_template('communications_message.html',
-                         message=message,
-                         read_receipts=read_receipts)
+    try:
+        message = CommunicationMessage.query.get_or_404(message_id)
+        
+        # Check if user has access
+        if not _user_can_view_message(current_user, message):
+            flash('You do not have access to this message.', 'danger')
+            return redirect(url_for('communications.index'))
+        
+        # Mark as read
+        receipt = CommunicationReadReceipt.query.filter_by(
+            message_id=message_id,
+            employee_id=current_user.id
+        ).first()
+        
+        if not receipt:
+            receipt = CommunicationReadReceipt(
+                message_id=message_id,
+                employee_id=current_user.id,
+                read_at=datetime.utcnow()
+            )
+            db.session.add(receipt)
+            db.session.commit()
+        
+        # Get read/acknowledgment stats if supervisor
+        read_stats = None
+        if current_user.is_supervisor:
+            total_employees = _count_target_employees(message)
+            read_count = len(message.read_receipts)
+            ack_count = sum(1 for r in message.read_receipts if r.acknowledged)
+            
+            read_stats = {
+                'total': total_employees,
+                'read': read_count,
+                'acknowledged': ack_count,
+                'read_percentage': (read_count / total_employees * 100) if total_employees > 0 else 0,
+                'ack_percentage': (ack_count / total_employees * 100) if total_employees > 0 else 0
+            }
+        
+        return render_template('communications/message.html',
+                             message=message,
+                             receipt=receipt,
+                             read_stats=read_stats)
+                             
+    except Exception as e:
+        flash(f'Error loading message: {str(e)}', 'danger')
+        return redirect(url_for('communications.index'))
 
-@communications_bp.route('/compose', methods=['GET', 'POST'])
+# ==========================================
+# MESSAGE CREATION & MANAGEMENT
+# ==========================================
+
+@communications_bp.route('/communications/create', methods=['GET', 'POST'])
 @login_required
-def compose():
-    """Compose a new message"""
+@supervisor_required
+def create_message():
+    """Create a new communication message"""
     if request.method == 'POST':
         try:
-            category = request.form.get('category')
+            # Get form data
+            category_id = request.form.get('category_id', type=int)
+            title = request.form.get('title')
+            content = request.form.get('content')
+            priority = request.form.get('priority', 'normal')
             
-            # Check permissions
-            if not can_send_in_category(category):
-                flash('You do not have permission to send messages in this category', 'error')
-                return redirect(url_for('communications.compose'))
+            # Visibility options
+            is_pinned = request.form.get('is_pinned') == 'on'
+            requires_acknowledgment = request.form.get('requires_acknowledgment') == 'on'
+            
+            # Target audience
+            target_all = request.form.get('target_all') == 'on'
+            target_crews = request.form.getlist('target_crews') if not target_all else None
+            target_departments = request.form.getlist('target_departments') if not target_all else None
+            target_positions = request.form.getlist('target_positions') if not target_all else None
+            
+            # Expiration
+            expires_in = request.form.get('expires_in', type=int)
+            expires_at = None
+            if expires_in:
+                expires_at = datetime.utcnow() + timedelta(days=expires_in)
             
             # Create message
             message = CommunicationMessage(
-                category=category,
-                subject=request.form.get('subject'),
-                content=request.form.get('content'),
-                priority=request.form.get('priority', 'normal'),
-                sender_id=current_user.id,
-                target_audience=request.form.get('target_audience', 'all')
+                category_id=category_id,
+                author_id=current_user.id,
+                title=title,
+                content=content,
+                priority=priority,
+                is_pinned=is_pinned,
+                requires_acknowledgment=requires_acknowledgment,
+                target_all=target_all,
+                target_crews=target_crews,
+                target_departments=target_departments,
+                target_positions=target_positions,
+                expires_at=expires_at
             )
-            
-            # Set target specifics
-            if message.target_audience == 'department':
-                message.target_department = request.form.get('target_department')
-            elif message.target_audience == 'crew':
-                message.target_crew = request.form.get('target_crew')
-            elif message.target_audience == 'position':
-                message.target_position_id = request.form.get('target_position_id')
-            elif message.target_audience == 'individual':
-                message.recipient_id = request.form.get('recipient_id')
-            
-            # Set expiration
-            expires_in = request.form.get('expires_in')
-            if expires_in and expires_in != 'never':
-                days = int(expires_in)
-                message.expires_at = datetime.utcnow() + timedelta(days=days)
-            
-            # Handle file attachments
-            if 'attachments' in request.files:
-                files = request.files.getlist('attachments')
-                for file in files:
-                    if file and allowed_file(file.filename):
-                        filename = secure_filename(file.filename)
-                        # Save file logic here
-                        attachment = CommunicationAttachment(
-                            filename=filename,
-                            original_filename=file.filename,
-                            file_size=len(file.read())
-                        )
-                        file.seek(0)  # Reset file pointer
-                        message.attachments.append(attachment)
             
             db.session.add(message)
             db.session.commit()
             
-            flash('Message sent successfully!', 'success')
+            # Handle file attachments
+            if 'attachments' in request.files:
+                for file in request.files.getlist('attachments'):
+                    if file and file.filename:
+                        filename = secure_filename(file.filename)
+                        # Save file logic here
+                        attachment = CommunicationAttachment(
+                            message_id=message.id,
+                            filename=filename,
+                            file_size=0,  # Calculate actual size
+                            mime_type=file.content_type
+                        )
+                        db.session.add(attachment)
+                
+                db.session.commit()
+            
+            flash('Message created successfully!', 'success')
             return redirect(url_for('communications.view_message', message_id=message.id))
             
         except Exception as e:
-            logger.error(f"Error composing message: {e}")
             db.session.rollback()
-            flash('Error sending message. Please try again.', 'error')
+            flash(f'Error creating message: {str(e)}', 'danger')
     
-    # Get data for form
-    categories = MessageCategory.query.filter_by(is_active=True).all()
+    # GET request - show form
+    categories = CommunicationCategory.query.filter_by(is_active=True).all()
     departments = db.session.query(Employee.department).distinct().all()
+    departments = [d[0] for d in departments if d[0]]
+    
+    from models import Position
     positions = Position.query.all()
-    templates = MessageTemplate.query.filter_by(created_by_id=current_user.id).all()
     
-    # Filter categories user can send to
-    sendable_categories = [cat for cat in categories if can_send_in_category(cat.name)]
-    
-    return render_template('communications_compose.html',
-                         categories=sendable_categories,
-                         departments=[d[0] for d in departments if d[0]],
-                         positions=positions,
-                         templates=templates)
+    return render_template('communications/create.html',
+                         categories=categories,
+                         departments=departments,
+                         positions=positions)
 
-@communications_bp.route('/analytics')
+@communications_bp.route('/communications/message/<int:message_id>/acknowledge', methods=['POST'])
 @login_required
-def analytics():
-    """View message analytics (supervisors only)"""
-    if not current_user.is_supervisor:
-        flash('Access denied. Supervisors only.', 'error')
-        return redirect(url_for('communications.hub'))
+def acknowledge_message(message_id):
+    """Acknowledge a message"""
+    try:
+        message = CommunicationMessage.query.get_or_404(message_id)
+        
+        # Check access
+        if not _user_can_view_message(current_user, message):
+            return jsonify({'error': 'Access denied'}), 403
+        
+        # Update or create receipt
+        receipt = CommunicationReadReceipt.query.filter_by(
+            message_id=message_id,
+            employee_id=current_user.id
+        ).first()
+        
+        if not receipt:
+            receipt = CommunicationReadReceipt(
+                message_id=message_id,
+                employee_id=current_user.id,
+                read_at=datetime.utcnow()
+            )
+            db.session.add(receipt)
+        
+        receipt.acknowledged = True
+        receipt.acknowledged_at = datetime.utcnow()
+        db.session.commit()
+        
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# ==========================================
+# ADMIN FUNCTIONS
+# ==========================================
+
+@communications_bp.route('/communications/admin')
+@login_required
+@supervisor_required
+def admin():
+    """Communications admin panel"""
+    categories = CommunicationCategory.query.all()
     
-    # Get date range
-    days = int(request.args.get('days', 30))
-    start_date = datetime.utcnow() - timedelta(days=days)
-    
-    # Messages by category
-    category_stats = db.session.query(
-        CommunicationMessage.category,
-        func.count(CommunicationMessage.id).label('count')
-    ).filter(
-        CommunicationMessage.created_at >= start_date
-    ).group_by(CommunicationMessage.category).all()
-    
-    # Messages by priority
-    priority_stats = db.session.query(
-        CommunicationMessage.priority,
-        func.count(CommunicationMessage.id).label('count')
-    ).filter(
-        CommunicationMessage.created_at >= start_date
-    ).group_by(CommunicationMessage.priority).all()
-    
-    # Top senders
-    top_senders = db.session.query(
-        Employee.name,
-        func.count(CommunicationMessage.id).label('count')
-    ).join(
-        CommunicationMessage, CommunicationMessage.sender_id == Employee.id
-    ).filter(
-        CommunicationMessage.created_at >= start_date
-    ).group_by(Employee.name).order_by(
-        func.count(CommunicationMessage.id).desc()
-    ).limit(10).all()
-    
-    # Read rates by category
-    read_rates = {}
-    for cat in MessageCategory.query.all():
-        messages = CommunicationMessage.query.filter_by(
-            category=cat.name
+    # Get statistics
+    stats = {
+        'total_messages': CommunicationMessage.query.count(),
+        'active_messages': CommunicationMessage.query.filter_by(is_archived=False).count(),
+        'pinned_messages': CommunicationMessage.query.filter_by(is_pinned=True, is_archived=False).count(),
+        'pending_acks': db.session.query(CommunicationMessage).join(
+            CommunicationReadReceipt
         ).filter(
-            CommunicationMessage.created_at >= start_date
-        ).all()
+            CommunicationMessage.requires_acknowledgment == True,
+            CommunicationReadReceipt.acknowledged == False
+        ).count()
+    }
+    
+    return render_template('communications/admin.html',
+                         categories=categories,
+                         stats=stats)
+
+@communications_bp.route('/communications/category/create', methods=['POST'])
+@login_required
+@supervisor_required
+def create_category():
+    """Create a new category"""
+    try:
+        name = request.form.get('name')
+        description = request.form.get('description')
+        icon = request.form.get('icon', 'bi-chat-dots')
+        color = request.form.get('color', 'primary')
         
-        if messages:
-            total_recipients = 0
-            total_reads = 0
-            
-            for msg in messages:
-                # Estimate recipients based on target
-                if msg.target_audience == 'all':
-                    recipients = Employee.query.count()
-                elif msg.target_audience == 'crew':
-                    recipients = Employee.query.filter_by(crew=msg.target_crew).count()
-                elif msg.target_audience == 'department':
-                    recipients = Employee.query.filter_by(department=msg.target_department).count()
-                else:
-                    recipients = 1
-                
-                reads = CommunicationReadReceipt.query.filter_by(message_id=msg.id).count()
-                total_recipients += recipients
-                total_reads += reads
-            
-            read_rates[cat.name] = (total_reads / total_recipients * 100) if total_recipients > 0 else 0
-    
-    return render_template('communications_analytics.html',
-                         category_stats=category_stats,
-                         priority_stats=priority_stats,
-                         top_senders=top_senders,
-                         read_rates=read_rates,
-                         days=days)
-
-@communications_bp.route('/api/mark-read/<int:message_id>', methods=['POST'])
-@login_required
-def api_mark_read(message_id):
-    """API endpoint to mark message as read"""
-    try:
-        mark_message_read(message_id, current_user.id)
-        return jsonify({'success': True})
-    except Exception as e:
-        logger.error(f"Error marking message read: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@communications_bp.route('/api/delete/<int:message_id>', methods=['POST'])
-@login_required
-def api_delete_message(message_id):
-    """API endpoint to delete/archive a message"""
-    message = CommunicationMessage.query.get_or_404(message_id)
-    
-    # Only sender or supervisor can delete
-    if message.sender_id != current_user.id and not current_user.is_supervisor:
-        return jsonify({'success': False, 'error': 'Permission denied'}), 403
-    
-    try:
-        message.is_archived = True
-        db.session.commit()
-        return jsonify({'success': True})
-    except Exception as e:
-        logger.error(f"Error deleting message: {e}")
-        db.session.rollback()
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@communications_bp.route('/templates/save', methods=['POST'])
-@login_required
-def save_template():
-    """Save a message as template"""
-    try:
-        template = MessageTemplate(
-            name=request.form.get('template_name'),
-            category=request.form.get('category'),
-            subject=request.form.get('subject'),
-            content=request.form.get('content'),
-            created_by_id=current_user.id
+        category = CommunicationCategory(
+            name=name,
+            description=description,
+            icon=icon,
+            color=color
         )
-        db.session.add(template)
+        
+        db.session.add(category)
         db.session.commit()
         
-        return jsonify({'success': True, 'template_id': template.id})
+        flash('Category created successfully!', 'success')
+        return redirect(url_for('communications.admin'))
+        
     except Exception as e:
-        logger.error(f"Error saving template: {e}")
         db.session.rollback()
-        return jsonify({'success': False, 'error': str(e)}), 500
+        flash(f'Error creating category: {str(e)}', 'danger')
+        return redirect(url_for('communications.admin'))
+
+# ==========================================
+# UTILITY FUNCTIONS
+# ==========================================
+
+def _user_can_view_message(user, message):
+    """Check if a user can view a message based on targeting"""
+    if message.target_all:
+        return True
+    
+    if message.target_crews and user.crew in message.target_crews:
+        return True
+    
+    if message.target_departments and user.department in message.target_departments:
+        return True
+    
+    if message.target_positions and str(user.position_id) in message.target_positions:
+        return True
+    
+    # Supervisors can view all messages
+    if user.is_supervisor:
+        return True
+    
+    return False
+
+def _count_target_employees(message):
+    """Count how many employees are targeted by a message"""
+    query = Employee.query.filter_by(is_active=True)
+    
+    if not message.target_all:
+        filters = []
+        
+        if message.target_crews:
+            filters.append(Employee.crew.in_(message.target_crews))
+        
+        if message.target_departments:
+            filters.append(Employee.department.in_(message.target_departments))
+        
+        if message.target_positions:
+            position_ids = [int(p) for p in message.target_positions]
+            filters.append(Employee.position_id.in_(position_ids))
+        
+        if filters:
+            query = query.filter(db.or_(*filters))
+    
+    return query.count()
+
+# ==========================================
+# API ENDPOINTS
+# ==========================================
+
+@communications_bp.route('/api/communications/stats')
+@login_required
+def api_stats():
+    """Get communication statistics"""
+    try:
+        # Count unread messages
+        unread_count = 0
+        pending_acks = 0
+        
+        # Get all messages targeted to user
+        messages = CommunicationMessage.query.filter_by(is_archived=False).all()
+        
+        for message in messages:
+            if _user_can_view_message(current_user, message):
+                if not message.is_read_by(current_user.id):
+                    unread_count += 1
+                
+                if message.requires_acknowledgment and not message.is_acknowledged_by(current_user.id):
+                    pending_acks += 1
+        
+        return jsonify({
+            'unread_count': unread_count,
+            'pending_acknowledgments': pending_acks
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@communications_bp.route('/api/communications/mark-read', methods=['POST'])
+@login_required
+def api_mark_read():
+    """Mark messages as read"""
+    try:
+        message_ids = request.json.get('message_ids', [])
+        
+        for message_id in message_ids:
+            message = CommunicationMessage.query.get(message_id)
+            if message and _user_can_view_message(current_user, message):
+                receipt = CommunicationReadReceipt.query.filter_by(
+                    message_id=message_id,
+                    employee_id=current_user.id
+                ).first()
+                
+                if not receipt:
+                    receipt = CommunicationReadReceipt(
+                        message_id=message_id,
+                        employee_id=current_user.id,
+                        read_at=datetime.utcnow()
+                    )
+                    db.session.add(receipt)
+        
+        db.session.commit()
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
