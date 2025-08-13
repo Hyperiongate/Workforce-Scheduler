@@ -1,19 +1,21 @@
 # app.py
 """
 Main application file for Workforce Scheduler
-This version automatically fixes the missing is_admin column issue
+Fixed version that works with your models.py and auto-fixes database issues
 """
 
 from flask import Flask, render_template, redirect, url_for, flash, jsonify
 from flask_login import LoginManager, login_required, current_user
 from flask_migrate import Migrate
-from models import db, Employee
 import os
 import logging
 from datetime import datetime, date, timedelta
 from sqlalchemy import text, inspect
 from sqlalchemy.pool import NullPool
 from sqlalchemy.exc import OperationalError, ProgrammingError
+
+# Import your models
+from models import db, Employee
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -89,8 +91,8 @@ def fix_database_schema():
                     db.session.commit()
                     logger.info("✅ Added is_admin column")
                     
-                    # Set admin privileges
-                    db.session.execute(text("UPDATE employee SET is_admin = TRUE WHERE email = 'admin@workforce.com' OR is_supervisor = TRUE"))
+                    # Set admin privileges for admin user
+                    db.session.execute(text("UPDATE employee SET is_admin = TRUE WHERE email = 'admin@workforce.com'"))
                     db.session.commit()
                     logger.info("✅ Updated admin privileges")
                     
@@ -99,83 +101,59 @@ def fix_database_schema():
                     db.session.rollback()
             else:
                 logger.error(f"❌ Database error: {e}")
-                
-        # Also check for upload_history table
+        
+        # Check for other potentially missing columns
         try:
-            db.session.execute(text("SELECT * FROM upload_history LIMIT 1"))
-            logger.info("✅ upload_history table exists")
-        except (OperationalError, ProgrammingError):
-            logger.info("🔧 Creating upload_history table...")
-            try:
-                db.session.execute(text("""
-                    CREATE TABLE IF NOT EXISTS upload_history (
-                        id SERIAL PRIMARY KEY,
-                        upload_type VARCHAR(50) NOT NULL,
-                        filename VARCHAR(255) NOT NULL,
-                        uploaded_by INTEGER REFERENCES employee(id),
-                        upload_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        status VARCHAR(50) DEFAULT 'completed',
-                        records_processed INTEGER DEFAULT 0,
-                        records_failed INTEGER DEFAULT 0,
-                        error_details TEXT,
-                        details TEXT
-                    )
-                """))
-                db.session.commit()
-                logger.info("✅ Created upload_history table")
-            except Exception as e:
-                logger.error(f"❌ Could not create upload_history table: {e}")
-                db.session.rollback()
+            # List of columns that might be missing
+            columns_to_check = [
+                ("employee", "is_admin", "BOOLEAN DEFAULT FALSE"),
+                ("employee", "max_hours_per_week", "INTEGER DEFAULT 48"),
+                ("employee", "created_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"),
+                ("employee", "updated_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+            ]
+            
+            for table, column, col_type in columns_to_check:
+                try:
+                    db.session.execute(text(f"SELECT {column} FROM {table} LIMIT 1"))
+                except (OperationalError, ProgrammingError):
+                    logger.info(f"🔧 Adding missing column: {table}.{column}")
+                    try:
+                        db.session.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}"))
+                        db.session.commit()
+                        logger.info(f"✅ Added {column} column to {table}")
+                    except Exception as e:
+                        logger.error(f"❌ Could not add {column}: {e}")
+                        db.session.rollback()
+        except Exception as e:
+            logger.error(f"❌ Error checking columns: {e}")
 
 # Import and register blueprints
-try:
-    from blueprints.auth import auth_bp
-    app.register_blueprint(auth_bp)
-    logger.info("✅ Auth blueprint loaded")
-except ImportError as e:
-    logger.error(f"❌ Could not import auth blueprint: {e}")
+blueprints_to_register = [
+    ('blueprints.auth', 'auth_bp', 'Auth'),
+    ('blueprints.main', 'main_bp', 'Main'),
+    ('blueprints.supervisor', 'supervisor_bp', 'Supervisor'),
+    ('blueprints.employee_import', 'bp', 'Employee import'),
+    ('blueprints.schedule_management', 'schedule_bp', 'Schedule management'),
+    ('blueprints.overtime_management', 'overtime_bp', 'Overtime management'),
+    ('blueprints.leave_management', 'leave_bp', 'Leave management'),
+    ('blueprints.timeoff_requests', 'timeoff_bp', 'Time-off requests'),
+    ('blueprints.shift_swap', 'shift_swap_bp', 'Shift swap'),
+    ('blueprints.communications', 'communications_bp', 'Communications'),
+    ('blueprints.maintenance', 'maintenance_bp', 'Maintenance'),
+    ('blueprints.circadian', 'circadian_bp', 'Circadian'),
+    ('blueprints.coverage_gaps', 'coverage_bp', 'Coverage gaps'),
+]
 
-try:
-    from blueprints.main import main_bp
-    app.register_blueprint(main_bp)
-    logger.info("✅ Main blueprint loaded")
-except ImportError as e:
-    logger.error(f"❌ Could not import main blueprint: {e}")
-
-try:
-    from blueprints.supervisor import supervisor_bp
-    app.register_blueprint(supervisor_bp)
-    logger.info("✅ Supervisor blueprint loaded")
-except ImportError as e:
-    logger.error(f"❌ Could not import supervisor blueprint: {e}")
-
-try:
-    from blueprints.employee_import import bp as employee_import_bp
-    app.register_blueprint(employee_import_bp)
-    logger.info("✅ Employee import blueprint loaded")
-except ImportError as e:
-    logger.error(f"❌ Could not import employee import blueprint: {e}")
-
-try:
-    from blueprints.schedule_management import schedule_bp
-    app.register_blueprint(schedule_bp)
-    logger.info("✅ Schedule management blueprint loaded")
-except ImportError as e:
-    logger.error(f"❌ Could not import schedule management blueprint: {e}")
-
-try:
-    from blueprints.overtime_management import overtime_bp
-    app.register_blueprint(overtime_bp)
-    logger.info("✅ Overtime management blueprint loaded")
-except ImportError as e:
-    logger.error(f"❌ Could not import overtime management blueprint: {e}")
-
-try:
-    from blueprints.leave_management import leave_bp
-    app.register_blueprint(leave_bp)
-    logger.info("✅ Leave management blueprint loaded")
-except ImportError as e:
-    logger.error(f"❌ Could not import leave management blueprint: {e}")
+for module_name, blueprint_name, description in blueprints_to_register:
+    try:
+        module = __import__(module_name, fromlist=[blueprint_name])
+        blueprint = getattr(module, blueprint_name)
+        app.register_blueprint(blueprint)
+        logger.info(f"✅ {description} blueprint loaded")
+    except ImportError as e:
+        logger.warning(f"⚠️  Could not import {description} blueprint: {e}")
+    except AttributeError as e:
+        logger.warning(f"⚠️  {description} blueprint not found in module: {e}")
 
 # Root route
 @app.route('/')
@@ -209,15 +187,37 @@ def health():
 # Error handlers
 @app.errorhandler(404)
 def not_found_error(error):
+    logger.warning(f"404 error: {request.url}")
     if current_user.is_authenticated:
-        return render_template('errors/404.html'), 404
+        # Create a simple 404 page if template doesn't exist
+        return """
+        <html>
+        <head><title>Page Not Found</title></head>
+        <body style="text-align: center; margin-top: 50px;">
+            <h1>404 - Page Not Found</h1>
+            <p>The page you're looking for doesn't exist.</p>
+            <a href="/">Go Home</a>
+        </body>
+        </html>
+        """, 404
     return redirect(url_for('auth.login'))
 
 @app.errorhandler(500)
 def internal_error(error):
+    logger.error(f"500 error: {error}")
     db.session.rollback()
     if current_user.is_authenticated:
-        return render_template('errors/500.html'), 500
+        # Create a simple 500 page if template doesn't exist
+        return """
+        <html>
+        <head><title>Server Error</title></head>
+        <body style="text-align: center; margin-top: 50px;">
+            <h1>500 - Internal Server Error</h1>
+            <p>Something went wrong. Please try again later.</p>
+            <a href="/">Go Home</a>
+        </body>
+        </html>
+        """, 500
     return redirect(url_for('auth.login'))
 
 # Context processor for templates
@@ -225,68 +225,62 @@ def internal_error(error):
 def inject_now():
     return {'now': datetime.utcnow}
 
-# Create default templates if they don't exist
-def create_error_templates():
-    """Create basic error templates if they don't exist"""
-    error_dir = os.path.join(app.root_path, 'templates', 'errors')
-    os.makedirs(error_dir, exist_ok=True)
-    
-    # 404 template
-    error_404 = os.path.join(error_dir, '404.html')
-    if not os.path.exists(error_404):
-        with open(error_404, 'w') as f:
-            f.write('''
-{% extends "base.html" %}
-{% block title %}Page Not Found{% endblock %}
-{% block content %}
-<div class="container mt-5">
-    <div class="row justify-content-center">
-        <div class="col-md-6 text-center">
-            <h1 class="display-1">404</h1>
-            <h2>Page Not Found</h2>
-            <p>The page you're looking for doesn't exist.</p>
-            <a href="{{ url_for('index') }}" class="btn btn-primary">Go Home</a>
-        </div>
-    </div>
-</div>
-{% endblock %}
-''')
-    
-    # 500 template
-    error_500 = os.path.join(error_dir, '500.html')
-    if not os.path.exists(error_500):
-        with open(error_500, 'w') as f:
-            f.write('''
-{% extends "base.html" %}
-{% block title %}Server Error{% endblock %}
-{% block content %}
-<div class="container mt-5">
-    <div class="row justify-content-center">
-        <div class="col-md-6 text-center">
-            <h1 class="display-1">500</h1>
-            <h2>Internal Server Error</h2>
-            <p>Something went wrong on our end. Please try again later.</p>
-            <a href="{{ url_for('index') }}" class="btn btn-primary">Go Home</a>
-        </div>
-    </div>
-</div>
-{% endblock %}
-''')
+# Create initial admin user if doesn't exist
+def create_admin_user():
+    """Create default admin user if it doesn't exist"""
+    with app.app_context():
+        try:
+            admin = Employee.query.filter_by(email='admin@workforce.com').first()
+            if not admin:
+                logger.info("Creating default admin user...")
+                admin = Employee(
+                    email='admin@workforce.com',
+                    name='Admin User',
+                    employee_id='ADMIN001',
+                    is_supervisor=True,
+                    is_admin=True,
+                    is_active=True,
+                    department='Administration',
+                    crew='A'
+                )
+                admin.set_password('admin123')  # Change this password!
+                db.session.add(admin)
+                db.session.commit()
+                logger.info("✅ Created default admin user (admin@workforce.com / admin123)")
+        except Exception as e:
+            logger.error(f"Could not create admin user: {e}")
+            db.session.rollback()
 
-# Run the automatic database fix when the app starts
+# Run database fixes and initialization
 with app.app_context():
-    fix_database_schema()
-    create_error_templates()
+    try:
+        # First, try to create all tables
+        db.create_all()
+        logger.info("✅ Database tables verified/created")
+        
+        # Then fix any schema issues
+        fix_database_schema()
+        
+        # Create admin user if needed
+        create_admin_user()
+        
+    except Exception as e:
+        logger.error(f"❌ Database initialization error: {e}")
+
+# Import global to avoid circular imports
+from flask import request
 
 if __name__ == '__main__':
     # Additional startup checks
     with app.app_context():
-        try:
-            # Create tables if they don't exist
-            db.create_all()
-            logger.info("✅ Database tables verified")
-        except Exception as e:
-            logger.error(f"❌ Database initialization error: {e}")
+        logger.info("=== Workforce Scheduler Starting ===")
+        logger.info(f"Database: {'PostgreSQL' if 'postgresql' in str(db.engine.url) else 'SQLite'}")
+        logger.info(f"Upload folder: {app.config['UPLOAD_FOLDER']}")
+        
+        # List registered routes
+        logger.info("Registered routes:")
+        for rule in app.url_map.iter_rules():
+            logger.info(f"  {rule.endpoint}: {rule.rule}")
     
     # Run the app
     port = int(os.environ.get('PORT', 5000))
