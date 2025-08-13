@@ -1,122 +1,215 @@
-# Add these models to your existing models.py file
+# init_communications_db.py
+"""
+Initialize the communications system database tables and default data
+Run this after adding the models and running migrations
+"""
 
-# ==========================================
-# COMMUNICATIONS SYSTEM MODELS
-# ==========================================
+from app import app, db
+from models import MessageCategory, CommunicationMessage, Employee
+from datetime import datetime, timedelta
 
-class CommunicationMessage(db.Model):
-    """Main communications message model"""
-    __tablename__ = 'communication_messages'
+def init_message_categories():
+    """Create default message categories"""
+    categories = [
+        {
+            'name': 'plantwide',
+            'display_name': 'Plantwide Communications',
+            'description': 'Company-wide announcements and updates',
+            'icon': 'bi-megaphone-fill',
+            'color': '#6f42c1',  # Purple
+            'require_supervisor': True,
+            'require_department': None,
+            'require_position': None
+        },
+        {
+            'name': 'hr',
+            'display_name': 'HR Communications',
+            'description': 'Benefits, policies, and employee information',
+            'icon': 'bi-people-fill',
+            'color': '#e83e8c',  # Pink
+            'require_supervisor': False,
+            'require_department': 'HR',
+            'require_position': None
+        },
+        {
+            'name': 'maintenance',
+            'display_name': 'Maintenance Communications',
+            'description': 'Equipment updates, maintenance schedules, and technical notices',
+            'icon': 'bi-tools',
+            'color': '#0dcaf0',  # Cyan/Blue
+            'require_supervisor': False,
+            'require_department': 'Maintenance',
+            'require_position': None
+        },
+        {
+            'name': 'hourly',
+            'display_name': 'Hourly Employee Communications',
+            'description': 'Updates and information for hourly workforce',
+            'icon': 'bi-clock-fill',
+            'color': '#198754',  # Green
+            'require_supervisor': True,
+            'require_department': None,
+            'require_position': None
+        }
+    ]
     
-    id = db.Column(db.Integer, primary_key=True)
-    category = db.Column(db.String(20), nullable=False)  # plantwide, hr, maintenance, hourly
-    subject = db.Column(db.String(200), nullable=False)
-    content = db.Column(db.Text, nullable=False)
-    priority = db.Column(db.String(20), default='normal')  # low, normal, high, urgent
+    for cat_data in categories:
+        # Check if category already exists
+        existing = MessageCategory.query.filter_by(name=cat_data['name']).first()
+        if not existing:
+            category = MessageCategory(**cat_data)
+            db.session.add(category)
+            print(f"✅ Created category: {cat_data['display_name']}")
+        else:
+            print(f"ℹ️  Category already exists: {cat_data['display_name']}")
     
-    # Sender information
-    sender_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
-    # Target audience
-    target_audience = db.Column(db.String(20), default='all')  # all, department, crew, position, individual
-    target_department = db.Column(db.String(50))
-    target_crew = db.Column(db.String(1))
-    target_position_id = db.Column(db.Integer, db.ForeignKey('position.id'))
-    recipient_id = db.Column(db.Integer, db.ForeignKey('employee.id'))  # For individual messages
-    
-    # Message settings
-    expires_at = db.Column(db.DateTime)
-    is_pinned = db.Column(db.Boolean, default=False)
-    is_archived = db.Column(db.Boolean, default=False)
-    
-    # Relationships
-    sender = db.relationship('Employee', foreign_keys=[sender_id], backref='sent_communications')
-    recipient = db.relationship('Employee', foreign_keys=[recipient_id], backref='received_communications')
-    target_position = db.relationship('Position', backref='targeted_communications')
-    attachments = db.relationship('MessageAttachment', backref='message', cascade='all, delete-orphan')
-    read_receipts = db.relationship('MessageReadReceipt', backref='message', cascade='all, delete-orphan')
-    
-    # Indexes for better query performance
-    __table_args__ = (
-        db.Index('idx_comm_category_created', 'category', 'created_at'),
-        db.Index('idx_comm_sender_created', 'sender_id', 'created_at'),
-        db.Index('idx_comm_target', 'target_audience', 'target_department', 'target_crew'),
-    )
-    
-    def __repr__(self):
-        return f'<CommunicationMessage {self.id}: {self.subject}>'
+    db.session.commit()
+    print("✅ Message categories initialized")
 
-class MessageReadReceipt(db.Model):
-    """Track who has read each message"""
-    __tablename__ = 'message_read_receipts'
+def create_sample_messages():
+    """Create some sample messages for testing"""
+    # Get a supervisor user
+    supervisor = Employee.query.filter_by(is_supervisor=True).first()
+    if not supervisor:
+        print("⚠️  No supervisor found, skipping sample messages")
+        return
     
-    id = db.Column(db.Integer, primary_key=True)
-    message_id = db.Column(db.Integer, db.ForeignKey('communication_messages.id'), nullable=False)
-    employee_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=False)
-    read_at = db.Column(db.DateTime, default=datetime.utcnow)
+    # Get an HR user (or use supervisor)
+    hr_user = Employee.query.filter_by(department='HR').first() or supervisor
     
-    # Relationships
-    employee = db.relationship('Employee', backref='message_read_receipts')
+    # Get a maintenance user (or use supervisor)
+    maint_user = Employee.query.filter_by(department='Maintenance').first() or supervisor
     
-    # Ensure each employee can only read a message once
-    __table_args__ = (
-        db.UniqueConstraint('message_id', 'employee_id', name='_message_employee_uc'),
-    )
-    
-    def __repr__(self):
-        return f'<MessageReadReceipt Message:{self.message_id} Employee:{self.employee_id}>'
+    sample_messages = [
+        {
+            'category': 'plantwide',
+            'subject': 'Welcome to the New Communications System!',
+            'content': '''Dear Team,
 
-class MessageAttachment(db.Model):
-    """File attachments for messages"""
-    __tablename__ = 'message_attachments'
-    
-    id = db.Column(db.Integer, primary_key=True)
-    message_id = db.Column(db.Integer, db.ForeignKey('communication_messages.id'), nullable=False)
-    filename = db.Column(db.String(255), nullable=False)
-    original_filename = db.Column(db.String(255), nullable=False)
-    file_size = db.Column(db.Integer)
-    uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
-    
-    def __repr__(self):
-        return f'<MessageAttachment {self.id}: {self.original_filename}>'
+We are excited to introduce our new communications system! This platform will serve as our central hub for all company-wide announcements, department updates, and important information.
 
-class MessageTemplate(db.Model):
-    """Reusable message templates"""
-    __tablename__ = 'message_templates'
-    
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False)
-    category = db.Column(db.String(20), nullable=False)
-    subject = db.Column(db.String(200), nullable=False)
-    content = db.Column(db.Text, nullable=False)
-    created_by_id = db.Column(db.Integer, db.ForeignKey('employee.id'))
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    
-    # Relationships
-    created_by = db.relationship('Employee', backref='created_templates')
-    
-    def __repr__(self):
-        return f'<MessageTemplate {self.id}: {self.name}>'
+Key features include:
+• Organized categories for different types of communications
+• Read receipts to track message engagement
+• File attachment support
+• Message templates for recurring announcements
+• Analytics dashboard for supervisors
 
-class MessageCategory(db.Model):
-    """Define communication categories and permissions"""
-    __tablename__ = 'message_categories'
+Please check this portal regularly for important updates. If you have any questions, please contact your supervisor.
+
+Best regards,
+Management Team''',
+            'priority': 'high',
+            'sender_id': supervisor.id,
+            'target_audience': 'all',
+            'is_pinned': True
+        },
+        {
+            'category': 'hr',
+            'subject': 'Annual Benefits Enrollment Period Opens Next Week',
+            'content': '''All Employees,
+
+The annual benefits enrollment period will begin next Monday and run through the end of the month. This is your opportunity to:
+
+• Review and update your health insurance coverage
+• Adjust your 401(k) contributions
+• Update beneficiary information
+• Enroll in or change voluntary benefits
+
+Information packets will be distributed to all employees by Friday. HR will be hosting information sessions on:
+- Tuesday 10am (Conference Room A)
+- Thursday 2pm (Conference Room B)
+- Friday 8am (Virtual - link to follow)
+
+Please don't hesitate to reach out with any questions.
+
+HR Department''',
+            'priority': 'high',
+            'sender_id': hr_user.id,
+            'target_audience': 'all',
+            'expires_at': datetime.utcnow() + timedelta(days=30)
+        },
+        {
+            'category': 'maintenance',
+            'subject': 'Scheduled Maintenance: Production Line 2',
+            'content': '''Attention All Shifts,
+
+Please be advised that Production Line 2 will be undergoing scheduled maintenance this weekend:
+
+Start: Saturday 6:00 AM
+End: Sunday 6:00 PM (estimated)
+
+Impact:
+- Line 2 will be completely offline during this period
+- Additional workload will be distributed to Lines 1 and 3
+- Overtime may be required for affected positions
+
+Please coordinate with your supervisors for adjusted work assignments.
+
+Thank you for your cooperation.
+
+Maintenance Department''',
+            'priority': 'urgent',
+            'sender_id': maint_user.id,
+            'target_audience': 'all'
+        },
+        {
+            'category': 'hourly',
+            'subject': 'Overtime Opportunities Available This Week',
+            'content': '''Hourly Team Members,
+
+We have several overtime opportunities available for this week:
+
+Wednesday Evening Shift:
+- 3 positions in Packaging
+- 2 positions in Shipping
+
+Saturday Day Shift:
+- 4 positions in Production
+- 1 position in Quality Control
+
+If interested, please notify your supervisor by end of shift today. Assignments will be made based on seniority and current overtime balance.
+
+Thank you!''',
+            'priority': 'normal',
+            'sender_id': supervisor.id,
+            'target_audience': 'all'
+        }
+    ]
     
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(50), unique=True, nullable=False)  # plantwide, hr, maintenance, hourly
-    display_name = db.Column(db.String(100), nullable=False)
-    description = db.Column(db.Text)
-    icon = db.Column(db.String(50))  # Bootstrap icon class
-    color = db.Column(db.String(7))  # Hex color code
+    for msg_data in sample_messages:
+        # Check if similar message exists
+        existing = CommunicationMessage.query.filter_by(
+            subject=msg_data['subject']
+        ).first()
+        
+        if not existing:
+            message = CommunicationMessage(**msg_data)
+            db.session.add(message)
+            print(f"✅ Created sample message: {msg_data['subject'][:50]}...")
+        else:
+            print(f"ℹ️  Message already exists: {msg_data['subject'][:50]}...")
     
-    # Who can send messages in this category
-    require_supervisor = db.Column(db.Boolean, default=False)
-    require_department = db.Column(db.String(50))  # Specific department required
-    require_position = db.Column(db.String(50))  # Specific position required
-    
-    is_active = db.Column(db.Boolean, default=True)
-    
-    def __repr__(self):
-        return f'<MessageCategory {self.name}>'
+    db.session.commit()
+    print("✅ Sample messages created")
+
+def main():
+    """Run initialization"""
+    with app.app_context():
+        print("🚀 Initializing Communications System...")
+        print("-" * 50)
+        
+        # Initialize categories
+        init_message_categories()
+        print()
+        
+        # Create sample messages
+        create_sample_messages()
+        print()
+        
+        print("-" * 50)
+        print("✅ Communications system initialization complete!")
+        print("🌐 Visit /communications to see the new system")
+
+if __name__ == "__main__":
+    main()
