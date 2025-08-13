@@ -634,6 +634,8 @@ class SupervisorMessage(db.Model):
 
 class PositionMessage(db.Model):
     """Messages between employees in the same position across different shifts"""
+    __tablename__ = 'position_message'
+    
     id = db.Column(db.Integer, primary_key=True)
     sender_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=False)
     position_id = db.Column(db.Integer, db.ForeignKey('position.id'), nullable=False)
@@ -652,26 +654,28 @@ class PositionMessage(db.Model):
     # Relationships
     sender = db.relationship('Employee', backref='position_messages_sent')
     position = db.relationship('Position', backref='messages')
-    read_receipts = db.relationship('MessageReadReceipt', backref='position_message', 
+    read_receipts = db.relationship('PositionMessageReadReceipt', backref='position_message', 
                                    cascade='all, delete-orphan')
     
     def is_read_by(self, employee_id):
         """Check if message was read by specific employee"""
         return any(r.employee_id == employee_id for r in self.read_receipts)
 
-class MessageReadReceipt(db.Model):
-    """Track who has read position messages"""
+class PositionMessageReadReceipt(db.Model):
+    """Track who has read position messages - renamed to avoid conflict"""
+    __tablename__ = 'position_message_read_receipts'
+    
     id = db.Column(db.Integer, primary_key=True)
     message_id = db.Column(db.Integer, db.ForeignKey('position_message.id'), nullable=False)
     employee_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=False)
     read_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     # Relationships
-    employee = db.relationship('Employee', backref='message_read_receipts')
+    employee = db.relationship('Employee', backref='position_message_read_receipts')
     
     # Unique constraint
     __table_args__ = (
-        db.UniqueConstraint('message_id', 'employee_id', name='_message_employee_uc'),
+        db.UniqueConstraint('message_id', 'employee_id', name='_position_msg_employee_uc'),
     )
 
 # ==========================================
@@ -1184,8 +1188,9 @@ class UploadHistory(db.Model):
             successful = self.records_created + self.records_updated
             return round((successful / self.records_processed) * 100, 2)
         return 0
+
 # ==========================================
-# ADD THESE TO THE END OF YOUR models.py FILE
+# COMMUNICATIONS SYSTEM MODELS - FIXED VERSION
 # ==========================================
 
 class CommunicationMessage(db.Model):
@@ -1219,8 +1224,8 @@ class CommunicationMessage(db.Model):
     sender = db.relationship('Employee', foreign_keys=[sender_id], backref='sent_communications')
     recipient = db.relationship('Employee', foreign_keys=[recipient_id], backref='received_communications')
     target_position = db.relationship('Position', backref='targeted_communications')
-    attachments = db.relationship('MessageAttachment', backref='message', cascade='all, delete-orphan')
-    read_receipts = db.relationship('MessageReadReceipt', backref='message', cascade='all, delete-orphan')
+    attachments = db.relationship('CommunicationAttachment', backref='message', cascade='all, delete-orphan')
+    read_receipts = db.relationship('CommunicationReadReceipt', backref='message', cascade='all, delete-orphan')
     
     # Indexes for better query performance
     __table_args__ = (
@@ -1229,9 +1234,9 @@ class CommunicationMessage(db.Model):
         db.Index('idx_comm_target', 'target_audience', 'target_department', 'target_crew'),
     )
 
-class MessageReadReceipt(db.Model):
-    """Track who has read each message"""
-    __tablename__ = 'message_read_receipts'
+class CommunicationReadReceipt(db.Model):
+    """Track who has read each communication message"""
+    __tablename__ = 'communication_read_receipts'
     
     id = db.Column(db.Integer, primary_key=True)
     message_id = db.Column(db.Integer, db.ForeignKey('communication_messages.id'), nullable=False)
@@ -1239,16 +1244,16 @@ class MessageReadReceipt(db.Model):
     read_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     # Relationships
-    employee = db.relationship('Employee', backref='message_read_receipts')
+    employee = db.relationship('Employee', backref='communication_read_receipts')
     
     # Ensure each employee can only read a message once
     __table_args__ = (
-        db.UniqueConstraint('message_id', 'employee_id', name='_message_employee_uc'),
+        db.UniqueConstraint('message_id', 'employee_id', name='_comm_message_employee_uc'),
     )
 
-class MessageAttachment(db.Model):
-    """File attachments for messages"""
-    __tablename__ = 'message_attachments'
+class CommunicationAttachment(db.Model):
+    """File attachments for communication messages"""
+    __tablename__ = 'communication_attachments'
     
     id = db.Column(db.Integer, primary_key=True)
     message_id = db.Column(db.Integer, db.ForeignKey('communication_messages.id'), nullable=False)
