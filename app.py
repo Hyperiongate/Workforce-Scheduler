@@ -1,7 +1,7 @@
 # app.py
 """
 Main application file for Workforce Scheduler
-Clean implementation compatible with Flask 2.3 and SQLAlchemy 2.0
+This version automatically fixes the missing is_admin column issue
 """
 
 from flask import Flask, render_template, redirect, url_for, flash, jsonify
@@ -13,7 +13,7 @@ import logging
 from datetime import datetime, date, timedelta
 from sqlalchemy import text, inspect
 from sqlalchemy.pool import NullPool
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import OperationalError, ProgrammingError
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -72,78 +72,60 @@ def load_user(user_id):
     except:
         return None
 
-# Emergency database fix function
-def apply_emergency_database_fixes():
-    """Apply critical database fixes for shift_swap_request table"""
-    try:
-        with app.app_context():
-            inspector = inspect(db.engine)
-            
-            # Check if shift_swap_request table exists
-            if inspector.has_table('shift_swap_request'):
-                logger.info("Checking shift_swap_request table structure...")
-                
-                # Get existing columns
-                existing_columns = [col['name'] for col in inspector.get_columns('shift_swap_request')]
-                
-                # Define required columns with their definitions
-                required_columns = [
-                    ('requester_id', 'INTEGER REFERENCES employee(id)'),
-                    ('requested_with_id', 'INTEGER REFERENCES employee(id)'),
-                    ('requester_schedule_id', 'INTEGER REFERENCES schedule(id)'),
-                    ('requested_schedule_id', 'INTEGER REFERENCES schedule(id)'),
-                    ('status', "VARCHAR(20) DEFAULT 'pending'"),
-                    ('reason', 'TEXT'),
-                    ('created_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP'),
-                    ('reviewed_by_id', 'INTEGER REFERENCES employee(id)'),
-                    ('reviewed_at', 'TIMESTAMP'),
-                    ('reviewer_notes', 'TEXT')
-                ]
-                
-                # Add missing columns
-                with db.engine.connect() as conn:
-                    for column_name, column_definition in required_columns:
-                        if column_name not in existing_columns:
-                            try:
-                                conn.execute(text(f"""
-                                    ALTER TABLE shift_swap_request 
-                                    ADD COLUMN {column_name} {column_definition}
-                                """))
-                                conn.commit()
-                                logger.info(f"✅ Added column shift_swap_request.{column_name}")
-                            except Exception as e:
-                                logger.warning(f"Could not add column {column_name}: {e}")
-                                conn.rollback()
+# AUTOMATIC DATABASE FIX FUNCTION
+def fix_database_schema():
+    """Automatically fix missing columns in database"""
+    with app.app_context():
+        try:
+            # Test if is_admin column exists by trying to query it
+            db.session.execute(text("SELECT is_admin FROM employee LIMIT 1"))
+            logger.info("✅ is_admin column already exists")
+        except (OperationalError, ProgrammingError) as e:
+            if 'is_admin' in str(e):
+                logger.info("🔧 Missing is_admin column detected, fixing...")
+                try:
+                    # Add the missing column
+                    db.session.execute(text("ALTER TABLE employee ADD COLUMN is_admin BOOLEAN DEFAULT FALSE"))
+                    db.session.commit()
+                    logger.info("✅ Added is_admin column")
+                    
+                    # Set admin privileges
+                    db.session.execute(text("UPDATE employee SET is_admin = TRUE WHERE email = 'admin@workforce.com' OR is_supervisor = TRUE"))
+                    db.session.commit()
+                    logger.info("✅ Updated admin privileges")
+                    
+                except Exception as fix_error:
+                    logger.error(f"❌ Could not fix database: {fix_error}")
+                    db.session.rollback()
             else:
-                # Create the table if it doesn't exist
-                logger.info("Creating shift_swap_request table...")
-                with db.engine.connect() as conn:
-                    try:
-                        conn.execute(text("""
-                            CREATE TABLE shift_swap_request (
-                                id SERIAL PRIMARY KEY,
-                                requester_id INTEGER REFERENCES employee(id),
-                                requested_with_id INTEGER REFERENCES employee(id),
-                                requester_schedule_id INTEGER REFERENCES schedule(id),
-                                requested_schedule_id INTEGER REFERENCES schedule(id),
-                                status VARCHAR(20) DEFAULT 'pending',
-                                reason TEXT,
-                                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                                reviewed_by_id INTEGER REFERENCES employee(id),
-                                reviewed_at TIMESTAMP,
-                                reviewer_notes TEXT
-                            )
-                        """))
-                        conn.commit()
-                        logger.info("✅ Created shift_swap_request table")
-                    except Exception as e:
-                        logger.error(f"Could not create shift_swap_request table: {e}")
-                        conn.rollback()
-            
-            logger.info("Database fixes applied successfully")
-            
-    except Exception as e:
-        logger.error(f"Error applying database fixes: {e}")
+                logger.error(f"❌ Database error: {e}")
+                
+        # Also check for upload_history table
+        try:
+            db.session.execute(text("SELECT * FROM upload_history LIMIT 1"))
+            logger.info("✅ upload_history table exists")
+        except (OperationalError, ProgrammingError):
+            logger.info("🔧 Creating upload_history table...")
+            try:
+                db.session.execute(text("""
+                    CREATE TABLE IF NOT EXISTS upload_history (
+                        id SERIAL PRIMARY KEY,
+                        upload_type VARCHAR(50) NOT NULL,
+                        filename VARCHAR(255) NOT NULL,
+                        uploaded_by INTEGER REFERENCES employee(id),
+                        upload_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        status VARCHAR(50) DEFAULT 'completed',
+                        records_processed INTEGER DEFAULT 0,
+                        records_failed INTEGER DEFAULT 0,
+                        error_details TEXT,
+                        details TEXT
+                    )
+                """))
+                db.session.commit()
+                logger.info("✅ Created upload_history table")
+            except Exception as e:
+                logger.error(f"❌ Could not create upload_history table: {e}")
+                db.session.rollback()
 
 # Import and register blueprints
 try:
@@ -168,275 +150,144 @@ except ImportError as e:
     logger.error(f"❌ Could not import supervisor blueprint: {e}")
 
 try:
-    from blueprints.employee import employee_bp
-    app.register_blueprint(employee_bp)
-    logger.info("✅ Employee blueprint loaded")
-except ImportError as e:
-    logger.error(f"❌ Could not import employee blueprint: {e}")
-
-try:
-    from blueprints.employee_import import employee_import_bp
+    from blueprints.employee_import import bp as employee_import_bp
     app.register_blueprint(employee_import_bp)
     logger.info("✅ Employee import blueprint loaded")
 except ImportError as e:
-    logger.error(f"❌ Could not import employee_import blueprint: {e}")
+    logger.error(f"❌ Could not import employee import blueprint: {e}")
 
 try:
-    from blueprints.schedule import schedule_bp
+    from blueprints.schedule_management import schedule_bp
     app.register_blueprint(schedule_bp)
-    logger.info("✅ Schedule blueprint loaded")
+    logger.info("✅ Schedule management blueprint loaded")
 except ImportError as e:
-    logger.error(f"❌ Could not import schedule blueprint: {e}")
+    logger.error(f"❌ Could not import schedule management blueprint: {e}")
 
 try:
-    from blueprints.communications import communications_bp
-    app.register_blueprint(communications_bp)
-    logger.info("✅ Communications blueprint loaded")
+    from blueprints.overtime_management import overtime_bp
+    app.register_blueprint(overtime_bp)
+    logger.info("✅ Overtime management blueprint loaded")
 except ImportError as e:
-    logger.error(f"❌ Could not import communications blueprint: {e}")
+    logger.error(f"❌ Could not import overtime management blueprint: {e}")
 
-# Context processor for communications
-@app.context_processor
-def inject_communications_data():
-    """Inject communications data into all templates"""
-    if current_user.is_authenticated:
-        try:
-            from blueprints.communications import get_unread_counts
-            unread = get_unread_counts()
-            return {
-                'unread_total': unread['total'],
-                'unread_plantwide': unread['plantwide'],
-                'unread_hr': unread['hr'],
-                'unread_maintenance': unread['maintenance'],
-                'unread_hourly': unread['hourly']
-            }
-        except Exception as e:
-            logger.error(f"Error getting unread counts: {e}")
-            return {
-                'unread_total': 0,
-                'unread_plantwide': 0,
-                'unread_hr': 0,
-                'unread_maintenance': 0,
-                'unread_hourly': 0
-            }
-    return {
-        'unread_total': 0,
-        'unread_plantwide': 0,
-        'unread_hr': 0,
-        'unread_maintenance': 0,
-        'unread_hourly': 0
-    }
+try:
+    from blueprints.leave_management import leave_bp
+    app.register_blueprint(leave_bp)
+    logger.info("✅ Leave management blueprint loaded")
+except ImportError as e:
+    logger.error(f"❌ Could not import leave management blueprint: {e}")
 
-# Routes
+# Root route
 @app.route('/')
-def home():
-    """Root route - redirect based on authentication"""
+def index():
     if current_user.is_authenticated:
         if current_user.is_supervisor:
-            return redirect(url_for('supervisor.dashboard'))
+            return redirect(url_for('main.supervisor_dashboard'))
         else:
             return redirect(url_for('main.employee_dashboard'))
     return redirect(url_for('auth.login'))
 
+# Health check route
 @app.route('/health')
-def health_check():
-    """Health check endpoint"""
+def health():
     try:
-        with db.engine.connect() as conn:
-            result = conn.execute(text('SELECT 1'))
-            result.scalar()
-        return jsonify({'status': 'healthy', 'database': 'connected'}), 200
+        # Test database connection
+        db.session.execute(text('SELECT 1'))
+        return jsonify({
+            'status': 'healthy',
+            'database': 'connected',
+            'timestamp': datetime.utcnow().isoformat()
+        }), 200
     except Exception as e:
-        return jsonify({'status': 'unhealthy', 'error': str(e)}), 503
-
-@app.route('/init-db')
-@login_required
-def init_db():
-    """Initialize database tables"""
-    if not current_user.is_supervisor:
-        flash('Only supervisors can initialize the database.', 'error')
-        return redirect(url_for('home'))
-    
-    try:
-        db.create_all()
-        flash('Database tables created successfully!', 'success')
-    except Exception as e:
-        logger.error(f"Database initialization error: {e}")
-        flash(f'Error initializing database: {str(e)}', 'error')
-    
-    return redirect(url_for('supervisor.dashboard'))
-
-@app.route('/add-overtime-tables')
-@login_required
-def add_overtime_tables():
-    """Add overtime management tables"""
-    if not current_user.is_supervisor:
-        flash('Only supervisors can modify database tables.', 'error')
-        return redirect(url_for('main.index'))
-    
-    try:
-        db.create_all()
-        flash('Overtime tables added successfully!', 'success')
-        return redirect(url_for('main.dashboard'))
-    except Exception as e:
-        flash(f'Error adding overtime tables: {str(e)}', 'error')
-        return redirect(url_for('main.dashboard'))
-
-@app.route('/populate-crews')
-@login_required
-def populate_crews():
-    """Populate database with test crew data"""
-    if not current_user.is_supervisor:
-        flash('Only supervisors can populate test data.', 'error')
-        return redirect(url_for('main.index'))
-    
-    try:
-        # Check if we already have data
-        if Employee.query.count() > 5:
-            flash('Database already contains employee data.', 'warning')
-            return redirect(url_for('main.dashboard'))
-        
-        # Import models we need
-        from models import Position, Skill
-        
-        # Create positions
-        positions = [
-            {'name': 'Operator', 'department': 'Production'},
-            {'name': 'Maintenance Tech', 'department': 'Maintenance'},
-            {'name': 'Lead Operator', 'department': 'Production'},
-            {'name': 'Supervisor', 'department': 'Management'},
-            {'name': 'Electrician', 'department': 'Maintenance'},
-            {'name': 'Mechanic', 'department': 'Maintenance'}
-        ]
-        
-        for pos_data in positions:
-            position = Position.query.filter_by(name=pos_data['name']).first()
-            if not position:
-                position = Position(**pos_data)
-                db.session.add(position)
-        
-        db.session.commit()
-        
-        # Create skills
-        skills_list = [
-            'Forklift Operation', 'Machine Setup', 'Quality Control',
-            'Electrical Work', 'Welding', 'PLC Programming',
-            'Hydraulics', 'Pneumatics', 'Safety Training'
-        ]
-        
-        skills = []
-        for skill_name in skills_list:
-            skill = Skill.query.filter_by(name=skill_name).first()
-            if not skill:
-                skill = Skill(name=skill_name, description=f"Certified in {skill_name}")
-                db.session.add(skill)
-            skills.append(skill)
-        
-        db.session.commit()
-        
-        # Create employees for each crew
-        crews = ['A', 'B', 'C', 'D']
-        positions_list = Position.query.all()
-        
-        employee_names = [
-            'John Smith', 'Jane Doe', 'Mike Johnson', 'Sarah Williams',
-            'Tom Brown', 'Lisa Davis', 'Chris Wilson', 'Amy Martinez',
-            'Robert Taylor', 'Jennifer Anderson', 'David Thomas', 'Maria Garcia',
-            'James Rodriguez', 'Patricia Lee', 'Michael White', 'Linda Harris'
-        ]
-        
-        for i, name in enumerate(employee_names):
-            crew = crews[i % 4]
-            position = positions_list[i % len(positions_list)]
-            
-            employee = Employee(
-                employee_id=f'EMP{str(i+1).zfill(3)}',
-                name=name,
-                email=f'{name.lower().replace(" ", ".")}@company.com',
-                crew=crew,
-                position_id=position.id,
-                is_supervisor=(i % 4 == 0),  # Every 4th employee is a supervisor
-                vacation_days=10,
-                sick_days=5,
-                personal_days=2
-            )
-            employee.set_password('password123')  # Default password
-            
-            # Add some skills
-            employee.skills.extend(skills[:3])
-            
-            db.session.add(employee)
-        
-        db.session.commit()
-        flash('Test crew data populated successfully!', 'success')
-        return redirect(url_for('main.dashboard'))
-        
-    except Exception as e:
-        db.session.rollback()
-        flash(f'Error populating crews: {str(e)}', 'error')
-        return redirect(url_for('main.dashboard'))
+        return jsonify({
+            'status': 'unhealthy',
+            'database': 'disconnected',
+            'error': str(e),
+            'timestamp': datetime.utcnow().isoformat()
+        }), 500
 
 # Error handlers
 @app.errorhandler(404)
 def not_found_error(error):
-    return render_template('404.html'), 404
+    if current_user.is_authenticated:
+        return render_template('errors/404.html'), 404
+    return redirect(url_for('auth.login'))
 
 @app.errorhandler(500)
 def internal_error(error):
     db.session.rollback()
-    return render_template('500.html'), 500
+    if current_user.is_authenticated:
+        return render_template('errors/500.html'), 500
+    return redirect(url_for('auth.login'))
 
-@app.errorhandler(OperationalError)
-def handle_db_error(error):
-    logger.error(f"Database error: {error}")
-    db.session.rollback()
-    return render_template('500.html'), 500
-
-# Context processors
+# Context processor for templates
 @app.context_processor
-def inject_user_permissions():
-    return dict(
-        is_supervisor=lambda: current_user.is_authenticated and current_user.is_supervisor,
-        today=datetime.today(),
-        now=datetime.now(),
-        date=date,
-        timedelta=timedelta,
-        str=str,
-        len=len,
-        url_for=url_for
-    )
+def inject_now():
+    return {'now': datetime.utcnow}
 
-# Initialize database on startup
+# Create default templates if they don't exist
+def create_error_templates():
+    """Create basic error templates if they don't exist"""
+    error_dir = os.path.join(app.root_path, 'templates', 'errors')
+    os.makedirs(error_dir, exist_ok=True)
+    
+    # 404 template
+    error_404 = os.path.join(error_dir, '404.html')
+    if not os.path.exists(error_404):
+        with open(error_404, 'w') as f:
+            f.write('''
+{% extends "base.html" %}
+{% block title %}Page Not Found{% endblock %}
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6 text-center">
+            <h1 class="display-1">404</h1>
+            <h2>Page Not Found</h2>
+            <p>The page you're looking for doesn't exist.</p>
+            <a href="{{ url_for('index') }}" class="btn btn-primary">Go Home</a>
+        </div>
+    </div>
+</div>
+{% endblock %}
+''')
+    
+    # 500 template
+    error_500 = os.path.join(error_dir, '500.html')
+    if not os.path.exists(error_500):
+        with open(error_500, 'w') as f:
+            f.write('''
+{% extends "base.html" %}
+{% block title %}Server Error{% endblock %}
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6 text-center">
+            <h1 class="display-1">500</h1>
+            <h2>Internal Server Error</h2>
+            <p>Something went wrong on our end. Please try again later.</p>
+            <a href="{{ url_for('index') }}" class="btn btn-primary">Go Home</a>
+        </div>
+    </div>
+</div>
+{% endblock %}
+''')
+
+# Run the automatic database fix when the app starts
 with app.app_context():
-    try:
-        # Create tables if they don't exist
-        inspector = inspect(db.engine)
-        if not inspector.has_table('employee'):
-            logger.info("Creating database tables...")
-            db.create_all()
-            logger.info("Database tables created")
-        
-        # Fix vacation_calendar status column if needed
-        if inspector.has_table('vacation_calendar'):
-            columns = [col['name'] for col in inspector.get_columns('vacation_calendar')]
-            if 'status' not in columns:
-                with db.engine.connect() as conn:
-                    conn.execute(text("""
-                        ALTER TABLE vacation_calendar 
-                        ADD COLUMN status VARCHAR(20) DEFAULT 'approved'
-                    """))
-                    conn.commit()
-                logger.info("Added status column to vacation_calendar")
-        
-        # Apply emergency database fixes for shift_swap_request
-        apply_emergency_database_fixes()
-                
-    except Exception as e:
-        logger.error(f"Startup database error: {e}")
-        # Don't prevent app from starting
+    fix_database_schema()
+    create_error_templates()
 
-# Run the application
 if __name__ == '__main__':
+    # Additional startup checks
+    with app.app_context():
+        try:
+            # Create tables if they don't exist
+            db.create_all()
+            logger.info("✅ Database tables verified")
+        except Exception as e:
+            logger.error(f"❌ Database initialization error: {e}")
+    
+    # Run the app
     port = int(os.environ.get('PORT', 5000))
-    debug = os.environ.get('FLASK_ENV') == 'development'
-    app.run(host='0.0.0.0', port=port, debug=debug)
+    app.run(host='0.0.0.0', port=port, debug=False)
