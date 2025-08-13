@@ -4,7 +4,7 @@ from flask import Blueprint, render_template, request, jsonify, flash, redirect,
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 from utils.decorators import supervisor_required
-from models import db, Employee, Position, OvertimeWeek, UploadHistory
+from models import db, Employee, Position, OvertimeHistory, UploadHistory
 from utils.excel_upload_handler import ExcelUploadHandler
 from utils.excel_templates_generator import ExcelTemplateGenerator
 import os
@@ -38,7 +38,7 @@ def upload_employees():
     
     employees_without_ot = Employee.query.filter(
         ~Employee.id.in_(
-            db.session.query(OvertimeWeek.employee_id).distinct()
+            db.session.query(OvertimeHistory.employee_id).distinct()
         )
     ).count()
     
@@ -55,15 +55,15 @@ def upload_employees():
 def upload_overtime():
     """Overtime history upload interface"""
     # Get overtime statistics
-    total_ot_hours = db.session.query(func.sum(OvertimeWeek.hours_worked)).scalar() or 0
-    employees_with_ot = db.session.query(func.count(func.distinct(OvertimeWeek.employee_id))).scalar()
+    total_ot_hours = db.session.query(func.sum(OvertimeHistory.hours)).scalar() or 0
+    employees_with_ot = db.session.query(func.count(func.distinct(OvertimeHistory.employee_id))).scalar()
     
     # Get high OT employees (>50 hours average)
     high_ot_employees = db.session.query(
         Employee.name,
-        func.avg(OvertimeWeek.hours_worked).label('avg_hours')
-    ).join(OvertimeWeek).group_by(Employee.id, Employee.name).having(
-        func.avg(OvertimeWeek.hours_worked) > 50
+        func.avg(OvertimeHistory.hours).label('avg_hours')
+    ).join(OvertimeHistory).group_by(Employee.id, Employee.name).having(
+        func.avg(OvertimeHistory.hours) > 50
     ).all()
     
     recent_uploads = UploadHistory.query.filter_by(
@@ -294,16 +294,16 @@ def export_data(export_type):
             overtime_data = db.session.query(
                 Employee.employee_id,
                 Employee.name,
-                OvertimeWeek.week_start,
-                OvertimeWeek.hours_worked
-            ).join(OvertimeWeek).order_by(Employee.employee_id, OvertimeWeek.week_start).all()
+                OvertimeHistory.week_ending,
+                OvertimeHistory.hours
+            ).join(OvertimeHistory).order_by(Employee.employee_id, OvertimeHistory.week_ending).all()
             
             # Pivot data for export
             data_dict = {}
-            for emp_id, name, week_start, hours in overtime_data:
+            for emp_id, name, week_ending, hours in overtime_data:
                 if emp_id not in data_dict:
                     data_dict[emp_id] = {'Employee ID': emp_id, 'Name': name}
-                week_str = f"Week {week_start.strftime('%m/%d/%Y')}"
+                week_str = f"Week {week_ending.strftime('%m/%d/%Y')}"
                 data_dict[emp_id][week_str] = hours
             
             df = pd.DataFrame(list(data_dict.values()))
@@ -343,7 +343,7 @@ def upload_stats():
     """Get upload statistics for dashboard"""
     stats = {
         'total_employees': Employee.query.filter_by(is_active=True).count(),
-        'employees_with_ot': db.session.query(func.count(func.distinct(OvertimeWeek.employee_id))).scalar(),
+        'employees_with_ot': db.session.query(func.count(func.distinct(OvertimeHistory.employee_id))).scalar(),
         'recent_uploads': UploadHistory.query.count(),
         'crew_distribution': dict(db.session.query(
             Employee.crew, func.count(Employee.id)
