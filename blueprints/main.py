@@ -243,6 +243,73 @@ def view_crews():
         flash('Error loading crew information.', 'danger')
         return redirect(url_for('main.dashboard'))
 
+@main_bp.route('/fix-admin')
+def fix_admin():
+    """Create or fix admin user - REMOVE AFTER USE"""
+    try:
+        # Check if admin exists
+        admin = Employee.query.filter_by(email='admin@workforce.com').first()
+        
+        if admin:
+            # Reset password
+            admin.set_password('admin123')
+            admin.is_supervisor = True
+            db.session.commit()
+            return "Admin user password reset successfully! You can now login with admin@workforce.com / admin123"
+        else:
+            # Create admin user
+            # First, ensure we have a position
+            position = Position.query.filter_by(name='Supervisor').first()
+            if not position:
+                position = Position(name='Supervisor', department='Management')
+                db.session.add(position)
+                db.session.commit()
+            
+            # Create admin
+            admin = Employee(
+                employee_id='ADMIN001',
+                name='System Administrator',
+                email='admin@workforce.com',
+                username='admin',
+                crew='A',
+                position_id=position.id,
+                is_supervisor=True,
+                vacation_days=10,
+                sick_days=5,
+                personal_days=3
+            )
+            admin.set_password('admin123')
+            
+            db.session.add(admin)
+            db.session.commit()
+            
+            return "Admin user created successfully! You can now login with admin@workforce.com / admin123"
+            
+    except Exception as e:
+        db.session.rollback()
+        return f"Error creating/fixing admin user: {str(e)}", 500
+
+@main_bp.route('/list-users')
+def list_users():
+    """List all users for debugging - REMOVE AFTER USE"""
+    try:
+        employees = Employee.query.all()
+        if not employees:
+            return "No employees found in database!"
+        
+        user_list = "<h3>All Users in Database:</h3><ul>"
+        for emp in employees:
+            user_list += f"<li><strong>{emp.name}</strong> - Email: {emp.email} - Supervisor: {emp.is_supervisor} - Crew: {emp.crew or 'None'}</li>"
+        user_list += "</ul>"
+        
+        user_list += f"<p>Total employees: {len(employees)}</p>"
+        user_list += '<p><a href="/fix-admin">Click here to create/fix admin user</a></p>'
+        
+        return user_list
+        
+    except Exception as e:
+        return f"Error listing users: {str(e)}", 500
+
 @main_bp.route('/init-communications')
 @login_required
 def init_communications():
