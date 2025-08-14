@@ -1,10 +1,10 @@
 # app.py
 """
 Main application file for Workforce Scheduler
-Fixed version that works with your models.py and auto-fixes database issues
+This version auto-fixes database issues including the is_admin column
 """
 
-from flask import Flask, render_template, redirect, url_for, flash, jsonify
+from flask import Flask, render_template, redirect, url_for, flash, jsonify, request
 from flask_login import LoginManager, login_required, current_user
 from flask_migrate import Migrate
 import os
@@ -92,7 +92,7 @@ def fix_database_schema():
                     logger.info("✅ Added is_admin column")
                     
                     # Set admin privileges for admin user
-                    db.session.execute(text("UPDATE employee SET is_admin = TRUE WHERE email = 'admin@workforce.com'"))
+                    db.session.execute(text("UPDATE employee SET is_admin = TRUE WHERE email = 'admin@workforce.com' OR is_supervisor = TRUE"))
                     db.session.commit()
                     logger.info("✅ Updated admin privileges")
                     
@@ -104,10 +104,10 @@ def fix_database_schema():
         
         # Check for other potentially missing columns
         try:
-            # List of columns that might be missing
             columns_to_check = [
                 ("employee", "is_admin", "BOOLEAN DEFAULT FALSE"),
                 ("employee", "max_hours_per_week", "INTEGER DEFAULT 48"),
+                ("employee", "is_active", "BOOLEAN DEFAULT TRUE"),
                 ("employee", "created_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"),
                 ("employee", "updated_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
             ]
@@ -122,45 +122,54 @@ def fix_database_schema():
                         db.session.commit()
                         logger.info(f"✅ Added {column} column to {table}")
                     except Exception as e:
-                        logger.error(f"❌ Could not add {column}: {e}")
+                        if 'already exists' not in str(e):
+                            logger.error(f"❌ Could not add {column}: {e}")
                         db.session.rollback()
         except Exception as e:
             logger.error(f"❌ Error checking columns: {e}")
 
 # Import and register blueprints
-blueprints_to_register = [
-    ('blueprints.auth', 'auth_bp', 'Auth'),
-    ('blueprints.main', 'main_bp', 'Main'),
-    ('blueprints.supervisor', 'supervisor_bp', 'Supervisor'),
-    ('blueprints.employee_import', 'bp', 'Employee import'),
-    ('blueprints.schedule_management', 'schedule_bp', 'Schedule management'),
-    ('blueprints.overtime_management', 'overtime_bp', 'Overtime management'),
-    ('blueprints.leave_management', 'leave_bp', 'Leave management'),
-    ('blueprints.timeoff_requests', 'timeoff_bp', 'Time-off requests'),
-    ('blueprints.shift_swap', 'shift_swap_bp', 'Shift swap'),
-    ('blueprints.communications', 'communications_bp', 'Communications'),
-    ('blueprints.maintenance', 'maintenance_bp', 'Maintenance'),
-    ('blueprints.circadian', 'circadian_bp', 'Circadian'),
-    ('blueprints.coverage_gaps', 'coverage_bp', 'Coverage gaps'),
-]
+try:
+    from blueprints.auth import auth_bp
+    app.register_blueprint(auth_bp)
+    logger.info("✅ Auth blueprint loaded")
+except ImportError as e:
+    logger.error(f"❌ Could not import auth blueprint: {e}")
 
-for module_name, blueprint_name, description in blueprints_to_register:
-    try:
-        module = __import__(module_name, fromlist=[blueprint_name])
-        blueprint = getattr(module, blueprint_name)
-        app.register_blueprint(blueprint)
-        logger.info(f"✅ {description} blueprint loaded")
-    except ImportError as e:
-        logger.warning(f"⚠️  Could not import {description} blueprint: {e}")
-    except AttributeError as e:
-        logger.warning(f"⚠️  {description} blueprint not found in module: {e}")
+try:
+    from blueprints.main import main_bp
+    app.register_blueprint(main_bp)
+    logger.info("✅ Main blueprint loaded")
+except ImportError as e:
+    logger.error(f"❌ Could not import main blueprint: {e}")
+
+try:
+    from blueprints.supervisor import supervisor_bp
+    app.register_blueprint(supervisor_bp)
+    logger.info("✅ Supervisor blueprint loaded")
+except ImportError as e:
+    logger.error(f"❌ Could not import supervisor blueprint: {e}")
+
+try:
+    from blueprints.employee import employee_bp
+    app.register_blueprint(employee_bp)
+    logger.info("✅ Employee blueprint loaded")
+except ImportError as e:
+    logger.error(f"❌ Could not import employee blueprint: {e}")
+
+try:
+    from blueprints.employee_import import employee_import_bp
+    app.register_blueprint(employee_import_bp)
+    logger.info("✅ Employee import blueprint loaded")
+except ImportError as e:
+    logger.error(f"❌ Could not import employee_import blueprint: {e}")
 
 # Root route
 @app.route('/')
 def index():
     if current_user.is_authenticated:
         if current_user.is_supervisor:
-            return redirect(url_for('main.supervisor_dashboard'))
+            return redirect(url_for('supervisor.dashboard'))
         else:
             return redirect(url_for('main.employee_dashboard'))
     return redirect(url_for('auth.login'))
@@ -189,36 +198,16 @@ def health():
 def not_found_error(error):
     logger.warning(f"404 error: {request.url}")
     if current_user.is_authenticated:
-        # Create a simple 404 page if template doesn't exist
-        return """
-        <html>
-        <head><title>Page Not Found</title></head>
-        <body style="text-align: center; margin-top: 50px;">
-            <h1>404 - Page Not Found</h1>
-            <p>The page you're looking for doesn't exist.</p>
-            <a href="/">Go Home</a>
-        </body>
-        </html>
-        """, 404
+        flash('Page not found', 'warning')
+        return redirect(url_for('index'))
     return redirect(url_for('auth.login'))
 
 @app.errorhandler(500)
 def internal_error(error):
     logger.error(f"500 error: {error}")
     db.session.rollback()
-    if current_user.is_authenticated:
-        # Create a simple 500 page if template doesn't exist
-        return """
-        <html>
-        <head><title>Server Error</title></head>
-        <body style="text-align: center; margin-top: 50px;">
-            <h1>500 - Internal Server Error</h1>
-            <p>Something went wrong. Please try again later.</p>
-            <a href="/">Go Home</a>
-        </body>
-        </html>
-        """, 500
-    return redirect(url_for('auth.login'))
+    flash('An internal error occurred', 'danger')
+    return redirect(url_for('index'))
 
 # Context processor for templates
 @app.context_processor
@@ -240,18 +229,23 @@ def create_admin_user():
                     is_supervisor=True,
                     is_admin=True,
                     is_active=True,
-                    department='Administration',
-                    crew='A'
+                    department='Administration'
                 )
-                admin.set_password('admin123')  # Change this password!
+                admin.set_password('admin123')
                 db.session.add(admin)
                 db.session.commit()
                 logger.info("✅ Created default admin user (admin@workforce.com / admin123)")
+            else:
+                # Ensure existing admin has is_admin flag
+                if not admin.is_admin:
+                    admin.is_admin = True
+                    db.session.commit()
+                    logger.info("✅ Updated admin user with is_admin flag")
         except Exception as e:
-            logger.error(f"Could not create admin user: {e}")
+            logger.error(f"Could not create/update admin user: {e}")
             db.session.rollback()
 
-# Run database fixes and initialization
+# Run database fixes and initialization when app starts
 with app.app_context():
     try:
         # First, try to create all tables
@@ -267,9 +261,6 @@ with app.app_context():
     except Exception as e:
         logger.error(f"❌ Database initialization error: {e}")
 
-# Import global to avoid circular imports
-from flask import request
-
 if __name__ == '__main__':
     # Additional startup checks
     with app.app_context():
@@ -280,7 +271,8 @@ if __name__ == '__main__':
         # List registered routes
         logger.info("Registered routes:")
         for rule in app.url_map.iter_rules():
-            logger.info(f"  {rule.endpoint}: {rule.rule}")
+            if rule.endpoint != 'static':
+                logger.info(f"  {rule.endpoint}: {rule.rule}")
     
     # Run the app
     port = int(os.environ.get('PORT', 5000))
