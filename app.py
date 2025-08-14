@@ -1,7 +1,7 @@
 # app.py
 """
 Main application file for Workforce Scheduler
-Fixed version with proper startup database fixes
+Compatible with Flask 2.3+ (no before_first_request)
 """
 
 from flask import Flask, render_template, redirect, url_for, flash, jsonify, request
@@ -73,6 +73,9 @@ def load_user(user_id):
         return Employee.query.get(int(user_id))
     except:
         return None
+
+# Track if initialization has run
+_initialized = False
 
 # AUTOMATIC DATABASE FIX FUNCTION
 def fix_database_schema():
@@ -163,25 +166,31 @@ def create_admin_user():
         logger.error(f"Could not create/update admin user: {e}")
         db.session.rollback()
 
-# Run fixes before first request
-@app.before_first_request
+# Initialize database on first request
 def initialize_database():
-    """Initialize database on first request"""
+    """Initialize database - runs once on first request"""
+    global _initialized
+    if _initialized:
+        return
+    
+    _initialized = True
     logger.info("=== Initializing Database ===")
-    try:
-        # Create all tables
-        db.create_all()
-        logger.info("✅ Database tables verified/created")
-        
-        # Fix schema
-        fix_database_schema()
-        
-        # Create admin user
-        create_admin_user()
-        
-        logger.info("=== Database initialization complete ===")
-    except Exception as e:
-        logger.error(f"❌ Database initialization error: {e}")
+    
+    with app.app_context():
+        try:
+            # Create all tables
+            db.create_all()
+            logger.info("✅ Database tables verified/created")
+            
+            # Fix schema
+            fix_database_schema()
+            
+            # Create admin user
+            create_admin_user()
+            
+            logger.info("=== Database initialization complete ===")
+        except Exception as e:
+            logger.error(f"❌ Database initialization error: {e}")
 
 # Import and register blueprints
 try:
@@ -218,6 +227,12 @@ try:
     logger.info("✅ Employee import blueprint loaded")
 except ImportError as e:
     logger.error(f"❌ Could not import employee_import blueprint: {e}")
+
+# Middleware to run initialization
+@app.before_request
+def before_request():
+    """Run initialization before first request"""
+    initialize_database()
 
 # Root route
 @app.route('/')
@@ -261,8 +276,9 @@ def fix_database():
         return "Add ?confirm=yes to run database fixes", 400
     
     try:
-        fix_database_schema()
-        create_admin_user()
+        with app.app_context():
+            fix_database_schema()
+            create_admin_user()
         return jsonify({
             'status': 'success',
             'message': 'Database fixes applied',
@@ -296,7 +312,15 @@ def internal_error(error):
 def inject_now():
     return {'now': datetime.utcnow}
 
+# Run initialization at startup when running directly
 if __name__ == '__main__':
+    with app.app_context():
+        initialize_database()
+    
     # Run the app
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
+else:
+    # When running under gunicorn, initialize on import
+    with app.app_context():
+        initialize_database()
