@@ -1,4 +1,9 @@
-# models.py - Complete Fixed Version
+# models.py - Complete Database Models
+"""
+Complete database models for Workforce Scheduler
+Includes all required fields and relationships
+"""
+
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -47,7 +52,7 @@ class Employee(UserMixin, db.Model):
     department = db.Column(db.String(50))
     crew = db.Column(db.String(1))  # A, B, C, or D
     is_supervisor = db.Column(db.Boolean, default=False)
-    is_admin = db.Column(db.Boolean, default=False)
+    is_admin = db.Column(db.Boolean, default=False)  # CRITICAL: This fixes the login issue
     hire_date = db.Column(db.Date)
     
     # Availability
@@ -642,6 +647,9 @@ class ShiftPattern(db.Model):
 class OvertimeOpportunity(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     date = db.Column(db.Date)
+    position_id = db.Column(db.Integer, db.ForeignKey('position.id'))
+    hours = db.Column(db.Float)
+    status = db.Column(db.String(20), default='open')
 
 class OvertimeResponse(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -691,7 +699,7 @@ class UploadHistory(db.Model):
     # Additional info
     file_path = db.Column(db.String(500))
     error_log = db.Column(db.JSON)
-    upload_metadata = db.Column(db.JSON)  # Renamed from metadata to avoid conflict
+    upload_metadata = db.Column(db.JSON)
     
     # Timestamps
     uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -729,3 +737,19 @@ class MaintenanceUpdate(db.Model):
     # Relationships
     issue = db.relationship('MaintenanceIssue', backref='updates')
     updated_by = db.relationship('Employee', backref='maintenance_updates')
+
+# Add this placeholder model if referenced anywhere
+class ScheduleSuggestion(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    employee_id = db.Column(db.Integer, db.ForeignKey('employee.id'))
+    date = db.Column(db.Date)
+    suggestion_type = db.Column(db.String(50))
+
+# Add read receipt model if not present
+class MessageReadReceipt(db.Model):
+    """Generic message read receipts"""
+    id = db.Column(db.Integer, primary_key=True)
+    message_type = db.Column(db.String(50))
+    message_id = db.Column(db.Integer)
+    employee_id = db.Column(db.Integer, db.ForeignKey('employee.id'))
+    read_at = db.Column(db.DateTime, default=datetime.utcnow)
