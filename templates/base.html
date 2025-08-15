@@ -59,8 +59,8 @@
                             </a>
                             <ul class="dropdown-menu">
                                 <li><a class="dropdown-item" href="{{ url_for('main.view_crews') }}">View Crews</a></li>
-                                <li><a class="dropdown-item" href="{{ url_for('supervisor.employee_management') }}">Employee Management</a></li>
-                                <li><a class="dropdown-item" href="{{ url_for('supervisor.crew_management') }}">Crew Management</a></li>
+                                <li><a class="dropdown-item" href="/supervisor/employee-management">Employee Management</a></li>
+                                <li><a class="dropdown-item" href="/supervisor/crew-management">Crew Management</a></li>
                                 <li><hr class="dropdown-divider"></li>
                                 <li><a class="dropdown-item" href="{{ url_for('employee_import.upload_employees') }}">Upload Employees</a></li>
                                 <li><a class="dropdown-item" href="{{ url_for('employee_import.upload_overtime') }}">Upload Overtime</a></li>
@@ -125,12 +125,11 @@
                             <i class="bi bi-person-circle"></i> {{ current_user.name }}
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end">
-                            <li><a class="dropdown-item" href="{{ url_for('main.profile') }}">Profile</a></li>
+                            <!-- Removed broken profile link -->
                             {% if current_user.is_supervisor %}
-                            <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item" href="{{ url_for('main.diagnostic') }}">System Diagnostic</a></li>
-                            {% endif %}
                             <li><hr class="dropdown-divider"></li>
+                            {% endif %}
                             <li><a class="dropdown-item" href="{{ url_for('auth.logout') }}">Logout</a></li>
                         </ul>
                     </li>
