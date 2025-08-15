@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Database Fix Script
-Fixes missing columns and migration issues
+Fixes missing columns including is_admin
 """
 
 import os
@@ -19,9 +19,47 @@ def fix_database():
             # Get database inspector
             inspector = inspect(db.engine)
             
+            # CRITICAL FIX: Check employee table for is_admin column
+            if 'employee' in inspector.get_table_names():
+                print("\n=== Fixing Employee Table ===")
+                columns = [col['name'] for col in inspector.get_columns('employee')]
+                print(f"Current columns in employee table: {columns}")
+                
+                # Add is_admin column if missing
+                if 'is_admin' not in columns:
+                    print("CRITICAL: Adding is_admin column to employee table...")
+                    try:
+                        db.session.execute(text("""
+                            ALTER TABLE employee 
+                            ADD COLUMN is_admin BOOLEAN DEFAULT FALSE
+                        """))
+                        db.session.commit()
+                        print("✅ is_admin column added successfully!")
+                    except Exception as e:
+                        print(f"Error adding is_admin column: {e}")
+                        db.session.rollback()
+                else:
+                    print("✅ is_admin column already exists")
+                
+                # Update admin privileges
+                print("Updating admin privileges...")
+                try:
+                    db.session.execute(text("""
+                        UPDATE employee 
+                        SET is_admin = TRUE 
+                        WHERE email = 'admin@workforce.com' 
+                        OR email = 'admin@example.com'
+                        OR is_supervisor = TRUE
+                    """))
+                    db.session.commit()
+                    print("✅ Admin privileges updated")
+                except Exception as e:
+                    print(f"Error updating admin privileges: {e}")
+                    db.session.rollback()
+            
             # Check if schedule table exists
             if 'schedule' in inspector.get_table_names():
-                print("Schedule table exists, checking columns...")
+                print("\nSchedule table exists, checking columns...")
                 
                 # Get columns in schedule table
                 columns = [col['name'] for col in inspector.get_columns('schedule')]
@@ -123,9 +161,11 @@ def fix_database():
             tables = inspector.get_table_names()
             print(f"Tables in database: {tables}")
             
-            if 'schedule' in tables:
-                columns = [col['name'] for col in inspector.get_columns('schedule')]
-                print(f"Schedule table columns: {columns}")
+            if 'employee' in tables:
+                columns = [col['name'] for col in inspector.get_columns('employee')]
+                print(f"Employee table columns: {columns}")
+                if 'is_admin' in columns:
+                    print("✅ VERIFIED: is_admin column exists!")
                 
         except Exception as e:
             print(f"Error during database fix: {e}")
@@ -141,22 +181,30 @@ def check_and_create_admin():
         try:
             from models import Employee
             
-            # Check if any admin exists
-            admin = Employee.query.filter_by(is_supervisor=True).first()
+            # First check for admin@workforce.com
+            admin = Employee.query.filter_by(email='admin@workforce.com').first()
             if not admin:
-                print("\nNo admin user found, creating default admin...")
+                print("\nCreating admin@workforce.com...")
                 admin = Employee(
-                    email='admin@example.com',
+                    email='admin@workforce.com',
                     name='Admin User',
+                    employee_id='ADMIN001',
                     is_supervisor=True,
-                    department='Management'
+                    is_admin=True,
+                    is_active=True,
+                    department='Administration'
                 )
                 admin.set_password('admin123')
                 db.session.add(admin)
                 db.session.commit()
-                print("Default admin created: admin@example.com / admin123")
+                print("✅ Created admin: admin@workforce.com / admin123")
             else:
-                print(f"\nAdmin user exists: {admin.email}")
+                print(f"\n✅ Admin user exists: {admin.email}")
+                # Ensure they have admin privileges
+                if not admin.is_admin:
+                    admin.is_admin = True
+                    db.session.commit()
+                    print("✅ Updated admin privileges")
                 
         except Exception as e:
             print(f"Error checking/creating admin: {e}")
@@ -170,3 +218,6 @@ if __name__ == "__main__":
     check_and_create_admin()
     
     print("\nScript completed!")
+    print("\nYou should now be able to login with:")
+    print("Email: admin@workforce.com")
+    print("Password: admin123")
