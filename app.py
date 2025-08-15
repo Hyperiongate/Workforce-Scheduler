@@ -291,6 +291,185 @@ def fix_database():
             'timestamp': datetime.utcnow().isoformat()
         }), 500
 
+# Complete fix route
+@app.route('/complete-fix')
+def complete_fix():
+    """Complete database fix - adds all missing columns and creates admin user"""
+    results = {
+        'columns_added': [],
+        'columns_exists': [],
+        'errors': [],
+        'admin_status': None,
+        'tables_checked': []
+    }
+    
+    try:
+        # Test database connection first
+        db.session.execute(text('SELECT 1'))
+        results['database_connection'] = 'Connected'
+    except Exception as e:
+        results['database_connection'] = f'Failed: {str(e)}'
+        return jsonify(results), 500
+    
+    # Check and add is_admin column
+    try:
+        db.session.execute(text("SELECT is_admin FROM employee LIMIT 1"))
+        results['columns_exists'].append('is_admin')
+    except (OperationalError, ProgrammingError):
+        try:
+            db.session.execute(text("ALTER TABLE employee ADD COLUMN is_admin BOOLEAN DEFAULT FALSE"))
+            db.session.commit()
+            results['columns_added'].append('is_admin')
+        except Exception as e:
+            results['errors'].append(f'is_admin: {str(e)}')
+            db.session.rollback()
+    
+    # Check and add other important columns
+    columns_to_check = [
+        ('max_hours_per_week', 'INTEGER DEFAULT 48'),
+        ('is_active', 'BOOLEAN DEFAULT TRUE'),
+        ('created_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP'),
+        ('updated_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP')
+    ]
+    
+    for column_name, column_type in columns_to_check:
+        try:
+            db.session.execute(text(f"SELECT {column_name} FROM employee LIMIT 1"))
+            results['columns_exists'].append(column_name)
+        except (OperationalError, ProgrammingError):
+            try:
+                db.session.execute(text(f"ALTER TABLE employee ADD COLUMN {column_name} {column_type}"))
+                db.session.commit()
+                results['columns_added'].append(column_name)
+            except Exception as e:
+                if 'already exists' not in str(e):
+                    results['errors'].append(f'{column_name}: {str(e)}')
+                db.session.rollback()
+    
+    # Update admin privileges for supervisors
+    try:
+        db.session.execute(text("""
+            UPDATE employee 
+            SET is_admin = TRUE 
+            WHERE is_supervisor = TRUE 
+            AND is_admin = FALSE
+        """))
+        updated_count = db.session.connection().execute(text("SELECT ROW_COUNT()")).scalar()
+        db.session.commit()
+        results['supervisors_updated'] = updated_count
+    except Exception as e:
+        results['errors'].append(f'Update supervisors: {str(e)}')
+        db.session.rollback()
+    
+    # Check for admin user
+    try:
+        admin = Employee.query.filter_by(email='admin@workforce.com').first()
+        if admin:
+            results['admin_status'] = 'exists'
+            # Ensure admin has all privileges
+            if not admin.is_admin or not admin.is_supervisor:
+                admin.is_admin = True
+                admin.is_supervisor = True
+                admin.is_active = True
+                db.session.commit()
+                results['admin_status'] = 'updated'
+        else:
+            # Create admin user
+            admin = Employee(
+                email='admin@workforce.com',
+                name='Admin User',
+                employee_id='ADMIN001',
+                is_supervisor=True,
+                is_admin=True,
+                is_active=True,
+                department='Administration'
+            )
+            admin.set_password('admin123')
+            db.session.add(admin)
+            db.session.commit()
+            results['admin_status'] = 'created'
+    except Exception as e:
+        results['errors'].append(f'Admin user: {str(e)}')
+        db.session.rollback()
+    
+    # Check all tables
+    try:
+        inspector = inspect(db.engine)
+        results['tables_checked'] = inspector.get_table_names()
+    except Exception as e:
+        results['errors'].append(f'Table inspection: {str(e)}')
+    
+    # Prepare response
+    success = len(results['errors']) == 0
+    status_code = 200 if success else 500
+    
+    # Build HTML response for better readability
+    html_response = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Database Fix Results</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; margin: 40px; }}
+            .success {{ color: green; }}
+            .error {{ color: red; }}
+            .info {{ color: blue; }}
+            h1 {{ color: #333; }}
+            h2 {{ color: #666; margin-top: 30px; }}
+            ul {{ margin: 10px 0; }}
+            .summary {{ 
+                background: #f0f0f0; 
+                padding: 20px; 
+                border-radius: 5px; 
+                margin: 20px 0;
+            }}
+        </style>
+    </head>
+    <body>
+        <h1>Database Fix Results</h1>
+        
+        <div class="summary">
+            <h2>Summary</h2>
+            <p>Database Connection: <span class="{'success' if results['database_connection'] == 'Connected' else 'error'}">{results['database_connection']}</span></p>
+            <p>Columns Added: <span class="success">{len(results['columns_added'])}</span></p>
+            <p>Columns Already Exist: <span class="info">{len(results['columns_exists'])}</span></p>
+            <p>Errors: <span class="error">{len(results['errors'])}</span></p>
+            <p>Admin Status: <span class="{'success' if results['admin_status'] else 'error'}">{results['admin_status'] or 'failed'}</span></p>
+        </div>
+        
+        <h2>Columns Added</h2>
+        <ul>
+        {''.join(f'<li class="success">✓ {col}</li>' for col in results['columns_added']) or '<li>None</li>'}
+        </ul>
+        
+        <h2>Columns Already Exist</h2>
+        <ul>
+        {''.join(f'<li class="info">• {col}</li>' for col in results['columns_exists']) or '<li>None</li>'}
+        </ul>
+        
+        <h2>Tables Found</h2>
+        <ul>
+        {''.join(f'<li>• {table}</li>' for table in results['tables_checked']) or '<li>None</li>'}
+        </ul>
+        
+        {'<h2>Errors</h2><ul>' + ''.join(f'<li class="error">✗ {err}</li>' for err in results['errors']) + '</ul>' if results['errors'] else ''}
+        
+        <div class="summary">
+            <h2>Next Steps</h2>
+            {'<p class="success">✅ Database is fixed! <a href="/login">Try logging in now</a> with:<br>Email: admin@workforce.com<br>Password: admin123</p>' if success else '<p class="error">Some errors occurred. Please check the errors above and try again.</p>'}
+        </div>
+        
+        <p style="margin-top: 40px;">
+            <a href="/">← Back to Home</a> | 
+            <a href="/health">Check Health</a> | 
+            <a href="/login">Go to Login</a>
+        </p>
+    </body>
+    </html>
+    """
+    
+    return html_response, status_code
+
 # Error handlers
 @app.errorhandler(404)
 def not_found_error(error):
