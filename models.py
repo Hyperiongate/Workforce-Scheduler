@@ -1,7 +1,7 @@
 # models.py - Complete Database Models
 """
 Complete database models for Workforce Scheduler
-Includes all required fields and relationships
+Fixed to match actual database schema
 """
 
 from flask_sqlalchemy import SQLAlchemy
@@ -89,15 +89,35 @@ class Employee(UserMixin, db.Model):
         return 0
 
 class Position(db.Model):
-    """Job positions/roles"""
+    """Job positions/roles - FIXED to match actual database schema"""
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False, unique=True)
     department = db.Column(db.String(50))
-    requires_certification = db.Column(db.Boolean, default=False)
     min_coverage = db.Column(db.Integer, default=1)
+    
+    # These columns exist in your database but weren't in the model
+    skills_required = db.Column(db.Text)
+    requires_coverage = db.Column(db.Boolean, default=True)
+    critical_position = db.Column(db.Boolean, default=False)
+    default_skills = db.Column(db.Text)
     
     # Relationships
     employees = db.relationship('Employee', backref='position', lazy='dynamic')
+    
+    def __repr__(self):
+        return f'<Position {self.name}>'
+    
+    def get_required_skills(self):
+        """Get list of required skills"""
+        if self.skills_required:
+            return [s.strip() for s in self.skills_required.split(',')]
+        return []
+    
+    def get_default_skills(self):
+        """Get list of default skills"""
+        if self.default_skills:
+            return [s.strip() for s in self.default_skills.split(',')]
+        return []
     
 class Skill(db.Model):
     """Employee skills and certifications"""
@@ -153,6 +173,7 @@ class TimeOffRequest(db.Model):
     start_date = db.Column(db.Date, nullable=False)
     end_date = db.Column(db.Date, nullable=False)
     type = db.Column(db.Enum(TimeOffType), nullable=False)
+    request_type = db.Column(db.String(50), default='vacation')  # Added for compatibility
     reason = db.Column(db.Text)
     
     # Status
@@ -161,7 +182,9 @@ class TimeOffRequest(db.Model):
     
     # Timestamps
     requested_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)  # Added for compatibility
     processed_at = db.Column(db.DateTime)
+    approved_date = db.Column(db.DateTime)  # Added for compatibility
     
     # Relationships
     employee = db.relationship('Employee', foreign_keys=[employee_id], backref='time_off_requests')
@@ -172,6 +195,7 @@ class VacationCalendar(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     employee_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=False)
     date = db.Column(db.Date, nullable=False)
+    request_id = db.Column(db.Integer, db.ForeignKey('time_off_request.id'))  # Added for linking
     type = db.Column(db.String(20), default='vacation')
     status = db.Column(db.String(20), default='approved')
     
@@ -195,9 +219,9 @@ class ShiftSwapRequest(db.Model):
     
     # Shift details
     requester_date = db.Column(db.Date, nullable=False)
-    requester_shift = db.Column(db.Enum(ShiftType), nullable=False)
+    requester_shift = db.Column(db.String(20), nullable=False)  # Changed from Enum to String
     target_date = db.Column(db.Date)
-    target_shift = db.Column(db.Enum(ShiftType))
+    target_shift = db.Column(db.String(20))  # Changed from Enum to String
     
     # Status
     status = db.Column(db.String(20), default='pending')
@@ -245,7 +269,11 @@ class OvertimeHistory(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     employee_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=False)
     week_ending = db.Column(db.Date, nullable=False)
-    hours = db.Column(db.Float, default=0)
+    week_start_date = db.Column(db.Date)  # Added for compatibility
+    regular_hours = db.Column(db.Float, default=0)  # Added
+    overtime_hours = db.Column(db.Float, default=0)  # Added  
+    total_hours = db.Column(db.Float, default=0)  # Added
+    hours = db.Column(db.Float, default=0)  # Kept for backward compatibility
     is_current = db.Column(db.Boolean, default=False)
     
     # Relationships
@@ -595,13 +623,21 @@ class FileUpload(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     filename = db.Column(db.String(255), nullable=False)
     upload_type = db.Column(db.String(50))  # employee_import, overtime_import, etc.
+    file_type = db.Column(db.String(50))  # Added for compatibility
     uploaded_by_id = db.Column(db.Integer, db.ForeignKey('employee.id'))
     
     # Results
     total_records = db.Column(db.Integer, default=0)
     successful_records = db.Column(db.Integer, default=0)
     failed_records = db.Column(db.Integer, default=0)
+    records_processed = db.Column(db.Integer, default=0)  # Added
+    records_failed = db.Column(db.Integer, default=0)  # Added
     error_details = db.Column(db.JSON)
+    status = db.Column(db.String(20), default='pending')  # Added
+    
+    # File info
+    file_path = db.Column(db.String(500))  # Added
+    file_size = db.Column(db.Integer)  # Added
     
     # Timestamps
     uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
