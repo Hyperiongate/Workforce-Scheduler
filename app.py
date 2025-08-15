@@ -1,7 +1,7 @@
 # app.py
 """
 Main application file for Workforce Scheduler
-CLEANED UP VERSION - ONLY EXISTING MODELS
+FIXED VERSION - Only imports models that actually exist
 """
 
 from flask import Flask, render_template, redirect, url_for, flash, jsonify, request
@@ -67,21 +67,16 @@ except Exception as e:
     app.config['UPLOAD_FOLDER'] = '/tmp/upload_files'
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
-# Import models and initialize database - ONLY EXISTING MODELS
-from models import db, Employee, Position, Schedule, TimeOffRequest
-from models import Message, Notification, OvertimeRecord, PositionMessage
-from models import MessageReadReceipt, VacationCalendar
-
-# Additional models that might exist
-try:
-    from models import Skill, EmployeeSkill, Availability
-except ImportError:
-    logger.warning("Some models not found - continuing with core models")
-
-try:
-    from models import TrainingRecord, Certificate, PositionRequirement, SkillRequirement
-except ImportError:
-    logger.warning("Additional models not found - continuing")
+# Import models that ACTUALLY EXIST in your models.py
+from models import db, Employee, Position, Skill, EmployeeSkill, Schedule
+from models import TimeOffRequest, Availability, ShiftSwapRequest, ShiftTradePost
+from models import OvertimeHistory, CoverageGap, SupervisorMessage, PositionMessage
+from models import PositionMessageReadReceipt, CommunicationCategory, CommunicationMessage
+from models import CommunicationReadReceipt, CommunicationAttachment, Equipment
+from models import MaintenanceIssue, MaintenanceComment, CircadianProfile, SleepLog
+from models import CasualWorker, CoverageRequest, FileUpload, CrewCoverageRequirement
+from models import VacationCalendar, UploadHistory, SkillRequirement, MaintenanceUpdate
+from models import MessageReadReceipt
 
 # Initialize database with app
 db.init_app(app)
@@ -103,14 +98,14 @@ def fix_db_now():
     """Simple database fix without authentication"""
     try:
         with db.engine.connect() as conn:
-            # Add is_admin column
+            # Add is_admin column if missing
             try:
                 conn.execute(text("ALTER TABLE employee ADD COLUMN is_admin BOOLEAN DEFAULT FALSE"))
                 conn.commit()
             except:
                 pass
             
-            # Add other columns
+            # Add other potentially missing columns
             try:
                 conn.execute(text("ALTER TABLE employee ADD COLUMN max_hours_per_week INTEGER DEFAULT 40"))
                 conn.commit()
@@ -129,53 +124,129 @@ def fix_db_now():
             except:
                 pass
             
-            # Create admin user
+            # Create or update admin user
             password_hash = generate_password_hash('admin123')
-            try:
-                # First check if admin exists
-                result = conn.execute(text("SELECT id FROM employee WHERE email = 'admin@workforce.com'"))
-                if result.fetchone():
-                    # Update existing
-                    conn.execute(text("""
-                        UPDATE employee SET is_admin = TRUE, is_supervisor = TRUE 
-                        WHERE email = 'admin@workforce.com'
-                    """))
-                else:
-                    # Create new
-                    conn.execute(text("""
-                        INSERT INTO employee (email, password_hash, name, employee_id, 
-                                            is_supervisor, is_admin, department, crew, is_active)
-                        VALUES ('admin@workforce.com', :pwd, 'Admin User', 'ADMIN001',
-                               TRUE, TRUE, 'Management', 'A', TRUE)
-                    """), {'pwd': password_hash})
-                conn.commit()
-            except Exception as e:
-                return f"Error creating admin: {str(e)}"
+            
+            # Check if admin exists
+            result = conn.execute(text("SELECT id FROM employee WHERE email = 'admin@workforce.com'"))
+            if result.fetchone():
+                # Update existing
+                conn.execute(text("""
+                    UPDATE employee 
+                    SET is_admin = TRUE, 
+                        is_supervisor = TRUE,
+                        password_hash = :pwd,
+                        is_active = TRUE
+                    WHERE email = 'admin@workforce.com'
+                """), {'pwd': password_hash})
+            else:
+                # Create new admin user
+                conn.execute(text("""
+                    INSERT INTO employee (
+                        email, password_hash, name, employee_id, 
+                        is_supervisor, is_admin, department, crew, is_active
+                    ) VALUES (
+                        'admin@workforce.com', :pwd, 'Admin User', 'ADMIN001',
+                        TRUE, TRUE, 'Management', 'A', TRUE
+                    )
+                """), {'pwd': password_hash})
+            
+            conn.commit()
             
             return """
+            <!DOCTYPE html>
             <html>
-            <body style="font-family: Arial; padding: 40px;">
-                <h1 style="color: green;">✅ Database Fixed!</h1>
-                <p>The following have been completed:</p>
-                <ul>
-                    <li>Added is_admin column</li>
-                    <li>Added other missing columns</li>
-                    <li>Created/updated admin user</li>
-                </ul>
-                <p><strong>Login credentials:</strong></p>
-                <ul>
-                    <li>Email: admin@workforce.com</li>
-                    <li>Password: admin123</li>
-                </ul>
-                <a href="/login" style="display: inline-block; margin-top: 20px; padding: 10px 20px; 
-                   background: #007bff; color: white; text-decoration: none; border-radius: 5px;">
-                   Go to Login Page
-                </a>
+            <head>
+                <title>Database Fixed!</title>
+                <style>
+                    body { 
+                        font-family: Arial, sans-serif; 
+                        padding: 40px; 
+                        background-color: #f5f5f5;
+                    }
+                    .container {
+                        max-width: 600px;
+                        margin: 0 auto;
+                        background: white;
+                        padding: 30px;
+                        border-radius: 10px;
+                        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                    }
+                    h1 { color: #28a745; }
+                    .success { 
+                        background: #d4edda; 
+                        border: 1px solid #c3e6cb;
+                        color: #155724;
+                        padding: 15px;
+                        border-radius: 5px;
+                        margin: 20px 0;
+                    }
+                    .credentials {
+                        background: #e9ecef;
+                        padding: 20px;
+                        border-radius: 5px;
+                        margin: 20px 0;
+                    }
+                    .btn { 
+                        display: inline-block; 
+                        margin-top: 20px; 
+                        padding: 12px 30px; 
+                        background: #007bff; 
+                        color: white; 
+                        text-decoration: none; 
+                        border-radius: 5px;
+                        font-size: 16px;
+                    }
+                    .btn:hover { background: #0056b3; }
+                    code {
+                        background: #f8f9fa;
+                        padding: 2px 6px;
+                        border-radius: 3px;
+                        font-family: monospace;
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <h1>✅ Database Successfully Fixed!</h1>
+                    
+                    <div class="success">
+                        <h3>The following operations completed successfully:</h3>
+                        <ul>
+                            <li>Added <code>is_admin</code> column to employee table</li>
+                            <li>Added <code>max_hours_per_week</code> column</li>
+                            <li>Added <code>created_at</code> and <code>updated_at</code> timestamps</li>
+                            <li>Created/updated admin user account</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="credentials">
+                        <h3>Login Credentials:</h3>
+                        <p><strong>Email:</strong> <code>admin@workforce.com</code></p>
+                        <p><strong>Password:</strong> <code>admin123</code></p>
+                        <p style="color: #856404; margin-top: 10px;">
+                            <strong>⚠️ Important:</strong> Please change this password after your first login!
+                        </p>
+                    </div>
+                    
+                    <a href="/login" class="btn">Go to Login Page →</a>
+                </div>
             </body>
             </html>
             """
+            
     except Exception as e:
-        return f"<h1>Error:</h1><pre>{str(e)}</pre>"
+        return f"""
+        <html>
+        <body style="font-family: Arial; padding: 40px;">
+            <h1 style="color: red;">❌ Error Occurred</h1>
+            <pre style="background: #f8f9fa; padding: 20px; border-radius: 5px;">
+{str(e)}
+            </pre>
+            <p>Please check the server logs for more details.</p>
+        </body>
+        </html>
+        """
 
 # Import blueprints
 from blueprints.auth import auth_bp
