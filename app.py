@@ -68,7 +68,7 @@ except Exception as e:
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 # Import models and initialize database
-from models import db, Employee, Position, Skill, EmployeeSkill, Schedule, ShiftTemplate
+from models import db, Employee, Position, Skill, EmployeeSkill, Schedule
 from models import TimeOffRequest, Availability, ScheduleSwapRequest, Message, Notification
 from models import OvertimeRecord, TrainingRecord, Certificate, PositionRequirement
 from models import SkillRequirement, PositionMessage, MessageReadReceipt, VacationCalendar
