@@ -52,8 +52,20 @@ app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(os.path.abspath(__fil
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 app.config['ALLOWED_EXTENSIONS'] = {'xls', 'xlsx'}
 
-# Ensure upload folder exists
-os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+# Ensure upload folder exists (handle case where it might be a file)
+try:
+    if os.path.exists(app.config['UPLOAD_FOLDER']):
+        if not os.path.isdir(app.config['UPLOAD_FOLDER']):
+            # It exists but is not a directory, remove it
+            os.remove(app.config['UPLOAD_FOLDER'])
+            os.makedirs(app.config['UPLOAD_FOLDER'])
+    else:
+        os.makedirs(app.config['UPLOAD_FOLDER'])
+except Exception as e:
+    logger.warning(f"Could not create upload folder: {e}")
+    # Use temp directory as fallback
+    app.config['UPLOAD_FOLDER'] = '/tmp/upload_files'
+    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 # Import models and initialize database
 from models import db, Employee, Position, Skill, EmployeeSkill, Schedule, ShiftTemplate
