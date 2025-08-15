@@ -87,24 +87,8 @@ login_manager.login_message = 'Please log in to access this page.'
 def load_user(user_id):
     return Employee.query.get(int(user_id))
 
-# Import blueprints
-from blueprints.auth import auth_bp
-from blueprints.main import main_bp
-from blueprints.employee import employee_bp
-from blueprints.supervisor import supervisor_bp
-from blueprints.schedule import schedule_bp
-from blueprints.employee_import import employee_import_bp
-
-# Register blueprints
-app.register_blueprint(auth_bp)
-app.register_blueprint(main_bp)
-app.register_blueprint(employee_bp)
-app.register_blueprint(supervisor_bp)
-app.register_blueprint(schedule_bp)
-app.register_blueprint(employee_import_bp)
-
-# EMERGENCY DATABASE FIX ROUTE
-@app.route('/emergency-db-fix')
+# EMERGENCY DATABASE FIX ROUTE - MUST BE BEFORE BLUEPRINTS
+@app.route('/emergency-db-fix', methods=['GET'])
 def emergency_db_fix():
     """Emergency route to fix database issues"""
     results = []
@@ -254,6 +238,22 @@ def emergency_db_fix():
     """
     
     return html
+
+# Import blueprints
+from blueprints.auth import auth_bp
+from blueprints.main import main_bp
+from blueprints.employee import employee_bp
+from blueprints.supervisor import supervisor_bp
+from blueprints.schedule import schedule_bp
+from blueprints.employee_import import employee_import_bp
+
+# Register blueprints
+app.register_blueprint(auth_bp)
+app.register_blueprint(main_bp)
+app.register_blueprint(employee_bp)
+app.register_blueprint(supervisor_bp)
+app.register_blueprint(schedule_bp)
+app.register_blueprint(employee_import_bp)
 
 # Add 404 handler
 @app.errorhandler(404)
