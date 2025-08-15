@@ -1,9 +1,10 @@
 # blueprints/main.py
 from flask import Blueprint, render_template, redirect, url_for, flash, jsonify
 from flask_login import login_required, current_user
-from models import db, Employee, TimeOffRequest, ShiftSwapRequest, CoverageGap, MaintenanceIssue
+from models import db, Employee, TimeOffRequest, ShiftSwapRequest, CoverageGap, MaintenanceIssue, Position
 from datetime import datetime, date, timedelta
 from functools import wraps
+from sqlalchemy import text
 
 main_bp = Blueprint('main', __name__)
 
@@ -75,6 +76,78 @@ def view_crews():
         crews[crew] = Employee.query.filter_by(crew=crew, is_active=True).all()
     
     return render_template('view_crews.html', crews=crews)
+
+# ==========================================
+# DEBUG ROUTE FOR COVERAGE NEEDS
+# ==========================================
+
+@main_bp.route('/debug-coverage')
+@login_required
+def debug_coverage():
+    """Debug route to check what's happening with coverage needs"""
+    debug_info = {
+        "status": "checking",
+        "position_table_exists": False,
+        "position_count": 0,
+        "position_columns": [],
+        "employee_count": 0,
+        "errors": []
+    }
+    
+    try:
+        # Check if position table exists and what columns it has
+        with db.engine.connect() as conn:
+            # Check table existence
+            result = conn.execute(text("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = 'public' 
+                    AND table_name = 'position'
+                )
+            """))
+            debug_info["position_table_exists"] = result.scalar()
+            
+            # Get columns
+            if debug_info["position_table_exists"]:
+                result = conn.execute(text("""
+                    SELECT column_name, data_type 
+                    FROM information_schema.columns 
+                    WHERE table_name = 'position'
+                    ORDER BY ordinal_position
+                """))
+                debug_info["position_columns"] = [
+                    {"name": row[0], "type": row[1]} for row in result
+                ]
+        
+        # Try to query positions
+        try:
+            positions = Position.query.all()
+            debug_info["position_count"] = len(positions)
+            
+            # Get first position details if any exist
+            if positions:
+                first_pos = positions[0]
+                debug_info["sample_position"] = {
+                    "id": first_pos.id,
+                    "name": first_pos.name,
+                    "attributes": [attr for attr in dir(first_pos) if not attr.startswith('_')]
+                }
+        except Exception as e:
+            debug_info["errors"].append(f"Position query error: {str(e)}")
+        
+        # Count employees
+        try:
+            debug_info["employee_count"] = Employee.query.count()
+        except Exception as e:
+            debug_info["errors"].append(f"Employee count error: {str(e)}")
+        
+        debug_info["status"] = "complete"
+        
+    except Exception as e:
+        debug_info["errors"].append(f"General error: {str(e)}")
+        debug_info["status"] = "error"
+    
+    return jsonify(debug_info)
 
 # ==========================================
 # ADMIN FIX ROUTES
