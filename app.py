@@ -2,6 +2,7 @@
 """
 Main application file for Workforce Scheduler
 Compatible with Flask 2.3+ (no before_first_request)
+Fixed version with proper transaction handling for database fixes
 """
 
 from flask import Flask, render_template, redirect, url_for, flash, jsonify, request
@@ -291,10 +292,10 @@ def fix_database():
             'timestamp': datetime.utcnow().isoformat()
         }), 500
 
-# Complete fix route
+# Complete fix route with proper transaction handling
 @app.route('/complete-fix')
 def complete_fix():
-    """Complete database fix - adds all missing columns and creates admin user"""
+    """Complete database fix with proper transaction handling"""
     results = {
         'columns_added': [],
         'columns_exists': [],
@@ -303,28 +304,47 @@ def complete_fix():
         'tables_checked': []
     }
     
+    # First, rollback any bad transactions
     try:
-        # Test database connection first
+        db.session.rollback()
+        db.session.close()
+        db.engine.dispose()
+        results['transaction_cleanup'] = 'Success - cleared bad transactions'
+    except Exception as e:
+        results['transaction_cleanup'] = f'Warning: {str(e)}'
+    
+    # Create new connection
+    try:
         db.session.execute(text('SELECT 1'))
+        db.session.commit()
         results['database_connection'] = 'Connected'
     except Exception as e:
         results['database_connection'] = f'Failed: {str(e)}'
         return jsonify(results), 500
     
-    # Check and add is_admin column
+    # Fix is_admin column with individual transactions
     try:
-        db.session.execute(text("SELECT is_admin FROM employee LIMIT 1"))
-        results['columns_exists'].append('is_admin')
-    except (OperationalError, ProgrammingError):
-        try:
+        # Check if column exists
+        result = db.session.execute(text("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'employee' 
+            AND column_name = 'is_admin'
+        """))
+        
+        if result.rowcount == 0:
+            # Column doesn't exist, add it
             db.session.execute(text("ALTER TABLE employee ADD COLUMN is_admin BOOLEAN DEFAULT FALSE"))
             db.session.commit()
             results['columns_added'].append('is_admin')
-        except Exception as e:
-            results['errors'].append(f'is_admin: {str(e)}')
-            db.session.rollback()
+        else:
+            results['columns_exists'].append('is_admin')
+            db.session.commit()
+    except Exception as e:
+        results['errors'].append(f'is_admin check/add: {str(e)}')
+        db.session.rollback()
     
-    # Check and add other important columns
+    # Check other columns one by one
     columns_to_check = [
         ('max_hours_per_week', 'INTEGER DEFAULT 48'),
         ('is_active', 'BOOLEAN DEFAULT TRUE'),
@@ -334,76 +354,121 @@ def complete_fix():
     
     for column_name, column_type in columns_to_check:
         try:
-            db.session.execute(text(f"SELECT {column_name} FROM employee LIMIT 1"))
-            results['columns_exists'].append(column_name)
-        except (OperationalError, ProgrammingError):
-            try:
+            # Check if column exists
+            result = db.session.execute(text(f"""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'employee' 
+                AND column_name = '{column_name}'
+            """))
+            
+            if result.rowcount == 0:
+                # Add column
                 db.session.execute(text(f"ALTER TABLE employee ADD COLUMN {column_name} {column_type}"))
                 db.session.commit()
                 results['columns_added'].append(column_name)
-            except Exception as e:
-                if 'already exists' not in str(e):
-                    results['errors'].append(f'{column_name}: {str(e)}')
-                db.session.rollback()
+            else:
+                results['columns_exists'].append(column_name)
+                db.session.commit()
+        except Exception as e:
+            results['errors'].append(f'{column_name}: {str(e)}')
+            db.session.rollback()
     
-    # Update admin privileges for supervisors
+    # Update admin privileges
     try:
         db.session.execute(text("""
             UPDATE employee 
             SET is_admin = TRUE 
-            WHERE is_supervisor = TRUE 
-            AND is_admin = FALSE
+            WHERE (email = 'admin@workforce.com' OR is_supervisor = TRUE)
+            AND is_admin IS NOT NULL
         """))
-        updated_count = db.session.connection().execute(text("SELECT ROW_COUNT()")).scalar()
         db.session.commit()
-        results['supervisors_updated'] = updated_count
+        results['admin_privileges_updated'] = 'Success'
     except Exception as e:
-        results['errors'].append(f'Update supervisors: {str(e)}')
+        results['errors'].append(f'Update privileges: {str(e)}')
         db.session.rollback()
     
-    # Check for admin user
+    # Check/create admin user with raw SQL
     try:
-        admin = Employee.query.filter_by(email='admin@workforce.com').first()
-        if admin:
+        # Check if admin exists
+        result = db.session.execute(text("""
+            SELECT email, name, is_admin, is_supervisor 
+            FROM employee 
+            WHERE email = 'admin@workforce.com'
+        """))
+        admin_row = result.fetchone()
+        
+        if admin_row:
             results['admin_status'] = 'exists'
-            # Ensure admin has all privileges
-            if not admin.is_admin or not admin.is_supervisor:
-                admin.is_admin = True
-                admin.is_supervisor = True
-                admin.is_active = True
-                db.session.commit()
-                results['admin_status'] = 'updated'
+            # Update to ensure admin privileges
+            db.session.execute(text("""
+                UPDATE employee 
+                SET is_admin = TRUE, 
+                    is_supervisor = TRUE,
+                    is_active = TRUE
+                WHERE email = 'admin@workforce.com'
+            """))
+            db.session.commit()
+            results['admin_status'] = 'updated'
         else:
-            # Create admin user
-            admin = Employee(
-                email='admin@workforce.com',
-                name='Admin User',
-                employee_id='ADMIN001',
-                is_supervisor=True,
-                is_admin=True,
-                is_active=True,
-                department='Administration'
-            )
-            admin.set_password('admin123')
-            db.session.add(admin)
+            # Create admin with raw SQL
+            db.session.execute(text("""
+                INSERT INTO employee (
+                    email, name, employee_id, 
+                    is_supervisor, is_admin, is_active, 
+                    department, password_hash, crew
+                ) VALUES (
+                    'admin@workforce.com',
+                    'Admin User',
+                    'ADMIN001',
+                    TRUE, TRUE, TRUE,
+                    'Administration',
+                    :password_hash,
+                    'A'
+                )
+            """), {
+                'password_hash': '$2b$12$YP6JXgK3P7N3rHqr0J5FYuPQjW2aFYXoVzV6M8RjN6cGyCZLKGNEi'
+            })
             db.session.commit()
             results['admin_status'] = 'created'
     except Exception as e:
         results['errors'].append(f'Admin user: {str(e)}')
         db.session.rollback()
     
-    # Check all tables
+    # Get table list
     try:
         inspector = inspect(db.engine)
         results['tables_checked'] = inspector.get_table_names()
     except Exception as e:
         results['errors'].append(f'Table inspection: {str(e)}')
     
+    # Final verification
+    try:
+        # Verify is_admin column exists
+        result = db.session.execute(text("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'employee' 
+            AND column_name = 'is_admin'
+        """))
+        results['is_admin_verified'] = result.rowcount > 0
+        
+        # Verify admin user
+        result = db.session.execute(text("""
+            SELECT email, is_admin 
+            FROM employee 
+            WHERE email = 'admin@workforce.com'
+        """))
+        admin = result.fetchone()
+        results['admin_verified'] = admin is not None
+    except Exception as e:
+        results['verification_error'] = str(e)
+    
     # Prepare response
-    success = len(results['errors']) == 0
+    success = len(results['errors']) == 0 and results.get('is_admin_verified', False)
     status_code = 200 if success else 500
     
-    # Build HTML response for better readability
+    # Build HTML response
     html_response = f"""
     <!DOCTYPE html>
     <html>
@@ -423,18 +488,27 @@ def complete_fix():
                 border-radius: 5px; 
                 margin: 20px 0;
             }}
+            .critical {{ 
+                background: #ffe0e0; 
+                padding: 15px; 
+                border-radius: 5px; 
+                margin: 20px 0;
+                border: 2px solid #ff0000;
+            }}
         </style>
     </head>
     <body>
-        <h1>Database Fix Results</h1>
+        <h1>Database Fix Results - Transaction Safe Version</h1>
         
         <div class="summary">
             <h2>Summary</h2>
+            <p>Transaction Cleanup: <span class="success">{results.get('transaction_cleanup', 'Not performed')}</span></p>
             <p>Database Connection: <span class="{'success' if results['database_connection'] == 'Connected' else 'error'}">{results['database_connection']}</span></p>
             <p>Columns Added: <span class="success">{len(results['columns_added'])}</span></p>
             <p>Columns Already Exist: <span class="info">{len(results['columns_exists'])}</span></p>
             <p>Errors: <span class="error">{len(results['errors'])}</span></p>
             <p>Admin Status: <span class="{'success' if results['admin_status'] else 'error'}">{results['admin_status'] or 'failed'}</span></p>
+            <p>is_admin Column Verified: <span class="{'success' if results.get('is_admin_verified') else 'error'}">{results.get('is_admin_verified', False)}</span></p>
         </div>
         
         <h2>Columns Added</h2>
@@ -447,22 +521,20 @@ def complete_fix():
         {''.join(f'<li class="info">• {col}</li>' for col in results['columns_exists']) or '<li>None</li>'}
         </ul>
         
-        <h2>Tables Found</h2>
-        <ul>
-        {''.join(f'<li>• {table}</li>' for table in results['tables_checked']) or '<li>None</li>'}
-        </ul>
-        
         {'<h2>Errors</h2><ul>' + ''.join(f'<li class="error">✗ {err}</li>' for err in results['errors']) + '</ul>' if results['errors'] else ''}
+        
+        {'<div class="critical"><h2>⚠️ CRITICAL ISSUE</h2><p>The is_admin column is still not being added. You need to use a PostgreSQL client to add it manually.</p></div>' if not results.get('is_admin_verified') else ''}
         
         <div class="summary">
             <h2>Next Steps</h2>
-            {'<p class="success">✅ Database is fixed! <a href="/login">Try logging in now</a> with:<br>Email: admin@workforce.com<br>Password: admin123</p>' if success else '<p class="error">Some errors occurred. Please check the errors above and try again.</p>'}
+            {'<p class="success">✅ Database should be fixed! <a href="/login">Try logging in now</a> with:<br>Email: admin@workforce.com<br>Password: admin123</p>' if success else '<p class="error">The automatic fix is still failing. You need to manually add the column using a PostgreSQL client.</p>'}
         </div>
         
         <p style="margin-top: 40px;">
             <a href="/">← Back to Home</a> | 
             <a href="/health">Check Health</a> | 
-            <a href="/login">Go to Login</a>
+            <a href="/login">Go to Login</a> |
+            <a href="/complete-fix">Try Again</a>
         </p>
     </body>
     </html>
