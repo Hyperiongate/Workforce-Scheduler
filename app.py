@@ -1,7 +1,7 @@
 # app.py
 """
 Main application file for Workforce Scheduler
-FIXED VERSION - Only imports models that actually exist
+FIXED VERSION - With context processor for pending counts
 """
 
 from flask import Flask, render_template, redirect, url_for, flash, jsonify, request
@@ -309,6 +309,28 @@ def inject_user_permissions():
     """Inject user permissions into all templates"""
     return dict(
         is_supervisor=lambda: current_user.is_authenticated and current_user.is_supervisor
+    )
+
+@app.context_processor
+def inject_pending_counts():
+    """Inject pending counts into all templates for navbar"""
+    pending_time_off = 0
+    pending_swaps = 0
+    
+    if current_user.is_authenticated and current_user.is_supervisor:
+        try:
+            pending_time_off = TimeOffRequest.query.filter_by(status='pending').count()
+        except Exception as e:
+            logger.warning(f"Could not get pending time off count: {e}")
+            
+        try:
+            pending_swaps = ShiftSwapRequest.query.filter_by(status='pending').count()
+        except Exception as e:
+            logger.warning(f"Could not get pending swaps count: {e}")
+    
+    return dict(
+        pending_time_off=pending_time_off,
+        pending_swaps=pending_swaps
     )
 
 # Utility functions
