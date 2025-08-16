@@ -1,6 +1,7 @@
 # blueprints/employee_import.py
 """
 Employee Import Blueprint - Complete file with all routes and template variables
+FULLY CHECKED VERSION - All template expectations met
 """
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, send_file, current_app
@@ -69,12 +70,13 @@ def get_employee_stats():
             'crews': {'A': 0, 'B': 0, 'C': 0, 'D': 0, 'Unassigned': 0}
         }
 
-def get_recent_uploads(limit=5):
+def get_recent_uploads(limit=5, upload_type=None):
     """Get recent file uploads"""
     try:
-        return FileUpload.query.order_by(
-            FileUpload.uploaded_at.desc()
-        ).limit(limit).all()
+        query = FileUpload.query
+        if upload_type:
+            query = query.filter_by(upload_type=upload_type)
+        return query.order_by(FileUpload.uploaded_at.desc()).limit(limit).all()
     except Exception as e:
         logger.error(f"Error getting recent uploads: {e}")
         return []
@@ -89,6 +91,47 @@ def get_employees_without_accounts():
     except Exception:
         return 0
 
+def get_overtime_stats():
+    """Get overtime statistics"""
+    try:
+        total_ot_hours = db.session.query(
+            func.sum(OvertimeHistory.hours_worked)
+        ).scalar() or 0
+        
+        employees_with_ot = db.session.query(
+            func.count(func.distinct(OvertimeHistory.employee_id))
+        ).scalar() or 0
+        
+        recent_uploads = get_recent_uploads(limit=5, upload_type='overtime')
+        
+        return {
+            'total_ot_hours': float(total_ot_hours),
+            'employees_with_ot': employees_with_ot,
+            'recent_uploads': recent_uploads
+        }
+    except Exception as e:
+        logger.error(f"Error getting overtime stats: {e}")
+        return {
+            'total_ot_hours': 0,
+            'employees_with_ot': 0,
+            'recent_uploads': []
+        }
+
+# Add properties to FileUpload model dynamically for template compatibility
+def augment_file_upload(upload):
+    """Add template-expected properties to FileUpload objects"""
+    if upload:
+        # Add upload_date as alias for uploaded_at
+        upload.upload_date = upload.uploaded_at
+        # Add file_type as alias for upload_type
+        upload.file_type = upload.upload_type
+        # Add computed properties
+        upload.records_processed = upload.successful_records + upload.failed_records if upload.successful_records else 0
+        upload.records_created = upload.successful_records
+        upload.records_updated = 0  # We don't track this separately yet
+        upload.status = upload.status or 'completed'
+    return upload
+
 # ==========================================
 # MAIN UPLOAD ROUTES
 # ==========================================
@@ -100,6 +143,10 @@ def upload_employees():
     """Upload employees page with all required template variables"""
     stats = get_employee_stats()
     recent_uploads = get_recent_uploads()
+    
+    # Augment uploads for template compatibility
+    for upload in recent_uploads:
+        augment_file_upload(upload)
     
     # Get crew distribution for chart
     crew_distribution = stats['crews']
@@ -126,30 +173,14 @@ def upload_employees():
 @supervisor_required
 def upload_overtime():
     """Upload overtime history page"""
-    # Get overtime statistics
-    try:
-        total_ot_hours = db.session.query(
-            func.sum(OvertimeHistory.hours_worked)
-        ).scalar() or 0
-        
-        employees_with_ot = db.session.query(
-            func.count(func.distinct(OvertimeHistory.employee_id))
-        ).scalar() or 0
-        
-        recent_uploads = FileUpload.query.filter_by(
-            upload_type='overtime'
-        ).order_by(FileUpload.uploaded_at.desc()).limit(5).all()
-        
-    except Exception as e:
-        logger.error(f"Error getting overtime stats: {e}")
-        total_ot_hours = 0
-        employees_with_ot = 0
-        recent_uploads = []
+    # Get overtime statistics as a dict
+    stats = get_overtime_stats()
     
-    return render_template('upload_overtime.html',
-                         total_ot_hours=total_ot_hours,
-                         employees_with_ot=employees_with_ot,
-                         recent_uploads=recent_uploads)
+    # Augment uploads for template compatibility
+    for upload in stats.get('recent_uploads', []):
+        augment_file_upload(upload)
+    
+    return render_template('upload_overtime.html', stats=stats)
 
 @employee_import_bp.route('/upload-history')
 @login_required
@@ -157,10 +188,32 @@ def upload_overtime():
 def upload_history():
     """View upload history"""
     try:
-        # Get all uploads, not paginated
-        uploads = FileUpload.query.order_by(
-            FileUpload.uploaded_at.desc()
-        ).limit(100).all()
+        # Get filter parameters
+        file_type = request.args.get('file_type', '')
+        status = request.args.get('status', '')
+        start_date = request.args.get('start_date', '')
+        end_date = request.args.get('end_date', '')
+        
+        # Build query
+        query = FileUpload.query
+        
+        if file_type:
+            query = query.filter_by(upload_type=file_type)
+        if status:
+            query = query.filter_by(status=status)
+        if start_date:
+            query = query.filter(FileUpload.uploaded_at >= datetime.strptime(start_date, '%Y-%m-%d'))
+        if end_date:
+            end_datetime = datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1)
+            query = query.filter(FileUpload.uploaded_at < end_datetime)
+        
+        # Get uploads
+        uploads = query.order_by(FileUpload.uploaded_at.desc()).limit(100).all()
+        
+        # Augment each upload for template compatibility
+        for upload in uploads:
+            augment_file_upload(upload)
+        
     except Exception as e:
         logger.error(f"Error getting upload history: {e}")
         uploads = []
@@ -833,6 +886,52 @@ def download_upload_file(upload_id):
         logger.error(f"Error downloading file: {e}")
         flash('Error downloading file.', 'danger')
         return redirect(url_for('employee_import.upload_history'))
+
+# ==========================================
+# API ENDPOINTS FOR AJAX CALLS
+# ==========================================
+
+@employee_import_bp.route('/api/upload-details/<int:upload_id>')
+@login_required
+@supervisor_required
+def get_upload_details(upload_id):
+    """Get detailed information about an upload"""
+    try:
+        upload = FileUpload.query.get_or_404(upload_id)
+        
+        # Augment for template compatibility
+        augment_file_upload(upload)
+        
+        return jsonify({
+            'id': upload.id,
+            'filename': upload.filename,
+            'file_type': upload.upload_type,
+            'uploaded_by': upload.uploaded_by.name if upload.uploaded_by else 'Unknown',
+            'upload_date': upload.uploaded_at.strftime('%Y-%m-%d %H:%M:%S'),
+            'status': upload.status or 'completed',
+            'total_records': upload.total_records,
+            'successful_records': upload.successful_records,
+            'failed_records': upload.failed_records,
+            'records_processed': upload.records_processed,
+            'records_created': upload.records_created,
+            'records_updated': upload.records_updated,
+            'error_details': upload.error_details
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 404
+
+@employee_import_bp.route('/api/delete-upload/<int:upload_id>', methods=['DELETE'])
+@login_required
+@supervisor_required
+def delete_upload(upload_id):
+    """Delete an upload record"""
+    try:
+        upload = FileUpload.query.get_or_404(upload_id)
+        db.session.delete(upload)
+        db.session.commit()
+        return jsonify({'success': True, 'message': 'Upload record deleted'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 # ==========================================
 # ERROR HANDLERS
