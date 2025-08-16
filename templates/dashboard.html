@@ -1,68 +1,50 @@
 {% extends "base.html" %}
-
-{% block title %}Supervisor Dashboard - Workforce Scheduler{% endblock %}
+{% block title %}Supervisor Dashboard{% endblock %}
 
 {% block content %}
-<div class="container-fluid mt-4">
-    <!-- Dashboard Header -->
+<div class="container-fluid">
     <div class="row mb-4">
         <div class="col-12">
-            <h1>Supervisor Dashboard</h1>
+            <h1 class="h2">Supervisor Dashboard</h1>
             <p class="text-muted">Welcome back, {{ current_user.name }}!</p>
         </div>
     </div>
 
-    <!-- Quick Stats Cards -->
+    <!-- Statistics Row -->
     <div class="row mb-4">
-        <div class="col-md-3 mb-3">
-            <div class="card text-white bg-primary">
+        <div class="col-md-3">
+            <div class="card stat-card">
                 <div class="card-body">
-                    <h5 class="card-title">Total Employees</h5>
-                    <h2>{{ total_employees|default(0) }}</h2>
+                    <h6 class="text-muted">Pending Time Off</h6>
+                    <h3>{{ pending_time_off or 0 }}</h3>
+                    <small class="text-muted">Requests awaiting approval</small>
                 </div>
             </div>
         </div>
-        <div class="col-md-3 mb-3">
-            <div class="card text-white bg-warning">
+        <div class="col-md-3">
+            <div class="card stat-card">
                 <div class="card-body">
-                    <h5 class="card-title">Pending Time Off</h5>
-                    <h2>{{ pending_time_off|default(0) }}</h2>
+                    <h6 class="text-muted">Pending Swaps</h6>
+                    <h3>{{ pending_swaps or 0 }}</h3>
+                    <small class="text-muted">Shift swap requests</small>
                 </div>
             </div>
         </div>
-        <div class="col-md-3 mb-3">
-            <div class="card text-white bg-info">
+        <div class="col-md-3">
+            <div class="card stat-card">
                 <div class="card-body">
-                    <h5 class="card-title">Pending Swaps</h5>
-                    <h2>{{ pending_swaps|default(0) }}</h2>
+                    <h6 class="text-muted">Total Employees</h6>
+                    <h3>{{ total_employees or 0 }}</h3>
+                    <small class="text-muted">Active workforce</small>
                 </div>
             </div>
         </div>
-        <div class="col-md-3 mb-3">
-            <div class="card text-white bg-danger">
+        <div class="col-md-3">
+            <div class="card stat-card">
                 <div class="card-body">
-                    <h5 class="card-title">Coverage Gaps</h5>
-                    <h2>{{ coverage_gaps|default(0) }}</h2>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Schedule Management Section -->
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="card bg-success text-white">
-                <div class="card-body text-center">
-                    <h4 class="card-title">
-                        <i class="bi bi-calendar-plus"></i> Schedule Management
-                    </h4>
-                    <p class="card-text">Create and manage employee schedules using industry-standard patterns</p>
-                    <a href="{{ url_for('schedule.schedule_select') }}" class="btn btn-light btn-lg">
-                        <i class="bi bi-calendar-plus"></i> Create New Schedule
-                    </a>
-                    <a href="{{ url_for('schedule.view_schedules') }}" class="btn btn-outline-light btn-lg ms-2">
-                        <i class="bi bi-calendar-week"></i> View Current Schedules
-                    </a>
+                    <h6 class="text-muted">Coverage Gaps</h6>
+                    <h3>{{ coverage_gaps or 0 }}</h3>
+                    <small class="text-muted">Positions needing coverage</small>
                 </div>
             </div>
         </div>
@@ -71,200 +53,228 @@
     <!-- Quick Actions -->
     <div class="row mb-4">
         <div class="col-12">
-            <div class="card">
-                <div class="card-header">
-                    <h5 class="mb-0">Quick Actions</h5>
-                </div>
-                <div class="card-body">
-                    <div class="row">
-                        <div class="col-md-3 mb-2">
-                            <a href="{{ url_for('main.overtime_management') }}" class="btn btn-primary w-100">
-                                <i class="bi bi-clock-history"></i> Overtime Management
-                            </a>
-                        </div>
-                        <div class="col-md-3 mb-2">
-                            <a href="{{ url_for('supervisor.vacation_calendar') }}" class="btn btn-info w-100">
-                                <i class="bi bi-calendar"></i> Vacation Calendar
-                            </a>
-                        </div>
-                        <div class="col-md-3 mb-2">
-                            <a href="{{ url_for('employee_import.upload_employees') }}" class="btn btn-warning w-100">
-                                <i class="bi bi-upload"></i> Upload Data
-                            </a>
-                        </div>
-                        <div class="col-md-3 mb-2">
-                            <a href="{{ url_for('main.view_crews') }}" class="btn btn-success w-100">
-                                <i class="bi bi-people"></i> View Crews
-                            </a>
-                        </div>
-                    </div>
-                </div>
-            </div>
+            <h2 class="h4 mb-3">Quick Actions</h2>
+        </div>
+        <div class="col-md-3 mb-3">
+            <a href="{{ url_for('supervisor.time_off_requests') }}" class="action-card text-center">
+                <i class="bi bi-calendar-check action-icon"></i>
+                <h5>Time Off Requests</h5>
+                <p class="text-muted mb-0">Review and approve</p>
+            </a>
+        </div>
+        <div class="col-md-3 mb-3">
+            <a href="{{ url_for('supervisor.shift_swaps') }}" class="action-card text-center">
+                <i class="bi bi-shuffle action-icon"></i>
+                <h5>Shift Swaps</h5>
+                <p class="text-muted mb-0">Manage swap requests</p>
+            </a>
+        </div>
+        <div class="col-md-3 mb-3">
+            <a href="{{ url_for('schedule.view') }}" class="action-card text-center">
+                <i class="bi bi-calendar3 action-icon"></i>
+                <h5>View Schedule</h5>
+                <p class="text-muted mb-0">Current schedules</p>
+            </a>
+        </div>
+        <div class="col-md-3 mb-3">
+            <a href="{{ url_for('employee_import.upload_employees') }}" class="action-card text-center">
+                <i class="bi bi-upload action-icon"></i>
+                <h5>Upload Data</h5>
+                <p class="text-muted mb-0">Import employees</p>
+            </a>
         </div>
     </div>
 
-    <!-- Management Tools -->
-    <div class="row">
-        <div class="col-md-6">
-            <div class="card">
-                <div class="card-header">
-                    <h5 class="mb-0">Requests & Approvals</h5>
-                </div>
-                <div class="card-body">
-                    <div class="list-group">
-                        <a href="{{ url_for('supervisor.time_off_requests') }}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
-                            Time Off Requests
-                            {% if pending_time_off > 0 %}
-                            <span class="badge bg-warning rounded-pill">{{ pending_time_off }}</span>
-                            {% endif %}
-                        </a>
-                        <a href="{{ url_for('supervisor.swap_requests') }}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
-                            Shift Swap Requests
-                            {% if pending_swaps > 0 %}
-                            <span class="badge bg-info rounded-pill">{{ pending_swaps }}</span>
-                            {% endif %}
-                        </a>
-                        <a href="{{ url_for('supervisor.coverage_gaps') }}" class="list-group-item list-group-item-action">
-                            Coverage Gaps Analysis
-                        </a>
-                        <a href="{{ url_for('supervisor.coverage_needs') }}" class="list-group-item list-group-item-action">
-                            Coverage Requirements
-                        </a>
-                    </div>
-                </div>
-            </div>
+    <!-- Data Management -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2 class="h4 mb-3">Data Management</h2>
         </div>
-
-        <div class="col-md-6">
-            <div class="card">
-                <div class="card-header">
-                    <h5 class="mb-0">Employee Management</h5>
-                </div>
-                <div class="card-body">
-                    <div class="list-group">
-                        <a href="{{ url_for('supervisor.employee_management') }}" class="list-group-item list-group-item-action">
-                            Manage Employees
-                        </a>
-                        <a href="{{ url_for('supervisor.crew_management') }}" class="list-group-item list-group-item-action">
-                            Crew Assignments
-                        </a>
-                        <a href="{{ url_for('supervisor.overtime_distribution') }}" class="list-group-item list-group-item-action">
-                            Overtime Distribution Report
-                        </a>
-                        <a href="{{ url_for('employee_import.upload_overtime') }}" class="list-group-item list-group-item-action">
-                            Upload Overtime History
-                        </a>
-                    </div>
-                </div>
-            </div>
+        <div class="col-md-4 mb-3">
+            <a href="{{ url_for('employee_import.upload_employees') }}" class="action-card">
+                <i class="bi bi-file-earmark-excel action-icon"></i>
+                <h5>Import Employees</h5>
+                <p class="text-muted mb-0">Upload Excel files</p>
+            </a>
+        </div>
+        <div class="col-md-4 mb-3">
+            <a href="{{ url_for('employee_import.upload_overtime') }}" class="action-card">
+                <i class="bi bi-clock-history action-icon"></i>
+                <h5>Import Overtime</h5>
+                <p class="text-muted mb-0">13-week history</p>
+            </a>
+        </div>
+        <div class="col-md-4 mb-3">
+            <a href="{{ url_for('employee_import.upload_history') }}" class="action-card">
+                <i class="bi bi-clock-fill action-icon"></i>
+                <h5>Upload History</h5>
+                <p class="text-muted mb-0">View past uploads</p>
+            </a>
         </div>
     </div>
 
-    <!-- Recent Activity and Communications -->
-    <div class="row mt-4">
-        <div class="col-md-6">
-            <div class="card">
-                <div class="card-header">
-                    <h5 class="mb-0">Recent Time Off Requests</h5>
-                </div>
-                <div class="card-body">
-                    {% if recent_time_off %}
-                        <div class="list-group">
-                            {% for request in recent_time_off[:5] %}
-                            <div class="list-group-item">
-                                <div class="d-flex justify-content-between">
-                                    <strong>{{ request.employee.name }}</strong>
-                                    <span class="badge bg-{{ 'warning' if request.status == 'pending' else 'success' if request.status == 'approved' else 'danger' }}">
-                                        {{ request.status.title() }}
-                                    </span>
-                                </div>
-                                <small>{{ request.start_date.strftime('%m/%d') }} - {{ request.end_date.strftime('%m/%d') }}</small>
-                            </div>
-                            {% endfor %}
-                        </div>
+    <!-- Employee Management -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2 class="h4 mb-3">Employee Management</h2>
+        </div>
+        <div class="col-md-3 mb-3">
+            <a href="{{ url_for('main.view_crews') }}" class="action-card">
+                <i class="bi bi-people action-icon"></i>
+                <h5>View All Crews</h5>
+                <p class="text-muted mb-0">Crew assignments</p>
+            </a>
+        </div>
+        <div class="col-md-3 mb-3">
+            <a href="{{ url_for('supervisor.crew_management') }}" class="action-card">
+                <i class="bi bi-people-fill action-icon"></i>
+                <h5>Crew Management</h5>
+                <p class="text-muted mb-0">Manage assignments</p>
+            </a>
+        </div>
+        <div class="col-md-3 mb-3">
+            <a href="{{ url_for('supervisor.employee_management') }}" class="action-card">
+                <i class="bi bi-person-badge action-icon"></i>
+                <h5>Employee List</h5>
+                <p class="text-muted mb-0">All employees</p>
+            </a>
+        </div>
+        <div class="col-md-3 mb-3">
+            <a href="{{ url_for('main.overtime_management') }}" class="action-card">
+                <i class="bi bi-graph-up action-icon"></i>
+                <h5>Overtime</h5>
+                <p class="text-muted mb-0">Track overtime</p>
+            </a>
+        </div>
+    </div>
+
+    <!-- Schedule Management -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2 class="h4 mb-3">Schedule Management</h2>
+        </div>
+        <div class="col-md-4 mb-3">
+            <a href="{{ url_for('schedule.view') }}" class="action-card">
+                <i class="bi bi-calendar-week action-icon"></i>
+                <h5>View Schedule</h5>
+                <p class="text-muted mb-0">Current schedule</p>
+            </a>
+        </div>
+        <div class="col-md-4 mb-3">
+            <a href="{{ url_for('schedule.create') }}" class="action-card">
+                <i class="bi bi-calendar-plus action-icon"></i>
+                <h5>Create Schedule</h5>
+                <p class="text-muted mb-0">New schedules</p>
+            </a>
+        </div>
+        <div class="col-md-4 mb-3">
+            <a href="{{ url_for('supervisor.vacation_calendar') }}" class="action-card">
+                <i class="bi bi-calendar-heart action-icon"></i>
+                <h5>Vacation Calendar</h5>
+                <p class="text-muted mb-0">Time off overview</p>
+            </a>
+        </div>
+    </div>
+
+    <!-- Requests & Coverage -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2 class="h4 mb-3">Requests & Coverage</h2>
+        </div>
+        <div class="col-md-3 mb-3">
+            <a href="{{ url_for('supervisor.time_off_requests') }}" class="action-card">
+                <i class="bi bi-calendar-x action-icon"></i>
+                <h5>Time Off Requests</h5>
+                <p class="text-muted mb-0">
+                    {% if pending_time_off %}
+                        <span class="badge bg-danger">{{ pending_time_off }} pending</span>
                     {% else %}
-                        <p class="text-muted">No recent time off requests</p>
+                        No pending
                     {% endif %}
-                </div>
-            </div>
+                </p>
+            </a>
         </div>
-
-        <div class="col-md-6">
-            <!-- Communications Hub (Replacing System Status) -->
-            <div class="card shadow-sm">
-                <div class="card-header bg-gradient" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
-                    <h5 class="text-white mb-0">
-                        <i class="bi bi-megaphone"></i> Communications Center
-                    </h5>
-                </div>
-                <div class="card-body">
-                    <div class="row g-2">
-                        <div class="col-6">
-                            <a href="/communications" class="btn btn-sm btn-outline-primary w-100">
-                                <i class="bi bi-chat-dots"></i> View All
-                                {% if unread_total > 0 %}
-                                <span class="badge bg-danger">{{ unread_total }}</span>
-                                {% endif %}
-                            </a>
-                        </div>
-                        <div class="col-6">
-                            <a href="/communications/compose" class="btn btn-sm btn-primary w-100">
-                                <i class="bi bi-pencil-square"></i> Compose
-                            </a>
-                        </div>
-                    </div>
-                    
-                    <div class="mt-3">
-                        <small class="text-muted">Quick Stats:</small>
-                        <div class="row g-1 mt-1">
-                            <div class="col-6">
-                                <div class="text-center p-2 border rounded">
-                                    <div class="text-primary fw-bold">{{ unread_plantwide|default(0) }}</div>
-                                    <small class="text-muted">Plantwide</small>
-                                </div>
-                            </div>
-                            <div class="col-6">
-                                <div class="text-center p-2 border rounded">
-                                    <div class="text-danger fw-bold">{{ unread_hr|default(0) }}</div>
-                                    <small class="text-muted">HR</small>
-                                </div>
-                            </div>
-                            <div class="col-6">
-                                <div class="text-center p-2 border rounded">
-                                    <div class="text-info fw-bold">{{ unread_maintenance|default(0) }}</div>
-                                    <small class="text-muted">Maintenance</small>
-                                </div>
-                            </div>
-                            <div class="col-6">
-                                <div class="text-center p-2 border rounded">
-                                    <div class="text-success fw-bold">{{ unread_hourly|default(0) }}</div>
-                                    <small class="text-muted">Hourly</small>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <hr>
-                    
-                    <div class="mt-3">
-                        <small class="text-muted">System Info:</small>
-                        <p class="mb-1"><small>Employees Missing OT: {{ employees_missing_ot|default(0) }}</small></p>
-                        <p class="mb-1"><small>High OT Employees: {{ high_ot_employees|length if high_ot_employees else 0 }}</small></p>
-                        
-                        {% if current_user.is_supervisor %}
-                        <div class="mt-2">
-                            <a href="{{ url_for('main.system_health') }}" class="btn btn-sm btn-outline-secondary">
-                                <i class="bi bi-heart-pulse"></i> Health
-                            </a>
-                            <a href="{{ url_for('main.init_communications') }}" class="btn btn-sm btn-outline-warning">
-                                <i class="bi bi-arrow-clockwise"></i> Init Comms
-                            </a>
-                        </div>
-                        {% endif %}
-                    </div>
-                </div>
-            </div>
+        <div class="col-md-3 mb-3">
+            <a href="{{ url_for('supervisor.shift_swaps') }}" class="action-card">
+                <i class="bi bi-arrow-left-right action-icon"></i>
+                <h5>Shift Swaps</h5>
+                <p class="text-muted mb-0">
+                    {% if pending_swaps %}
+                        <span class="badge bg-warning">{{ pending_swaps }} pending</span>
+                    {% else %}
+                        No pending
+                    {% endif %}
+                </p>
+            </a>
+        </div>
+        <div class="col-md-3 mb-3">
+            <a href="{{ url_for('supervisor.coverage_gaps') }}" class="action-card">
+                <i class="bi bi-exclamation-triangle action-icon"></i>
+                <h5>Coverage Gaps</h5>
+                <p class="text-muted mb-0">Identify gaps</p>
+            </a>
+        </div>
+        <div class="col-md-3 mb-3">
+            <a href="{{ url_for('supervisor.coverage_needs') }}" class="action-card">
+                <i class="bi bi-shield-check action-icon"></i>
+                <h5>Coverage Needs</h5>
+                <p class="text-muted mb-0">Requirements</p>
+            </a>
         </div>
     </div>
 </div>
+
+<style>
+.stat-card {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    transition: transform 0.2s;
+}
+
+.stat-card:hover {
+    transform: translateY(-2px);
+}
+
+.stat-card h3 {
+    font-size: 2.5rem;
+    margin-bottom: 0;
+}
+
+.action-card {
+    display: block;
+    padding: 1.5rem;
+    background: white;
+    border-radius: 8px;
+    text-decoration: none;
+    color: inherit;
+    transition: all 0.3s;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    height: 100%;
+}
+
+.action-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    text-decoration: none;
+    color: inherit;
+}
+
+.action-icon {
+    font-size: 2rem;
+    color: #667eea;
+    margin-bottom: 1rem;
+    display: block;
+}
+
+.action-card h5 {
+    color: #333;
+    margin-bottom: 0.5rem;
+}
+
+.action-card p {
+    color: #6c757d;
+    font-size: 0.9rem;
+}
+</style>
 {% endblock %}
