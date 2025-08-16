@@ -1,6 +1,6 @@
 # blueprints/auth.py
 """
-Authentication Blueprint
+Authentication Blueprint - Fixed to remove duplicate root route
 Handles login, logout, and password management
 """
 
@@ -35,7 +35,7 @@ def login():
             return render_template('login.html')
         
         try:
-            # Find employee by email (no username field in model)
+            # Find employee by email
             employee = Employee.query.filter_by(email=email).first()
             
             if not employee:
@@ -137,12 +137,8 @@ def change_password():
     
     return render_template('change_password.html')
 
-@auth_bp.route('/')
-def index():
-    """Root route - redirect to login or dashboard"""
-    if current_user.is_authenticated:
-        if current_user.is_supervisor:
-            return redirect(url_for('supervisor.dashboard'))
-        else:
-            return redirect(url_for('main.employee_dashboard'))
-    return redirect(url_for('auth.login'))
+# REMOVED THE DUPLICATE ROOT ROUTE - Let main.py handle it
+# @auth_bp.route('/')
+# def index():
+#     """Root route - redirect to login or dashboard"""
+#     # This was causing conflicts with main.py
