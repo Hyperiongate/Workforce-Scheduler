@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+
+{% block title %}Supervisor Dashboard - Workforce Scheduler{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-12">
+            <h1 class="mb-4">Supervisor Dashboard</h1>
+            <p class="lead">Welcome back, {{ user_name }}!</p>
+        </div>
+    </div>
+    
+    <!-- Summary Cards -->
+    <div class="row mt-4">
+        <div class="col-md-6 col-lg-3 mb-4">
+            <div class="card border-left-primary shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
+                                Total Employees
+                            </div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ total_employees }}</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="bi bi-people fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6 col-lg-3 mb-4">
+            <div class="card border-left-warning shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">
+                                Pending Time Off
+                            </div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ pending_time_off }}</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="bi bi-calendar-x fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                    {% if pending_time_off > 0 %}
+                    <a href="{{ url_for('supervisor.time_off_requests') }}" class="btn btn-sm btn-warning mt-2">Review</a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6 col-lg-3 mb-4">
+            <div class="card border-left-info shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-info text-uppercase mb-1">
+                                Pending Swaps
+                            </div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ pending_swaps }}</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="bi bi-arrow-left-right fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                    {% if pending_swaps > 0 %}
+                    <a href="{{ url_for('supervisor.shift_swaps') }}" class="btn btn-sm btn-info mt-2">Review</a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6 col-lg-3 mb-4">
+            <div class="card border-left-danger shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-danger text-uppercase mb-1">
+                                Coverage Gaps
+                            </div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ coverage_gaps }}</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="bi bi-exclamation-triangle fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Actions and Management Tools -->
+    <div class="row">
+        <div class="col-lg-6 mb-4">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">Quick Actions</h6>
+                </div>
+                <div class="card-body">
+                    <div class="list-group">
+                        <a href="{{ url_for('supervisor.time_off_requests') }}" class="list-group-item list-group-item-action">
+                            <div class="d-flex w-100 justify-content-between">
+                                <h6 class="mb-1"><i class="bi bi-calendar-x"></i> Review Time Off Requests</h6>
+                                {% if pending_time_off > 0 %}
+                                <span class="badge bg-warning">{{ pending_time_off }} pending</span>
+                                {% endif %}
+                            </div>
+                            <p class="mb-1 text-muted">Approve or deny employee time off requests</p>
+                        </a>
+                        
+                        <a href="{{ url_for('supervisor.shift_swaps') }}" class="list-group-item list-group-item-action">
+                            <div class="d-flex w-100 justify-content-between">
+                                <h6 class="mb-1"><i class="bi bi-arrow-left-right"></i> Review Shift Swaps</h6>
+                                {% if pending_swaps > 0 %}
+                                <span class="badge bg-info">{{ pending_swaps }} pending</span>
+                                {% endif %}
+                            </div>
+                            <p class="mb-1 text-muted">Manage employee shift swap requests</p>
+                        </a>
+                        
+                        <a href="{{ url_for('supervisor.coverage_needs') }}" class="list-group-item list-group-item-action">
+                            <h6 class="mb-1"><i class="bi bi-shield-check"></i> Set Coverage Requirements</h6>
+                            <p class="mb-1 text-muted">Define minimum coverage needs by position and crew</p>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6 mb-4">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">Data Management</h6>
+                </div>
+                <div class="card-body">
+                    <div class="list-group">
+                        <a href="{{ url_for('employee_import.upload_employees') }}" class="list-group-item list-group-item-action">
+                            <h6 class="mb-1"><i class="bi bi-upload"></i> Upload Employee Data</h6>
+                            <p class="mb-1 text-muted">Import employee information from Excel</p>
+                        </a>
+                        
+                        <a href="{{ url_for('employee_import.upload_overtime') }}" class="list-group-item list-group-item-action">
+                            <h6 class="mb-1"><i class="bi bi-clock-history"></i> Upload Overtime History</h6>
+                            <p class="mb-1 text-muted">Import 13-week overtime history data</p>
+                        </a>
+                        
+                        <a href="{{ url_for('main.overtime_management') }}" class="list-group-item list-group-item-action">
+                            <h6 class="mb-1"><i class="bi bi-graph-up"></i> Overtime Distribution</h6>
+                            <p class="mb-1 text-muted">View and manage overtime distribution</p>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Today's Overview -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">Today's Overview</h6>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <h6>Employees Scheduled</h6>
+                            <p class="h4">{{ today_scheduled }}</p>
+                        </div>
+                        <div class="col-md-4">
+                            <h6>Employees on Leave</h6>
+                            <p class="h4">{{ today_on_leave }}</p>
+                        </div>
+                        <div class="col-md-4">
+                            <h6>Critical Maintenance Issues</h6>
+                            <p class="h4">{{ critical_maintenance }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.border-left-primary {
+    border-left: 4px solid #4e73df;
+}
+.border-left-warning {
+    border-left: 4px solid #f6c23e;
+}
+.border-left-info {
+    border-left: 4px solid #36b9cc;
+}
+.border-left-danger {
+    border-left: 4px solid #e74a3b;
+}
+.text-xs {
+    font-size: 0.875rem;
+}
+.font-weight-bold {
+    font-weight: 700;
+}
+.text-uppercase {
+    text-transform: uppercase;
+}
+.text-gray-300 {
+    color: #dddfeb;
+}
+.text-gray-800 {
+    color: #5a5c69;
+}
+</style>
+{% endblock %}
