@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+
+{% block title %}Supervisor Dashboard - Workforce Scheduler{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h1>Supervisor Dashboard</h1>
+    <p>Welcome, {{ user_name }}!</p>
+    
+    <div class="row mt-4">
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Total Employees</h5>
+                    <h2>{{ total_employees }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Pending Time Off</h5>
+                    <h2>{{ pending_time_off }}</h2>
+                    {% if pending_time_off > 0 %}
+                    <a href="{{ url_for('supervisor.time_off_requests') }}" class="btn btn-sm btn-primary mt-2">View Requests</a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Pending Swaps</h5>
+                    <h2>{{ pending_swaps }}</h2>
+                    {% if pending_swaps > 0 %}
+                    <a href="{{ url_for('supervisor.shift_swaps') }}" class="btn btn-sm btn-primary mt-2">View Swaps</a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Coverage Gaps</h5>
+                    <h2>{{ coverage_gaps }}</h2>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="row mt-4">
+        <div class="col-12">
+            <h2>Quick Actions</h2>
+            <div class="list-group">
+                <a href="{{ url_for('supervisor.time_off_requests') }}" class="list-group-item list-group-item-action">
+                    <i class="bi bi-calendar-x"></i> Time Off Requests
+                    {% if pending_time_off > 0 %}
+                    <span class="badge bg-warning float-end">{{ pending_time_off }}</span>
+                    {% endif %}
+                </a>
+                <a href="{{ url_for('supervisor.shift_swaps') }}" class="list-group-item list-group-item-action">
+                    <i class="bi bi-arrow-left-right"></i> Shift Swap Requests
+                    {% if pending_swaps > 0 %}
+                    <span class="badge bg-info float-end">{{ pending_swaps }}</span>
+                    {% endif %}
+                </a>
+                <a href="{{ url_for('employee_import.upload_employees') }}" class="list-group-item list-group-item-action">
+                    <i class="bi bi-upload"></i> Upload Employee Data
+                </a>
+                <a href="{{ url_for('employee_import.upload_overtime') }}" class="list-group-item list-group-item-action">
+                    <i class="bi bi-clock-history"></i> Upload Overtime History
+                </a>
+                <a href="{{ url_for('main.overtime_management') }}" class="list-group-item list-group-item-action">
+                    <i class="bi bi-graph-up"></i> Overtime Management
+                </a>
+                <a href="{{ url_for('supervisor.coverage_needs') }}" class="list-group-item list-group-item-action">
+                    <i class="bi bi-people"></i> Coverage Needs
+                </a>
+                <a href="{{ url_for('main.view_crews') }}" class="list-group-item list-group-item-action">
+                    <i class="bi bi-diagram-3"></i> View Crews
+                </a>
+            </div>
+        </div>
+    </div>
+    
+    {% if database_errors and database_errors|length > 0 %}
+    <div class="alert alert-warning mt-4">
+        <h4><i class="bi bi-exclamation-triangle"></i> Database Issues Detected</h4>
+        <ul>
+        {% for error in database_errors %}
+            <li>{{ error }}</li>
+        {% endfor %}
+        </ul>
+        <p>Some features may not work correctly until these issues are resolved.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
