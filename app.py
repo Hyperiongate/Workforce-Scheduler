@@ -1,7 +1,7 @@
 # app.py
 """
 Main application file for Workforce Scheduler
-FIXED VERSION - With context processor for pending counts
+FIXED VERSION - With context processor for pending counts and auto database fix
 """
 
 from flask import Flask, render_template, redirect, url_for, flash, jsonify, request
@@ -337,6 +337,37 @@ def inject_pending_counts():
 def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
+
+# ==========================================
+# AUTO-FIX DATABASE ON STARTUP
+# ==========================================
+
+print("Starting database schema check...")
+with app.app_context():
+    try:
+        # First ensure all tables exist
+        db.create_all()
+        print("✓ Database tables verified/created")
+        
+        # Then run the column fixes
+        from fix_db_columns import fix_database_schema
+        print("Checking for missing columns...")
+        fixes = fix_database_schema()
+        if fixes > 0:
+            print(f"✅ Applied {fixes} database fixes successfully!")
+        else:
+            print("✅ Database schema is up to date")
+            
+    except ImportError:
+        print("⚠️  fix_db_columns.py not found - skipping database fixes")
+    except Exception as e:
+        print(f"⚠️  Could not run database fixes: {e}")
+        print("The app will continue but some features may not work correctly")
+        # Don't fail the app startup if fixes can't run
+
+# ==========================================
+# END OF DATABASE FIX SECTION
+# ==========================================
 
 # Run the application
 if __name__ == '__main__':
