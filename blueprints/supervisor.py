@@ -1,11 +1,10 @@
-# blueprints/supervisor.py - COMPLETE FILE WITH FIXED COVERAGE NEEDS ROUTE
-
+# blueprints/supervisor.py - COMPLETE FIXED FILE
 """
 Supervisor blueprint with complete error handling and database migration support
-This version works even with missing database columns
+This version includes the fixed coverage_needs route with all required variables
 """
 
-from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, current_app, send_file
+from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, current_app, send_file, render_template_string
 from flask_login import login_required, current_user
 from models import db, Employee, TimeOffRequest, ShiftSwapRequest, Schedule, Position, OvertimeHistory
 from datetime import date, datetime, timedelta
@@ -79,53 +78,16 @@ def dashboard():
     
     # Get pending time off with comprehensive error handling
     try:
-        # Method 1: Try normal query
-        context['pending_time_off'] = TimeOffRequest.query.filter_by(status='pending').count()
+        context['pending_time_off'] = get_pending_time_off_count()
         context['pending_time_off_count'] = context['pending_time_off']
-    except (ProgrammingError, OperationalError) as e:
-        if 'column' in str(e) and 'does not exist' in str(e):
-            logger.warning(f"Column missing in time_off_request: {e}")
-            db.session.rollback()
-            try:
-                # Method 2: Try raw SQL with only known columns
-                result = db.session.execute(
-                    text("SELECT COUNT(*) FROM time_off_request WHERE status = 'pending'")
-                ).scalar()
-                context['pending_time_off'] = result or 0
-                context['pending_time_off_count'] = context['pending_time_off']
-            except:
-                logger.error("Failed to get time off count even with raw SQL")
-                db.session.rollback()
-                context['database_errors'].append("Time off requests table has missing columns")
-        else:
-            logger.error(f"Unexpected database error: {e}")
-            db.session.rollback()
     except Exception as e:
         logger.error(f"General error getting pending time off: {e}")
         db.session.rollback()
     
     # Get pending swaps with error handling
     try:
-        context['pending_swaps'] = ShiftSwapRequest.query.filter_by(status='pending').count()
+        context['pending_swaps'] = get_pending_swaps_count()
         context['pending_swaps_count'] = context['pending_swaps']
-    except (ProgrammingError, OperationalError) as e:
-        if 'column' in str(e) and 'does not exist' in str(e):
-            logger.warning(f"Column missing in shift_swap_request: {e}")
-            db.session.rollback()
-            try:
-                # Try raw SQL
-                result = db.session.execute(
-                    text("SELECT COUNT(*) FROM shift_swap_request WHERE status = 'pending'")
-                ).scalar()
-                context['pending_swaps'] = result or 0
-                context['pending_swaps_count'] = context['pending_swaps']
-            except:
-                logger.error("Failed to get swap count even with raw SQL")
-                db.session.rollback()
-                context['database_errors'].append("Shift swap requests table has missing columns")
-        else:
-            logger.error(f"Unexpected database error: {e}")
-            db.session.rollback()
     except Exception as e:
         logger.error(f"General error getting pending swaps: {e}")
         db.session.rollback()
@@ -159,6 +121,7 @@ def dashboard():
             continue
     
     # If no template works, use inline template
+    from flask import render_template_string
     return render_template_string('''
     {% extends "base.html" %}
     {% block content %}
@@ -534,12 +497,12 @@ def coverage_gaps():
 @login_required
 @supervisor_required
 def coverage_needs():
-    """View and manage coverage needs - FIXED VERSION"""
+    """View and manage coverage needs - COMPLETE FIXED VERSION"""
     try:
-        # Get all positions
+        # Get all positions ordered by name
         positions = Position.query.order_by(Position.name).all()
         
-        # Initialize data structures
+        # Initialize data structures for template
         crew_totals = {'A': 0, 'B': 0, 'C': 0, 'D': 0}
         current_coverage = {
             'A': {},
@@ -548,16 +511,21 @@ def coverage_needs():
             'D': {}
         }
         
-        # Count employees by crew
+        # Count total employees by crew (excluding supervisors)
         for crew in ['A', 'B', 'C', 'D']:
             crew_totals[crew] = Employee.query.filter_by(
                 crew=crew, 
                 is_supervisor=False
             ).count()
         
-        # Count employees by position and crew
-        for crew in ['A', 'B', 'C', 'D']:
-            for position in positions:
+        # Initialize position coverage for all crews
+        for position in positions:
+            # Set default min_coverage if not set
+            if not hasattr(position, 'min_coverage') or position.min_coverage is None:
+                position.min_coverage = 1
+            
+            # Count employees by position and crew
+            for crew in ['A', 'B', 'C', 'D']:
                 count = Employee.query.filter_by(
                     crew=crew,
                     position_id=position.id,
@@ -568,6 +536,7 @@ def coverage_needs():
         # Calculate total current staff
         total_current_staff = sum(crew_totals.values())
         
+        # Render the template with all required variables
         return render_template('coverage_needs.html',
                              positions=positions,
                              crew_totals=crew_totals,
@@ -576,7 +545,8 @@ def coverage_needs():
                              
     except Exception as e:
         logger.error(f"Error in coverage needs: {e}")
-        flash('Error loading coverage needs. Make sure employee data is uploaded.', 'danger')
+        logger.error(f"Error details: {str(e)}")
+        flash('Error loading coverage needs. Make sure employee data is uploaded first.', 'danger')
         return redirect(url_for('supervisor.dashboard'))
 
 # ==========================================
@@ -629,8 +599,11 @@ def api_update_coverage_needs():
         position_id = data.get('position_id')
         min_coverage = data.get('min_coverage', 0)
         
+        # Log the update
+        logger.info(f"Coverage update: Crew {crew}, Position {position_id}, Min Coverage {min_coverage}")
+        
+        # In a real implementation, you would save this to a CoverageRequirement table
         # For now, just return success
-        # In a real implementation, you'd save this to a database table
         return jsonify({'success': True})
     except Exception as e:
         logger.error(f"Error updating coverage needs: {e}")
@@ -661,6 +634,13 @@ def check_database():
         issues.append("shift_swap_request.requester_date column is missing")
         db.session.rollback()
     
+    # Check Position table
+    try:
+        db.session.execute(text("SELECT min_coverage FROM position LIMIT 1"))
+    except:
+        issues.append("position.min_coverage column is missing")
+        db.session.rollback()
+    
     return jsonify({
         'database_ok': len(issues) == 0,
         'issues': issues
@@ -678,3 +658,41 @@ def not_found_error(error):
 def internal_error(error):
     db.session.rollback()
     return render_template('500.html'), 500
+
+# ==========================================
+# UTILITY FUNCTIONS
+# ==========================================
+
+def get_pending_time_off_count():
+    """Get pending time off count with proper error handling"""
+    try:
+        # Try raw SQL without problematic columns
+        result = db.session.execute(
+            text("""
+                SELECT COUNT(*) 
+                FROM time_off_request 
+                WHERE status = 'pending'
+            """)
+        ).scalar()
+        return result or 0
+    except Exception as e:
+        logger.error(f"Error getting time off count: {e}")
+        db.session.rollback()
+        return 0
+
+def get_pending_swaps_count():
+    """Get pending swaps count with proper error handling"""
+    try:
+        # Try raw SQL without problematic columns
+        result = db.session.execute(
+            text("""
+                SELECT COUNT(*) 
+                FROM shift_swap_request 
+                WHERE status = 'pending'
+            """)
+        ).scalar()
+        return result or 0
+    except Exception as e:
+        logger.error(f"Error getting swaps count: {e}")
+        db.session.rollback()
+        return 0
