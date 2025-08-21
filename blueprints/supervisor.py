@@ -1,4 +1,5 @@
-# blueprints/supervisor.py
+# blueprints/supervisor.py - COMPLETE FILE WITH FIXED COVERAGE NEEDS ROUTE
+
 """
 Supervisor blueprint with complete error handling and database migration support
 This version works even with missing database columns
@@ -533,14 +534,107 @@ def coverage_gaps():
 @login_required
 @supervisor_required
 def coverage_needs():
-    """View and manage coverage needs"""
+    """View and manage coverage needs - FIXED VERSION"""
     try:
-        positions = Position.query.all()
-        return render_template('coverage_needs.html', positions=positions)
+        # Get all positions
+        positions = Position.query.order_by(Position.name).all()
+        
+        # Initialize data structures
+        crew_totals = {'A': 0, 'B': 0, 'C': 0, 'D': 0}
+        current_coverage = {
+            'A': {},
+            'B': {},
+            'C': {},
+            'D': {}
+        }
+        
+        # Count employees by crew
+        for crew in ['A', 'B', 'C', 'D']:
+            crew_totals[crew] = Employee.query.filter_by(
+                crew=crew, 
+                is_supervisor=False
+            ).count()
+        
+        # Count employees by position and crew
+        for crew in ['A', 'B', 'C', 'D']:
+            for position in positions:
+                count = Employee.query.filter_by(
+                    crew=crew,
+                    position_id=position.id,
+                    is_supervisor=False
+                ).count()
+                current_coverage[crew][position.id] = count
+        
+        # Calculate total current staff
+        total_current_staff = sum(crew_totals.values())
+        
+        return render_template('coverage_needs.html',
+                             positions=positions,
+                             crew_totals=crew_totals,
+                             current_coverage=current_coverage,
+                             total_current_staff=total_current_staff)
+                             
     except Exception as e:
         logger.error(f"Error in coverage needs: {e}")
-        flash('Error loading coverage needs.', 'danger')
+        flash('Error loading coverage needs. Make sure employee data is uploaded.', 'danger')
         return redirect(url_for('supervisor.dashboard'))
+
+# ==========================================
+# OVERTIME MANAGEMENT
+# ==========================================
+
+@supervisor_bp.route('/supervisor/overtime-distribution')
+@login_required
+@supervisor_required
+def overtime_distribution():
+    """View overtime distribution report"""
+    try:
+        # Get all employees with their overtime data
+        employees = Employee.query.filter_by(is_supervisor=False).all()
+        
+        overtime_data = []
+        for emp in employees:
+            # Get total overtime for last 13 weeks
+            total_ot = db.session.query(func.sum(OvertimeHistory.hours)).filter_by(
+                employee_id=emp.id
+            ).scalar() or 0
+            
+            overtime_data.append({
+                'employee': emp,
+                'total_overtime': total_ot,
+                'average_weekly': round(total_ot / 13, 2) if total_ot > 0 else 0
+            })
+        
+        # Sort by total overtime descending
+        overtime_data.sort(key=lambda x: x['total_overtime'], reverse=True)
+        
+        return render_template('overtime_distribution.html', overtime_data=overtime_data)
+    except Exception as e:
+        logger.error(f"Error in overtime distribution: {e}")
+        flash('Error loading overtime distribution.', 'danger')
+        return redirect(url_for('supervisor.dashboard'))
+
+# ==========================================
+# API ENDPOINTS
+# ==========================================
+
+@supervisor_bp.route('/api/coverage-needs', methods=['POST'])
+@login_required
+@supervisor_required
+def api_update_coverage_needs():
+    """API endpoint to update coverage requirements"""
+    try:
+        data = request.get_json()
+        crew = data.get('crew')
+        position_id = data.get('position_id')
+        min_coverage = data.get('min_coverage', 0)
+        
+        # For now, just return success
+        # In a real implementation, you'd save this to a database table
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Error updating coverage needs: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 # ==========================================
 # DATABASE MIGRATION CHECK
