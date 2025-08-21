@@ -1,6 +1,6 @@
 # blueprints/main.py
 """
-Main blueprint - Fixed to prevent redirect loops
+Main blueprint - Fixed with root route
 """
 
 from flask import Blueprint, render_template, redirect, url_for, flash, jsonify
@@ -25,11 +25,17 @@ def supervisor_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-# Remove the competing root route - let auth.py handle it
-# @main_bp.route('/')
-# def index():
-#     """Landing page - redirect based on authentication"""
-#     # This is now handled by auth.py
+# Root route - handles the home page
+@main_bp.route('/')
+def index():
+    """Landing page - redirect based on authentication"""
+    if current_user.is_authenticated:
+        if current_user.is_supervisor:
+            return redirect(url_for('supervisor.dashboard'))
+        else:
+            return redirect(url_for('main.employee_dashboard'))
+    else:
+        return redirect(url_for('auth.login'))
 
 @main_bp.route('/dashboard')
 @login_required
@@ -37,8 +43,6 @@ def dashboard():
     """Main dashboard - redirect based on role with error handling"""
     try:
         if current_user.is_supervisor:
-            # Don't redirect if we're already having issues
-            # Instead, try to render a simple dashboard
             return redirect(url_for('supervisor.dashboard'))
         else:
             return redirect(url_for('main.employee_dashboard'))
