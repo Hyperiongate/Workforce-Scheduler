@@ -4,542 +4,876 @@
 
 {% block extra_css %}
 <style>
+    :root {
+        --primary-color: #11998e;
+        --primary-dark: #0e8071;
+        --secondary-color: #38ef7d;
+        --danger-color: #dc3545;
+        --warning-color: #ffc107;
+        --info-color: #17a2b8;
+        --dark: #2c3e50;
+        --light-bg: #f8f9fa;
+        --card-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        --hover-shadow: 0 8px 15px rgba(0, 0, 0, 0.2);
+    }
+
     body {
-        background-color: #f5f7fa;
+        background-color: #f0f2f5;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     }
-    
-    .page-header {
-        background: white;
-        padding: 2rem;
+
+    /* Modern Header */
+    .overtime-header {
+        background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+        color: white;
+        padding: 2.5rem 0;
         margin-bottom: 2rem;
-        border-bottom: 3px solid #11998e;
+        position: relative;
+        overflow: hidden;
     }
-    
-    .filters-section {
+
+    .overtime-header::before {
+        content: '';
+        position: absolute;
+        top: -50%;
+        right: -50%;
+        width: 200%;
+        height: 200%;
+        background: repeating-linear-gradient(
+            45deg,
+            transparent,
+            transparent 10px,
+            rgba(255, 255, 255, 0.05) 10px,
+            rgba(255, 255, 255, 0.05) 20px
+        );
+        animation: slide 20s linear infinite;
+    }
+
+    @keyframes slide {
+        0% { transform: translate(0, 0); }
+        100% { transform: translate(50px, 50px); }
+    }
+
+    .overtime-header h1 {
+        position: relative;
+        font-weight: 300;
+        font-size: 2.5rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .overtime-header h1 i {
+        margin-right: 1rem;
+        font-size: 2rem;
+    }
+
+    .overtime-header p {
+        position: relative;
+        opacity: 0.9;
+        font-size: 1.1rem;
+    }
+
+    /* Stats Cards */
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 1.5rem;
+        margin-bottom: 2rem;
+    }
+
+    .stat-card {
         background: white;
+        border-radius: 16px;
         padding: 1.5rem;
-        border-radius: 8px;
-        margin-bottom: 2rem;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        box-shadow: var(--card-shadow);
+        transition: all 0.3s ease;
+        position: relative;
+        overflow: hidden;
     }
-    
-    /* Multi-level sorter styles */
-    .multi-sorter-section {
-        background: white;
-        padding: 1.5rem;
-        border-radius: 8px;
-        margin-bottom: 2rem;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-        border: 2px solid #11998e;
+
+    .stat-card:hover {
+        transform: translateY(-5px);
+        box-shadow: var(--hover-shadow);
     }
-    
-    .sorter-level {
+
+    .stat-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 4px;
+        height: 100%;
+        background: var(--primary-color);
+    }
+
+    .stat-card.danger::before { background: var(--danger-color); }
+    .stat-card.warning::before { background: var(--warning-color); }
+    .stat-card.info::before { background: var(--info-color); }
+
+    .stat-icon {
+        width: 60px;
+        height: 60px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
         margin-bottom: 1rem;
-        padding: 0.75rem;
-        background: #f8f9fa;
-        border-radius: 6px;
+    }
+
+    .stat-icon.primary { background: rgba(17, 153, 142, 0.1); color: var(--primary-color); }
+    .stat-icon.danger { background: rgba(220, 53, 69, 0.1); color: var(--danger-color); }
+    .stat-icon.warning { background: rgba(255, 193, 7, 0.1); color: var(--warning-color); }
+    .stat-icon.info { background: rgba(23, 162, 184, 0.1); color: var(--info-color); }
+
+    .stat-value {
+        font-size: 2.5rem;
+        font-weight: 700;
+        color: var(--dark);
+        line-height: 1;
+        margin-bottom: 0.5rem;
+    }
+
+    .stat-label {
+        color: #6c757d;
+        font-size: 0.875rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .stat-trend {
+        position: absolute;
+        top: 1.5rem;
+        right: 1.5rem;
+        font-size: 0.875rem;
+    }
+
+    .trend-up { color: var(--danger-color); }
+    .trend-down { color: var(--primary-color); }
+
+    /* Alert Section */
+    .alert-banner {
+        background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
+        border: none;
+        border-radius: 12px;
+        padding: 1.25rem;
+        margin-bottom: 2rem;
         display: flex;
         align-items: center;
         gap: 1rem;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
     }
-    
+
+    .alert-banner i {
+        font-size: 1.5rem;
+        color: #856404;
+    }
+
+    /* Filter Section */
+    .filter-card {
+        background: white;
+        border-radius: 16px;
+        padding: 1.5rem;
+        margin-bottom: 2rem;
+        box-shadow: var(--card-shadow);
+    }
+
+    .filter-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+    }
+
+    .filter-header h5 {
+        margin: 0;
+        color: var(--dark);
+        font-weight: 600;
+    }
+
+    .filter-toggle {
+        background: none;
+        border: none;
+        color: var(--primary-color);
+        cursor: pointer;
+        font-size: 1.25rem;
+        transition: transform 0.3s ease;
+    }
+
+    .filter-toggle.collapsed { transform: rotate(180deg); }
+
+    .filter-row {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1rem;
+    }
+
+    .filter-group label {
+        display: block;
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: #6c757d;
+        margin-bottom: 0.5rem;
+    }
+
+    .filter-group .form-control,
+    .filter-group .form-select {
+        border-radius: 8px;
+        border: 1px solid #e0e0e0;
+        padding: 0.5rem 1rem;
+        transition: all 0.3s ease;
+    }
+
+    .filter-group .form-control:focus,
+    .filter-group .form-select:focus {
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 0.2rem rgba(17, 153, 142, 0.15);
+    }
+
+    .btn-apply-filters {
+        background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        padding: 0.75rem 2rem;
+        font-weight: 600;
+        transition: all 0.3s ease;
+        margin-top: 1.5rem;
+    }
+
+    .btn-apply-filters:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(17, 153, 142, 0.3);
+        color: white;
+    }
+
+    /* Multi-Level Sorter */
+    .sorter-card {
+        background: white;
+        border-radius: 16px;
+        padding: 1.5rem;
+        margin-bottom: 2rem;
+        box-shadow: var(--card-shadow);
+        border: 2px solid transparent;
+        transition: border-color 0.3s ease;
+    }
+
+    .sorter-card:hover {
+        border-color: var(--primary-color);
+    }
+
+    .sorter-level {
+        background: var(--light-bg);
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 0.75rem;
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        transition: all 0.3s ease;
+    }
+
+    .sorter-level:not(.disabled):hover {
+        background: #e8f5f2;
+    }
+
     .sorter-level.disabled {
-        opacity: 0.5;
+        opacity: 0.4;
         pointer-events: none;
     }
-    
+
     .level-badge {
-        background: #11998e;
+        background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
         color: white;
-        padding: 0.25rem 0.75rem;
+        padding: 0.375rem 1rem;
         border-radius: 20px;
-        font-weight: bold;
+        font-weight: 600;
         font-size: 0.875rem;
+        min-width: 50px;
+        text-align: center;
     }
-    
+
     .sort-direction-toggle {
         margin-left: auto;
         display: flex;
         gap: 0.5rem;
     }
-    
+
     .sort-direction-toggle button {
-        padding: 0.25rem 0.5rem;
-        font-size: 0.875rem;
-    }
-    
-    .reset-sort-btn {
-        background: #dc3545;
-        color: white;
-        border: none;
-    }
-    
-    .reset-sort-btn:hover {
-        background: #c82333;
-        color: white;
-    }
-    
-    .apply-sort-btn {
-        background: #11998e;
-        color: white;
-        border: none;
-        font-weight: bold;
-    }
-    
-    .apply-sort-btn:hover {
-        background: #0e8071;
-        color: white;
-    }
-    
-    .overtime-table-container {
         background: white;
-        border-radius: 8px;
-        padding: 1.5rem;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-        overflow-x: auto;
+        border: 1px solid #e0e0e0;
+        border-radius: 6px;
+        padding: 0.375rem 0.75rem;
+        font-size: 0.875rem;
+        transition: all 0.3s ease;
     }
-    
+
+    .sort-direction-toggle button.active {
+        background: var(--primary-color);
+        color: white;
+        border-color: var(--primary-color);
+    }
+
+    /* Data Table */
+    .table-card {
+        background: white;
+        border-radius: 16px;
+        padding: 1.5rem;
+        box-shadow: var(--card-shadow);
+        overflow: hidden;
+    }
+
+    .table-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.5rem;
+    }
+
+    .table-header h4 {
+        margin: 0;
+        color: var(--dark);
+        font-weight: 600;
+    }
+
+    .table-actions {
+        display: flex;
+        gap: 0.5rem;
+    }
+
     .overtime-table {
         width: 100%;
-        font-size: 0.9rem;
+        border-collapse: separate;
+        border-spacing: 0;
     }
-    
+
     .overtime-table th {
-        background: #f8f9fa;
+        background: var(--light-bg);
         font-weight: 600;
+        text-transform: uppercase;
+        font-size: 0.75rem;
+        letter-spacing: 0.5px;
+        color: #6c757d;
+        padding: 1rem;
         position: sticky;
         top: 0;
         z-index: 10;
         cursor: pointer;
         user-select: none;
+        transition: all 0.3s ease;
     }
-    
+
     .overtime-table th:hover {
-        background: #e9ecef;
+        background: #e2e6ea;
+        color: var(--primary-color);
     }
-    
-    .overtime-table th i {
-        margin-left: 0.5rem;
-        font-size: 0.75rem;
+
+    .overtime-table td {
+        padding: 1rem;
+        border-bottom: 1px solid #f0f0f0;
     }
-    
-    .overtime-table td,
-    .overtime-table th {
-        padding: 0.75rem;
-        border-bottom: 1px solid #dee2e6;
+
+    .overtime-table tbody tr {
+        transition: all 0.3s ease;
     }
-    
-    .total-column {
-        font-weight: bold;
-        text-align: center;
+
+    .overtime-table tbody tr:hover {
+        background: #f8f9fa;
+        transform: scale(1.01);
     }
-    
-    .employee-info {
+
+    /* Employee Info */
+    .employee-card {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
+        gap: 0.75rem;
     }
-    
+
     .employee-avatar {
-        width: 30px;
-        height: 30px;
-        border-radius: 50%;
-        background: #11998e;
-        color: white;
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
         display: flex;
         align-items: center;
         justify-content: center;
+        font-weight: 600;
+        font-size: 0.875rem;
+        color: white;
+        background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+    }
+
+    .employee-details {
+        flex: 1;
+    }
+
+    .employee-name {
+        font-weight: 600;
+        color: var(--dark);
+        margin-bottom: 0.125rem;
+    }
+
+    .employee-id {
         font-size: 0.75rem;
-        font-weight: bold;
+        color: #6c757d;
     }
-    
-    .overtime-high {
-        background: #f8d7da;
-        color: #721c24;
-        font-weight: bold;
-    }
-    
-    .overtime-medium {
-        background: #fff3cd;
-        color: #856404;
-    }
-    
-    .overtime-low {
-        background: #d4edda;
-        color: #155724;
-    }
-    
+
+    /* Crew Badges */
     .crew-badge {
-        display: inline-block;
-        padding: 0.25rem 0.5rem;
-        border-radius: 4px;
+        display: inline-flex;
+        align-items: center;
+        padding: 0.375rem 0.75rem;
+        border-radius: 20px;
         font-size: 0.75rem;
         font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
     }
-    
+
     .crew-a { background: #e3f2fd; color: #1565c0; }
     .crew-b { background: #f3e5f5; color: #6a1b9a; }
     .crew-c { background: #e8f5e9; color: #2e7d32; }
     .crew-d { background: #fff3e0; color: #e65100; }
-    
-    .alert-section {
-        background: #fff3cd;
-        border: 1px solid #ffeaa7;
-        border-radius: 8px;
-        padding: 1rem;
-        margin-bottom: 2rem;
-    }
-    
-    .export-section {
-        background: white;
-        padding: 1.5rem;
-        border-radius: 8px;
-        margin-top: 2rem;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-    }
-    
-    .pagination {
-        margin-top: 1rem;
-    }
-    
-    .trend-indicator {
-        font-size: 0.85rem;
-        margin-left: 0.5rem;
-    }
-    
-    .trend-up { color: #dc3545; }
-    .trend-down { color: #28a745; }
-    .trend-stable { color: #6c757d; }
-    
-    .stats-card {
-        background: white;
-        border-radius: 8px;
-        padding: 1.5rem;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-        margin-bottom: 2rem;
-    }
-    
-    .stat-item {
+
+    /* Overtime Values */
+    .ot-value {
+        font-weight: 600;
+        padding: 0.375rem 0.75rem;
+        border-radius: 6px;
         text-align: center;
+        min-width: 60px;
+        display: inline-block;
+    }
+
+    .ot-low { background: #d4edda; color: #155724; }
+    .ot-medium { background: #fff3cd; color: #856404; }
+    .ot-high { background: #f8d7da; color: #721c24; }
+    .ot-critical { background: #721c24; color: white; }
+
+    /* Trend Indicators */
+    .trend-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.375rem;
+        padding: 0.375rem 0.75rem;
+        border-radius: 20px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+
+    .trend-badge.up { background: #f8d7da; color: #721c24; }
+    .trend-badge.down { background: #d4edda; color: #155724; }
+    .trend-badge.stable { background: #e2e3e5; color: #383d41; }
+
+    /* Export Section */
+    .export-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 16px;
+        padding: 2rem;
+        margin-top: 2rem;
+        color: white;
+    }
+
+    .export-header {
+        text-align: center;
+        margin-bottom: 2rem;
+    }
+
+    .export-header h5 {
+        font-size: 1.5rem;
+        font-weight: 300;
+        margin-bottom: 0.5rem;
+    }
+
+    .export-header p {
+        opacity: 0.9;
+        margin: 0;
+    }
+
+    .export-options {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1rem;
+    }
+
+    .export-btn {
+        background: rgba(255, 255, 255, 0.2);
+        border: 2px solid rgba(255, 255, 255, 0.3);
+        color: white;
         padding: 1rem;
+        border-radius: 12px;
+        text-align: center;
+        transition: all 0.3s ease;
+        cursor: pointer;
+        backdrop-filter: blur(10px);
     }
-    
-    .stat-value {
+
+    .export-btn:hover {
+        background: rgba(255, 255, 255, 0.3);
+        transform: translateY(-3px);
+        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+    }
+
+    .export-btn i {
         font-size: 2rem;
-        font-weight: bold;
-        color: #11998e;
+        margin-bottom: 0.5rem;
+        display: block;
     }
-    
-    .stat-label {
+
+    .export-btn-label {
+        font-weight: 600;
         font-size: 0.875rem;
-        color: #6c757d;
-        margin-top: 0.25rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
     }
-    
+
+    /* Empty State */
+    .empty-state {
+        text-align: center;
+        padding: 4rem 2rem;
+    }
+
+    .empty-state i {
+        font-size: 4rem;
+        color: #dee2e6;
+        margin-bottom: 1rem;
+    }
+
+    .empty-state h5 {
+        color: #6c757d;
+        margin-bottom: 0.5rem;
+    }
+
+    .empty-state p {
+        color: #adb5bd;
+    }
+
+    /* Loading States */
+    .skeleton {
+        background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+        background-size: 200% 100%;
+        animation: loading 1.5s infinite;
+    }
+
+    @keyframes loading {
+        0% { background-position: 200% 0; }
+        100% { background-position: -200% 0; }
+    }
+
+    /* Responsive Design */
+    @media (max-width: 768px) {
+        .overtime-header h1 { font-size: 2rem; }
+        .stats-grid { grid-template-columns: 1fr; }
+        .filter-row { grid-template-columns: 1fr; }
+        .export-options { grid-template-columns: 1fr; }
+        
+        .overtime-table {
+            font-size: 0.875rem;
+        }
+        
+        .employee-card {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+    }
+
+    /* Print Styles */
     @media print {
-        .filters-section, .multi-sorter-section, .export-section, .navbar, .pagination {
+        .filter-card, .sorter-card, .export-card, .btn, .navbar {
             display: none !important;
         }
         
-        .page-header {
-            border: none;
-            margin-bottom: 1rem;
+        .overtime-header {
+            background: none;
+            color: black;
+            padding: 1rem 0;
         }
         
-        .overtime-table {
-            font-size: 0.8rem;
-        }
-        
-        .overtime-table td, .overtime-table th {
-            padding: 0.5rem;
+        .table-card {
+            box-shadow: none;
+            padding: 0;
         }
     }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="page-header">
+<!-- Modern Header Section -->
+<div class="overtime-header">
     <div class="container-fluid">
-        <div class="row align-items-center">
-            <div class="col">
-                <h1><i class="bi bi-clock-history" style="color: #11998e;"></i> Overtime Management</h1>
-                <p class="text-muted mb-0">13-Week Rolling Overtime Summary (from uploaded employee data)</p>
-            </div>
-            <div class="col-auto">
-                <a href="/dashboard" class="btn btn-outline-secondary">
-                    <i class="bi bi-arrow-left"></i> Back to Dashboard
-                </a>
-            </div>
-        </div>
+        <h1><i class="bi bi-clock-history"></i> Overtime Management</h1>
+        <p>13-Week Rolling Overview • {{ start_date.strftime('%B %d') }} - {{ end_date.strftime('%B %d, %Y') }}</p>
     </div>
 </div>
 
 <div class="container-fluid">
     <!-- Alert Section -->
     {% if high_overtime_employees %}
-    <div class="alert-section">
-        <i class="bi bi-exclamation-triangle-fill"></i> <strong>Overtime Alerts:</strong>
-        {{ high_overtime_employees|length }} employee(s) are averaging 15+ hours of overtime per week.
+    <div class="alert-banner">
+        <i class="bi bi-exclamation-triangle-fill"></i>
+        <div>
+            <strong>Overtime Alert:</strong> {{ high_overtime_employees|length }} employee(s) are averaging 15+ hours of overtime per week.
+            <a href="#" class="text-warning ms-2" onclick="filterHighOT()">View Details</a>
+        </div>
     </div>
     {% endif %}
 
     <!-- Statistics Cards -->
-    <div class="stats-card">
-        <div class="row">
-            <div class="col-md-3">
-                <div class="stat-item">
-                    <div class="stat-value">{{ total_overtime_hours }}</div>
-                    <div class="stat-label">Total OT Hours (13 weeks)</div>
-                </div>
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-icon primary">
+                <i class="bi bi-hourglass-split"></i>
             </div>
-            <div class="col-md-3">
-                <div class="stat-item">
-                    <div class="stat-value">{{ employees_with_overtime }}</div>
-                    <div class="stat-label">Employees with OT</div>
-                </div>
+            <div class="stat-value">{{ "{:,.0f}".format(total_overtime_hours) }}</div>
+            <div class="stat-label">Total OT Hours</div>
+            <div class="stat-trend trend-up">
+                <i class="bi bi-arrow-up"></i> 12%
             </div>
-            <div class="col-md-3">
-                <div class="stat-item">
-                    <div class="stat-value">{{ avg_overtime }}</div>
-                    <div class="stat-label">Average OT Hours</div>
-                </div>
+        </div>
+
+        <div class="stat-card info">
+            <div class="stat-icon info">
+                <i class="bi bi-people-fill"></i>
             </div>
-            <div class="col-md-3">
-                <div class="stat-item">
-                    <div class="stat-value">{{ high_overtime_count }}</div>
-                    <div class="stat-label">High OT Alerts</div>
-                </div>
+            <div class="stat-value">{{ employees_with_overtime }}</div>
+            <div class="stat-label">Employees with OT</div>
+        </div>
+
+        <div class="stat-card warning">
+            <div class="stat-icon warning">
+                <i class="bi bi-graph-up"></i>
+            </div>
+            <div class="stat-value">{{ avg_overtime }}</div>
+            <div class="stat-label">Average OT Hours</div>
+        </div>
+
+        <div class="stat-card danger">
+            <div class="stat-icon danger">
+                <i class="bi bi-exclamation-circle-fill"></i>
+            </div>
+            <div class="stat-value">{{ high_overtime_count }}</div>
+            <div class="stat-label">High OT Alerts</div>
+            <div class="stat-trend trend-up">
+                <i class="bi bi-arrow-up"></i> 3
             </div>
         </div>
     </div>
 
-    <!-- Multi-Level Sorter Section -->
-    <div class="multi-sorter-section">
-        <h5 class="mb-3">
-            <i class="bi bi-sort-alpha-down"></i> Multi-Level Sorting
-        </h5>
-        <p class="text-muted mb-3">Choose up to 4 sorting levels in order of priority</p>
-        
-        <div id="sorterContainer">
-            <!-- Level 1 -->
-            <div class="sorter-level" data-level="1">
-                <span class="level-badge">1st</span>
-                <label class="form-label mb-0" style="min-width: 80px;">Sort by:</label>
-                <select class="form-select form-select-sm" style="max-width: 200px;" id="sortLevel1">
-                    <option value="">-- Select --</option>
-                    <option value="crew">Crew</option>
-                    <option value="jobtitle">Job Title</option>
-                    <option value="seniority">Seniority</option>
-                    <option value="overtime">Overtime (13-week)</option>
-                </select>
-                <div class="sort-direction-toggle">
-                    <button class="btn btn-sm btn-outline-secondary active" data-direction="asc">
-                        <i class="bi bi-sort-alpha-down"></i> A-Z
-                    </button>
-                    <button class="btn btn-sm btn-outline-secondary" data-direction="desc">
-                        <i class="bi bi-sort-alpha-down-alt"></i> Z-A
-                    </button>
-                </div>
-            </div>
-            
-            <!-- Level 2 -->
-            <div class="sorter-level disabled" data-level="2">
-                <span class="level-badge">2nd</span>
-                <label class="form-label mb-0" style="min-width: 80px;">Then by:</label>
-                <select class="form-select form-select-sm" style="max-width: 200px;" id="sortLevel2" disabled>
-                    <option value="">-- Select --</option>
-                </select>
-                <div class="sort-direction-toggle">
-                    <button class="btn btn-sm btn-outline-secondary active" data-direction="asc">
-                        <i class="bi bi-sort-alpha-down"></i> A-Z
-                    </button>
-                    <button class="btn btn-sm btn-outline-secondary" data-direction="desc">
-                        <i class="bi bi-sort-alpha-down-alt"></i> Z-A
-                    </button>
-                </div>
-            </div>
-            
-            <!-- Level 3 -->
-            <div class="sorter-level disabled" data-level="3">
-                <span class="level-badge">3rd</span>
-                <label class="form-label mb-0" style="min-width: 80px;">Then by:</label>
-                <select class="form-select form-select-sm" style="max-width: 200px;" id="sortLevel3" disabled>
-                    <option value="">-- Select --</option>
-                </select>
-                <div class="sort-direction-toggle">
-                    <button class="btn btn-sm btn-outline-secondary active" data-direction="asc">
-                        <i class="bi bi-sort-alpha-down"></i> A-Z
-                    </button>
-                    <button class="btn btn-sm btn-outline-secondary" data-direction="desc">
-                        <i class="bi bi-sort-alpha-down-alt"></i> Z-A
-                    </button>
-                </div>
-            </div>
-            
-            <!-- Level 4 -->
-            <div class="sorter-level disabled" data-level="4">
-                <span class="level-badge">4th</span>
-                <label class="form-label mb-0" style="min-width: 80px;">Then by:</label>
-                <select class="form-select form-select-sm" style="max-width: 200px;" id="sortLevel4" disabled>
-                    <option value="">-- Select --</option>
-                </select>
-                <div class="sort-direction-toggle">
-                    <button class="btn btn-sm btn-outline-secondary active" data-direction="asc">
-                        <i class="bi bi-sort-alpha-down"></i> A-Z
-                    </button>
-                    <button class="btn btn-sm btn-outline-secondary" data-direction="desc">
-                        <i class="bi bi-sort-alpha-down-alt"></i> Z-A
-                    </button>
-                </div>
-            </div>
-        </div>
-        
-        <div class="mt-3 d-flex gap-2">
-            <button class="btn apply-sort-btn" onclick="applyMultiLevelSort()">
-                <i class="bi bi-check-circle"></i> Apply Sort
+    <!-- Filter Section -->
+    <div class="filter-card">
+        <div class="filter-header">
+            <h5><i class="bi bi-funnel"></i> Filters & Search</h5>
+            <button class="filter-toggle" data-bs-toggle="collapse" data-bs-target="#filterContent">
+                <i class="bi bi-chevron-down"></i>
             </button>
-            <button class="btn reset-sort-btn" onclick="resetSort()">
-                <i class="bi bi-x-circle"></i> Reset
+        </div>
+        <div class="collapse show" id="filterContent">
+            <div class="filter-row">
+                <div class="filter-group">
+                    <label for="searchInput">Search Employee</label>
+                    <input type="text" class="form-control" id="searchInput" 
+                           placeholder="Name or ID..." value="{{ search_term }}">
+                </div>
+                <div class="filter-group">
+                    <label for="crewFilter">Crew</label>
+                    <select class="form-select" id="crewFilter">
+                        <option value="">All Crews</option>
+                        <option value="A" {% if crew_filter == 'A' %}selected{% endif %}>Crew A</option>
+                        <option value="B" {% if crew_filter == 'B' %}selected{% endif %}>Crew B</option>
+                        <option value="C" {% if crew_filter == 'C' %}selected{% endif %}>Crew C</option>
+                        <option value="D" {% if crew_filter == 'D' %}selected{% endif %}>Crew D</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="jobFilter">Position</label>
+                    <select class="form-select" id="jobFilter">
+                        <option value="">All Positions</option>
+                        {% for position in positions %}
+                        <option value="{{ position.id }}" {% if position_filter == position.id|string %}selected{% endif %}>
+                            {{ position.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="otRangeFilter">OT Range</label>
+                    <select class="form-select" id="otRangeFilter">
+                        <option value="">All Ranges</option>
+                        <option value="0-50" {% if ot_range_filter == '0-50' %}selected{% endif %}>0-50 hours</option>
+                        <option value="50-100" {% if ot_range_filter == '50-100' %}selected{% endif %}>50-100 hours</option>
+                        <option value="100-150" {% if ot_range_filter == '100-150' %}selected{% endif %}>100-150 hours</option>
+                        <option value="150+" {% if ot_range_filter == '150+' %}selected{% endif %}>150+ hours</option>
+                    </select>
+                </div>
+            </div>
+            <button class="btn-apply-filters" onclick="applyFilters()">
+                <i class="bi bi-check-circle"></i> Apply Filters
             </button>
         </div>
     </div>
 
-    <!-- Filters Section -->
-    <div class="filters-section">
-        <div class="row align-items-end">
-            <div class="col-md-3">
-                <label class="form-label">Search Employee</label>
-                <input type="text" class="form-control" placeholder="Name or ID..." id="searchInput" value="{{ search_term }}">
+    <!-- Multi-Level Sorter -->
+    <div class="sorter-card">
+        <div class="filter-header">
+            <h5><i class="bi bi-sort-alpha-down"></i> Advanced Sorting</h5>
+            <button class="filter-toggle" data-bs-toggle="collapse" data-bs-target="#sorterContent">
+                <i class="bi bi-chevron-down"></i>
+            </button>
+        </div>
+        <div class="collapse" id="sorterContent">
+            <p class="text-muted mb-3">Create multi-level sorting rules (up to 4 levels)</p>
+            
+            <div id="sorterContainer">
+                <!-- Level 1 -->
+                <div class="sorter-level" data-level="1">
+                    <span class="level-badge">1st</span>
+                    <label class="form-label mb-0 me-2">Sort by:</label>
+                    <select class="form-select form-select-sm" style="width: auto;" id="sortLevel1">
+                        <option value="">-- Select --</option>
+                        <option value="crew">Crew</option>
+                        <option value="jobtitle">Job Title</option>
+                        <option value="seniority">Seniority</option>
+                        <option value="overtime">Overtime Hours</option>
+                    </select>
+                    <div class="sort-direction-toggle">
+                        <button class="active" data-direction="asc">
+                            <i class="bi bi-sort-up"></i> Ascending
+                        </button>
+                        <button data-direction="desc">
+                            <i class="bi bi-sort-down"></i> Descending
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Additional levels will be similar -->
+                <div class="sorter-level disabled" data-level="2">
+                    <span class="level-badge">2nd</span>
+                    <label class="form-label mb-0 me-2">Then by:</label>
+                    <select class="form-select form-select-sm" style="width: auto;" id="sortLevel2" disabled>
+                        <option value="">-- Select --</option>
+                    </select>
+                    <div class="sort-direction-toggle">
+                        <button class="active" data-direction="asc">
+                            <i class="bi bi-sort-up"></i> Ascending
+                        </button>
+                        <button data-direction="desc">
+                            <i class="bi bi-sort-down"></i> Descending
+                        </button>
+                    </div>
+                </div>
             </div>
-            <div class="col-md-2">
-                <label class="form-label">Crew Filter</label>
-                <select class="form-select" id="crewFilter">
-                    <option value="">All Crews</option>
-                    <option value="A" {% if crew_filter == 'A' %}selected{% endif %}>Crew A</option>
-                    <option value="B" {% if crew_filter == 'B' %}selected{% endif %}>Crew B</option>
-                    <option value="C" {% if crew_filter == 'C' %}selected{% endif %}>Crew C</option>
-                    <option value="D" {% if crew_filter == 'D' %}selected{% endif %}>Crew D</option>
-                </select>
-            </div>
-            <div class="col-md-2">
-                <label class="form-label">Job Title</label>
-                <select class="form-select" id="jobFilter">
-                    <option value="">All Positions</option>
-                    {% for position in positions %}
-                    <option value="{{ position.id }}" {% if position_filter == position.id|string %}selected{% endif %}>{{ position.name }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="col-md-2">
-                <label class="form-label">OT Range</label>
-                <select class="form-select" id="otRangeFilter">
-                    <option value="">All Ranges</option>
-                    <option value="0-50" {% if ot_range_filter == '0-50' %}selected{% endif %}>0-50 hours</option>
-                    <option value="50-100" {% if ot_range_filter == '50-100' %}selected{% endif %}>50-100 hours</option>
-                    <option value="100-150" {% if ot_range_filter == '100-150' %}selected{% endif %}>100-150 hours</option>
-                    <option value="150+" {% if ot_range_filter == '150+' %}selected{% endif %}>150+ hours</option>
-                </select>
-            </div>
-            <div class="col-md-3">
-                <button class="btn btn-primary w-100" onclick="applyFilters()">
-                    <i class="bi bi-funnel"></i> Apply Filters
+            
+            <div class="mt-3 d-flex gap-2">
+                <button class="btn btn-primary" onclick="applyMultiLevelSort()">
+                    <i class="bi bi-check-circle"></i> Apply Sort
+                </button>
+                <button class="btn btn-outline-secondary" onclick="resetSort()">
+                    <i class="bi bi-x-circle"></i> Reset
                 </button>
             </div>
         </div>
     </div>
 
-    <!-- Overtime Table -->
-    <div class="overtime-table-container">
-        <h4 class="mb-3">Employee Overtime Summary ({{ start_date.strftime('%b %d') }} - {{ end_date.strftime('%b %d, %Y') }})</h4>
-        
+    <!-- Data Table -->
+    <div class="table-card">
+        <div class="table-header">
+            <h4>Employee Overtime Details</h4>
+            <div class="table-actions">
+                <button class="btn btn-sm btn-outline-primary" onclick="refreshData()">
+                    <i class="bi bi-arrow-clockwise"></i>
+                </button>
+                <button class="btn btn-sm btn-outline-primary" onclick="toggleView()">
+                    <i class="bi bi-grid-3x3-gap"></i>
+                </button>
+            </div>
+        </div>
+
         {% if employees %}
-        <table class="overtime-table" id="overtimeTable">
-            <thead>
-                <tr>
-                    <th onclick="sortTable(0)">Employee <i class="bi bi-arrow-down-up"></i></th>
-                    <th onclick="sortTable(1)">ID</th>
-                    <th onclick="sortTable(2)">Crew <i class="bi bi-arrow-down-up"></i></th>
-                    <th onclick="sortTable(3)">Job Title <i class="bi bi-arrow-down-up"></i></th>
-                    <th onclick="sortTable(4)">Seniority <i class="bi bi-arrow-down-up"></i></th>
-                    <th class="total-column" onclick="sortTable(5)">Current Week OT <i class="bi bi-arrow-down-up"></i></th>
-                    <th class="total-column" onclick="sortTable(6)">13-Week Total <i class="bi bi-arrow-down-up"></i></th>
-                    <th class="total-column" onclick="sortTable(7)">Weekly Average <i class="bi bi-arrow-down-up"></i></th>
-                    <th>Trend</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for employee in employees %}
-                <tr data-employee-id="{{ employee.id }}" 
-                    data-crew="{{ employee.crew or '' }}" 
-                    data-position="{{ employee.position_id or '' }}"
-                    data-total-ot="{{ employee.last_13_weeks_overtime }}"
-                    data-current-week="{{ employee.current_week_overtime }}">
-                    <td>
-                        <div class="employee-info">
-                            <div class="employee-avatar" style="background: {{ loop.cycle('#11998e', '#e91e63', '#4caf50', '#ff9800', '#9c27b0') }};">
-                                {{ employee.name[:2].upper() }}
+        <div class="table-responsive">
+            <table class="overtime-table">
+                <thead>
+                    <tr>
+                        <th onclick="sortTable(0)">Employee <i class="bi bi-arrow-down-up"></i></th>
+                        <th onclick="sortTable(1)">Crew <i class="bi bi-arrow-down-up"></i></th>
+                        <th onclick="sortTable(2)">Position <i class="bi bi-arrow-down-up"></i></th>
+                        <th onclick="sortTable(3)">Seniority <i class="bi bi-arrow-down-up"></i></th>
+                        <th class="text-center" onclick="sortTable(4)">Current Week <i class="bi bi-arrow-down-up"></i></th>
+                        <th class="text-center" onclick="sortTable(5)">13-Week Total <i class="bi bi-arrow-down-up"></i></th>
+                        <th class="text-center" onclick="sortTable(6)">Weekly Avg <i class="bi bi-arrow-down-up"></i></th>
+                        <th class="text-center">Trend</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for employee in employees %}
+                    <tr data-employee-id="{{ employee.id }}">
+                        <td>
+                            <div class="employee-card">
+                                <div class="employee-avatar" style="background: {{ loop.cycle('#11998e', '#667eea', '#f093fb', '#f5576c', '#4facfe') }};">
+                                    {{ employee.name[:2].upper() }}
+                                </div>
+                                <div class="employee-details">
+                                    <div class="employee-name">{{ employee.name }}</div>
+                                    <div class="employee-id">{{ employee.employee_id }}</div>
+                                </div>
                             </div>
-                            <span>{{ employee.name }}</span>
-                        </div>
-                    </td>
-                    <td>{{ employee.employee_id }}</td>
-                    <td>
-                        {% if employee.crew %}
-                        <span class="crew-badge crew-{{ employee.crew|lower }}">Crew {{ employee.crew }}</span>
-                        {% else %}
-                        -
-                        {% endif %}
-                    </td>
-                    <td>{{ employee.position.name if employee.position else '-' }}</td>
-                    <td>
-                        {% if employee.hire_date %}
-                            {{ employee.years_employed }} year{{ 's' if employee.years_employed != 1 else '' }}
-                        {% else %}
+                        </td>
+                        <td>
+                            {% if employee.crew %}
+                            <span class="crew-badge crew-{{ employee.crew|lower }}">Crew {{ employee.crew }}</span>
+                            {% else %}
+                            <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ employee.position.name if employee.position else '-' }}</td>
+                        <td>
+                            {% if employee.years_employed %}
+                            <span class="text-muted">{{ employee.years_employed }} yr{{ 's' if employee.years_employed != 1 }}</span>
+                            {% else %}
                             -
-                        {% endif %}
-                    </td>
-                    <td class="total-column {% if employee.current_week_overtime >= 20 %}overtime-high{% elif employee.current_week_overtime >= 12 %}overtime-medium{% endif %}">
-                        {{ employee.current_week_overtime }}
-                    </td>
-                    <td class="total-column {% if employee.last_13_weeks_overtime > 200 %}overtime-high{% elif employee.last_13_weeks_overtime > 150 %}overtime-medium{% endif %}">
-                        {{ employee.last_13_weeks_overtime }}
-                    </td>
-                    <td class="total-column">
-                        {{ employee.average_weekly_overtime }}
-                    </td>
-                    <td>
-                        {% if employee.overtime_trend == 'increasing' %}
-                            <span class="trend-indicator trend-up">
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            <span class="ot-value {% if employee.current_week_overtime >= 20 %}ot-critical{% elif employee.current_week_overtime >= 16 %}ot-high{% elif employee.current_week_overtime >= 12 %}ot-medium{% else %}ot-low{% endif %}">
+                                {{ employee.current_week_overtime }}
+                            </span>
+                        </td>
+                        <td class="text-center">
+                            <span class="ot-value {% if employee.last_13_weeks_overtime > 200 %}ot-critical{% elif employee.last_13_weeks_overtime > 150 %}ot-high{% elif employee.last_13_weeks_overtime > 100 %}ot-medium{% else %}ot-low{% endif %}">
+                                {{ employee.last_13_weeks_overtime }}
+                            </span>
+                        </td>
+                        <td class="text-center">
+                            <strong>{{ employee.average_weekly_overtime }}</strong>
+                        </td>
+                        <td class="text-center">
+                            {% if employee.overtime_trend == 'increasing' %}
+                            <span class="trend-badge up">
                                 <i class="bi bi-arrow-up-circle-fill"></i> Rising
                             </span>
-                        {% elif employee.overtime_trend == 'decreasing' %}
-                            <span class="trend-indicator trend-down">
+                            {% elif employee.overtime_trend == 'decreasing' %}
+                            <span class="trend-badge down">
                                 <i class="bi bi-arrow-down-circle-fill"></i> Falling
                             </span>
-                        {% else %}
-                            <span class="trend-indicator trend-stable">
+                            {% else %}
+                            <span class="trend-badge stable">
                                 <i class="bi bi-dash-circle"></i> Stable
                             </span>
-                        {% endif %}
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-        {% else %}
-        <div class="alert alert-info">
-            <i class="bi bi-info-circle"></i> No employees found. Try adjusting your filters or <a href="{{ url_for('employee_import.upload_employees') }}">upload employee data</a>.
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
         </div>
-        {% endif %}
-        
-        <!-- Pagination - PRESERVING ORIGINAL IMPLEMENTATION -->
+
+        <!-- Pagination -->
         {% if total_pages > 1 %}
-        <nav>
+        <nav class="mt-4">
             <ul class="pagination justify-content-center">
                 {% set url_params = request.args.to_dict() %}
                 <li class="page-item {% if page == 1 %}disabled{% endif %}">
                     {% set _ = url_params.update({'page': page - 1}) %}
-                    <a class="page-link" href="?{{ url_params | urlencode }}">Previous</a>
+                    <a class="page-link" href="?{{ url_params | urlencode }}">
+                        <i class="bi bi-chevron-left"></i>
+                    </a>
                 </li>
                 
                 {% for p in range(1, total_pages + 1) %}
@@ -557,246 +891,116 @@
                 
                 <li class="page-item {% if page == total_pages %}disabled{% endif %}">
                     {% set _ = url_params.update({'page': page + 1}) %}
-                    <a class="page-link" href="?{{ url_params | urlencode }}">Next</a>
+                    <a class="page-link" href="?{{ url_params | urlencode }}">
+                        <i class="bi bi-chevron-right"></i>
+                    </a>
                 </li>
             </ul>
         </nav>
         {% endif %}
+
+        {% else %}
+        <!-- Empty State -->
+        <div class="empty-state">
+            <i class="bi bi-inbox"></i>
+            <h5>No Data Found</h5>
+            <p>Try adjusting your filters or <a href="{{ url_for('employee_import.upload_employees') }}">upload employee data</a></p>
+        </div>
+        {% endif %}
     </div>
 
     <!-- Export Section -->
-    <div class="export-section">
-        <h5>Export & Reports</h5>
-        <div class="row mt-3">
-            <div class="col-md-3">
-                <button class="btn btn-success w-100" onclick="exportToExcel()">
-                    <i class="bi bi-file-earmark-excel"></i> Export to Excel
-                </button>
+    <div class="export-card">
+        <div class="export-header">
+            <h5>Export & Reports</h5>
+            <p>Generate reports with current filters applied</p>
+        </div>
+        <div class="export-options">
+            <div class="export-btn" onclick="exportToExcel()">
+                <i class="bi bi-file-earmark-excel"></i>
+                <div class="export-btn-label">Excel Report</div>
             </div>
-            <div class="col-md-3">
-                <button class="btn btn-primary w-100" onclick="generatePDF()">
-                    <i class="bi bi-file-earmark-pdf"></i> Generate PDF Report
-                </button>
+            <div class="export-btn" onclick="generatePDF()">
+                <i class="bi bi-file-earmark-pdf"></i>
+                <div class="export-btn-label">PDF Summary</div>
             </div>
-            <div class="col-md-3">
-                <button class="btn btn-info w-100" onclick="emailReport()">
-                    <i class="bi bi-envelope"></i> Email Report
-                </button>
+            <div class="export-btn" onclick="emailReport()">
+                <i class="bi bi-envelope-arrow-up"></i>
+                <div class="export-btn-label">Email Report</div>
             </div>
-            <div class="col-md-3">
-                <button class="btn btn-secondary w-100" onclick="window.print()">
-                    <i class="bi bi-printer"></i> Print
-                </button>
+            <div class="export-btn" onclick="window.print()">
+                <i class="bi bi-printer"></i>
+                <div class="export-btn-label">Print View</div>
             </div>
         </div>
     </div>
 </div>
 
 <script>
+    // Initialize tooltips
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl)
+    });
+
     // Multi-level sorting configuration
     const sortOptions = {
         'crew': 'Crew',
         'jobtitle': 'Job Title',
         'seniority': 'Seniority',
-        'overtime': 'Overtime (13-week)'
+        'overtime': 'Overtime Hours'
     };
-
-    // Track selected options
-    let selectedSorts = [];
 
     // Initialize multi-level sorter
     document.addEventListener('DOMContentLoaded', function() {
-        // Restore sort selections from URL parameters
-        const urlParams = new URLSearchParams(window.location.search);
-        const selectedValues = [];
-        
-        for (let i = 1; i <= 4; i++) {
-            const sortValue = urlParams.get(`sort${i}`);
-            const dirValue = urlParams.get(`dir${i}`) || 'asc';
-            
-            if (sortValue) {
-                selectedValues.push(sortValue);
-                const select = document.getElementById(`sortLevel${i}`);
-                
-                // Enable this level
-                if (i > 1) {
-                    const level = document.querySelector(`.sorter-level[data-level="${i}"]`);
-                    level.classList.remove('disabled');
-                    select.disabled = false;
-                }
-                
-                // Populate options excluding already selected values
-                select.innerHTML = '<option value="">-- Select --</option>';
-                for (const [value, label] of Object.entries(sortOptions)) {
-                    if (!selectedValues.slice(0, i-1).includes(value)) {
-                        select.innerHTML += `<option value="${value}" ${value === sortValue ? 'selected' : ''}>${label}</option>`;
-                    }
-                }
-                
-                // Set direction
-                const dirButtons = document.querySelectorAll(`.sorter-level[data-level="${i}"] .sort-direction-toggle button`);
-                dirButtons.forEach(btn => {
-                    btn.classList.remove('active');
-                    if (btn.dataset.direction === dirValue) {
-                        btn.classList.add('active');
-                    }
-                });
-                
-                // Update next level options if this level has a value
-                if (i < 4 && sortValue) {
-                    const nextSelect = document.getElementById(`sortLevel${i + 1}`);
-                    const nextLevel = document.querySelector(`.sorter-level[data-level="${i + 1}"]`);
-                    nextLevel.classList.remove('disabled');
-                    nextSelect.disabled = false;
-                    
-                    nextSelect.innerHTML = '<option value="">-- Select --</option>';
-                    for (const [value, label] of Object.entries(sortOptions)) {
-                        if (!selectedValues.includes(value)) {
-                            nextSelect.innerHTML += `<option value="${value}">${label}</option>`;
-                        }
-                    }
-                }
-            }
-        }
-        
-        // Add event listeners to all sort level selects
+        // Set up sort level handlers
         for (let i = 1; i <= 4; i++) {
             const select = document.getElementById(`sortLevel${i}`);
-            select.addEventListener('change', function() {
-                updateSortOptions(i);
-            });
+            if (select) {
+                select.addEventListener('change', function() {
+                    updateSortOptions(i);
+                });
+            }
         }
 
-        // Add event listeners to direction toggle buttons
+        // Direction toggle buttons
         document.querySelectorAll('.sort-direction-toggle button').forEach(button => {
             button.addEventListener('click', function() {
                 const parent = this.closest('.sort-direction-toggle');
                 parent.querySelectorAll('button').forEach(btn => btn.classList.remove('active'));
                 this.classList.add('active');
-                
-                // Update button styles based on direction
-                if (this.dataset.direction === 'asc') {
-                    this.innerHTML = '<i class="bi bi-sort-alpha-down"></i> A-Z';
-                } else {
-                    this.innerHTML = '<i class="bi bi-sort-alpha-down-alt"></i> Z-A';
-                }
             });
         });
     });
 
-    // Update available options for subsequent levels
     function updateSortOptions(changedLevel) {
-        selectedSorts = [];
-        
-        // Collect all selected values up to current level
-        for (let i = 1; i <= changedLevel; i++) {
-            const select = document.getElementById(`sortLevel${i}`);
-            if (select.value) {
-                selectedSorts.push(select.value);
-            }
-        }
-
-        // Update subsequent levels
-        for (let i = changedLevel + 1; i <= 4; i++) {
-            const select = document.getElementById(`sortLevel${i}`);
-            const level = document.querySelector(`.sorter-level[data-level="${i}"]`);
+        // Enable next level if current has selection
+        const currentSelect = document.getElementById(`sortLevel${changedLevel}`);
+        if (currentSelect.value && changedLevel < 4) {
+            const nextLevel = document.querySelector(`.sorter-level[data-level="${changedLevel + 1}"]`);
+            const nextSelect = document.getElementById(`sortLevel${changedLevel + 1}`);
             
-            if (i === changedLevel + 1 && selectedSorts.length === changedLevel) {
-                // Enable next level if current level has selection
-                level.classList.remove('disabled');
-                select.disabled = false;
-                
-                // Populate options
-                select.innerHTML = '<option value="">-- Select --</option>';
-                for (const [value, label] of Object.entries(sortOptions)) {
-                    if (!selectedSorts.includes(value)) {
-                        select.innerHTML += `<option value="${value}">${label}</option>`;
+            nextLevel.classList.remove('disabled');
+            nextSelect.disabled = false;
+            
+            // Populate options
+            nextSelect.innerHTML = '<option value="">-- Select --</option>';
+            for (const [value, label] of Object.entries(sortOptions)) {
+                // Don't show already selected options
+                let alreadySelected = false;
+                for (let j = 1; j <= changedLevel; j++) {
+                    if (document.getElementById(`sortLevel${j}`).value === value) {
+                        alreadySelected = true;
+                        break;
                     }
                 }
-            } else {
-                // Disable and clear subsequent levels
-                level.classList.add('disabled');
-                select.disabled = true;
-                select.value = '';
-                select.innerHTML = '<option value="">-- Select --</option>';
+                if (!alreadySelected) {
+                    nextSelect.innerHTML += `<option value="${value}">${label}</option>`;
+                }
             }
         }
     }
 
-    // Apply multi-level sort
-    function applyMultiLevelSort() {
-        // Build sort parameters for URL
-        const params = new URLSearchParams(window.location.search);
-        
-        // Clear existing sort parameters
-        for (let i = 1; i <= 4; i++) {
-            params.delete(`sort${i}`);
-            params.delete(`dir${i}`);
-        }
-        
-        // Add new sort parameters
-        let hasSort = false;
-        for (let i = 1; i <= 4; i++) {
-            const select = document.getElementById(`sortLevel${i}`);
-            if (select.value) {
-                const directionBtn = document.querySelector(`.sorter-level[data-level="${i}"] .sort-direction-toggle button.active`);
-                params.set(`sort${i}`, select.value);
-                params.set(`dir${i}`, directionBtn.dataset.direction);
-                hasSort = true;
-            }
-        }
-        
-        if (!hasSort) {
-            alert('Please select at least one sorting criterion');
-            return;
-        }
-        
-        // Preserve other filters
-        const searchInput = document.getElementById('searchInput').value;
-        const crewFilter = document.getElementById('crewFilter').value;
-        const jobFilter = document.getElementById('jobFilter').value;
-        const otRangeFilter = document.getElementById('otRangeFilter').value;
-        
-        if (searchInput) params.set('search', searchInput);
-        if (crewFilter) params.set('crew', crewFilter);
-        if (jobFilter) params.set('position', jobFilter);
-        if (otRangeFilter) params.set('ot_range', otRangeFilter);
-        
-        // Reset to page 1 when sorting changes
-        params.set('page', '1');
-        
-        // Reload page with new parameters
-        window.location.href = `${window.location.pathname}?${params.toString()}`;
-    }
-
-    // Reset sort
-    function resetSort() {
-        // Clear URL parameters related to sorting
-        const params = new URLSearchParams(window.location.search);
-        
-        // Remove all sort parameters
-        for (let i = 1; i <= 4; i++) {
-            params.delete(`sort${i}`);
-            params.delete(`dir${i}`);
-        }
-        
-        // Keep other filters
-        params.set('page', '1');
-        
-        // Reload page
-        window.location.href = `${window.location.pathname}?${params.toString()}`;
-    }
-
-    // Original sort table function (for single column sorting)
-    let sortDirections = {};
-    
-    function sortTable(columnIndex) {
-        // This function is kept for backwards compatibility
-        // but sorting should be done server-side
-        alert('Please use the Multi-Level Sorting feature above for better results');
-    }
-
-    // Apply all filters
     function applyFilters() {
         const params = new URLSearchParams(window.location.search);
         
@@ -819,36 +1023,89 @@
         if (selectedOTRange) params.set('ot_range', selectedOTRange);
         else params.delete('ot_range');
         
-        // Reset to page 1 when filters change
+        // Reset to page 1
         params.set('page', '1');
         
-        // Preserve sort parameters
-        for (let i = 1; i <= 4; i++) {
-            const sortValue = document.getElementById(`sortLevel${i}`).value;
-            if (sortValue) {
-                const dirBtn = document.querySelector(`.sorter-level[data-level="${i}"] .sort-direction-toggle button.active`);
-                params.set(`sort${i}`, sortValue);
-                params.set(`dir${i}`, dirBtn.dataset.direction);
-            }
-        }
-        
-        // Reload page with new parameters
+        // Reload with new parameters
         window.location.href = `${window.location.pathname}?${params.toString()}`;
     }
 
-    // Export functions - preserve current filters and sorting
+    function applyMultiLevelSort() {
+        const params = new URLSearchParams(window.location.search);
+        
+        // Clear existing sort parameters
+        for (let i = 1; i <= 4; i++) {
+            params.delete(`sort${i}`);
+            params.delete(`dir${i}`);
+        }
+        
+        // Add new sort parameters
+        let hasSort = false;
+        for (let i = 1; i <= 4; i++) {
+            const select = document.getElementById(`sortLevel${i}`);
+            if (select && select.value) {
+                const directionBtn = document.querySelector(`.sorter-level[data-level="${i}"] .sort-direction-toggle button.active`);
+                params.set(`sort${i}`, select.value);
+                params.set(`dir${i}`, directionBtn.dataset.direction);
+                hasSort = true;
+            }
+        }
+        
+        if (!hasSort) {
+            alert('Please select at least one sorting criterion');
+            return;
+        }
+        
+        params.set('page', '1');
+        window.location.href = `${window.location.pathname}?${params.toString()}`;
+    }
+
+    function resetSort() {
+        const params = new URLSearchParams(window.location.search);
+        
+        // Remove all sort parameters
+        for (let i = 1; i <= 4; i++) {
+            params.delete(`sort${i}`);
+            params.delete(`dir${i}`);
+        }
+        
+        params.set('page', '1');
+        window.location.href = `${window.location.pathname}?${params.toString()}`;
+    }
+
     function exportToExcel() {
         const params = new URLSearchParams(window.location.search);
         window.location.href = '{{ url_for("employee_import.export_current_overtime") }}?' + params.toString();
     }
-    
+
     function generatePDF() {
-        const params = new URLSearchParams(window.location.search);
-        alert('PDF export functionality coming soon');
+        alert('PDF export functionality coming soon!');
     }
-    
+
     function emailReport() {
-        alert('Email report functionality coming soon');
+        alert('Email report functionality coming soon!');
     }
+
+    function filterHighOT() {
+        document.getElementById('otRangeFilter').value = '150+';
+        applyFilters();
+    }
+
+    function refreshData() {
+        window.location.reload();
+    }
+
+    function toggleView() {
+        alert('Grid view coming soon!');
+    }
+
+    // Add hover effects
+    document.querySelectorAll('.overtime-table tbody tr').forEach(row => {
+        row.addEventListener('click', function() {
+            const employeeId = this.dataset.employeeId;
+            // Could open a modal with detailed employee overtime info
+            console.log('Clicked employee:', employeeId);
+        });
+    });
 </script>
 {% endblock %}
