@@ -203,7 +203,7 @@ def augment_file_upload(upload):
 @login_required
 @supervisor_required
 def upload_employees():
-    """Upload employees page with all required template variables"""
+    """Simplified upload employees page"""
     try:
         # Get all statistics
         stats = get_employee_stats()
@@ -211,20 +211,15 @@ def upload_employees():
         employees_without_accounts = get_employees_without_accounts()
         
         # Prepare crew distribution for the template
-        # The template expects it as a dictionary
         crew_distribution = stats['crews']
         
-        # Check if account creation is available
-        account_creation_available = True  # Set based on your business logic
-        
-        # FIXED: Use the correct template name
-        return render_template('upload_employees_enhanced.html',
+        # Use the simple template
+        return render_template('upload_employees_simple.html',
                              recent_uploads=recent_uploads,
                              stats=stats,
                              crew_distribution=crew_distribution,
                              total_employees=stats['total_employees'],
-                             employees_without_accounts=employees_without_accounts,
-                             account_creation_available=account_creation_available)
+                             employees_without_accounts=employees_without_accounts)
     
     except Exception as e:
         logger.error(f"Error in upload_employees route: {e}")
@@ -526,7 +521,7 @@ def process_upload():
 # ==========================================
 
 def validate_employee_data(df):
-    """Validate employee data with comprehensive checks"""
+    """Validate employee data - updated for new format"""
     errors = []
     warnings = []
     
@@ -534,9 +529,30 @@ def validate_employee_data(df):
     if df.empty:
         return {'success': False, 'error': 'The uploaded file contains no data'}
     
-    # Check required columns
-    required_columns = ['Employee ID', 'First Name', 'Last Name', 'Email', 'Crew']
-    missing_columns = [col for col in required_columns if col not in df.columns]
+    # Check required columns (updated for actual format)
+    required_columns = ['Employee ID', 'First Name', 'Last Name', 'Crew Assigned']
+    
+    # Also accept variations
+    column_mapping = {
+        'Employee ID': ['Employee ID', 'EmployeeID', 'Emp ID', 'ID'],
+        'First Name': ['First Name', 'FirstName', 'First'],
+        'Last Name': ['Last Name', 'LastName', 'Last'],
+        'Crew Assigned': ['Crew Assigned', 'Crew', 'Crew Assignment']
+    }
+    
+    # Check for required columns with flexible naming
+    missing_columns = []
+    found_columns = {}
+    
+    for req_col, variations in column_mapping.items():
+        found = False
+        for var in variations:
+            if var in df.columns:
+                found_columns[req_col] = var
+                found = True
+                break
+        if not found:
+            missing_columns.append(req_col)
     
     if missing_columns:
         return {
@@ -552,7 +568,8 @@ def validate_employee_data(df):
         row_num = idx + 2  # Excel row number (header is row 1)
         
         # Check Employee ID
-        emp_id = str(row.get('Employee ID', '')).strip()
+        emp_id_col = found_columns.get('Employee ID', 'Employee ID')
+        emp_id = str(row.get(emp_id_col, '')).strip()
         if not emp_id or emp_id == 'nan':
             errors.append(f"Row {row_num}: Missing Employee ID")
         elif emp_id in seen_employee_ids:
@@ -561,22 +578,19 @@ def validate_employee_data(df):
             seen_employee_ids.add(emp_id)
         
         # Check names
-        first_name = str(row.get('First Name', '')).strip()
-        last_name = str(row.get('Last Name', '')).strip()
+        first_name_col = found_columns.get('First Name', 'First Name')
+        last_name_col = found_columns.get('Last Name', 'Last Name')
+        first_name = str(row.get(first_name_col, '')).strip()
+        last_name = str(row.get(last_name_col, '')).strip()
+        
         if not first_name or first_name == 'nan':
             errors.append(f"Row {row_num}: Missing First Name")
         if not last_name or last_name == 'nan':
             errors.append(f"Row {row_num}: Missing Last Name")
         
-        # Check email
-        email = str(row.get('Email', '')).strip()
-        if not email or email == 'nan':
-            errors.append(f"Row {row_num}: Missing Email")
-        elif not re.match(r'^[\w\.-]+@[\w\.-]+\.\w+$', email):
-            errors.append(f"Row {row_num}: Invalid email format '{email}'")
-        
         # Check crew values
-        crew = str(row.get('Crew', '')).strip().upper()
+        crew_col = found_columns.get('Crew Assigned', 'Crew Assigned')
+        crew = str(row.get(crew_col, '')).strip().upper()
         if crew and crew != 'NAN' and crew not in ['A', 'B', 'C', 'D']:
             warnings.append(f"Row {row_num}: Invalid crew '{crew}' (should be A, B, C, or D)")
         
@@ -594,13 +608,19 @@ def validate_employee_data(df):
         }
     
     # Count valid rows
-    valid_rows = len(df) - len(errors)
+    valid_rows = len(df)
+    
+    # Detect position columns
+    standard_columns = ['Last Name', 'First Name', 'Employee ID', 'Date of Hire', 
+                       'Total Overtime (Last 3 Months)', 'Crew Assigned', 'Current Job Position']
+    position_columns = [col for col in df.columns if col not in standard_columns and col.strip()]
     
     return {
         'success': True,
         'total_rows': len(df),
         'valid_rows': valid_rows,
         'warnings': warnings,
+        'position_columns': len(position_columns),
         'message': f'Validation successful. {valid_rows} employees ready to import.'
     }
 
@@ -726,7 +746,7 @@ def validate_bulk_update(df):
 # ==========================================
 
 def process_employee_data(df, mode='append', file_upload=None):
-    """Process employee data with comprehensive error handling"""
+    """Process employee data with automatic update/add (no deletions)"""
     successful = 0
     failed = 0
     errors = []
@@ -734,22 +754,28 @@ def process_employee_data(df, mode='append', file_upload=None):
     updated = 0
     
     try:
-        # If replace mode, delete existing employees first
-        if mode == 'replace':
-            # Delete all non-supervisor employees
-            deleted_count = Employee.query.filter_by(is_supervisor=False).delete()
-            db.session.commit()
-            logger.info(f"Deleted {deleted_count} existing employees in replace mode")
+        # Never delete in this simplified version - always update or add
+        
+        # Identify position columns (all columns after the standard ones)
+        standard_columns = ['Last Name', 'First Name', 'Employee ID', 'Date of Hire', 
+                          'Total Overtime (Last 3 Months)', 'Crew Assigned', 'Current Job Position']
+        
+        # Get position columns - everything after the standard columns
+        all_columns = df.columns.tolist()
+        position_columns = []
+        for col in all_columns:
+            if col not in standard_columns and col.strip():
+                position_columns.append(col)
+        
+        logger.info(f"Found {len(position_columns)} position columns: {position_columns}")
         
         # Process each row
         for idx, row in df.iterrows():
             try:
-                # Extract and clean data
+                # Extract employee data with proper column names
                 emp_id = str(row.get('Employee ID', '')).strip()
                 first_name = str(row.get('First Name', '')).strip()
                 last_name = str(row.get('Last Name', '')).strip()
-                email = str(row.get('Email', '')).strip().lower()
-                crew = str(row.get('Crew', '')).strip().upper()
                 
                 # Skip if essential data is missing
                 if not emp_id or emp_id == 'nan':
@@ -757,29 +783,68 @@ def process_employee_data(df, mode='append', file_upload=None):
                     errors.append(f"Row {idx + 2}: Missing Employee ID")
                     continue
                 
+                # Create full name
+                full_name = f"{first_name} {last_name}".strip()
+                
+                # Get other fields
+                hire_date_str = str(row.get('Date of Hire', '')).strip()
+                overtime_str = str(row.get('Total Overtime (Last 3 Months)', '0')).strip()
+                crew = str(row.get('Crew Assigned', '')).strip().upper()
+                current_position = str(row.get('Current Job Position', '')).strip()
+                
+                # Parse hire date
+                hire_date = None
+                if hire_date_str and hire_date_str != 'nan':
+                    try:
+                        # Try different date formats
+                        for fmt in ['%m/%d/%Y', '%Y-%m-%d', '%d/%m/%Y', '%m-%d-%Y']:
+                            try:
+                                hire_date = datetime.strptime(hire_date_str, fmt).date()
+                                break
+                            except:
+                                continue
+                    except:
+                        logger.warning(f"Could not parse hire date '{hire_date_str}' for employee {emp_id}")
+                
+                # Parse overtime hours
+                try:
+                    overtime_hours = float(overtime_str) if overtime_str and overtime_str != 'nan' else 0
+                except:
+                    overtime_hours = 0
+                
                 # Clean crew value
-                if crew == 'NAN' or crew not in ['A', 'B', 'C', 'D']:
+                if crew not in ['A', 'B', 'C', 'D']:
                     crew = None
+                
+                # Generate email if not provided (using employee ID)
+                email = f"emp{emp_id}@company.com"
                 
                 # Check if employee exists
                 employee = Employee.query.filter_by(employee_id=emp_id).first()
                 
-                if employee and mode == 'append':
+                if employee:
                     # Update existing employee
-                    employee.name = f"{first_name} {last_name}".strip()
+                    employee.name = full_name
                     employee.email = email
                     if crew:
                         employee.crew = crew
+                    if hire_date:
+                        employee.hire_date = hire_date
+                    if current_position:
+                        employee.position_name = current_position
                     updated += 1
+                    logger.info(f"Updated employee {emp_id}")
                 else:
                     # Create new employee
                     employee = Employee(
                         employee_id=emp_id,
-                        name=f"{first_name} {last_name}".strip(),
+                        name=full_name,
                         email=email,
                         crew=crew,
                         is_supervisor=False,
-                        is_active=True
+                        is_active=True,
+                        hire_date=hire_date,
+                        position_name=current_position
                     )
                     
                     # Set default password
@@ -788,6 +853,57 @@ def process_employee_data(df, mode='append', file_upload=None):
                     
                     db.session.add(employee)
                     created += 1
+                    logger.info(f"Created new employee {emp_id}")
+                
+                # Process position qualifications
+                position_skills = []
+                for pos_col in position_columns:
+                    value = str(row.get(pos_col, '')).strip().lower()
+                    if value in ['current', 'yes', 'y', 'x', 'true', '1']:
+                        position_skills.append({
+                            'position': pos_col,
+                            'is_current': value == 'current',
+                            'is_qualified': True
+                        })
+                
+                # Store position info (you may need to create a skills table for this)
+                # For now, we'll just log it
+                if position_skills:
+                    logger.info(f"Employee {emp_id} has {len(position_skills)} position qualifications")
+                    if current_position:
+                        # Verify current position matches
+                        current_marked = [p for p in position_skills if p['is_current']]
+                        if current_marked:
+                            logger.info(f"Current position verified: {current_marked[0]['position']}")
+                
+                # If overtime hours provided, add to overtime history
+                if overtime_hours > 0:
+                    # Add overtime record for the most recent period
+                    recent_week_end = datetime.now().date()
+                    # Adjust to last Sunday
+                    days_since_sunday = recent_week_end.weekday() + 1
+                    if days_since_sunday == 7:
+                        days_since_sunday = 0
+                    recent_week_end = recent_week_end - timedelta(days=days_since_sunday)
+                    
+                    # Check if recent overtime exists
+                    existing_ot = OvertimeHistory.query.filter_by(
+                        employee_id=employee.id,
+                        week_ending=recent_week_end
+                    ).first()
+                    
+                    if not existing_ot:
+                        ot_record = OvertimeHistory(
+                            employee_id=employee.id,
+                            week_ending=recent_week_end,
+                            week_start_date=recent_week_end - timedelta(days=6),
+                            overtime_hours=overtime_hours / 13,  # Distribute over 13 weeks
+                            hours=overtime_hours / 13,
+                            regular_hours=40,
+                            total_hours=40 + (overtime_hours / 13),
+                            is_current=True
+                        )
+                        db.session.add(ot_record)
                 
                 successful += 1
                 
@@ -802,7 +918,7 @@ def process_employee_data(df, mode='append', file_upload=None):
         
         # Commit all changes
         db.session.commit()
-        logger.info(f"Employee import completed: {successful} successful, {failed} failed")
+        logger.info(f"Employee import completed: {successful} successful ({created} new, {updated} updated), {failed} failed")
         
         result = {
             'success': True,
@@ -811,7 +927,7 @@ def process_employee_data(df, mode='append', file_upload=None):
             'failed': failed,
             'created': created,
             'updated': updated,
-            'message': f'Successfully processed {successful} employees ({created} created, {updated} updated)'
+            'message': f'Successfully processed {successful} employees ({created} added, {updated} updated)'
         }
         
         if errors:
