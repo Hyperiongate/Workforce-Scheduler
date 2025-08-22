@@ -1,0 +1,458 @@
+{% extends 'base.html' %}
+
+{% block title %}Upload Employee Data{% endblock %}
+
+{% block content %}
+<style>
+    .upload-container {
+        max-width: 900px;
+        margin: 0 auto;
+    }
+    
+    .stat-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 25px;
+        border-radius: 15px;
+        text-align: center;
+        box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+        transition: transform 0.3s ease;
+    }
+    
+    .stat-card:hover {
+        transform: translateY(-5px);
+    }
+    
+    .stat-card.crew-a {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+    
+    .stat-card.crew-b {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    }
+    
+    .stat-card.crew-c {
+        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+    }
+    
+    .stat-card.crew-d {
+        background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+    }
+    
+    .stat-card.total {
+        background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+    }
+    
+    .stat-number {
+        font-size: 3rem;
+        font-weight: bold;
+        margin: 0;
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+    }
+    
+    .stat-label {
+        font-size: 1.1rem;
+        margin-top: 5px;
+        opacity: 0.95;
+    }
+    
+    .upload-section {
+        background: white;
+        border-radius: 20px;
+        box-shadow: 0 15px 35px rgba(0,0,0,0.1);
+        padding: 40px;
+        margin: 30px 0;
+    }
+    
+    .template-download {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 30px;
+        border-radius: 15px;
+        text-align: center;
+        margin-bottom: 30px;
+    }
+    
+    .template-download h4 {
+        margin-bottom: 15px;
+    }
+    
+    .btn-download {
+        background: white;
+        color: #667eea;
+        border: none;
+        padding: 12px 30px;
+        border-radius: 30px;
+        font-weight: bold;
+        transition: all 0.3s ease;
+    }
+    
+    .btn-download:hover {
+        transform: scale(1.05);
+        box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+    }
+    
+    .upload-dropzone {
+        border: 3px dashed #dee2e6;
+        border-radius: 20px;
+        padding: 60px 40px;
+        text-align: center;
+        background: #f8f9fa;
+        transition: all 0.3s ease;
+        cursor: pointer;
+    }
+    
+    .upload-dropzone:hover {
+        border-color: #667eea;
+        background: #f0f2ff;
+    }
+    
+    .upload-dropzone.dragover {
+        background: #e7e9ff;
+        border-color: #667eea;
+        border-style: solid;
+        transform: scale(1.02);
+    }
+    
+    .file-selected {
+        background: linear-gradient(135deg, #84fab0 0%, #8fd3f4 100%);
+        color: white;
+        padding: 40px;
+        border-radius: 20px;
+        text-align: center;
+    }
+    
+    .btn-upload {
+        background: white;
+        color: #084c41;
+        border: none;
+        padding: 15px 50px;
+        border-radius: 30px;
+        font-size: 1.2rem;
+        font-weight: bold;
+        transition: all 0.3s ease;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+    }
+    
+    .btn-upload:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+    }
+    
+    .results-section {
+        background: #f8f9fa;
+        border-radius: 20px;
+        padding: 30px;
+        margin-top: 40px;
+    }
+    
+    .before-after-table {
+        background: white;
+        border-radius: 15px;
+        overflow: hidden;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+    }
+    
+    .before-after-table th {
+        background: #667eea;
+        color: white;
+        font-weight: 600;
+        padding: 15px;
+    }
+    
+    .before-after-table td {
+        padding: 12px 15px;
+    }
+    
+    .change-positive {
+        color: #28a745;
+        font-weight: bold;
+    }
+    
+    .change-negative {
+        color: #dc3545;
+        font-weight: bold;
+    }
+    
+    .change-neutral {
+        color: #6c757d;
+    }
+    
+    .icon-large {
+        font-size: 4rem;
+        color: #667eea;
+        margin-bottom: 20px;
+    }
+</style>
+
+<div class="container-fluid">
+    <!-- Page Header -->
+    <div class="row mb-4">
+        <div class="col">
+            <h1 class="display-5">Employee Data Upload</h1>
+            <p class="lead text-muted">Update your workforce information seamlessly</p>
+        </div>
+    </div>
+    
+    <!-- Current Statistics -->
+    <div class="row mb-5">
+        <div class="col">
+            <h4 class="mb-3">Current Staffing Summary</h4>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-md-2 mb-3">
+            <div class="stat-card total">
+                <div class="stat-number">{{ total_employees }}</div>
+                <div class="stat-label">Total Staff</div>
+            </div>
+        </div>
+        <div class="col-md-2 mb-3">
+            <div class="stat-card crew-a">
+                <div class="stat-number">{{ crew_distribution.A }}</div>
+                <div class="stat-label">Crew A</div>
+            </div>
+        </div>
+        <div class="col-md-2 mb-3">
+            <div class="stat-card crew-b">
+                <div class="stat-number">{{ crew_distribution.B }}</div>
+                <div class="stat-label">Crew B</div>
+            </div>
+        </div>
+        <div class="col-md-2 mb-3">
+            <div class="stat-card crew-c">
+                <div class="stat-number">{{ crew_distribution.C }}</div>
+                <div class="stat-label">Crew C</div>
+            </div>
+        </div>
+        <div class="col-md-2 mb-3">
+            <div class="stat-card crew-d">
+                <div class="stat-number">{{ crew_distribution.D }}</div>
+                <div class="stat-label">Crew D</div>
+            </div>
+        </div>
+        {% if crew_distribution.Unassigned > 0 %}
+        <div class="col-md-2 mb-3">
+            <div class="stat-card" style="background: linear-gradient(135deg, #868686 0%, #b8b8b8 100%);">
+                <div class="stat-number">{{ crew_distribution.Unassigned }}</div>
+                <div class="stat-label">Unassigned</div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+    
+    <!-- Upload Section -->
+    <div class="upload-container">
+        <div class="upload-section">
+            <!-- Template Download -->
+            <div class="template-download">
+                <i class="bi bi-file-earmark-excel" style="font-size: 3rem;"></i>
+                <h4>Step 1: Get the Template</h4>
+                <p>Download our Excel template to ensure your data is formatted correctly</p>
+                <a href="{{ url_for('employee_import.download_employee_template') }}" class="btn btn-download">
+                    <i class="bi bi-download"></i> Download Template
+                </a>
+            </div>
+            
+            <!-- Upload Form -->
+            <form id="uploadForm" method="POST" enctype="multipart/form-data">
+                <div class="upload-dropzone" id="uploadZone">
+                    <i class="bi bi-cloud-arrow-up icon-large"></i>
+                    <h3>Step 2: Upload Your File</h3>
+                    <p class="text-muted mb-4">Drag and drop your Excel file here or click to browse</p>
+                    <button type="button" class="btn btn-outline-primary btn-lg">
+                        <i class="bi bi-folder-open"></i> Select File
+                    </button>
+                    <input type="file" id="fileInput" name="file" accept=".xlsx,.xls" style="display: none;">
+                </div>
+                
+                <!-- File Selected -->
+                <div id="fileSelected" class="file-selected" style="display: none;">
+                    <i class="bi bi-check-circle" style="font-size: 3rem;"></i>
+                    <h3 class="mt-3">File Ready!</h3>
+                    <p class="mb-1" style="font-size: 1.2rem;" id="fileName"></p>
+                    <p class="mb-4" id="fileSize"></p>
+                    <button type="submit" class="btn btn-upload">
+                        <i class="bi bi-upload"></i> Upload & Process
+                    </button>
+                    <button type="button" class="btn btn-link text-white" onclick="resetUpload()">
+                        Select Different File
+                    </button>
+                </div>
+                
+                <input type="hidden" name="upload_type" value="employee">
+                <input type="hidden" id="beforeData" name="before_data" value="{{ crew_distribution | tojson | e }}">
+            </form>
+        </div>
+        
+        <!-- Results Section (Hidden by default) -->
+        <div id="resultsSection" class="results-section" style="display: none;">
+            <h4 class="mb-4"><i class="bi bi-bar-chart"></i> Upload Results</h4>
+            <div class="before-after-table">
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>Crew</th>
+                            <th>Before</th>
+                            <th>After</th>
+                            <th>Change</th>
+                        </tr>
+                    </thead>
+                    <tbody id="resultsTableBody">
+                        <!-- Populated by JavaScript -->
+                    </tbody>
+                    <tfoot>
+                        <tr class="table-light">
+                            <th>Total</th>
+                            <th id="totalBefore">-</th>
+                            <th id="totalAfter">-</th>
+                            <th id="totalChange">-</th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+            
+            <div class="text-center mt-4">
+                <button type="button" class="btn btn-primary btn-lg" onclick="location.reload()">
+                    <i class="bi bi-arrow-repeat"></i> Upload Another File
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const uploadZone = document.getElementById('uploadZone');
+    const fileInput = document.getElementById('fileInput');
+    const fileSelected = document.getElementById('fileSelected');
+    const fileName = document.getElementById('fileName');
+    const fileSize = document.getElementById('fileSize');
+    const resultsSection = document.getElementById('resultsSection');
+    const beforeData = JSON.parse(document.getElementById('beforeData').value);
+    
+    // Click to upload
+    uploadZone.addEventListener('click', () => {
+        fileInput.click();
+    });
+    
+    // Drag and drop
+    uploadZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        uploadZone.classList.add('dragover');
+    });
+    
+    uploadZone.addEventListener('dragleave', () => {
+        uploadZone.classList.remove('dragover');
+    });
+    
+    uploadZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        uploadZone.classList.remove('dragover');
+        
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+            selectFile(files[0]);
+        }
+    });
+    
+    // File selection
+    fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+            selectFile(e.target.files[0]);
+        }
+    });
+    
+    function selectFile(file) {
+        if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
+            alert('Please select an Excel file (.xlsx or .xls)');
+            return;
+        }
+        
+        fileName.textContent = file.name;
+        fileSize.textContent = `Size: ${(file.size / 1024).toFixed(1)} KB`;
+        
+        uploadZone.style.display = 'none';
+        fileSelected.style.display = 'block';
+    }
+    
+    function resetUpload() {
+        fileInput.value = '';
+        uploadZone.style.display = 'block';
+        fileSelected.style.display = 'none';
+    }
+    
+    // Handle form submission
+    document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const submitBtn = e.target.querySelector('button[type="submit"]');
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Processing...';
+        
+        try {
+            const formData = new FormData(e.target);
+            const response = await fetch('{{ url_for("employee_import.upload_employees_post") }}', {
+                method: 'POST',
+                body: formData
+            });
+            
+            if (response.redirected) {
+                // Get the new crew distribution after upload
+                const newResponse = await fetch('/api/crew-distribution');
+                const afterData = await newResponse.json();
+                
+                // Show results
+                showResults(beforeData, afterData);
+            } else {
+                // Handle error
+                window.location.href = response.url;
+            }
+        } catch (error) {
+            alert('Error uploading file: ' + error.message);
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<i class="bi bi-upload"></i> Upload & Process';
+        }
+    });
+    
+    function showResults(before, after) {
+        uploadZone.parentElement.style.display = 'none';
+        resultsSection.style.display = 'block';
+        
+        const tbody = document.getElementById('resultsTableBody');
+        tbody.innerHTML = '';
+        
+        let totalBefore = 0;
+        let totalAfter = 0;
+        
+        // Show results for each crew
+        ['A', 'B', 'C', 'D'].forEach(crew => {
+            const beforeCount = before[crew] || 0;
+            const afterCount = after[crew] || 0;
+            const change = afterCount - beforeCount;
+            
+            totalBefore += beforeCount;
+            totalAfter += afterCount;
+            
+            const row = tbody.insertRow();
+            row.innerHTML = `
+                <td><strong>Crew ${crew}</strong></td>
+                <td>${beforeCount}</td>
+                <td>${afterCount}</td>
+                <td class="${change > 0 ? 'change-positive' : change < 0 ? 'change-negative' : 'change-neutral'}">
+                    ${change > 0 ? '+' : ''}${change}
+                </td>
+            `;
+        });
+        
+        // Update totals
+        document.getElementById('totalBefore').textContent = totalBefore;
+        document.getElementById('totalAfter').textContent = totalAfter;
+        const totalChange = totalAfter - totalBefore;
+        document.getElementById('totalChange').innerHTML = `
+            <span class="${totalChange > 0 ? 'change-positive' : totalChange < 0 ? 'change-negative' : 'change-neutral'}">
+                ${totalChange > 0 ? '+' : ''}${totalChange}
+            </span>
+        `;
+    }
+</script>
+{% endblock %}
