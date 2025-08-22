@@ -2,7 +2,7 @@
 """
 Employee Import Blueprint - Complete Fixed Version
 All template variables provided, all routes implemented, all edge cases handled
-Fixed OvertimeHistory field names to match the model
+Fixed: Template name and parameter mismatches
 """
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, send_file, current_app
@@ -88,7 +88,11 @@ def get_employee_stats():
         }
     except Exception as e:
         logger.error(f"Error getting employee stats: {e}")
-        db.session.rollback()
+        # Always rollback on error
+        try:
+            db.session.rollback()
+        except:
+            pass
         return {
             'total_employees': 0,
             'employees_without_ot': 0,
@@ -111,7 +115,11 @@ def get_recent_uploads(limit=5, upload_type=None):
         return uploads
     except Exception as e:
         logger.error(f"Error getting recent uploads: {e}")
-        db.session.rollback()
+        # Always rollback on error
+        try:
+            db.session.rollback()
+        except:
+            pass
         return []
 
 def get_employees_without_accounts():
@@ -124,7 +132,11 @@ def get_employees_without_accounts():
         return count
     except Exception as e:
         logger.error(f"Error counting employees without accounts: {e}")
-        db.session.rollback()
+        # Always rollback on error
+        try:
+            db.session.rollback()
+        except:
+            pass
         return 0
 
 def get_overtime_stats():
@@ -150,7 +162,11 @@ def get_overtime_stats():
         }
     except Exception as e:
         logger.error(f"Error getting overtime stats: {e}")
-        db.session.rollback()
+        # Always rollback on error
+        try:
+            db.session.rollback()
+        except:
+            pass
         return {
             'total_ot_hours': 0,
             'employees_with_ot': 0,
@@ -201,6 +217,7 @@ def upload_employees():
         # Check if account creation is available
         account_creation_available = True  # Set based on your business logic
         
+        # FIXED: Use the correct template name
         return render_template('upload_employees_enhanced.html',
                              recent_uploads=recent_uploads,
                              stats=stats,
@@ -243,10 +260,12 @@ def upload_employees_post():
         filename = secure_filename(file.filename)
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         filename = f"{timestamp}_{filename}"
-        filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
         
         # Ensure upload folder exists
-        os.makedirs(current_app.config['UPLOAD_FOLDER'], exist_ok=True)
+        upload_folder = current_app.config.get('UPLOAD_FOLDER', 'upload_files')
+        os.makedirs(upload_folder, exist_ok=True)
+        
+        filepath = os.path.join(upload_folder, filename)
         
         # Save the file
         file.save(filepath)
@@ -396,7 +415,7 @@ def upload_history():
 @login_required
 @supervisor_required
 def validate_upload():
-    """Validate uploaded Excel file"""
+    """Validate uploaded Excel file - FIXED parameter handling"""
     try:
         if 'file' not in request.files:
             return jsonify({'success': False, 'error': 'No file provided'})
@@ -408,13 +427,18 @@ def validate_upload():
         if not file.filename.endswith(('.xlsx', '.xls')):
             return jsonify({'success': False, 'error': 'Invalid file type. Please upload Excel files only.'})
         
-        upload_type = request.form.get('uploadType', 'employee')
+        # FIXED: Accept both 'type' and 'uploadType' for compatibility
+        upload_type = request.form.get('uploadType') or request.form.get('type', 'employee')
         
         # Save current position for re-reading
         file.seek(0)
         
-        # Read the Excel file
-        df = pd.read_excel(file)
+        try:
+            # Read the Excel file
+            df = pd.read_excel(file)
+        except Exception as e:
+            logger.error(f"Error reading Excel file: {e}")
+            return jsonify({'success': False, 'error': f'Error reading Excel file: {str(e)}'})
         
         # Reset file position for potential re-use
         file.seek(0)
@@ -429,11 +453,15 @@ def validate_upload():
         else:
             result = {'success': False, 'error': 'Invalid upload type'}
         
+        # Ensure result has all expected fields for the template
+        if 'row_count' not in result and 'total_rows' in result:
+            result['row_count'] = result['total_rows']
+        
         return jsonify(result)
         
     except Exception as e:
         logger.error(f"Validation error: {str(e)}", exc_info=True)
-        return jsonify({'success': False, 'error': f'Error reading file: {str(e)}'})
+        return jsonify({'success': False, 'error': f'Validation error: {str(e)}'})
 
 @employee_import_bp.route('/process-upload', methods=['POST'])
 @login_required
