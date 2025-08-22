@@ -1,221 +1,145 @@
-# fix_all_database_issues.py
+#!/usr/bin/env python3
 """
-Complete fix for all database schema issues in Workforce Scheduler
-This script adds ALL missing columns based on the actual errors from the logs
+Database Schema Fix Script
+Fixes missing columns in the database that are causing errors
+Run this script to add missing columns to existing tables
 """
 
-import os
-import sys
-from datetime import datetime
-from sqlalchemy import create_engine, text, inspect
-from sqlalchemy.exc import ProgrammingError, OperationalError
+from app import app, db
+from sqlalchemy import text, inspect
+from sqlalchemy.exc import ProgrammingError
 import logging
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def get_database_url():
-    """Get and fix database URL"""
-    database_url = os.environ.get('DATABASE_URL')
-    if not database_url:
-        logger.error("No DATABASE_URL environment variable found!")
-        logger.info("Set it with: export DATABASE_URL='your-database-url'")
-        sys.exit(1)
-    
-    # Fix postgres:// to postgresql://
-    if database_url.startswith('postgres://'):
-        database_url = database_url.replace('postgres://', 'postgresql://', 1)
-    
-    return database_url
-
-def check_and_add_column(conn, table_name, column_name, column_definition):
-    """Check if column exists and add if missing"""
+def check_and_add_column(table_name, column_name, column_type, default_value=None):
+    """Check if a column exists and add it if missing"""
     try:
         # Check if column exists
-        result = conn.execute(text(f"""
-            SELECT column_name 
-            FROM information_schema.columns 
-            WHERE table_name = :table_name AND column_name = :column_name
-        """), {"table_name": table_name, "column_name": column_name})
+        inspector = inspect(db.engine)
+        columns = [col['name'] for col in inspector.get_columns(table_name)]
         
-        if result.fetchone() is None:
-            # Column doesn't exist, add it
-            conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_definition}"))
-            conn.commit()
-            logger.info(f"✓ Added {table_name}.{column_name}")
+        if column_name not in columns:
+            logger.info(f"Adding missing column {column_name} to {table_name}")
+            
+            # Build the ALTER TABLE statement
+            alter_stmt = f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}"
+            if default_value is not None:
+                alter_stmt += f" DEFAULT {default_value}"
+            
+            # Execute the statement
+            with db.engine.connect() as conn:
+                conn.execute(text(alter_stmt))
+                conn.commit()
+            
+            logger.info(f"✓ Successfully added {column_name} to {table_name}")
             return True
         else:
-            logger.info(f"  {table_name}.{column_name} already exists")
+            logger.info(f"✓ Column {column_name} already exists in {table_name}")
             return False
+            
     except Exception as e:
-        logger.error(f"✗ Failed to add {table_name}.{column_name}: {str(e)}")
-        conn.rollback()
+        logger.error(f"Error adding column {column_name} to {table_name}: {e}")
         return False
 
-def main():
-    """Run all database fixes"""
-    logger.info("Starting Complete Database Fix...")
-    logger.info("="*60)
-    
-    # Get database connection
-    database_url = get_database_url()
-    engine = create_engine(database_url)
-    
-    fixes_applied = 0
-    errors = 0
-    
-    with engine.connect() as conn:
-        logger.info("\n1. Fixing position table...")
-        if check_and_add_column(conn, "position", "requires_certification", "BOOLEAN DEFAULT FALSE"):
-            fixes_applied += 1
-        if check_and_add_column(conn, "position", "min_coverage", "INTEGER DEFAULT 0"):
-            fixes_applied += 1
-        if check_and_add_column(conn, "position", "department", "VARCHAR(100)"):
-            fixes_applied += 1
+def fix_database_schema():
+    """Fix all missing columns in the database"""
+    with app.app_context():
+        logger.info("Starting database schema fix...")
         
-        logger.info("\n2. Fixing time_off_request table...")
-        if check_and_add_column(conn, "time_off_request", "type", "VARCHAR(50) DEFAULT 'vacation'"):
-            fixes_applied += 1
-        if check_and_add_column(conn, "time_off_request", "request_type", "VARCHAR(50) DEFAULT 'vacation'"):
-            fixes_applied += 1
-        if check_and_add_column(conn, "time_off_request", "created_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"):
-            fixes_applied += 1
-        if check_and_add_column(conn, "time_off_request", "approved_by_id", "INTEGER REFERENCES employee(id)"):
-            fixes_applied += 1
-        if check_and_add_column(conn, "time_off_request", "approved_date", "TIMESTAMP"):
-            fixes_applied += 1
+        fixes_applied = []
         
-        logger.info("\n3. Fixing shift_swap_request table...")
-        # First check if table exists
-        table_check = conn.execute(text("""
-            SELECT EXISTS (
-                SELECT FROM information_schema.tables 
-                WHERE table_schema = 'public' 
-                AND table_name = 'shift_swap_request'
-            )
-        """))
+        # Fix 1: Add is_training column to schedule table
+        if check_and_add_column('schedule', 'is_training', 'BOOLEAN', 'FALSE'):
+            fixes_applied.append("Added is_training to schedule table")
         
-        if not table_check.scalar():
-            # Create the table
-            logger.info("  Creating shift_swap_request table...")
-            try:
-                conn.execute(text("""
-                    CREATE TABLE shift_swap_request (
-                        id SERIAL PRIMARY KEY,
-                        requester_id INTEGER REFERENCES employee(id),
-                        target_employee_id INTEGER REFERENCES employee(id),
-                        requester_date DATE,
-                        requester_shift VARCHAR(20),
-                        target_date DATE,
-                        target_shift VARCHAR(20),
-                        status VARCHAR(20) DEFAULT 'pending',
-                        reason TEXT,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        processed_at TIMESTAMP
-                    )
-                """))
-                conn.commit()
-                logger.info("✓ Created shift_swap_request table")
-                fixes_applied += 1
-            except Exception as e:
-                logger.error(f"✗ Failed to create shift_swap_request table: {str(e)}")
-                conn.rollback()
-                errors += 1
-        else:
-            # Add missing columns
-            if check_and_add_column(conn, "shift_swap_request", "requester_date", "DATE"):
-                fixes_applied += 1
-            if check_and_add_column(conn, "shift_swap_request", "requester_shift", "VARCHAR(20)"):
-                fixes_applied += 1
-            if check_and_add_column(conn, "shift_swap_request", "target_date", "DATE"):
-                fixes_applied += 1
-            if check_and_add_column(conn, "shift_swap_request", "target_shift", "VARCHAR(20)"):
-                fixes_applied += 1
-            if check_and_add_column(conn, "shift_swap_request", "target_employee_id", "INTEGER REFERENCES employee(id)"):
-                fixes_applied += 1
+        # Fix 2: Add type column to time_off_request table (alias for request_type)
+        # First check if request_type exists
+        inspector = inspect(db.engine)
+        time_off_columns = [col['name'] for col in inspector.get_columns('time_off_request')]
         
-        logger.info("\n4. Fixing employee table...")
-        if check_and_add_column(conn, "employee", "is_active", "BOOLEAN DEFAULT TRUE"):
-            fixes_applied += 1
-        if check_and_add_column(conn, "employee", "is_admin", "BOOLEAN DEFAULT FALSE"):
-            fixes_applied += 1
-        if check_and_add_column(conn, "employee", "created_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"):
-            fixes_applied += 1
-        if check_and_add_column(conn, "employee", "updated_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"):
-            fixes_applied += 1
-        if check_and_add_column(conn, "employee", "max_hours_per_week", "INTEGER DEFAULT 40"):
-            fixes_applied += 1
+        if 'type' not in time_off_columns:
+            if 'request_type' in time_off_columns:
+                # Create a computed column or view that aliases request_type as type
+                logger.info("Creating type column as alias for request_type")
+                try:
+                    with db.engine.connect() as conn:
+                        # Add type column that mirrors request_type
+                        conn.execute(text("""
+                            ALTER TABLE time_off_request 
+                            ADD COLUMN type VARCHAR(50);
+                        """))
+                        # Copy existing data
+                        conn.execute(text("""
+                            UPDATE time_off_request 
+                            SET type = request_type 
+                            WHERE type IS NULL;
+                        """))
+                        conn.commit()
+                    fixes_applied.append("Added type column to time_off_request table")
+                except Exception as e:
+                    logger.warning(f"Could not add type column: {e}")
+            else:
+                # Add both columns
+                check_and_add_column('time_off_request', 'type', 'VARCHAR(50)', "'vacation'")
+                check_and_add_column('time_off_request', 'request_type', 'VARCHAR(50)', "'vacation'")
+                fixes_applied.append("Added type and request_type columns to time_off_request table")
         
-        logger.info("\n5. Fixing coverage and schedule related tables...")
-        # Check if coverage_gap table exists
-        table_check = conn.execute(text("""
-            SELECT EXISTS (
-                SELECT FROM information_schema.tables 
-                WHERE table_schema = 'public' 
-                AND table_name = 'coverage_gap'
-            )
-        """))
-        
-        if not table_check.scalar():
-            try:
-                conn.execute(text("""
-                    CREATE TABLE coverage_gap (
-                        id SERIAL PRIMARY KEY,
-                        date DATE NOT NULL,
-                        position_id INTEGER REFERENCES position(id),
-                        shift VARCHAR(20),
-                        required_count INTEGER DEFAULT 1,
-                        scheduled_count INTEGER DEFAULT 0,
-                        is_filled BOOLEAN DEFAULT FALSE,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                    )
-                """))
-                conn.commit()
-                logger.info("✓ Created coverage_gap table")
-                fixes_applied += 1
-            except Exception as e:
-                logger.error(f"✗ Failed to create coverage_gap table: {str(e)}")
-                conn.rollback()
-                errors += 1
-        
-        logger.info("\n6. Creating indexes for better performance...")
-        indexes = [
-            ("idx_employee_email", "employee(email)"),
-            ("idx_employee_crew", "employee(crew)"),
-            ("idx_time_off_status", "time_off_request(status)"),
-            ("idx_shift_swap_status", "shift_swap_request(status)"),
-            ("idx_position_name", "position(name)")
+        # Fix 3: Ensure all required columns exist in overtime_history
+        overtime_columns = [
+            ('overtime_hours', 'NUMERIC', '0'),
+            ('hours', 'NUMERIC', '0'),
+            ('regular_hours', 'NUMERIC', '40'),
+            ('total_hours', 'NUMERIC', '40'),
+            ('week_start_date', 'DATE', 'NULL'),
+            ('is_current', 'BOOLEAN', 'FALSE')
         ]
         
-        for index_name, index_definition in indexes:
-            try:
-                conn.execute(text(f"CREATE INDEX IF NOT EXISTS {index_name} ON {index_definition}"))
-                conn.commit()
-                logger.info(f"✓ Created index {index_name}")
-            except Exception as e:
-                logger.warning(f"  Could not create index {index_name}: {str(e)}")
-                conn.rollback()
-    
-    # Summary
-    logger.info("\n" + "="*60)
-    logger.info("SUMMARY")
-    logger.info("="*60)
-    logger.info(f"✓ Fixes applied: {fixes_applied}")
-    if errors > 0:
-        logger.error(f"✗ Errors: {errors}")
-    logger.info("="*60)
-    
-    if errors == 0:
-        logger.info("\n✓ All database fixes completed successfully!")
-        logger.info("\nNext steps:")
-        logger.info("1. Restart your Flask application")
-        logger.info("2. Try accessing /supervisor/coverage-needs again")
-        logger.info("3. Upload employee data at /upload-employees")
-    else:
-        logger.error("\n✗ Some fixes failed. Check the errors above.")
-    
-    return errors == 0
+        for col_name, col_type, default in overtime_columns:
+            if check_and_add_column('overtime_history', col_name, col_type, default):
+                fixes_applied.append(f"Added {col_name} to overtime_history table")
+        
+        # Fix 4: Ensure FileUpload table has all required columns
+        file_upload_columns = [
+            ('total_records', 'INTEGER', '0'),
+            ('successful_records', 'INTEGER', '0'),
+            ('failed_records', 'INTEGER', '0'),
+            ('error_details', 'JSON', 'NULL')
+        ]
+        
+        for col_name, col_type, default in file_upload_columns:
+            if check_and_add_column('file_upload', col_name, col_type, default):
+                fixes_applied.append(f"Added {col_name} to file_upload table")
+        
+        # Fix 5: Add any other missing columns that might be needed
+        employee_columns = [
+            ('department', 'VARCHAR(100)', 'NULL'),
+            ('position_name', 'VARCHAR(100)', 'NULL'),
+            ('hire_date', 'DATE', 'NULL'),
+            ('is_active', 'BOOLEAN', 'TRUE'),
+            ('vacation_days', 'NUMERIC', '0'),
+            ('sick_days', 'NUMERIC', '0'),
+            ('personal_days', 'NUMERIC', '0')
+        ]
+        
+        for col_name, col_type, default in employee_columns:
+            if check_and_add_column('employee', col_name, col_type, default):
+                fixes_applied.append(f"Added {col_name} to employee table")
+        
+        # Summary
+        logger.info("\n" + "="*50)
+        logger.info("DATABASE SCHEMA FIX COMPLETE")
+        logger.info("="*50)
+        
+        if fixes_applied:
+            logger.info(f"Applied {len(fixes_applied)} fixes:")
+            for fix in fixes_applied:
+                logger.info(f"  - {fix}")
+        else:
+            logger.info("No fixes needed - all columns already exist!")
+        
+        logger.info("\nDatabase schema is now up to date!")
 
 if __name__ == "__main__":
-    success = main()
-    sys.exit(0 if success else 1)
+    fix_database_schema()
