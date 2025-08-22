@@ -203,7 +203,7 @@ def augment_file_upload(upload):
 @login_required
 @supervisor_required
 def upload_employees():
-    """Clean, simple upload employees page"""
+    """Professional upload employees page"""
     try:
         # Get all statistics
         stats = get_employee_stats()
@@ -211,8 +211,8 @@ def upload_employees():
         # Prepare crew distribution for the template
         crew_distribution = stats['crews']
         
-        # Use the clean template
-        return render_template('upload_employees_clean.html',
+        # Use the professional template
+        return render_template('upload_employees_professional.html',
                              stats=stats,
                              crew_distribution=crew_distribution,
                              total_employees=stats['total_employees'])
@@ -221,6 +221,18 @@ def upload_employees():
         logger.error(f"Error in upload_employees route: {e}")
         flash('An error occurred while loading the page. Please try again.', 'danger')
         return redirect(url_for('supervisor.dashboard'))
+
+@employee_import_bp.route('/api/crew-distribution')
+@login_required
+@supervisor_required
+def get_crew_distribution_api():
+    """API endpoint to get current crew distribution"""
+    try:
+        stats = get_employee_stats()
+        return jsonify(stats['crews'])
+    except Exception as e:
+        logger.error(f"Error getting crew distribution: {e}")
+        return jsonify({'error': 'Failed to get crew distribution'}), 500
 
 @employee_import_bp.route('/upload-employees', methods=['POST'])
 @login_required
@@ -1171,17 +1183,28 @@ def process_bulk_update(df, file_upload=None):
 @login_required
 @supervisor_required
 def download_employee_template():
-    """Download employee upload template"""
+    """Download employee upload template - Fixed for actual format"""
     try:
-        # Create sample template data
+        # Create template data matching the expected format
         template_data = {
-            'Employee ID': ['EMP001', 'EMP002', 'EMP003'],
-            'First Name': ['John', 'Jane', 'Bob'],
-            'Last Name': ['Doe', 'Smith', 'Johnson'],
-            'Email': ['john.doe@company.com', 'jane.smith@company.com', 'bob.johnson@company.com'],
-            'Crew': ['A', 'B', 'C'],
-            'Department': ['Production', 'Production', 'Maintenance'],
-            'Position': ['Operator', 'Supervisor', 'Technician']
+            'Last Name': ['Smith', 'Johnson', 'Williams'],
+            'First Name': ['John', 'Mary', 'Robert'],
+            'Employee ID': ['10001', '10002', '10003'],
+            'Date of Hire': ['3/15/2018', '7/22/2015', '11/10/2020'],
+            'Total Overtime (Last 3 Months)': [45, 62, 38],
+            'Crew Assigned': ['A', 'B', 'C'],
+            'Current Job Position': ['Operator', 'Senior Operator', 'Maintenance Technician'],
+            # Add example position columns
+            'Operator': ['current', 'yes', 'yes'],
+            'Senior Operator': ['yes', 'current', ''],
+            'Lead Operator': ['yes', 'yes', ''],
+            'Maintenance Technician': ['', '', 'current'],
+            'Electrician': ['', '', 'yes'],
+            'Mechanic': ['', '', 'yes'],
+            'Control Room Operator': ['yes', '', ''],
+            'Shift Supervisor': ['', 'yes', ''],
+            'Process Engineer': ['', 'yes', ''],
+            'Safety Coordinator': ['', '', '']
         }
         
         df = pd.DataFrame(template_data)
@@ -1200,22 +1223,81 @@ def download_employee_template():
                 'bold': True,
                 'bg_color': '#4472C4',
                 'font_color': 'white',
-                'border': 1
+                'border': 1,
+                'text_wrap': True,
+                'valign': 'vcenter'
             })
+            
+            # Data validation format
+            valid_format = workbook.add_format({'bg_color': '#E8F5E9'})
             
             # Write headers with formatting
             for col_num, value in enumerate(df.columns.values):
                 worksheet.write(0, col_num, value, header_format)
             
-            # Adjust column widths
-            worksheet.set_column('A:A', 15)  # Employee ID
-            worksheet.set_column('B:C', 12)  # Names
-            worksheet.set_column('D:D', 25)  # Email
-            worksheet.set_column('E:G', 15)  # Other fields
+            # Set column widths
+            worksheet.set_column('A:B', 15)  # Names
+            worksheet.set_column('C:C', 12)  # Employee ID
+            worksheet.set_column('D:D', 15)  # Date of Hire
+            worksheet.set_column('E:E', 20)  # Overtime
+            worksheet.set_column('F:F', 15)  # Crew
+            worksheet.set_column('G:G', 20)  # Current Position
+            worksheet.set_column('H:Q', 18)  # Position columns
             
-            # Add instructions as comments
-            worksheet.write_comment('A1', 'Unique identifier for each employee')
-            worksheet.write_comment('E1', 'Crew must be A, B, C, or D')
+            # Add row height for header
+            worksheet.set_row(0, 30)
+            
+            # Add instructions
+            worksheet.write_comment('A1', 'Employee last name')
+            worksheet.write_comment('B1', 'Employee first name')
+            worksheet.write_comment('C1', 'Unique employee identifier')
+            worksheet.write_comment('D1', 'Format: M/D/YYYY')
+            worksheet.write_comment('E1', 'Total overtime hours for the last 3 months')
+            worksheet.write_comment('F1', 'Must be A, B, C, or D')
+            worksheet.write_comment('G1', 'Employee\'s current job position')
+            worksheet.write_comment('H1', 'Mark "current" for current position, "yes" for qualified positions, leave blank if not qualified')
+            
+            # Add data validation for crew
+            worksheet.data_validation('F2:F1000', {
+                'validate': 'list',
+                'source': ['A', 'B', 'C', 'D'],
+                'error_title': 'Invalid Crew',
+                'error_message': 'Please select A, B, C, or D'
+            })
+            
+            # Add instructions sheet
+            instruction_sheet = workbook.add_worksheet('Instructions')
+            instructions = [
+                ['Employee Upload Template Instructions'],
+                [''],
+                ['Required Fields:'],
+                ['1. Last Name - Employee\'s last name'],
+                ['2. First Name - Employee\'s first name'],
+                ['3. Employee ID - Unique identifier for each employee'],
+                ['4. Date of Hire - Employment start date (M/D/YYYY format)'],
+                ['5. Total Overtime (Last 3 Months) - Sum of overtime hours'],
+                ['6. Crew Assigned - Must be A, B, C, or D'],
+                ['7. Current Job Position - Employee\'s current role'],
+                [''],
+                ['Position Columns:'],
+                ['- After the required fields, add columns for each position in your department'],
+                ['- Mark with "current" for the employee\'s current position'],
+                ['- Mark with "yes" for positions the employee is qualified for'],
+                ['- Leave blank if the employee is not qualified for that position'],
+                [''],
+                ['Notes:'],
+                ['- The system will automatically update existing employees or add new ones'],
+                ['- No data will be deleted during the upload process'],
+                ['- Position columns can vary by department - add as many as needed']
+            ]
+            
+            for row_num, instruction in enumerate(instructions):
+                instruction_sheet.write(row_num, 0, instruction[0])
+            
+            # Format instruction sheet
+            instruction_sheet.set_column('A:A', 80)
+            title_format = workbook.add_format({'bold': True, 'font_size': 14})
+            instruction_sheet.write(0, 0, instructions[0][0], title_format)
         
         output.seek(0)
         
