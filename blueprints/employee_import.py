@@ -1,6 +1,6 @@
 # blueprints/employee_import.py
 """
-Employee Import Blueprint - Complete, thoroughly checked implementation
+Employee Import Blueprint - Complete Fixed Version
 All template variables provided, all routes implemented, all edge cases handled
 """
 
@@ -17,15 +17,30 @@ import re
 import random
 import string
 import logging
-
-# Import the decorator from utils
-from utils.decorators import supervisor_required
+from functools import wraps
 
 # Set up logging
 logger = logging.getLogger(__name__)
 
 # Create blueprint
 employee_import_bp = Blueprint('employee_import', __name__)
+
+# ==========================================
+# DECORATOR
+# ==========================================
+
+def supervisor_required(f):
+    """Decorator to require supervisor access"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated:
+            flash('Please log in to access this page.', 'warning')
+            return redirect(url_for('auth.login'))
+        if not current_user.is_supervisor:
+            flash('Access denied. Supervisors only.', 'danger')
+            return redirect(url_for('main.employee_dashboard'))
+        return f(*args, **kwargs)
+    return decorated_function
 
 # ==========================================
 # HELPER FUNCTIONS
@@ -184,7 +199,7 @@ def upload_employees():
         # Check if account creation is available
         account_creation_available = True  # Set based on your business logic
         
-        return render_template('upload_employees_enhanced.html',
+        return render_template('upload_employees.html',
                              recent_uploads=recent_uploads,
                              stats=stats,
                              crew_distribution=crew_distribution,
@@ -196,6 +211,117 @@ def upload_employees():
         logger.error(f"Error in upload_employees route: {e}")
         flash('An error occurred while loading the page. Please try again.', 'danger')
         return redirect(url_for('supervisor.dashboard'))
+
+@employee_import_bp.route('/upload-employees', methods=['POST'])
+@login_required
+@supervisor_required
+def upload_employees_post():
+    """Handle the actual file upload"""
+    try:
+        # Check if file was uploaded
+        if 'file' not in request.files:
+            flash('No file selected', 'error')
+            return redirect(request.url)
+        
+        file = request.files['file']
+        if file.filename == '':
+            flash('No file selected', 'error')
+            return redirect(request.url)
+        
+        # Check file extension
+        if not file.filename.endswith(('.xlsx', '.xls')):
+            flash('Invalid file type. Please upload an Excel file (.xlsx or .xls)', 'error')
+            return redirect(request.url)
+        
+        # Get form data
+        upload_type = request.form.get('upload_type', 'employee')
+        mode = request.form.get('mode', 'replace')
+        
+        # Save file temporarily
+        filename = secure_filename(file.filename)
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"{timestamp}_{filename}"
+        filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
+        
+        # Ensure upload folder exists
+        os.makedirs(current_app.config['UPLOAD_FOLDER'], exist_ok=True)
+        
+        # Save the file
+        file.save(filepath)
+        
+        # Create upload record
+        file_upload = FileUpload(
+            filename=filename,
+            upload_type=upload_type,
+            uploaded_by_id=current_user.id,
+            uploaded_at=datetime.utcnow(),
+            status='processing'
+        )
+        db.session.add(file_upload)
+        db.session.commit()
+        
+        try:
+            # Read the Excel file
+            df = pd.read_excel(filepath)
+            
+            # Process based on upload type
+            if upload_type == 'employee':
+                # Validate first
+                validation_result = validate_employee_data(df)
+                
+                if not validation_result.get('success'):
+                    file_upload.status = 'failed'
+                    file_upload.error_details = validation_result
+                    db.session.commit()
+                    
+                    flash('Validation failed. Please check the errors below:', 'error')
+                    for error in validation_result.get('errors', [])[:10]:
+                        flash(error, 'error')
+                    
+                    return redirect(url_for('employee_import.upload_employees'))
+                
+                # Process the data
+                result = process_employee_data(df, mode, file_upload)
+                
+                if result.get('success'):
+                    flash(f"Successfully uploaded {result.get('successful', 0)} employees!", 'success')
+                    if result.get('failed', 0) > 0:
+                        flash(f"{result.get('failed', 0)} records failed to process", 'warning')
+                else:
+                    flash(f"Upload failed: {result.get('error', 'Unknown error')}", 'error')
+                    
+            elif upload_type == 'overtime':
+                # Process overtime data
+                result = process_overtime_data(df, mode, file_upload)
+                
+                if result.get('success'):
+                    flash(f"Successfully uploaded overtime data for {result.get('successful', 0)} employees!", 'success')
+                else:
+                    flash(f"Upload failed: {result.get('error', 'Unknown error')}", 'error')
+                    
+            else:
+                flash('Invalid upload type', 'error')
+                
+        except Exception as e:
+            logger.error(f"Error processing file: {e}", exc_info=True)
+            file_upload.status = 'failed'
+            file_upload.error_details = {'error': str(e)}
+            db.session.commit()
+            flash(f'Error processing file: {str(e)}', 'error')
+            
+        finally:
+            # Clean up the temporary file
+            try:
+                os.remove(filepath)
+            except:
+                pass
+        
+        return redirect(url_for('employee_import.upload_employees'))
+        
+    except Exception as e:
+        logger.error(f"Error in upload_employees_post: {e}", exc_info=True)
+        flash('An unexpected error occurred. Please try again.', 'error')
+        return redirect(url_for('employee_import.upload_employees'))
 
 @employee_import_bp.route('/upload-overtime')
 @login_required
@@ -1148,6 +1274,9 @@ def export_current_employees():
         flash('Error exporting employee data. Please try again.', 'danger')
         return redirect(url_for('employee_import.upload_employees'))
 
+# Alias for the route
+export_employees = export_current_employees
+
 @employee_import_bp.route('/export-current-overtime')
 @login_required
 @supervisor_required
@@ -1302,6 +1431,50 @@ def delete_upload(upload_id):
         logger.error(f"Error deleting upload: {e}")
         db.session.rollback()
         return jsonify({'success': False, 'error': 'Failed to delete upload'}), 500
+
+# ==========================================
+# TEST ROUTE
+# ==========================================
+
+@employee_import_bp.route('/upload-test')
+@login_required
+@supervisor_required
+def upload_test():
+    """Simple test page to verify the blueprint is working"""
+    return f"""
+    <html>
+    <head>
+        <title>Upload Test</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; padding: 20px; }}
+            .info {{ background: #e3f2fd; padding: 10px; margin: 10px 0; border-radius: 4px; }}
+            .success {{ color: green; }}
+            .error {{ color: red; }}
+        </style>
+    </head>
+    <body>
+        <h1>Employee Import Blueprint Test</h1>
+        
+        <div class="info">
+            <h3>Blueprint Status: <span class="success">✓ Working</span></h3>
+            <p>User: {current_user.name}</p>
+            <p>Is Supervisor: {current_user.is_supervisor}</p>
+            <p>Upload Folder: {current_app.config.get('UPLOAD_FOLDER', 'Not configured')}</p>
+            <p>Upload Folder Exists: {os.path.exists(current_app.config.get('UPLOAD_FOLDER', ''))}</p>
+        </div>
+        
+        <h3>Quick Tests:</h3>
+        <ul>
+            <li><a href="/upload-employees">Upload Employees Page</a></li>
+            <li><a href="/upload-overtime">Upload Overtime Page</a></li>
+            <li><a href="/download-employee-template">Download Employee Template</a></li>
+            <li><a href="/download-overtime-template">Download Overtime Template</a></li>
+        </ul>
+        
+        <a href="/supervisor/dashboard">Back to Dashboard</a>
+    </body>
+    </html>
+    """
 
 # ==========================================
 # ERROR HANDLERS
