@@ -203,23 +203,19 @@ def augment_file_upload(upload):
 @login_required
 @supervisor_required
 def upload_employees():
-    """Simplified upload employees page"""
+    """Clean, simple upload employees page"""
     try:
         # Get all statistics
         stats = get_employee_stats()
-        recent_uploads = get_recent_uploads()
-        employees_without_accounts = get_employees_without_accounts()
         
         # Prepare crew distribution for the template
         crew_distribution = stats['crews']
         
-        # Use the simple template
-        return render_template('upload_employees_simple.html',
-                             recent_uploads=recent_uploads,
+        # Use the clean template
+        return render_template('upload_employees_clean.html',
                              stats=stats,
                              crew_distribution=crew_distribution,
-                             total_employees=stats['total_employees'],
-                             employees_without_accounts=employees_without_accounts)
+                             total_employees=stats['total_employees'])
     
     except Exception as e:
         logger.error(f"Error in upload_employees route: {e}")
