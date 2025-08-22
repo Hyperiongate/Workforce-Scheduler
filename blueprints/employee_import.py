@@ -2,6 +2,7 @@
 """
 Employee Import Blueprint - Complete Fixed Version
 All template variables provided, all routes implemented, all edge cases handled
+Fixed OvertimeHistory field names to match the model
 """
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, send_file, current_app
@@ -18,6 +19,7 @@ import random
 import string
 import logging
 from functools import wraps
+import traceback
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -55,7 +57,7 @@ def get_employee_stats():
         # Get employees without overtime data
         employees_without_ot = Employee.query.filter(
             Employee.is_supervisor == False,
-            ~Employee.overtime_history.any()
+            ~Employee.overtime_histories.any()
         ).count()
         
         # Get crew distribution
@@ -128,9 +130,9 @@ def get_employees_without_accounts():
 def get_overtime_stats():
     """Get overtime statistics with error handling"""
     try:
-        # Get total overtime hours
+        # Get total overtime hours using the correct field
         total_ot_hours = db.session.query(
-            func.sum(OvertimeHistory.hours_worked)
+            func.sum(OvertimeHistory.overtime_hours)
         ).scalar() or 0
         
         # Get count of employees with overtime
@@ -199,7 +201,7 @@ def upload_employees():
         # Check if account creation is available
         account_creation_available = True  # Set based on your business logic
         
-        return render_template('upload_employees.html',
+        return render_template('upload_employees_enhanced.html',
                              recent_uploads=recent_uploads,
                              stats=stats,
                              crew_distribution=crew_distribution,
@@ -749,9 +751,6 @@ def process_employee_data(df, mode='append', file_upload=None):
                         email=email,
                         crew=crew,
                         is_supervisor=False,
-                        vacation_days=10,
-                        sick_days=5,
-                        personal_days=3,
                         is_active=True
                     )
                     
@@ -803,7 +802,7 @@ def process_employee_data(df, mode='append', file_upload=None):
         }
 
 def process_overtime_data(df, mode='replace', file_upload=None):
-    """Process overtime data"""
+    """Process overtime data - FIXED to use correct OvertimeHistory fields"""
     successful = 0
     failed = 0
     errors = []
@@ -838,33 +837,56 @@ def process_overtime_data(df, mode='replace', file_upload=None):
                         try:
                             hours = float(value)
                             if hours > 0:
-                                # Calculate week start date (13 weeks ago from today)
+                                # Calculate week end date (13 weeks ago from today)
                                 weeks_ago = 13 - i
-                                week_start = datetime.now().date() - timedelta(weeks=weeks_ago)
-                                # Adjust to Monday
-                                week_start = week_start - timedelta(days=week_start.weekday())
+                                week_end = datetime.now().date() - timedelta(weeks=weeks_ago)
+                                # Adjust to Sunday (end of week)
+                                days_until_sunday = 6 - week_end.weekday()
+                                if days_until_sunday < 0:
+                                    days_until_sunday += 7
+                                week_end = week_end + timedelta(days=days_until_sunday)
+                                
+                                # Week start is Monday
+                                week_start = week_end - timedelta(days=6)
                                 
                                 # Check if record exists (if append mode)
                                 if mode == 'append':
                                     existing = OvertimeHistory.query.filter_by(
                                         employee_id=employee.id,
-                                        week_start_date=week_start
+                                        week_ending=week_end
                                     ).first()
                                     
                                     if existing:
-                                        existing.hours_worked = hours
+                                        # Update existing record with correct fields
+                                        existing.overtime_hours = hours
+                                        existing.hours = hours  # backward compatibility
+                                        existing.total_hours = 40 + hours  # assuming 40 regular hours
+                                        existing.regular_hours = 40
+                                        existing.week_start_date = week_start
                                     else:
+                                        # Create new record with all fields
                                         ot_record = OvertimeHistory(
                                             employee_id=employee.id,
+                                            week_ending=week_end,
                                             week_start_date=week_start,
-                                            hours_worked=hours
+                                            overtime_hours=hours,
+                                            hours=hours,  # backward compatibility
+                                            regular_hours=40,
+                                            total_hours=40 + hours,
+                                            is_current=(i == 0)  # Mark most recent week as current
                                         )
                                         db.session.add(ot_record)
                                 else:
+                                    # Create new record for replace mode
                                     ot_record = OvertimeHistory(
                                         employee_id=employee.id,
+                                        week_ending=week_end,
                                         week_start_date=week_start,
-                                        hours_worked=hours
+                                        overtime_hours=hours,
+                                        hours=hours,  # backward compatibility
+                                        regular_hours=40,
+                                        total_hours=40 + hours,
+                                        is_current=(i == 0)
                                     )
                                     db.session.add(ot_record)
                                 
@@ -1281,57 +1303,131 @@ export_employees = export_current_employees
 @login_required
 @supervisor_required
 def export_current_overtime():
-    """Export current overtime data"""
+    """Export current overtime data to Excel with filters applied - FIXED VERSION"""
     try:
-        # Get all employees with overtime
-        employees = Employee.query.filter(
-            Employee.is_supervisor == False,
-            Employee.overtime_history.any()
-        ).order_by(Employee.employee_id).all()
+        # Get filter parameters from request (same as overtime_management)
+        search_term = request.args.get('search', '')
+        crew_filter = request.args.get('crew', '')
+        position_filter = request.args.get('position', '')
+        ot_range_filter = request.args.get('ot_range', '')
         
-        if not employees:
-            flash('No overtime data found to export.', 'warning')
-            return redirect(url_for('employee_import.upload_overtime'))
+        # Calculate date range for 13-week period
+        end_date = date.today()
+        start_date = end_date - timedelta(weeks=13)
         
-        # Build data for export
-        data = []
+        # Base query for employees
+        query = Employee.query.filter_by(is_supervisor=False)
         
-        # Calculate week start dates for last 13 weeks
-        week_starts = []
-        base_date = datetime.now().date()
-        for i in range(13):
-            weeks_ago = 13 - i
-            week_start = base_date - timedelta(weeks=weeks_ago)
-            week_start = week_start - timedelta(days=week_start.weekday())
-            week_starts.append(week_start)
+        # Apply filters
+        if search_term:
+            query = query.filter(
+                or_(
+                    Employee.name.ilike(f'%{search_term}%'),
+                    Employee.employee_id.ilike(f'%{search_term}%')
+                )
+            )
         
-        # Build rows
-        for emp in employees:
-            row = {'Employee ID': emp.employee_id, 'Name': emp.name}
+        if crew_filter:
+            query = query.filter_by(crew=crew_filter)
+        
+        if position_filter:
+            query = query.filter_by(position_id=position_filter)
+        
+        # Get all filtered employees
+        employees = query.all()
+        
+        # Prepare data for export
+        export_data = []
+        
+        for employee in employees:
+            # Get overtime history
+            overtime_records = OvertimeHistory.query.filter_by(
+                employee_id=employee.id
+            ).filter(
+                OvertimeHistory.week_ending >= start_date,
+                OvertimeHistory.week_ending <= end_date
+            ).order_by(OvertimeHistory.week_ending).all()
             
-            # Get overtime for each week
-            for i, week_start in enumerate(week_starts):
-                ot = OvertimeHistory.query.filter_by(
-                    employee_id=emp.id,
-                    week_start_date=week_start
-                ).first()
+            # Calculate totals using the correct field names from OvertimeHistory model
+            total_ot = 0
+            for record in overtime_records:
+                # Check which field exists in the model
+                if hasattr(record, 'overtime_hours') and record.overtime_hours is not None:
+                    total_ot += record.overtime_hours
+                elif hasattr(record, 'hours') and record.hours is not None:
+                    total_ot += record.hours
+                elif hasattr(record, 'total_hours') and record.total_hours is not None:
+                    # If using total_hours, assume anything over 40/week is OT
+                    total_ot += max(0, record.total_hours - 40)
+            
+            # Apply OT range filter
+            if ot_range_filter:
+                if ot_range_filter == '0-50' and total_ot > 50:
+                    continue
+                elif ot_range_filter == '50-100' and (total_ot <= 50 or total_ot > 100):
+                    continue
+                elif ot_range_filter == '100-150' and (total_ot <= 100 or total_ot > 150):
+                    continue
+                elif ot_range_filter == '150+' and total_ot <= 150:
+                    continue
+            
+            # Build row data with weekly breakdown
+            row_data = {
+                'Employee ID': employee.employee_id,
+                'Name': employee.name,
+                'Email': employee.email,
+                'Crew': employee.crew or '',
+                'Position': employee.position.name if employee.position else '',
+                'Department': employee.department or '',
+                'Hire Date': employee.hire_date.strftime('%Y-%m-%d') if employee.hire_date else '',
+                'Years Employed': (date.today() - employee.hire_date).days // 365 if employee.hire_date else 0
+            }
+            
+            # Add weekly overtime data
+            week_data = {}
+            for i in range(13):
+                week_end = end_date - timedelta(weeks=i)
+                week_start = week_end - timedelta(days=6)
+                week_label = f'Week {13-i} ({week_start.strftime("%m/%d")} - {week_end.strftime("%m/%d")})'
                 
-                week_label = f'Week {i+1}'
-                row[week_label] = ot.hours_worked if ot else 0
+                # Find overtime for this week
+                week_ot = 0
+                for record in overtime_records:
+                    if record.week_ending == week_end:
+                        if hasattr(record, 'overtime_hours') and record.overtime_hours is not None:
+                            week_ot = record.overtime_hours
+                        elif hasattr(record, 'hours') and record.hours is not None:
+                            week_ot = record.hours
+                        elif hasattr(record, 'total_hours') and record.total_hours is not None:
+                            week_ot = max(0, record.total_hours - 40)
+                        break
+                
+                week_data[week_label] = week_ot
             
-            data.append(row)
+            # Add week data in chronological order
+            for week_label in sorted(week_data.keys()):
+                row_data[week_label] = week_data[week_label]
+            
+            # Add totals
+            row_data['Total OT Hours'] = round(total_ot, 1)
+            row_data['Average Weekly OT'] = round(total_ot / 13, 1)
+            
+            export_data.append(row_data)
         
-        df = pd.DataFrame(data)
+        # Create DataFrame
+        df = pd.DataFrame(export_data)
         
-        # Create Excel file
+        # Generate Excel file
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            df.to_excel(writer, sheet_name='Overtime', index=False)
+            # Write main data
+            df.to_excel(writer, sheet_name='Overtime Report', index=False)
             
-            # Add formatting
+            # Get workbook and worksheet
             workbook = writer.book
-            worksheet = writer.sheets['Overtime']
+            worksheet = writer.sheets['Overtime Report']
             
+            # Add formats
             header_format = workbook.add_format({
                 'bold': True,
                 'bg_color': '#4472C4',
@@ -1339,29 +1435,83 @@ def export_current_overtime():
                 'border': 1
             })
             
-            # Number format for hours
-            hours_format = workbook.add_format({'num_format': '#,##0.0'})
+            number_format = workbook.add_format({
+                'num_format': '#,##0.0'
+            })
             
-            # Apply formats
-            for col_num, value in enumerate(df.columns.values):
-                worksheet.write(0, col_num, value, header_format)
-                # Apply number format to week columns
-                if col_num > 1:  # Skip ID and Name columns
-                    worksheet.set_column(col_num, col_num, 10, hours_format)
+            # Apply header format
+            for col_num, col_name in enumerate(df.columns):
+                worksheet.write(0, col_num, col_name, header_format)
+            
+            # Adjust column widths
+            worksheet.set_column('A:A', 12)  # Employee ID
+            worksheet.set_column('B:B', 25)  # Name
+            worksheet.set_column('C:C', 30)  # Email
+            worksheet.set_column('D:H', 15)  # Crew, Position, etc.
+            
+            # Apply number format to numeric columns
+            if len(df.columns) > 8:
+                for col_idx in range(8, len(df.columns)):
+                    worksheet.set_column(col_idx, col_idx, 12, number_format)
+            
+            # Add summary statistics
+            summary_data = {
+                'Summary': ['Total Employees', 'Total OT Hours', 'Average OT per Employee', 
+                           'Employees with High OT (195+ hrs)', 'Report Generated'],
+                'Value': [
+                    len(export_data),
+                    sum(row['Total OT Hours'] for row in export_data) if export_data else 0,
+                    round(sum(row['Total OT Hours'] for row in export_data) / max(1, len(export_data)), 1) if export_data else 0,
+                    sum(1 for row in export_data if row['Total OT Hours'] >= 195) if export_data else 0,
+                    datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                ]
+            }
+            
+            summary_df = pd.DataFrame(summary_data)
+            summary_df.to_excel(writer, sheet_name='Summary', index=False)
+            
+            # Format summary sheet
+            summary_worksheet = writer.sheets['Summary']
+            for col_num, col_name in enumerate(summary_df.columns):
+                summary_worksheet.write(0, col_num, col_name, header_format)
+            
+            # Apply filters if any
+            filters_data = {
+                'Filter': ['Search Term', 'Crew', 'Position', 'OT Range', 'Date Range'],
+                'Value': [
+                    search_term or 'None',
+                    crew_filter or 'All',
+                    Position.query.get(position_filter).name if position_filter else 'All',
+                    ot_range_filter or 'All',
+                    f'{start_date.strftime("%Y-%m-%d")} to {end_date.strftime("%Y-%m-%d")}'
+                ]
+            }
+            
+            filters_df = pd.DataFrame(filters_data)
+            filters_df.to_excel(writer, sheet_name='Applied Filters', index=False)
+            
+            # Format filters sheet
+            filters_worksheet = writer.sheets['Applied Filters']
+            for col_num, col_name in enumerate(filters_df.columns):
+                filters_worksheet.write(0, col_num, col_name, header_format)
         
+        # Prepare file for download
         output.seek(0)
+        filename = f'overtime_report_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
         
         return send_file(
             output,
             mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             as_attachment=True,
-            download_name=f'overtime_export_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
+            download_name=filename
         )
         
     except Exception as e:
-        logger.error(f"Error exporting overtime: {e}", exc_info=True)
+        logger.error(f"Error exporting overtime data: {e}")
+        logger.error(f"Error type: {type(e)}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
         flash('Error exporting overtime data. Please try again.', 'danger')
-        return redirect(url_for('employee_import.upload_overtime'))
+        return redirect(url_for('main.overtime_management'))
 
 # ==========================================
 # API ENDPOINTS FOR AJAX CALLS
@@ -1416,7 +1566,7 @@ def delete_upload(upload_id):
         upload = FileUpload.query.get_or_404(upload_id)
         
         # Only allow deletion by uploader or admin
-        if upload.uploaded_by_id != current_user.id and not current_user.is_admin:
+        if upload.uploaded_by_id != current_user.id and not getattr(current_user, 'is_admin', False):
             return jsonify({'success': False, 'error': 'Unauthorized'}), 403
         
         db.session.delete(upload)
