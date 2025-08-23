@@ -3,7 +3,6 @@
 Fix FileUpload table by adding missing columns
 Run this to fix the database schema issues
 """
-
 from app import app, db
 from sqlalchemy import text
 import logging
