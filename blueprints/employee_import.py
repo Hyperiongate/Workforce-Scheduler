@@ -1,34 +1,33 @@
 # blueprints/employee_import.py
 """
-Employee Import Blueprint - Complete Fixed Version
-All template variables provided, all routes implemented, all edge cases handled
-Fixed: Template name and parameter mismatches
+Complete Excel upload system for employee data management
+Handles employee data, overtime history, and bulk updates
 """
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, send_file, current_app
+from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, current_app, send_file
 from flask_login import login_required, current_user
+from models import db, Employee, Position, OvertimeHistory, FileUpload
+from datetime import datetime, timedelta, date
 from werkzeug.utils import secure_filename
-from models import db, Employee, Position, Skill, OvertimeHistory, FileUpload, TimeOffRequest, ShiftSwapRequest
-from datetime import datetime, date, timedelta
-from sqlalchemy import func, or_, and_
+from sqlalchemy import func, and_, or_, text
+from functools import wraps
 import pandas as pd
 import os
 import io
 import re
-import random
-import string
 import logging
-from functools import wraps
-import traceback
+import json
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Alignment
+from openpyxl.utils import get_column_letter
 
 # Set up logging
 logger = logging.getLogger(__name__)
 
-# Create blueprint
 employee_import_bp = Blueprint('employee_import', __name__)
 
 # ==========================================
-# DECORATOR
+# DECORATORS
 # ==========================================
 
 def supervisor_required(f):
@@ -40,7 +39,7 @@ def supervisor_required(f):
             return redirect(url_for('auth.login'))
         if not current_user.is_supervisor:
             flash('Access denied. Supervisors only.', 'danger')
-            return redirect(url_for('main.employee_dashboard'))
+            return redirect(url_for('main.dashboard'))
         return f(*args, **kwargs)
     return decorated_function
 
@@ -49,143 +48,89 @@ def supervisor_required(f):
 # ==========================================
 
 def get_employee_stats():
-    """Get statistics for employee data with comprehensive error handling"""
+    """Get comprehensive employee statistics"""
     try:
-        # Get total employees
-        total_employees = Employee.query.filter_by(is_supervisor=False).count()
-        
-        # Get employees without overtime data
-        employees_without_ot = Employee.query.filter(
-            Employee.is_supervisor == False,
-            ~Employee.overtime_histories.any()
-        ).count()
+        total_employees = Employee.query.count()
         
         # Get crew distribution
-        crew_counts = db.session.query(
-            Employee.crew, 
-            func.count(Employee.id)
-        ).filter(
-            Employee.is_supervisor == False
+        crew_stats = db.session.query(
+            Employee.crew,
+            func.count(Employee.id).label('count')
         ).group_by(Employee.crew).all()
         
-        # Initialize crew dictionary
-        crews = {'A': 0, 'B': 0, 'C': 0, 'D': 0, 'Unassigned': 0}
+        crews = {
+            'A': 0, 'B': 0, 'C': 0, 'D': 0, 'Unassigned': 0
+        }
         
-        # Populate crew counts
-        for crew, count in crew_counts:
+        for crew, count in crew_stats:
             if crew in ['A', 'B', 'C', 'D']:
                 crews[crew] = count
-            elif crew is None or crew == '':
-                crews['Unassigned'] += count
             else:
-                # Any other value goes to Unassigned
                 crews['Unassigned'] += count
+        
+        # Get employees without overtime data
+        employees_with_ot = db.session.query(OvertimeHistory.employee_id).distinct().subquery()
+        employees_without_ot = Employee.query.filter(
+            ~Employee.id.in_(db.session.query(employees_with_ot))
+        ).count()
+        
+        # Get position distribution
+        position_stats = db.session.query(
+            Position.name,
+            func.count(Employee.id).label('count')
+        ).join(Employee).group_by(Position.name).all()
+        
+        positions = {pos: count for pos, count in position_stats}
         
         return {
             'total_employees': total_employees,
+            'crews': crews,
             'employees_without_ot': employees_without_ot,
-            'crews': crews
+            'positions': positions
         }
+        
     except Exception as e:
         logger.error(f"Error getting employee stats: {e}")
-        # Always rollback on error
-        try:
-            db.session.rollback()
-        except:
-            pass
         return {
             'total_employees': 0,
+            'crews': {'A': 0, 'B': 0, 'C': 0, 'D': 0, 'Unassigned': 0},
             'employees_without_ot': 0,
-            'crews': {'A': 0, 'B': 0, 'C': 0, 'D': 0, 'Unassigned': 0}
+            'positions': {}
         }
 
-def get_recent_uploads(limit=5, upload_type=None):
-    """Get recent file uploads with error handling"""
+def get_recent_uploads(limit=5):
+    """Get recent file uploads"""
     try:
-        query = FileUpload.query
-        if upload_type:
-            query = query.filter_by(upload_type=upload_type)
+        uploads = FileUpload.query.order_by(
+            FileUpload.uploaded_at.desc()
+        ).limit(limit).all()
         
-        uploads = query.order_by(FileUpload.uploaded_at.desc()).limit(limit).all()
-        
-        # Augment each upload for template compatibility
+        # Add computed properties for backward compatibility
         for upload in uploads:
             augment_file_upload(upload)
-        
+            
         return uploads
     except Exception as e:
         logger.error(f"Error getting recent uploads: {e}")
-        # Always rollback on error
-        try:
-            db.session.rollback()
-        except:
-            pass
         return []
 
 def get_employees_without_accounts():
-    """Count employees without login accounts"""
+    """Get count of employees without user accounts"""
     try:
-        count = Employee.query.filter(
-            Employee.is_supervisor == False,
-            or_(Employee.password_hash == None, Employee.password_hash == '')
+        return Employee.query.filter(
+            or_(Employee.email == None, Employee.email == '')
         ).count()
-        return count
     except Exception as e:
         logger.error(f"Error counting employees without accounts: {e}")
-        # Always rollback on error
-        try:
-            db.session.rollback()
-        except:
-            pass
         return 0
 
-def get_overtime_stats():
-    """Get overtime statistics with error handling"""
-    try:
-        # Get total overtime hours using the correct field
-        total_ot_hours = db.session.query(
-            func.sum(OvertimeHistory.overtime_hours)
-        ).scalar() or 0
-        
-        # Get count of employees with overtime
-        employees_with_ot = db.session.query(
-            func.count(func.distinct(OvertimeHistory.employee_id))
-        ).scalar() or 0
-        
-        # Get recent overtime uploads
-        recent_uploads = get_recent_uploads(limit=5, upload_type='overtime')
-        
-        return {
-            'total_ot_hours': float(total_ot_hours),
-            'employees_with_ot': employees_with_ot,
-            'recent_uploads': recent_uploads
-        }
-    except Exception as e:
-        logger.error(f"Error getting overtime stats: {e}")
-        # Always rollback on error
-        try:
-            db.session.rollback()
-        except:
-            pass
-        return {
-            'total_ot_hours': 0,
-            'employees_with_ot': 0,
-            'recent_uploads': []
-        }
-
 def augment_file_upload(upload):
-    """Add template-expected properties to FileUpload objects"""
+    """Add computed properties to FileUpload object for template compatibility"""
     if upload:
-        # Add aliases for template compatibility
-        upload.upload_date = upload.uploaded_at
-        upload.file_type = upload.upload_type
+        # Calculate processed records from successful + failed
+        upload.records_processed = (upload.successful_records or 0) + (upload.failed_records or 0)
         
-        # Calculate computed properties
-        if upload.successful_records is not None and upload.failed_records is not None:
-            upload.records_processed = upload.successful_records + upload.failed_records
-        else:
-            upload.records_processed = 0
-        
+        # For backward compatibility
         upload.records_created = upload.successful_records or 0
         upload.records_updated = 0  # We don't track this separately yet
         
@@ -203,36 +148,27 @@ def augment_file_upload(upload):
 @login_required
 @supervisor_required
 def upload_employees():
-    """Professional upload employees page"""
+    """Upload employees page"""
     try:
-        # Get all statistics
         stats = get_employee_stats()
+        recent_uploads = get_recent_uploads()
+        employees_without_accounts = get_employees_without_accounts()
         
-        # Prepare crew distribution for the template
-        crew_distribution = stats['crews']
+        # Check which template to use (you can switch between templates here)
+        template = 'upload_employees_enhanced.html'  # or 'upload_employees.html' for simple version
         
-        # Use the professional template
-        return render_template('upload_employees_professional.html',
+        return render_template(template,
+                             recent_uploads=recent_uploads,
                              stats=stats,
-                             crew_distribution=crew_distribution,
-                             total_employees=stats['total_employees'])
+                             crew_distribution=stats['crews'],
+                             total_employees=stats['total_employees'],
+                             employees_without_accounts=employees_without_accounts,
+                             account_creation_available=True)
     
     except Exception as e:
         logger.error(f"Error in upload_employees route: {e}")
         flash('An error occurred while loading the page. Please try again.', 'danger')
         return redirect(url_for('supervisor.dashboard'))
-
-@employee_import_bp.route('/api/crew-distribution')
-@login_required
-@supervisor_required
-def get_crew_distribution_api():
-    """API endpoint to get current crew distribution"""
-    try:
-        stats = get_employee_stats()
-        return jsonify(stats['crews'])
-    except Exception as e:
-        logger.error(f"Error getting crew distribution: {e}")
-        return jsonify({'error': 'Failed to get crew distribution'}), 500
 
 @employee_import_bp.route('/upload-employees', methods=['POST'])
 @login_required
@@ -240,7 +176,6 @@ def get_crew_distribution_api():
 def upload_employees_post():
     """Handle the actual file upload"""
     try:
-        # Check if file was uploaded
         if 'file' not in request.files:
             flash('No file selected', 'error')
             return redirect(request.url)
@@ -250,7 +185,6 @@ def upload_employees_post():
             flash('No file selected', 'error')
             return redirect(request.url)
         
-        # Check file extension
         if not file.filename.endswith(('.xlsx', '.xls')):
             flash('Invalid file type. Please upload an Excel file (.xlsx or .xls)', 'error')
             return redirect(request.url)
@@ -264,13 +198,11 @@ def upload_employees_post():
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         filename = f"{timestamp}_{filename}"
         
-        # Ensure upload folder exists
+        # Create upload folder if it doesn't exist
         upload_folder = current_app.config.get('UPLOAD_FOLDER', 'upload_files')
         os.makedirs(upload_folder, exist_ok=True)
         
         filepath = os.path.join(upload_folder, filename)
-        
-        # Save the file
         file.save(filepath)
         
         # Create upload record
@@ -285,130 +217,60 @@ def upload_employees_post():
         db.session.commit()
         
         try:
-            # Read the Excel file
+            # Read and process the Excel file
             df = pd.read_excel(filepath)
             
             # Process based on upload type
             if upload_type == 'employee':
-                # Validate first
-                validation_result = validate_employee_data(df)
-                
-                if not validation_result.get('success'):
-                    file_upload.status = 'failed'
-                    file_upload.error_details = validation_result
-                    db.session.commit()
-                    
-                    flash('Validation failed. Please check the errors below:', 'error')
-                    for error in validation_result.get('errors', [])[:10]:
-                        flash(error, 'error')
-                    
-                    return redirect(url_for('employee_import.upload_employees'))
-                
-                # Process the data
                 result = process_employee_data(df, mode, file_upload)
-                
-                if result.get('success'):
-                    flash(f"Successfully uploaded {result.get('successful', 0)} employees!", 'success')
-                    if result.get('failed', 0) > 0:
-                        flash(f"{result.get('failed', 0)} records failed to process", 'warning')
-                else:
-                    flash(f"Upload failed: {result.get('error', 'Unknown error')}", 'error')
-                    
             elif upload_type == 'overtime':
-                # Process overtime data
                 result = process_overtime_data(df, mode, file_upload)
-                
-                if result.get('success'):
-                    flash(f"Successfully uploaded overtime data for {result.get('successful', 0)} employees!", 'success')
-                else:
-                    flash(f"Upload failed: {result.get('error', 'Unknown error')}", 'error')
-                    
+            elif upload_type == 'bulk_update':
+                result = process_bulk_update(df, file_upload)
             else:
-                flash('Invalid upload type', 'error')
+                result = {'success': False, 'error': 'Invalid upload type'}
+            
+            # Update upload record
+            file_upload.status = 'completed' if result.get('success') else 'failed'
+            file_upload.total_records = result.get('total', 0)
+            file_upload.successful_records = result.get('successful', 0)
+            file_upload.failed_records = result.get('failed', 0)
+            
+            if result.get('error'):
+                file_upload.error_details = {'error': result.get('error')}
+            elif result.get('errors'):
+                file_upload.error_details = {'errors': result.get('errors')}
+                
+            db.session.commit()
+            
+            # Show appropriate message
+            if result.get('success'):
+                flash(f"Successfully processed {result.get('successful', 0)} records!", 'success')
+                if result.get('failed', 0) > 0:
+                    flash(f"{result.get('failed', 0)} records failed to process", 'warning')
+            else:
+                flash(f"Upload failed: {result.get('error', 'Unknown error')}", 'error')
                 
         except Exception as e:
-            logger.error(f"Error processing file: {e}", exc_info=True)
+            logger.error(f"Error processing file: {e}")
             file_upload.status = 'failed'
             file_upload.error_details = {'error': str(e)}
             db.session.commit()
-            flash(f'Error processing file: {str(e)}', 'error')
+            flash(f"Error processing file: {str(e)}", 'error')
             
         finally:
-            # Clean up the temporary file
+            # Clean up temp file
             try:
                 os.remove(filepath)
             except:
                 pass
-        
+                
         return redirect(url_for('employee_import.upload_employees'))
         
     except Exception as e:
-        logger.error(f"Error in upload_employees_post: {e}", exc_info=True)
-        flash('An unexpected error occurred. Please try again.', 'error')
+        logger.error(f"Upload error: {e}")
+        flash('An error occurred during upload. Please try again.', 'error')
         return redirect(url_for('employee_import.upload_employees'))
-
-@employee_import_bp.route('/upload-overtime')
-@login_required
-@supervisor_required
-def upload_overtime():
-    """Upload overtime history page"""
-    try:
-        # Get overtime statistics as a dict
-        stats = get_overtime_stats()
-        
-        return render_template('upload_overtime.html', stats=stats)
-    
-    except Exception as e:
-        logger.error(f"Error in upload_overtime route: {e}")
-        flash('An error occurred while loading the page. Please try again.', 'danger')
-        return redirect(url_for('supervisor.dashboard'))
-
-@employee_import_bp.route('/upload-history')
-@login_required
-@supervisor_required
-def upload_history():
-    """View upload history with filtering"""
-    try:
-        # Get filter parameters
-        file_type = request.args.get('file_type', '')
-        status = request.args.get('status', '')
-        start_date = request.args.get('start_date', '')
-        end_date = request.args.get('end_date', '')
-        
-        # Build query
-        query = FileUpload.query
-        
-        # Apply filters
-        if file_type:
-            query = query.filter_by(upload_type=file_type)
-        if status:
-            query = query.filter_by(status=status)
-        if start_date:
-            try:
-                start_dt = datetime.strptime(start_date, '%Y-%m-%d')
-                query = query.filter(FileUpload.uploaded_at >= start_dt)
-            except ValueError:
-                logger.warning(f"Invalid start date format: {start_date}")
-        if end_date:
-            try:
-                end_dt = datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1)
-                query = query.filter(FileUpload.uploaded_at < end_dt)
-            except ValueError:
-                logger.warning(f"Invalid end date format: {end_date}")
-        
-        # Get uploads with limit
-        uploads = query.order_by(FileUpload.uploaded_at.desc()).limit(100).all()
-        
-        # Augment each upload for template compatibility
-        for upload in uploads:
-            augment_file_upload(upload)
-        
-        return render_template('upload_history.html', uploads=uploads)
-    
-    except Exception as e:
-        logger.error(f"Error in upload_history route: {e}")
-        flash('An error occurred while loading upload history.', 'danger')
-        return redirect(url_for('supervisor.dashboard'))
 
 # ==========================================
 # VALIDATION AND PROCESSING ROUTES
@@ -418,7 +280,7 @@ def upload_history():
 @login_required
 @supervisor_required
 def validate_upload():
-    """Validate uploaded Excel file - FIXED parameter handling"""
+    """Validate uploaded Excel file via AJAX"""
     try:
         if 'file' not in request.files:
             return jsonify({'success': False, 'error': 'No file provided'})
@@ -430,35 +292,28 @@ def validate_upload():
         if not file.filename.endswith(('.xlsx', '.xls')):
             return jsonify({'success': False, 'error': 'Invalid file type. Please upload Excel files only.'})
         
-        # FIXED: Accept both 'type' and 'uploadType' for compatibility
-        upload_type = request.form.get('uploadType') or request.form.get('type', 'employee')
+        # Get upload type from form data (handle both 'uploadType' and 'upload_type')
+        upload_type = request.form.get('uploadType') or request.form.get('upload_type', 'employee')
         
-        # Save current position for re-reading
-        file.seek(0)
+        # Map bulk to bulk_update for consistency
+        if upload_type == 'bulk':
+            upload_type = 'bulk_update'
         
+        # Read the Excel file
         try:
-            # Read the Excel file
             df = pd.read_excel(file)
-        except Exception as e:
-            logger.error(f"Error reading Excel file: {e}")
-            return jsonify({'success': False, 'error': f'Error reading Excel file: {str(e)}'})
-        
-        # Reset file position for potential re-use
-        file.seek(0)
+        except Exception as read_error:
+            return jsonify({'success': False, 'error': f'Error reading Excel file: {str(read_error)}'})
         
         # Validate based on upload type
         if upload_type == 'employee':
             result = validate_employee_data(df)
         elif upload_type == 'overtime':
             result = validate_overtime_data(df)
-        elif upload_type == 'bulk':
+        elif upload_type == 'bulk_update':
             result = validate_bulk_update(df)
         else:
-            result = {'success': False, 'error': 'Invalid upload type'}
-        
-        # Ensure result has all expected fields for the template
-        if 'row_count' not in result and 'total_rows' in result:
-            result['row_count'] = result['total_rows']
+            result = {'success': False, 'error': f'Invalid upload type: {upload_type}'}
         
         return jsonify(result)
         
@@ -470,18 +325,35 @@ def validate_upload():
 @login_required
 @supervisor_required
 def process_upload():
-    """Process the uploaded file"""
+    """Process the uploaded file via AJAX"""
     try:
         if 'file' not in request.files:
             return jsonify({'success': False, 'error': 'No file provided'})
         
         file = request.files['file']
-        upload_type = request.form.get('uploadType', 'employee')
+        
+        # Get upload type and mode (handle both naming conventions)
+        upload_type = request.form.get('uploadType') or request.form.get('upload_type', 'employee')
         mode = request.form.get('mode', 'append')
+        
+        # Map bulk to bulk_update
+        if upload_type == 'bulk':
+            upload_type = 'bulk_update'
+        
+        # Save file temporarily
+        filename = secure_filename(file.filename)
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"{timestamp}_{filename}"
+        
+        upload_folder = current_app.config.get('UPLOAD_FOLDER', 'upload_files')
+        os.makedirs(upload_folder, exist_ok=True)
+        
+        filepath = os.path.join(upload_folder, filename)
+        file.save(filepath)
         
         # Create file upload record
         file_upload = FileUpload(
-            filename=secure_filename(file.filename),
+            filename=filename,
             upload_type=upload_type,
             uploaded_by_id=current_user.id,
             uploaded_at=datetime.utcnow(),
@@ -490,34 +362,48 @@ def process_upload():
         db.session.add(file_upload)
         db.session.commit()
         
-        # Read and process file
-        file.seek(0)
-        df = pd.read_excel(file)
-        
-        # Process based on type
-        if upload_type == 'employee':
-            result = process_employee_data(df, mode, file_upload)
-        elif upload_type == 'overtime':
-            result = process_overtime_data(df, mode, file_upload)
-        elif upload_type == 'bulk':
-            result = process_bulk_update(df, file_upload)
-        else:
-            result = {'success': False, 'error': 'Invalid upload type'}
-        
-        # Update file upload record
-        file_upload.status = 'completed' if result.get('success') else 'failed'
-        file_upload.total_records = result.get('total', 0)
-        file_upload.successful_records = result.get('successful', 0)
-        file_upload.failed_records = result.get('failed', 0)
-        
-        if not result.get('success'):
-            file_upload.error_details = {'error': result.get('error', 'Unknown error')}
-        elif result.get('errors'):
-            file_upload.error_details = {'errors': result.get('errors', [])}
-        
-        db.session.commit()
-        
-        return jsonify(result)
+        try:
+            # Read and process file
+            df = pd.read_excel(filepath)
+            
+            # Process based on type
+            if upload_type == 'employee':
+                result = process_employee_data(df, mode, file_upload)
+            elif upload_type == 'overtime':
+                result = process_overtime_data(df, mode, file_upload)
+            elif upload_type == 'bulk_update':
+                result = process_bulk_update(df, file_upload)
+            else:
+                result = {'success': False, 'error': 'Invalid upload type'}
+            
+            # Update file upload record
+            file_upload.status = 'completed' if result.get('success') else 'failed'
+            file_upload.total_records = result.get('total', 0)
+            file_upload.successful_records = result.get('successful', 0)
+            file_upload.failed_records = result.get('failed', 0)
+            
+            if not result.get('success'):
+                file_upload.error_details = {'error': result.get('error', 'Unknown error')}
+            elif result.get('errors'):
+                file_upload.error_details = {'errors': result.get('errors', [])}
+            
+            db.session.commit()
+            
+            return jsonify(result)
+            
+        except Exception as e:
+            logger.error(f"Process error: {str(e)}", exc_info=True)
+            file_upload.status = 'failed'
+            file_upload.error_details = {'error': str(e)}
+            db.session.commit()
+            return jsonify({'success': False, 'error': str(e)})
+            
+        finally:
+            # Clean up temp file
+            try:
+                os.remove(filepath)
+            except:
+                pass
         
     except Exception as e:
         logger.error(f"Process error: {str(e)}", exc_info=True)
@@ -529,7 +415,7 @@ def process_upload():
 # ==========================================
 
 def validate_employee_data(df):
-    """Validate employee data - updated for new format"""
+    """Validate employee data"""
     errors = []
     warnings = []
     
@@ -537,146 +423,123 @@ def validate_employee_data(df):
     if df.empty:
         return {'success': False, 'error': 'The uploaded file contains no data'}
     
-    # Check required columns (updated for actual format)
-    required_columns = ['Employee ID', 'First Name', 'Last Name', 'Crew Assigned']
-    
-    # Also accept variations
-    column_mapping = {
-        'Employee ID': ['Employee ID', 'EmployeeID', 'Emp ID', 'ID'],
-        'First Name': ['First Name', 'FirstName', 'First'],
-        'Last Name': ['Last Name', 'LastName', 'Last'],
-        'Crew Assigned': ['Crew Assigned', 'Crew', 'Crew Assignment']
-    }
-    
-    # Check for required columns with flexible naming
-    missing_columns = []
-    found_columns = {}
-    
-    for req_col, variations in column_mapping.items():
-        found = False
-        for var in variations:
-            if var in df.columns:
-                found_columns[req_col] = var
-                found = True
-                break
-        if not found:
-            missing_columns.append(req_col)
+    # Check required columns
+    required_columns = ['Employee ID', 'First Name', 'Last Name', 'Email', 'Crew']
+    missing_columns = [col for col in required_columns if col not in df.columns]
     
     if missing_columns:
         return {
             'success': False,
-            'error': f'Missing required columns: {", ".join(missing_columns)}'
+            'error': f"Missing required columns: {', '.join(missing_columns)}"
         }
     
-    # Track unique employee IDs
-    seen_employee_ids = set()
-    
     # Validate each row
+    employee_ids = set()
+    
     for idx, row in df.iterrows():
-        row_num = idx + 2  # Excel row number (header is row 1)
+        row_num = idx + 2  # Excel row number (1-indexed + header)
         
         # Check Employee ID
-        emp_id_col = found_columns.get('Employee ID', 'Employee ID')
-        emp_id = str(row.get(emp_id_col, '')).strip()
+        emp_id = str(row.get('Employee ID', '')).strip()
         if not emp_id or emp_id == 'nan':
             errors.append(f"Row {row_num}: Missing Employee ID")
-        elif emp_id in seen_employee_ids:
+        elif emp_id in employee_ids:
             errors.append(f"Row {row_num}: Duplicate Employee ID '{emp_id}'")
         else:
-            seen_employee_ids.add(emp_id)
+            employee_ids.add(emp_id)
         
-        # Check names
-        first_name_col = found_columns.get('First Name', 'First Name')
-        last_name_col = found_columns.get('Last Name', 'Last Name')
-        first_name = str(row.get(first_name_col, '')).strip()
-        last_name = str(row.get(last_name_col, '')).strip()
-        
+        # Check First Name
+        first_name = str(row.get('First Name', '')).strip()
         if not first_name or first_name == 'nan':
             errors.append(f"Row {row_num}: Missing First Name")
+        
+        # Check Last Name
+        last_name = str(row.get('Last Name', '')).strip()
         if not last_name or last_name == 'nan':
             errors.append(f"Row {row_num}: Missing Last Name")
         
-        # Check crew values
-        crew_col = found_columns.get('Crew Assigned', 'Crew Assigned')
-        crew = str(row.get(crew_col, '')).strip().upper()
-        if crew and crew != 'NAN' and crew not in ['A', 'B', 'C', 'D']:
-            warnings.append(f"Row {row_num}: Invalid crew '{crew}' (should be A, B, C, or D)")
+        # Check Email
+        email = str(row.get('Email', '')).strip()
+        if not email or email == 'nan':
+            errors.append(f"Row {row_num}: Missing Email")
+        elif not re.match(r'^[\w\.-]+@[\w\.-]+\.\w+$', email):
+            errors.append(f"Row {row_num}: Invalid email format '{email}'")
         
-        # Stop if we have too many errors
+        # Check Crew
+        crew = str(row.get('Crew', '')).strip().upper()
+        if crew and crew != 'NAN' and crew not in ['A', 'B', 'C', 'D']:
+            errors.append(f"Row {row_num}: Invalid crew '{crew}'. Must be A, B, C, or D")
+        
+        # Stop if too many errors
         if len(errors) > 50:
-            errors.append("... and more errors. Please fix the issues above first.")
+            errors.append("Too many errors. Please fix the issues above first.")
             break
     
     if errors:
         return {
             'success': False,
-            'errors': errors[:50],  # Limit to first 50 errors
-            'error_count': len(errors),
-            'warnings': warnings[:10]
+            'errors': errors[:50],  # Limit errors shown
+            'error_count': len(errors)
         }
     
-    # Count valid rows
-    valid_rows = len(df)
-    
-    # Detect position columns
-    standard_columns = ['Last Name', 'First Name', 'Employee ID', 'Date of Hire', 
-                       'Total Overtime (Last 3 Months)', 'Crew Assigned', 'Current Job Position']
-    position_columns = [col for col in df.columns if col not in standard_columns and col.strip()]
-    
+    # Return success with summary
     return {
         'success': True,
         'total_rows': len(df),
-        'valid_rows': valid_rows,
-        'warnings': warnings,
-        'position_columns': len(position_columns),
-        'message': f'Validation successful. {valid_rows} employees ready to import.'
+        'employee_count': len(employee_ids),
+        'message': f'Validation successful. {len(employee_ids)} employees ready to import.'
     }
 
 def validate_overtime_data(df):
-    """Validate overtime data"""
+    """Validate overtime history data"""
     errors = []
     
-    # Check for empty dataframe
     if df.empty:
         return {'success': False, 'error': 'The uploaded file contains no data'}
     
-    # Check for employee ID column
+    # Check for Employee ID column
     if 'Employee ID' not in df.columns:
         return {
             'success': False,
             'error': 'Missing required column: Employee ID'
         }
     
-    # Check for week columns (should have 13 weeks)
-    week_columns = [col for col in df.columns if str(col).startswith('Week')]
-    if len(week_columns) < 13:
-        errors.append(f"Expected 13 week columns, found {len(week_columns)}")
+    # Check for week columns (Week 1 through Week 13)
+    missing_weeks = []
+    for week in range(1, 14):
+        if f'Week {week}' not in df.columns:
+            missing_weeks.append(f'Week {week}')
     
-    # Validate each row
+    if missing_weeks:
+        return {
+            'success': False,
+            'error': f"Missing week columns: {', '.join(missing_weeks)}"
+        }
+    
+    # Validate data
     for idx, row in df.iterrows():
         row_num = idx + 2
         
-        # Check Employee ID
         emp_id = str(row.get('Employee ID', '')).strip()
         if not emp_id or emp_id == 'nan':
             errors.append(f"Row {row_num}: Missing Employee ID")
+            continue
         
-        # Check that overtime hours are numeric and reasonable
-        for week in week_columns:
-            value = row.get(week)
-            if pd.notna(value):
+        # Check overtime hours
+        for week in range(1, 14):
+            hours = row.get(f'Week {week}')
+            if pd.notna(hours):
                 try:
-                    hours = float(value)
-                    if hours < 0:
-                        errors.append(f"Row {row_num}, {week}: Negative hours not allowed")
-                    elif hours > 84:  # More than 12 hours/day for 7 days
-                        errors.append(f"Row {row_num}, {week}: Unrealistic hours ({hours})")
+                    hours_float = float(hours)
+                    if hours_float < 0:
+                        errors.append(f"Row {row_num}, Week {week}: Negative hours not allowed")
+                    elif hours_float > 100:
+                        errors.append(f"Row {row_num}, Week {week}: Unusually high hours ({hours_float})")
                 except (ValueError, TypeError):
-                    errors.append(f"Row {row_num}, {week}: Invalid hours value '{value}'")
+                    errors.append(f"Row {row_num}, Week {week}: Invalid number format")
         
-        # Stop if too many errors
         if len(errors) > 50:
-            errors.append("... and more errors. Please fix the issues above first.")
+            errors.append("Too many errors. Please fix the issues above first.")
             break
     
     if errors:
@@ -697,7 +560,6 @@ def validate_bulk_update(df):
     """Validate bulk update data"""
     errors = []
     
-    # Check for empty dataframe
     if df.empty:
         return {'success': False, 'error': 'The uploaded file contains no data'}
     
@@ -753,345 +615,115 @@ def validate_bulk_update(df):
 # PROCESSING FUNCTIONS
 # ==========================================
 
-def process_employee_data(df, mode='append', file_upload=None):
-    """Process employee data with automatic update/add (no deletions)"""
-    successful = 0
-    failed = 0
-    errors = []
-    created = 0
-    updated = 0
-    
+def process_employee_data(df, mode, file_upload):
+    """Process employee data upload"""
     try:
-        # Never delete in this simplified version - always update or add
+        successful = 0
+        failed = 0
+        errors = []
         
-        # Identify position columns (all columns after the standard ones)
-        standard_columns = ['Last Name', 'First Name', 'Employee ID', 'Date of Hire', 
-                          'Total Overtime (Last 3 Months)', 'Crew Assigned', 'Current Job Position']
-        
-        # Get position columns - everything after the standard columns
-        all_columns = df.columns.tolist()
-        position_columns = []
-        for col in all_columns:
-            if col not in standard_columns and col.strip():
-                position_columns.append(col)
-        
-        logger.info(f"Found {len(position_columns)} position columns: {position_columns}")
+        # If mode is replace, deactivate existing employees first
+        if mode == 'replace':
+            try:
+                # Instead of deleting, mark as inactive or remove from system
+                # This preserves historical data
+                Employee.query.update({'is_active': False})
+                db.session.commit()
+            except Exception as e:
+                logger.error(f"Error deactivating employees: {e}")
+                db.session.rollback()
         
         # Process each row
         for idx, row in df.iterrows():
             try:
-                # Extract employee data with proper column names
                 emp_id = str(row.get('Employee ID', '')).strip()
-                first_name = str(row.get('First Name', '')).strip()
-                last_name = str(row.get('Last Name', '')).strip()
-                
-                # Skip if essential data is missing
-                if not emp_id or emp_id == 'nan':
-                    failed += 1
-                    errors.append(f"Row {idx + 2}: Missing Employee ID")
-                    continue
-                
-                # Create full name
-                full_name = f"{first_name} {last_name}".strip()
-                
-                # Get other fields
-                hire_date_str = str(row.get('Date of Hire', '')).strip()
-                overtime_str = str(row.get('Total Overtime (Last 3 Months)', '0')).strip()
-                crew = str(row.get('Crew Assigned', '')).strip().upper()
-                current_position = str(row.get('Current Job Position', '')).strip()
-                
-                # Parse hire date
-                hire_date = None
-                if hire_date_str and hire_date_str != 'nan':
-                    try:
-                        # Try different date formats
-                        for fmt in ['%m/%d/%Y', '%Y-%m-%d', '%d/%m/%Y', '%m-%d-%Y']:
-                            try:
-                                hire_date = datetime.strptime(hire_date_str, fmt).date()
-                                break
-                            except:
-                                continue
-                    except:
-                        logger.warning(f"Could not parse hire date '{hire_date_str}' for employee {emp_id}")
-                
-                # Parse overtime hours
-                try:
-                    overtime_hours = float(overtime_str) if overtime_str and overtime_str != 'nan' else 0
-                except:
-                    overtime_hours = 0
-                
-                # Clean crew value
-                if crew not in ['A', 'B', 'C', 'D']:
-                    crew = None
-                
-                # Generate email if not provided (using employee ID)
-                email = f"emp{emp_id}@company.com"
                 
                 # Check if employee exists
                 employee = Employee.query.filter_by(employee_id=emp_id).first()
                 
-                if employee:
-                    # Update existing employee
-                    employee.name = full_name
-                    employee.email = email
-                    if crew:
-                        employee.crew = crew
-                    if hire_date:
-                        employee.hire_date = hire_date
-                    if current_position:
-                        employee.position_name = current_position
-                    updated += 1
-                    logger.info(f"Updated employee {emp_id}")
-                else:
-                    # Create new employee
-                    employee = Employee(
-                        employee_id=emp_id,
-                        name=full_name,
-                        email=email,
-                        crew=crew,
-                        is_supervisor=False,
-                        is_active=True,
-                        hire_date=hire_date,
-                        position_name=current_position
-                    )
-                    
-                    # Set default password
-                    if hasattr(employee, 'set_password'):
-                        employee.set_password('changeme123')
-                    
-                    db.session.add(employee)
-                    created += 1
-                    logger.info(f"Created new employee {emp_id}")
-                
-                # Process position qualifications
-                position_skills = []
-                for pos_col in position_columns:
-                    value = str(row.get(pos_col, '')).strip().lower()
-                    if value in ['current', 'yes', 'y', 'x', 'true', '1']:
-                        position_skills.append({
-                            'position': pos_col,
-                            'is_current': value == 'current',
-                            'is_qualified': True
-                        })
-                
-                # Store position info (you may need to create a skills table for this)
-                # For now, we'll just log it
-                if position_skills:
-                    logger.info(f"Employee {emp_id} has {len(position_skills)} position qualifications")
-                    if current_position:
-                        # Verify current position matches
-                        current_marked = [p for p in position_skills if p['is_current']]
-                        if current_marked:
-                            logger.info(f"Current position verified: {current_marked[0]['position']}")
-                
-                # If overtime hours provided, add to overtime history
-                if overtime_hours > 0:
-                    # Add overtime record for the most recent period
-                    recent_week_end = datetime.now().date()
-                    # Adjust to last Sunday
-                    days_since_sunday = recent_week_end.weekday() + 1
-                    if days_since_sunday == 7:
-                        days_since_sunday = 0
-                    recent_week_end = recent_week_end - timedelta(days=days_since_sunday)
-                    
-                    # Check if recent overtime exists
-                    existing_ot = OvertimeHistory.query.filter_by(
-                        employee_id=employee.id,
-                        week_ending=recent_week_end
-                    ).first()
-                    
-                    if not existing_ot:
-                        ot_record = OvertimeHistory(
-                            employee_id=employee.id,
-                            week_ending=recent_week_end,
-                            week_start_date=recent_week_end - timedelta(days=6),
-                            overtime_hours=overtime_hours / 13,  # Distribute over 13 weeks
-                            hours=overtime_hours / 13,
-                            regular_hours=40,
-                            total_hours=40 + (overtime_hours / 13),
-                            is_current=True
-                        )
-                        db.session.add(ot_record)
-                
-                successful += 1
-                
-            except Exception as e:
-                failed += 1
-                error_msg = f"Row {idx + 2}: {str(e)}"
-                errors.append(error_msg)
-                logger.error(error_msg)
-                
-                # Continue processing other rows
-                continue
-        
-        # Commit all changes
-        db.session.commit()
-        logger.info(f"Employee import completed: {successful} successful ({created} new, {updated} updated), {failed} failed")
-        
-        result = {
-            'success': True,
-            'total': len(df),
-            'successful': successful,
-            'failed': failed,
-            'created': created,
-            'updated': updated,
-            'message': f'Successfully processed {successful} employees ({created} added, {updated} updated)'
-        }
-        
-        if errors:
-            result['errors'] = errors[:10]  # Include first 10 errors
-            if len(errors) > 10:
-                result['errors'].append(f"... and {len(errors) - 10} more errors")
-        
-        return result
-        
-    except Exception as e:
-        db.session.rollback()
-        logger.error(f"Employee data processing failed: {str(e)}", exc_info=True)
-        return {
-            'success': False,
-            'error': f'Processing failed: {str(e)}'
-        }
-
-def process_overtime_data(df, mode='replace', file_upload=None):
-    """Process overtime data - FIXED to use correct OvertimeHistory fields"""
-    successful = 0
-    failed = 0
-    errors = []
-    total_hours = 0
-    
-    try:
-        # Get week columns
-        week_columns = [col for col in df.columns if str(col).startswith('Week')]
-        week_columns.sort(key=lambda x: int(x.split(' ')[1]) if len(x.split(' ')) > 1 else 0)
-        
-        # Process each employee
-        for idx, row in df.iterrows():
-            try:
-                emp_id = str(row.get('Employee ID', '')).strip()
-                
-                # Find employee
-                employee = Employee.query.filter_by(employee_id=emp_id).first()
-                
                 if not employee:
-                    failed += 1
-                    errors.append(f"Row {idx + 2}: Employee ID '{emp_id}' not found")
-                    continue
+                    # Create new employee
+                    employee = Employee(employee_id=emp_id)
                 
-                # Delete existing overtime if replace mode
-                if mode == 'replace':
-                    OvertimeHistory.query.filter_by(employee_id=employee.id).delete()
+                # Update employee data
+                employee.first_name = str(row.get('First Name', '')).strip()
+                employee.last_name = str(row.get('Last Name', '')).strip()
+                employee.name = f"{employee.first_name} {employee.last_name}"
+                employee.email = str(row.get('Email', '')).strip()
                 
-                # Add overtime records for each week
-                for i, week_col in enumerate(week_columns[:13]):  # Limit to 13 weeks
-                    value = row.get(week_col)
-                    if pd.notna(value):
-                        try:
-                            hours = float(value)
-                            if hours > 0:
-                                # Calculate week end date (13 weeks ago from today)
-                                weeks_ago = 13 - i
-                                week_end = datetime.now().date() - timedelta(weeks=weeks_ago)
-                                # Adjust to Sunday (end of week)
-                                days_until_sunday = 6 - week_end.weekday()
-                                if days_until_sunday < 0:
-                                    days_until_sunday += 7
-                                week_end = week_end + timedelta(days=days_until_sunday)
-                                
-                                # Week start is Monday
-                                week_start = week_end - timedelta(days=6)
-                                
-                                # Check if record exists (if append mode)
-                                if mode == 'append':
-                                    existing = OvertimeHistory.query.filter_by(
-                                        employee_id=employee.id,
-                                        week_ending=week_end
-                                    ).first()
-                                    
-                                    if existing:
-                                        # Update existing record with correct fields
-                                        existing.overtime_hours = hours
-                                        existing.hours = hours  # backward compatibility
-                                        existing.total_hours = 40 + hours  # assuming 40 regular hours
-                                        existing.regular_hours = 40
-                                        existing.week_start_date = week_start
-                                    else:
-                                        # Create new record with all fields
-                                        ot_record = OvertimeHistory(
-                                            employee_id=employee.id,
-                                            week_ending=week_end,
-                                            week_start_date=week_start,
-                                            overtime_hours=hours,
-                                            hours=hours,  # backward compatibility
-                                            regular_hours=40,
-                                            total_hours=40 + hours,
-                                            is_current=(i == 0)  # Mark most recent week as current
-                                        )
-                                        db.session.add(ot_record)
-                                else:
-                                    # Create new record for replace mode
-                                    ot_record = OvertimeHistory(
-                                        employee_id=employee.id,
-                                        week_ending=week_end,
-                                        week_start_date=week_start,
-                                        overtime_hours=hours,
-                                        hours=hours,  # backward compatibility
-                                        regular_hours=40,
-                                        total_hours=40 + hours,
-                                        is_current=(i == 0)
-                                    )
-                                    db.session.add(ot_record)
-                                
-                                total_hours += hours
-                        except (ValueError, TypeError):
-                            errors.append(f"Row {idx + 2}, {week_col}: Invalid hours value")
+                # Set crew
+                crew = str(row.get('Crew', '')).strip().upper()
+                if crew in ['A', 'B', 'C', 'D']:
+                    employee.crew = crew
                 
+                # Set department if present
+                if 'Department' in row:
+                    dept = str(row.get('Department', '')).strip()
+                    if dept and dept != 'nan':
+                        employee.department = dept
+                
+                # Set position if present
+                if 'Position' in row:
+                    pos_name = str(row.get('Position', '')).strip()
+                    if pos_name and pos_name != 'nan':
+                        position = Position.query.filter_by(name=pos_name).first()
+                        if position:
+                            employee.position_id = position.id
+                
+                # Mark as active
+                employee.is_active = True
+                
+                db.session.add(employee)
                 successful += 1
                 
             except Exception as e:
                 failed += 1
-                error_msg = f"Row {idx + 2}: {str(e)}"
-                errors.append(error_msg)
-                logger.error(error_msg)
+                errors.append(f"Row {idx + 2}: {str(e)}")
+                logger.error(f"Error processing row {idx + 2}: {e}")
         
         # Commit all changes
-        db.session.commit()
-        logger.info(f"Overtime import completed: {successful} successful, {failed} failed")
+        try:
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            return {
+                'success': False,
+                'error': f'Database error: {str(e)}',
+                'successful': successful,
+                'failed': failed
+            }
         
-        result = {
+        return {
             'success': True,
             'total': len(df),
             'successful': successful,
             'failed': failed,
-            'total_hours': total_hours,
-            'message': f'Successfully processed overtime for {successful} employees ({total_hours:.1f} total hours)'
+            'errors': errors[:10] if errors else None
         }
-        
-        if errors:
-            result['errors'] = errors[:10]
-            if len(errors) > 10:
-                result['errors'].append(f"... and {len(errors) - 10} more errors")
-        
-        return result
         
     except Exception as e:
+        logger.error(f"Error processing employee data: {e}")
         db.session.rollback()
-        logger.error(f"Overtime data processing failed: {str(e)}", exc_info=True)
         return {
             'success': False,
-            'error': f'Processing failed: {str(e)}'
+            'error': str(e)
         }
 
-def process_bulk_update(df, file_upload=None):
-    """Process bulk update"""
-    successful = 0
-    failed = 0
-    errors = []
-    fields_updated = set()
-    
+def process_overtime_data(df, mode, file_upload):
+    """Process overtime history data"""
     try:
-        # Get update fields
-        update_fields = [col for col in df.columns if col != 'Employee ID']
+        successful = 0
+        failed = 0
+        errors = []
+        
+        # If replace mode, clear existing overtime data
+        if mode == 'replace':
+            try:
+                OvertimeHistory.query.delete()
+                db.session.commit()
+            except Exception as e:
+                logger.error(f"Error clearing overtime data: {e}")
+                db.session.rollback()
         
         # Process each row
         for idx, row in df.iterrows():
@@ -1100,79 +732,152 @@ def process_bulk_update(df, file_upload=None):
                 
                 # Find employee
                 employee = Employee.query.filter_by(employee_id=emp_id).first()
-                
                 if not employee:
                     failed += 1
                     errors.append(f"Row {idx + 2}: Employee ID '{emp_id}' not found")
                     continue
                 
-                # Track what was updated
-                row_updated = False
+                # Process each week
+                for week_num in range(1, 14):
+                    hours = row.get(f'Week {week_num}')
+                    if pd.notna(hours):
+                        try:
+                            hours_float = float(hours)
+                            
+                            # Calculate the week date (13 weeks ago from now)
+                            week_date = date.today() - timedelta(weeks=(13 - week_num))
+                            
+                            # Check if record exists
+                            ot_record = OvertimeHistory.query.filter_by(
+                                employee_id=employee.id,
+                                week_starting=week_date
+                            ).first()
+                            
+                            if not ot_record:
+                                ot_record = OvertimeHistory(
+                                    employee_id=employee.id,
+                                    week_starting=week_date
+                                )
+                            
+                            ot_record.hours = hours_float
+                            db.session.add(ot_record)
+                            
+                        except (ValueError, TypeError) as e:
+                            errors.append(f"Row {idx + 2}, Week {week_num}: Invalid hours value")
                 
-                # Update fields
-                for col in update_fields:
-                    value = row.get(col)
-                    if pd.notna(value) and str(value).strip() and str(value).strip() != 'nan':
-                        value = str(value).strip()
-                        
-                        if col == 'Crew':
-                            value = value.upper()
-                            if value in ['A', 'B', 'C', 'D']:
-                                employee.crew = value
-                                row_updated = True
-                                fields_updated.add('Crew')
-                        elif col == 'Email':
-                            employee.email = value.lower()
-                            row_updated = True
-                            fields_updated.add('Email')
-                        elif col == 'Department':
-                            employee.department = value
-                            row_updated = True
-                            fields_updated.add('Department')
-                        elif col == 'Position' and hasattr(employee, 'position_name'):
-                            employee.position_name = value
-                            row_updated = True
-                            fields_updated.add('Position')
-                        # Add more field mappings as needed
-                
-                if row_updated:
-                    successful += 1
-                else:
-                    failed += 1
-                    errors.append(f"Row {idx + 2}: No valid updates found")
+                successful += 1
                 
             except Exception as e:
                 failed += 1
-                error_msg = f"Row {idx + 2}: {str(e)}"
-                errors.append(error_msg)
-                logger.error(error_msg)
+                errors.append(f"Row {idx + 2}: {str(e)}")
+                logger.error(f"Error processing overtime row {idx + 2}: {e}")
         
-        # Commit all changes
-        db.session.commit()
-        logger.info(f"Bulk update completed: {successful} successful, {failed} failed")
+        # Commit changes
+        try:
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            return {
+                'success': False,
+                'error': f'Database error: {str(e)}',
+                'successful': successful,
+                'failed': failed
+            }
         
-        result = {
+        return {
             'success': True,
             'total': len(df),
             'successful': successful,
             'failed': failed,
-            'fields_updated': list(fields_updated),
-            'message': f'Successfully updated {successful} employees'
+            'errors': errors[:10] if errors else None
         }
         
-        if errors:
-            result['errors'] = errors[:10]
-            if len(errors) > 10:
-                result['errors'].append(f"... and {len(errors) - 10} more errors")
-        
-        return result
-        
     except Exception as e:
+        logger.error(f"Error processing overtime data: {e}")
         db.session.rollback()
-        logger.error(f"Bulk update processing failed: {str(e)}", exc_info=True)
         return {
             'success': False,
-            'error': f'Processing failed: {str(e)}'
+            'error': str(e)
+        }
+
+def process_bulk_update(df, file_upload):
+    """Process bulk employee updates"""
+    try:
+        successful = 0
+        failed = 0
+        errors = []
+        update_fields = [col for col in df.columns if col != 'Employee ID']
+        
+        for idx, row in df.iterrows():
+            try:
+                emp_id = str(row.get('Employee ID', '')).strip()
+                
+                # Find employee
+                employee = Employee.query.filter_by(employee_id=emp_id).first()
+                if not employee:
+                    failed += 1
+                    errors.append(f"Row {idx + 2}: Employee ID '{emp_id}' not found")
+                    continue
+                
+                # Update fields
+                for field in update_fields:
+                    value = row.get(field)
+                    if pd.notna(value):
+                        value_str = str(value).strip()
+                        
+                        if field == 'First Name':
+                            employee.first_name = value_str
+                            employee.name = f"{employee.first_name} {employee.last_name}"
+                        elif field == 'Last Name':
+                            employee.last_name = value_str
+                            employee.name = f"{employee.first_name} {employee.last_name}"
+                        elif field == 'Email':
+                            employee.email = value_str
+                        elif field == 'Crew':
+                            if value_str.upper() in ['A', 'B', 'C', 'D']:
+                                employee.crew = value_str.upper()
+                        elif field == 'Department':
+                            employee.department = value_str
+                        elif field == 'Position':
+                            position = Position.query.filter_by(name=value_str).first()
+                            if position:
+                                employee.position_id = position.id
+                
+                db.session.add(employee)
+                successful += 1
+                
+            except Exception as e:
+                failed += 1
+                errors.append(f"Row {idx + 2}: {str(e)}")
+                logger.error(f"Error updating row {idx + 2}: {e}")
+        
+        # Commit changes
+        try:
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            return {
+                'success': False,
+                'error': f'Database error: {str(e)}',
+                'successful': successful,
+                'failed': failed
+            }
+        
+        return {
+            'success': True,
+            'total': len(df),
+            'successful': successful,
+            'failed': failed,
+            'errors': errors[:10] if errors else None,
+            'update_fields': update_fields
+        }
+        
+    except Exception as e:
+        logger.error(f"Error processing bulk update: {e}")
+        db.session.rollback()
+        return {
+            'success': False,
+            'error': str(e)
         }
 
 # ==========================================
@@ -1183,134 +888,93 @@ def process_bulk_update(df, file_upload=None):
 @login_required
 @supervisor_required
 def download_employee_template():
-    """Download employee upload template - Fixed for actual format"""
+    """Download employee upload template"""
     try:
-        # Create template data matching the expected format
-        template_data = {
-            'Last Name': ['Smith', 'Johnson', 'Williams'],
-            'First Name': ['John', 'Mary', 'Robert'],
-            'Employee ID': ['10001', '10002', '10003'],
-            'Date of Hire': ['3/15/2018', '7/22/2015', '11/10/2020'],
-            'Total Overtime (Last 3 Months)': [45, 62, 38],
-            'Crew Assigned': ['A', 'B', 'C'],
-            'Current Job Position': ['Operator', 'Senior Operator', 'Maintenance Technician'],
-            # Add example position columns
-            'Operator': ['current', 'yes', 'yes'],
-            'Senior Operator': ['yes', 'current', ''],
-            'Lead Operator': ['yes', 'yes', ''],
-            'Maintenance Technician': ['', '', 'current'],
-            'Electrician': ['', '', 'yes'],
-            'Mechanic': ['', '', 'yes'],
-            'Control Room Operator': ['yes', '', ''],
-            'Shift Supervisor': ['', 'yes', ''],
-            'Process Engineer': ['', 'yes', ''],
-            'Safety Coordinator': ['', '', '']
-        }
+        # Create workbook
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Employee Data"
         
-        df = pd.DataFrame(template_data)
+        # Define headers
+        headers = [
+            'Employee ID', 'First Name', 'Last Name', 'Email',
+            'Crew', 'Department', 'Position', 'Phone',
+            'Hire Date', 'Birth Date'
+        ]
         
-        # Create Excel file
+        # Style headers
+        header_font = Font(bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+        header_alignment = Alignment(horizontal="center", vertical="center")
+        
+        # Add headers
+        for col, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = header_alignment
+            
+            # Set column width
+            ws.column_dimensions[get_column_letter(col)].width = 15
+        
+        # Add sample data
+        sample_data = [
+            ['EMP001', 'John', 'Doe', 'john.doe@company.com', 'A', 'Operations', 'Machine Operator', '555-0001', '2020-01-15', '1985-05-20'],
+            ['EMP002', 'Jane', 'Smith', 'jane.smith@company.com', 'B', 'Operations', 'Lead Operator', '555-0002', '2019-03-22', '1990-08-15'],
+            ['EMP003', 'Mike', 'Johnson', 'mike.johnson@company.com', 'C', 'Maintenance', 'Technician', '555-0003', '2021-06-10', '1988-12-03']
+        ]
+        
+        for row_idx, row_data in enumerate(sample_data, 2):
+            for col_idx, value in enumerate(row_data, 1):
+                ws.cell(row=row_idx, column=col_idx, value=value)
+        
+        # Add instructions sheet
+        ws2 = wb.create_sheet("Instructions")
+        instructions = [
+            ["Employee Upload Template Instructions"],
+            [""],
+            ["Required Fields:"],
+            ["- Employee ID: Unique identifier for each employee"],
+            ["- First Name: Employee's first name"],
+            ["- Last Name: Employee's last name"],
+            ["- Email: Valid email address (will be used for login)"],
+            ["- Crew: Must be A, B, C, or D"],
+            [""],
+            ["Optional Fields:"],
+            ["- Department: Employee's department"],
+            ["- Position: Job title/position"],
+            ["- Phone: Contact number"],
+            ["- Hire Date: Format YYYY-MM-DD"],
+            ["- Birth Date: Format YYYY-MM-DD"],
+            [""],
+            ["Notes:"],
+            ["- Do not modify the header row"],
+            ["- Do not change the sheet name 'Employee Data'"],
+            ["- Save as .xlsx format"],
+            ["- Maximum 5000 employees per upload"]
+        ]
+        
+        for row_idx, instruction in enumerate(instructions, 1):
+            if instruction:
+                ws2.cell(row=row_idx, column=1, value=instruction[0])
+                if row_idx == 1:
+                    ws2.cell(row=row_idx, column=1).font = Font(bold=True, size=14)
+        
+        # Save to BytesIO
         output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            df.to_excel(writer, sheet_name='Employee Data', index=False)
-            
-            # Get workbook and worksheet
-            workbook = writer.book
-            worksheet = writer.sheets['Employee Data']
-            
-            # Add formatting
-            header_format = workbook.add_format({
-                'bold': True,
-                'bg_color': '#4472C4',
-                'font_color': 'white',
-                'border': 1,
-                'text_wrap': True,
-                'valign': 'vcenter'
-            })
-            
-            # Data validation format
-            valid_format = workbook.add_format({'bg_color': '#E8F5E9'})
-            
-            # Write headers with formatting
-            for col_num, value in enumerate(df.columns.values):
-                worksheet.write(0, col_num, value, header_format)
-            
-            # Set column widths
-            worksheet.set_column('A:B', 15)  # Names
-            worksheet.set_column('C:C', 12)  # Employee ID
-            worksheet.set_column('D:D', 15)  # Date of Hire
-            worksheet.set_column('E:E', 20)  # Overtime
-            worksheet.set_column('F:F', 15)  # Crew
-            worksheet.set_column('G:G', 20)  # Current Position
-            worksheet.set_column('H:Q', 18)  # Position columns
-            
-            # Add row height for header
-            worksheet.set_row(0, 30)
-            
-            # Add instructions
-            worksheet.write_comment('A1', 'Employee last name')
-            worksheet.write_comment('B1', 'Employee first name')
-            worksheet.write_comment('C1', 'Unique employee identifier')
-            worksheet.write_comment('D1', 'Format: M/D/YYYY')
-            worksheet.write_comment('E1', 'Total overtime hours for the last 3 months')
-            worksheet.write_comment('F1', 'Must be A, B, C, or D')
-            worksheet.write_comment('G1', 'Employee\'s current job position')
-            worksheet.write_comment('H1', 'Mark "current" for current position, "yes" for qualified positions, leave blank if not qualified')
-            
-            # Add data validation for crew
-            worksheet.data_validation('F2:F1000', {
-                'validate': 'list',
-                'source': ['A', 'B', 'C', 'D'],
-                'error_title': 'Invalid Crew',
-                'error_message': 'Please select A, B, C, or D'
-            })
-            
-            # Add instructions sheet
-            instruction_sheet = workbook.add_worksheet('Instructions')
-            instructions = [
-                ['Employee Upload Template Instructions'],
-                [''],
-                ['Required Fields:'],
-                ['1. Last Name - Employee\'s last name'],
-                ['2. First Name - Employee\'s first name'],
-                ['3. Employee ID - Unique identifier for each employee'],
-                ['4. Date of Hire - Employment start date (M/D/YYYY format)'],
-                ['5. Total Overtime (Last 3 Months) - Sum of overtime hours'],
-                ['6. Crew Assigned - Must be A, B, C, or D'],
-                ['7. Current Job Position - Employee\'s current role'],
-                [''],
-                ['Position Columns:'],
-                ['- After the required fields, add columns for each position in your department'],
-                ['- Mark with "current" for the employee\'s current position'],
-                ['- Mark with "yes" for positions the employee is qualified for'],
-                ['- Leave blank if the employee is not qualified for that position'],
-                [''],
-                ['Notes:'],
-                ['- The system will automatically update existing employees or add new ones'],
-                ['- No data will be deleted during the upload process'],
-                ['- Position columns can vary by department - add as many as needed']
-            ]
-            
-            for row_num, instruction in enumerate(instructions):
-                instruction_sheet.write(row_num, 0, instruction[0])
-            
-            # Format instruction sheet
-            instruction_sheet.set_column('A:A', 80)
-            title_format = workbook.add_format({'bold': True, 'font_size': 14})
-            instruction_sheet.write(0, 0, instructions[0][0], title_format)
-        
+        wb.save(output)
         output.seek(0)
         
         return send_file(
             output,
             mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             as_attachment=True,
-            download_name=f'employee_template_{datetime.now().strftime("%Y%m%d")}.xlsx'
+            download_name=f'employee_upload_template_{datetime.now().strftime("%Y%m%d")}.xlsx'
         )
-    
+        
     except Exception as e:
-        logger.error(f"Error generating employee template: {e}")
-        flash('Error generating template. Please try again.', 'danger')
+        logger.error(f"Error creating employee template: {e}")
+        flash('Error creating template. Please try again.', 'error')
         return redirect(url_for('employee_import.upload_employees'))
 
 @employee_import_bp.route('/download-overtime-template')
@@ -1319,424 +983,183 @@ def download_employee_template():
 def download_overtime_template():
     """Download overtime upload template"""
     try:
-        # Create template with employee IDs and 13 weeks
-        template_data = {'Employee ID': ['EMP001', 'EMP002', 'EMP003']}
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Overtime History"
         
-        # Add 13 week columns with dates
-        base_date = datetime.now().date()
-        for i in range(1, 14):
-            weeks_ago = 13 - i
-            week_start = base_date - timedelta(weeks=weeks_ago)
-            week_start = week_start - timedelta(days=week_start.weekday())
-            week_label = f'Week {i} ({week_start.strftime("%m/%d")})'
-            template_data[f'Week {i}'] = [0, 0, 0]
+        # Headers
+        headers = ['Employee ID', 'Employee Name']
+        for week in range(1, 14):
+            headers.append(f'Week {week}')
         
-        df = pd.DataFrame(template_data)
+        # Style headers
+        header_font = Font(bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
         
-        # Create Excel file
+        for col, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            ws.column_dimensions[get_column_letter(col)].width = 12
+        
+        # Add date row
+        ws.cell(row=2, column=1, value="Week Starting:")
+        for week in range(1, 14):
+            week_date = date.today() - timedelta(weeks=(13 - week))
+            ws.cell(row=2, column=week + 2, value=week_date.strftime('%Y-%m-%d'))
+        
+        # Sample data
+        sample_employees = [
+            ['EMP001', 'John Doe', 45, 42, 48, 40, 44, 46, 43, 45, 41, 40, 42, 44, 43],
+            ['EMP002', 'Jane Smith', 40, 40, 45, 42, 40, 48, 44, 42, 40, 45, 43, 41, 40],
+            ['EMP003', 'Mike Johnson', 42, 44, 40, 43, 45, 40, 42, 44, 46, 48, 40, 42, 44]
+        ]
+        
+        for row_idx, emp_data in enumerate(sample_employees, 3):
+            for col_idx, value in enumerate(emp_data, 1):
+                ws.cell(row=row_idx, column=col_idx, value=value)
+        
+        # Instructions sheet
+        ws2 = wb.create_sheet("Instructions")
+        instructions = [
+            ["Overtime History Upload Instructions"],
+            [""],
+            ["This template captures 13 weeks of overtime history"],
+            [""],
+            ["Format:"],
+            ["- Employee ID: Must match existing employee IDs in the system"],
+            ["- Employee Name: For reference only (not imported)"],
+            ["- Week 1-13: Overtime hours for each week (numbers only)"],
+            [""],
+            ["Notes:"],
+            ["- Week 1 is the oldest week, Week 13 is the most recent"],
+            ["- Enter 0 for weeks with no overtime"],
+            ["- Leave blank if no data available"],
+            ["- Decimal hours are allowed (e.g., 42.5)"]
+        ]
+        
+        for row_idx, instruction in enumerate(instructions, 1):
+            if instruction:
+                ws2.cell(row=row_idx, column=1, value=instruction[0])
+                if row_idx == 1:
+                    ws2.cell(row=row_idx, column=1).font = Font(bold=True, size=14)
+        
+        # Save
         output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            df.to_excel(writer, sheet_name='Overtime Data', index=False)
-            
-            # Get workbook and worksheet
-            workbook = writer.book
-            worksheet = writer.sheets['Overtime Data']
-            
-            # Add formatting
-            header_format = workbook.add_format({
-                'bold': True,
-                'bg_color': '#4472C4',
-                'font_color': 'white',
-                'border': 1,
-                'text_wrap': True
-            })
-            
-            # Number format for hours
-            hours_format = workbook.add_format({'num_format': '#,##0.0'})
-            
-            # Write headers
-            for col_num, value in enumerate(df.columns.values):
-                worksheet.write(0, col_num, value, header_format)
-            
-            # Apply number format to week columns
-            for col in range(1, 14):
-                worksheet.set_column(col, col, 10, hours_format)
-            
-            # Set column widths
-            worksheet.set_column('A:A', 15)  # Employee ID
-            
-            # Add instructions
-            worksheet.write_comment('A1', 'Employee ID must match existing employees')
-            worksheet.write_comment('B1', 'Enter overtime hours for each week (0 if none)')
-        
+        wb.save(output)
         output.seek(0)
         
         return send_file(
             output,
             mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             as_attachment=True,
-            download_name=f'overtime_template_{datetime.now().strftime("%Y%m%d")}.xlsx'
+            download_name=f'overtime_upload_template_{datetime.now().strftime("%Y%m%d")}.xlsx'
         )
-    
+        
     except Exception as e:
-        logger.error(f"Error generating overtime template: {e}")
-        flash('Error generating template. Please try again.', 'danger')
-        return redirect(url_for('employee_import.upload_overtime'))
-
-@employee_import_bp.route('/download-bulk-update-template/<template_type>')
-@login_required
-@supervisor_required
-def download_bulk_update_template(template_type):
-    """Download bulk update template"""
-    try:
-        if template_type == 'employee':
-            template_data = {
-                'Employee ID': ['EMP001', 'EMP002', 'EMP003'],
-                'Email': ['new.email@company.com', '', ''],
-                'Crew': ['B', 'C', ''],
-                'Department': ['', 'Maintenance', '']
-            }
-            sheet_name = 'Employee Updates'
-        else:
-            # Generic template
-            template_data = {
-                'Employee ID': ['EMP001', 'EMP002', 'EMP003'],
-                'Field 1': ['', '', ''],
-                'Field 2': ['', '', '']
-            }
-            sheet_name = 'Bulk Update'
-        
-        df = pd.DataFrame(template_data)
-        
-        # Create Excel file
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            df.to_excel(writer, sheet_name=sheet_name, index=False)
-            
-            # Add formatting
-            workbook = writer.book
-            worksheet = writer.sheets[sheet_name]
-            
-            header_format = workbook.add_format({
-                'bold': True,
-                'bg_color': '#4472C4',
-                'font_color': 'white',
-                'border': 1
-            })
-            
-            # Write headers
-            for col_num, value in enumerate(df.columns.values):
-                worksheet.write(0, col_num, value, header_format)
-            
-            # Add instructions
-            worksheet.write_comment('A1', 'Employee ID must match existing employees')
-            worksheet.write_comment('B1', 'Leave blank to keep current value')
-        
-        output.seek(0)
-        
-        return send_file(
-            output,
-            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            as_attachment=True,
-            download_name=f'bulk_update_template_{datetime.now().strftime("%Y%m%d")}.xlsx'
-        )
-    
-    except Exception as e:
-        logger.error(f"Error generating bulk update template: {e}")
-        flash('Error generating template. Please try again.', 'danger')
+        logger.error(f"Error creating overtime template: {e}")
+        flash('Error creating template. Please try again.', 'error')
         return redirect(url_for('employee_import.upload_employees'))
 
 # ==========================================
-# EXPORT ROUTES
+# UPLOAD HISTORY ROUTES
 # ==========================================
 
-@employee_import_bp.route('/export-current-employees')
+@employee_import_bp.route('/upload-history')
 @login_required
 @supervisor_required
-def export_current_employees():
-    """Export current employee list"""
+def upload_history():
+    """View upload history"""
     try:
-        # Get all non-supervisor employees
-        employees = Employee.query.filter_by(is_supervisor=False).order_by(Employee.employee_id).all()
+        # Get filter parameters
+        upload_type = request.args.get('type')
+        date_from = request.args.get('date_from')
+        date_to = request.args.get('date_to')
         
-        if not employees:
-            flash('No employees found to export.', 'warning')
-            return redirect(url_for('employee_import.upload_employees'))
+        # Build query
+        query = FileUpload.query
         
-        # Build data for export
-        data = []
-        for emp in employees:
-            data.append({
-                'Employee ID': emp.employee_id,
-                'First Name': emp.name.split()[0] if emp.name else '',
-                'Last Name': ' '.join(emp.name.split()[1:]) if emp.name and len(emp.name.split()) > 1 else '',
-                'Email': emp.email,
-                'Crew': emp.crew or '',
-                'Department': getattr(emp, 'department', ''),
-                'Position': emp.position.name if emp.position else getattr(emp, 'position_name', ''),
-                'Active': 'Yes' if getattr(emp, 'is_active', True) else 'No'
-            })
+        if upload_type:
+            query = query.filter_by(upload_type=upload_type)
         
-        df = pd.DataFrame(data)
+        if date_from:
+            try:
+                date_from_obj = datetime.strptime(date_from, '%Y-%m-%d')
+                query = query.filter(FileUpload.uploaded_at >= date_from_obj)
+            except ValueError:
+                pass
         
-        # Create Excel file
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            df.to_excel(writer, sheet_name='Employees', index=False)
-            
-            # Add formatting
-            workbook = writer.book
-            worksheet = writer.sheets['Employees']
-            
-            header_format = workbook.add_format({
-                'bold': True,
-                'bg_color': '#4472C4',
-                'font_color': 'white',
-                'border': 1
-            })
-            
-            # Apply header format
-            for col_num, value in enumerate(df.columns.values):
-                worksheet.write(0, col_num, value, header_format)
-            
-            # Auto-fit columns
-            for idx, col in enumerate(df.columns):
-                max_len = max(df[col].astype(str).map(len).max(), len(col)) + 2
-                worksheet.set_column(idx, idx, max_len)
+        if date_to:
+            try:
+                date_to_obj = datetime.strptime(date_to, '%Y-%m-%d')
+                date_to_obj = date_to_obj.replace(hour=23, minute=59, second=59)
+                query = query.filter(FileUpload.uploaded_at <= date_to_obj)
+            except ValueError:
+                pass
         
-        output.seek(0)
+        # Get uploads with pagination
+        page = request.args.get('page', 1, type=int)
+        per_page = 20
         
-        return send_file(
-            output,
-            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            as_attachment=True,
-            download_name=f'employees_export_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
+        uploads = query.order_by(FileUpload.uploaded_at.desc()).paginate(
+            page=page, per_page=per_page, error_out=False
         )
         
-    except Exception as e:
-        logger.error(f"Error exporting employees: {e}", exc_info=True)
-        flash('Error exporting employee data. Please try again.', 'danger')
-        return redirect(url_for('employee_import.upload_employees'))
-
-# Alias for the route
-export_employees = export_current_employees
-
-@employee_import_bp.route('/export-current-overtime')
-@login_required
-@supervisor_required
-def export_current_overtime():
-    """Export current overtime data to Excel with filters applied - FIXED VERSION"""
-    try:
-        # Get filter parameters from request (same as overtime_management)
-        search_term = request.args.get('search', '')
-        crew_filter = request.args.get('crew', '')
-        position_filter = request.args.get('position', '')
-        ot_range_filter = request.args.get('ot_range', '')
+        # Augment uploads for display
+        for upload in uploads.items:
+            augment_file_upload(upload)
         
-        # Calculate date range for 13-week period
-        end_date = date.today()
-        start_date = end_date - timedelta(weeks=13)
-        
-        # Base query for employees
-        query = Employee.query.filter_by(is_supervisor=False)
-        
-        # Apply filters
-        if search_term:
-            query = query.filter(
-                or_(
-                    Employee.name.ilike(f'%{search_term}%'),
-                    Employee.employee_id.ilike(f'%{search_term}%')
-                )
-            )
-        
-        if crew_filter:
-            query = query.filter_by(crew=crew_filter)
-        
-        if position_filter:
-            query = query.filter_by(position_id=position_filter)
-        
-        # Get all filtered employees
-        employees = query.all()
-        
-        # Prepare data for export
-        export_data = []
-        
-        for employee in employees:
-            # Get overtime history
-            overtime_records = OvertimeHistory.query.filter_by(
-                employee_id=employee.id
-            ).filter(
-                OvertimeHistory.week_ending >= start_date,
-                OvertimeHistory.week_ending <= end_date
-            ).order_by(OvertimeHistory.week_ending).all()
-            
-            # Calculate totals using the correct field names from OvertimeHistory model
-            total_ot = 0
-            for record in overtime_records:
-                # Check which field exists in the model
-                if hasattr(record, 'overtime_hours') and record.overtime_hours is not None:
-                    total_ot += record.overtime_hours
-                elif hasattr(record, 'hours') and record.hours is not None:
-                    total_ot += record.hours
-                elif hasattr(record, 'total_hours') and record.total_hours is not None:
-                    # If using total_hours, assume anything over 40/week is OT
-                    total_ot += max(0, record.total_hours - 40)
-            
-            # Apply OT range filter
-            if ot_range_filter:
-                if ot_range_filter == '0-50' and total_ot > 50:
-                    continue
-                elif ot_range_filter == '50-100' and (total_ot <= 50 or total_ot > 100):
-                    continue
-                elif ot_range_filter == '100-150' and (total_ot <= 100 or total_ot > 150):
-                    continue
-                elif ot_range_filter == '150+' and total_ot <= 150:
-                    continue
-            
-            # Build row data with weekly breakdown
-            row_data = {
-                'Employee ID': employee.employee_id,
-                'Name': employee.name,
-                'Email': employee.email,
-                'Crew': employee.crew or '',
-                'Position': employee.position.name if employee.position else '',
-                'Department': employee.department or '',
-                'Hire Date': employee.hire_date.strftime('%Y-%m-%d') if employee.hire_date else '',
-                'Years Employed': (date.today() - employee.hire_date).days // 365 if employee.hire_date else 0
-            }
-            
-            # Add weekly overtime data
-            week_data = {}
-            for i in range(13):
-                week_end = end_date - timedelta(weeks=i)
-                week_start = week_end - timedelta(days=6)
-                week_label = f'Week {13-i} ({week_start.strftime("%m/%d")} - {week_end.strftime("%m/%d")})'
-                
-                # Find overtime for this week
-                week_ot = 0
-                for record in overtime_records:
-                    if record.week_ending == week_end:
-                        if hasattr(record, 'overtime_hours') and record.overtime_hours is not None:
-                            week_ot = record.overtime_hours
-                        elif hasattr(record, 'hours') and record.hours is not None:
-                            week_ot = record.hours
-                        elif hasattr(record, 'total_hours') and record.total_hours is not None:
-                            week_ot = max(0, record.total_hours - 40)
-                        break
-                
-                week_data[week_label] = week_ot
-            
-            # Add week data in chronological order
-            for week_label in sorted(week_data.keys()):
-                row_data[week_label] = week_data[week_label]
-            
-            # Add totals
-            row_data['Total OT Hours'] = round(total_ot, 1)
-            row_data['Average Weekly OT'] = round(total_ot / 13, 1)
-            
-            export_data.append(row_data)
-        
-        # Create DataFrame
-        df = pd.DataFrame(export_data)
-        
-        # Generate Excel file
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            # Write main data
-            df.to_excel(writer, sheet_name='Overtime Report', index=False)
-            
-            # Get workbook and worksheet
-            workbook = writer.book
-            worksheet = writer.sheets['Overtime Report']
-            
-            # Add formats
-            header_format = workbook.add_format({
-                'bold': True,
-                'bg_color': '#4472C4',
-                'font_color': 'white',
-                'border': 1
-            })
-            
-            number_format = workbook.add_format({
-                'num_format': '#,##0.0'
-            })
-            
-            # Apply header format
-            for col_num, col_name in enumerate(df.columns):
-                worksheet.write(0, col_num, col_name, header_format)
-            
-            # Adjust column widths
-            worksheet.set_column('A:A', 12)  # Employee ID
-            worksheet.set_column('B:B', 25)  # Name
-            worksheet.set_column('C:C', 30)  # Email
-            worksheet.set_column('D:H', 15)  # Crew, Position, etc.
-            
-            # Apply number format to numeric columns
-            if len(df.columns) > 8:
-                for col_idx in range(8, len(df.columns)):
-                    worksheet.set_column(col_idx, col_idx, 12, number_format)
-            
-            # Add summary statistics
-            summary_data = {
-                'Summary': ['Total Employees', 'Total OT Hours', 'Average OT per Employee', 
-                           'Employees with High OT (195+ hrs)', 'Report Generated'],
-                'Value': [
-                    len(export_data),
-                    sum(row['Total OT Hours'] for row in export_data) if export_data else 0,
-                    round(sum(row['Total OT Hours'] for row in export_data) / max(1, len(export_data)), 1) if export_data else 0,
-                    sum(1 for row in export_data if row['Total OT Hours'] >= 195) if export_data else 0,
-                    datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                ]
-            }
-            
-            summary_df = pd.DataFrame(summary_data)
-            summary_df.to_excel(writer, sheet_name='Summary', index=False)
-            
-            # Format summary sheet
-            summary_worksheet = writer.sheets['Summary']
-            for col_num, col_name in enumerate(summary_df.columns):
-                summary_worksheet.write(0, col_num, col_name, header_format)
-            
-            # Apply filters if any
-            filters_data = {
-                'Filter': ['Search Term', 'Crew', 'Position', 'OT Range', 'Date Range'],
-                'Value': [
-                    search_term or 'None',
-                    crew_filter or 'All',
-                    Position.query.get(position_filter).name if position_filter else 'All',
-                    ot_range_filter or 'All',
-                    f'{start_date.strftime("%Y-%m-%d")} to {end_date.strftime("%Y-%m-%d")}'
-                ]
-            }
-            
-            filters_df = pd.DataFrame(filters_data)
-            filters_df.to_excel(writer, sheet_name='Applied Filters', index=False)
-            
-            # Format filters sheet
-            filters_worksheet = writer.sheets['Applied Filters']
-            for col_num, col_name in enumerate(filters_df.columns):
-                filters_worksheet.write(0, col_num, col_name, header_format)
-        
-        # Prepare file for download
-        output.seek(0)
-        filename = f'overtime_report_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
-        
-        return send_file(
-            output,
-            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            as_attachment=True,
-            download_name=filename
-        )
+        return render_template('upload_history.html',
+                             uploads=uploads,
+                             upload_type=upload_type,
+                             date_from=date_from,
+                             date_to=date_to)
         
     except Exception as e:
-        logger.error(f"Error exporting overtime data: {e}")
-        logger.error(f"Error type: {type(e)}")
-        logger.error(f"Traceback: {traceback.format_exc()}")
-        flash('Error exporting overtime data. Please try again.', 'danger')
-        return redirect(url_for('main.overtime_management'))
+        logger.error(f"Error loading upload history: {e}")
+        flash('Error loading upload history', 'error')
+        return redirect(url_for('supervisor.dashboard'))
 
 # ==========================================
-# API ENDPOINTS FOR AJAX CALLS
+# ADDITIONAL ROUTES
+# ==========================================
+
+@employee_import_bp.route('/upload-overtime')
+@login_required
+@supervisor_required
+def upload_overtime():
+    """Dedicated overtime upload page"""
+    try:
+        # Get overtime statistics
+        total_employees = Employee.query.count()
+        employees_with_ot = db.session.query(OvertimeHistory.employee_id).distinct().count()
+        employees_without_ot = total_employees - employees_with_ot
+        
+        # Get recent overtime uploads
+        recent_uploads = FileUpload.query.filter_by(
+            upload_type='overtime'
+        ).order_by(FileUpload.uploaded_at.desc()).limit(5).all()
+        
+        for upload in recent_uploads:
+            augment_file_upload(upload)
+        
+        # Calculate average OT
+        avg_ot = db.session.query(func.avg(OvertimeHistory.hours)).scalar() or 0
+        
+        return render_template('upload_overtime.html',
+                             total_employees=total_employees,
+                             employees_with_ot=employees_with_ot,
+                             employees_without_ot=employees_without_ot,
+                             recent_uploads=recent_uploads,
+                             average_ot=round(avg_ot, 1))
+        
+    except Exception as e:
+        logger.error(f"Error loading overtime upload page: {e}")
+        flash('Error loading page', 'error')
+        return redirect(url_for('supervisor.dashboard'))
+
+# ==========================================
+# API ENDPOINTS
 # ==========================================
 
 @employee_import_bp.route('/api/upload-details/<int:upload_id>')
@@ -1746,11 +1169,8 @@ def get_upload_details(upload_id):
     """Get detailed information about an upload"""
     try:
         upload = FileUpload.query.get_or_404(upload_id)
-        
-        # Augment for template compatibility
         augment_file_upload(upload)
         
-        # Build response
         response = {
             'id': upload.id,
             'filename': upload.filename,
@@ -1766,7 +1186,6 @@ def get_upload_details(upload_id):
             'records_updated': upload.records_updated
         }
         
-        # Add error details if present
         if upload.error_details:
             if isinstance(upload.error_details, dict):
                 response['error_details'] = upload.error_details
@@ -1805,50 +1224,6 @@ def delete_upload(upload_id):
         return jsonify({'success': False, 'error': 'Failed to delete upload'}), 500
 
 # ==========================================
-# TEST ROUTE
-# ==========================================
-
-@employee_import_bp.route('/upload-test')
-@login_required
-@supervisor_required
-def upload_test():
-    """Simple test page to verify the blueprint is working"""
-    return f"""
-    <html>
-    <head>
-        <title>Upload Test</title>
-        <style>
-            body {{ font-family: Arial, sans-serif; padding: 20px; }}
-            .info {{ background: #e3f2fd; padding: 10px; margin: 10px 0; border-radius: 4px; }}
-            .success {{ color: green; }}
-            .error {{ color: red; }}
-        </style>
-    </head>
-    <body>
-        <h1>Employee Import Blueprint Test</h1>
-        
-        <div class="info">
-            <h3>Blueprint Status: <span class="success">✓ Working</span></h3>
-            <p>User: {current_user.name}</p>
-            <p>Is Supervisor: {current_user.is_supervisor}</p>
-            <p>Upload Folder: {current_app.config.get('UPLOAD_FOLDER', 'Not configured')}</p>
-            <p>Upload Folder Exists: {os.path.exists(current_app.config.get('UPLOAD_FOLDER', ''))}</p>
-        </div>
-        
-        <h3>Quick Tests:</h3>
-        <ul>
-            <li><a href="/upload-employees">Upload Employees Page</a></li>
-            <li><a href="/upload-overtime">Upload Overtime Page</a></li>
-            <li><a href="/download-employee-template">Download Employee Template</a></li>
-            <li><a href="/download-overtime-template">Download Overtime Template</a></li>
-        </ul>
-        
-        <a href="/supervisor/dashboard">Back to Dashboard</a>
-    </body>
-    </html>
-    """
-
-# ==========================================
 # ERROR HANDLERS
 # ==========================================
 
@@ -1856,16 +1231,15 @@ def upload_test():
 def not_found_error(error):
     """Handle 404 errors"""
     if request.path.startswith('/api/'):
-        return jsonify({'error': 'Resource not found'}), 404
-    flash('Page not found.', 'warning')
+        return jsonify({'error': 'Not found'}), 404
+    flash('Page not found', 'error')
     return redirect(url_for('supervisor.dashboard'))
 
 @employee_import_bp.errorhandler(500)
 def internal_error(error):
     """Handle 500 errors"""
-    logger.error(f"Internal error in employee_import: {error}")
     db.session.rollback()
     if request.path.startswith('/api/'):
         return jsonify({'error': 'Internal server error'}), 500
-    flash('An unexpected error occurred. Please try again.', 'danger')
+    flash('An unexpected error occurred', 'error')
     return redirect(url_for('supervisor.dashboard'))
