@@ -1,7 +1,7 @@
 # blueprints/employee_import.py
 """
 Complete Excel upload system for employee data management
-Handles employee data, overtime history, and bulk updates
+Simplified version - direct upload without validation steps
 """
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, current_app, send_file
@@ -148,14 +148,14 @@ def augment_file_upload(upload):
 @login_required
 @supervisor_required
 def upload_employees():
-    """Upload employees page"""
+    """Upload employees page - simplified version"""
     try:
         stats = get_employee_stats()
         recent_uploads = get_recent_uploads()
         employees_without_accounts = get_employees_without_accounts()
         
-        # Check which template to use (you can switch between templates here)
-        template = 'upload_employees_enhanced.html'  # or 'upload_employees.html' for simple version
+        # Use the simplified template
+        template = 'upload_employees_simple_direct.html'
         
         return render_template(template,
                              recent_uploads=recent_uploads,
@@ -174,7 +174,7 @@ def upload_employees():
 @login_required
 @supervisor_required
 def upload_employees_post():
-    """Handle the actual file upload"""
+    """Handle the simplified direct file upload"""
     try:
         if 'file' not in request.files:
             flash('No file selected', 'error')
@@ -188,10 +188,6 @@ def upload_employees_post():
         if not file.filename.endswith(('.xlsx', '.xls')):
             flash('Invalid file type. Please upload an Excel file (.xlsx or .xls)', 'error')
             return redirect(request.url)
-        
-        # Get form data
-        upload_type = request.form.get('upload_type', 'employee')
-        mode = request.form.get('mode', 'replace')
         
         # Save file temporarily
         filename = secure_filename(file.filename)
@@ -208,7 +204,7 @@ def upload_employees_post():
         # Create upload record
         file_upload = FileUpload(
             filename=filename,
-            upload_type=upload_type,
+            upload_type='employee',  # Always employee type for this simplified version
             uploaded_by_id=current_user.id,
             uploaded_at=datetime.utcnow(),
             status='processing'
@@ -217,18 +213,32 @@ def upload_employees_post():
         db.session.commit()
         
         try:
-            # Read and process the Excel file
+            # Read the Excel file
             df = pd.read_excel(filepath)
             
-            # Process based on upload type
-            if upload_type == 'employee':
-                result = process_employee_data(df, mode, file_upload)
-            elif upload_type == 'overtime':
-                result = process_overtime_data(df, mode, file_upload)
-            elif upload_type == 'bulk_update':
-                result = process_bulk_update(df, file_upload)
-            else:
-                result = {'success': False, 'error': 'Invalid upload type'}
+            # First validate the data
+            validation_result = validate_employee_data(df)
+            
+            if not validation_result.get('success'):
+                # Validation failed
+                file_upload.status = 'failed'
+                file_upload.error_details = validation_result
+                db.session.commit()
+                
+                # Show validation errors
+                flash('File validation failed:', 'error')
+                errors = validation_result.get('errors', [])
+                # Show first 5 errors
+                for error in errors[:5]:
+                    flash(f"• {error}", 'error')
+                if len(errors) > 5:
+                    flash(f"... and {len(errors) - 5} more errors", 'error')
+                
+                return redirect(url_for('employee_import.upload_employees'))
+            
+            # Validation passed, process the data
+            # Always use append mode for simplified version
+            result = process_employee_data(df, 'append', file_upload)
             
             # Update upload record
             file_upload.status = 'completed' if result.get('success') else 'failed'
@@ -245,11 +255,14 @@ def upload_employees_post():
             
             # Show appropriate message
             if result.get('success'):
-                flash(f"Successfully processed {result.get('successful', 0)} records!", 'success')
+                flash(f"✅ Successfully uploaded {result.get('successful', 0)} employees!", 'success')
                 if result.get('failed', 0) > 0:
-                    flash(f"{result.get('failed', 0)} records failed to process", 'warning')
+                    flash(f"⚠️ {result.get('failed', 0)} records failed to process", 'warning')
+                    if result.get('errors'):
+                        for error in result.get('errors', [])[:3]:
+                            flash(f"• {error}", 'warning')
             else:
-                flash(f"Upload failed: {result.get('error', 'Unknown error')}", 'error')
+                flash(f"❌ Upload failed: {result.get('error', 'Unknown error')}", 'error')
                 
         except Exception as e:
             logger.error(f"Error processing file: {e}")
@@ -271,144 +284,6 @@ def upload_employees_post():
         logger.error(f"Upload error: {e}")
         flash('An error occurred during upload. Please try again.', 'error')
         return redirect(url_for('employee_import.upload_employees'))
-
-# ==========================================
-# VALIDATION AND PROCESSING ROUTES
-# ==========================================
-
-@employee_import_bp.route('/validate-upload', methods=['POST'])
-@login_required
-@supervisor_required
-def validate_upload():
-    """Validate uploaded Excel file via AJAX"""
-    try:
-        if 'file' not in request.files:
-            return jsonify({'success': False, 'error': 'No file provided'})
-        
-        file = request.files['file']
-        if file.filename == '':
-            return jsonify({'success': False, 'error': 'No file selected'})
-        
-        if not file.filename.endswith(('.xlsx', '.xls')):
-            return jsonify({'success': False, 'error': 'Invalid file type. Please upload Excel files only.'})
-        
-        # Get upload type from form data (handle both 'uploadType' and 'upload_type')
-        upload_type = request.form.get('uploadType') or request.form.get('upload_type', 'employee')
-        
-        # Map bulk to bulk_update for consistency
-        if upload_type == 'bulk':
-            upload_type = 'bulk_update'
-        
-        # Read the Excel file
-        try:
-            df = pd.read_excel(file)
-        except Exception as read_error:
-            return jsonify({'success': False, 'error': f'Error reading Excel file: {str(read_error)}'})
-        
-        # Validate based on upload type
-        if upload_type == 'employee':
-            result = validate_employee_data(df)
-        elif upload_type == 'overtime':
-            result = validate_overtime_data(df)
-        elif upload_type == 'bulk_update':
-            result = validate_bulk_update(df)
-        else:
-            result = {'success': False, 'error': f'Invalid upload type: {upload_type}'}
-        
-        return jsonify(result)
-        
-    except Exception as e:
-        logger.error(f"Validation error: {str(e)}", exc_info=True)
-        return jsonify({'success': False, 'error': f'Validation error: {str(e)}'})
-
-@employee_import_bp.route('/process-upload', methods=['POST'])
-@login_required
-@supervisor_required
-def process_upload():
-    """Process the uploaded file via AJAX"""
-    try:
-        if 'file' not in request.files:
-            return jsonify({'success': False, 'error': 'No file provided'})
-        
-        file = request.files['file']
-        
-        # Get upload type and mode (handle both naming conventions)
-        upload_type = request.form.get('uploadType') or request.form.get('upload_type', 'employee')
-        mode = request.form.get('mode', 'append')
-        
-        # Map bulk to bulk_update
-        if upload_type == 'bulk':
-            upload_type = 'bulk_update'
-        
-        # Save file temporarily
-        filename = secure_filename(file.filename)
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = f"{timestamp}_{filename}"
-        
-        upload_folder = current_app.config.get('UPLOAD_FOLDER', 'upload_files')
-        os.makedirs(upload_folder, exist_ok=True)
-        
-        filepath = os.path.join(upload_folder, filename)
-        file.save(filepath)
-        
-        # Create file upload record
-        file_upload = FileUpload(
-            filename=filename,
-            upload_type=upload_type,
-            uploaded_by_id=current_user.id,
-            uploaded_at=datetime.utcnow(),
-            status='processing'
-        )
-        db.session.add(file_upload)
-        db.session.commit()
-        
-        try:
-            # Read and process file
-            df = pd.read_excel(filepath)
-            
-            # Process based on type
-            if upload_type == 'employee':
-                result = process_employee_data(df, mode, file_upload)
-            elif upload_type == 'overtime':
-                result = process_overtime_data(df, mode, file_upload)
-            elif upload_type == 'bulk_update':
-                result = process_bulk_update(df, file_upload)
-            else:
-                result = {'success': False, 'error': 'Invalid upload type'}
-            
-            # Update file upload record
-            file_upload.status = 'completed' if result.get('success') else 'failed'
-            file_upload.total_records = result.get('total', 0)
-            file_upload.successful_records = result.get('successful', 0)
-            file_upload.failed_records = result.get('failed', 0)
-            
-            if not result.get('success'):
-                file_upload.error_details = {'error': result.get('error', 'Unknown error')}
-            elif result.get('errors'):
-                file_upload.error_details = {'errors': result.get('errors', [])}
-            
-            db.session.commit()
-            
-            return jsonify(result)
-            
-        except Exception as e:
-            logger.error(f"Process error: {str(e)}", exc_info=True)
-            file_upload.status = 'failed'
-            file_upload.error_details = {'error': str(e)}
-            db.session.commit()
-            return jsonify({'success': False, 'error': str(e)})
-            
-        finally:
-            # Clean up temp file
-            try:
-                os.remove(filepath)
-            except:
-                pass
-        
-    except Exception as e:
-        logger.error(f"Process error: {str(e)}", exc_info=True)
-        db.session.rollback()
-        return jsonify({'success': False, 'error': str(e)})
 
 # ==========================================
 # VALIDATION FUNCTIONS
@@ -556,61 +431,6 @@ def validate_overtime_data(df):
         'message': f'Validation successful. Overtime data for {df["Employee ID"].nunique()} employees ready to import.'
     }
 
-def validate_bulk_update(df):
-    """Validate bulk update data"""
-    errors = []
-    
-    if df.empty:
-        return {'success': False, 'error': 'The uploaded file contains no data'}
-    
-    if 'Employee ID' not in df.columns:
-        return {
-            'success': False,
-            'error': 'Missing required column: Employee ID'
-        }
-    
-    # Check what fields are being updated
-    update_fields = [col for col in df.columns if col != 'Employee ID']
-    
-    if not update_fields:
-        return {
-            'success': False,
-            'error': 'No fields to update found. Please include at least one field to update.'
-        }
-    
-    # Validate each row
-    for idx, row in df.iterrows():
-        row_num = idx + 2
-        
-        emp_id = str(row.get('Employee ID', '')).strip()
-        if not emp_id or emp_id == 'nan':
-            errors.append(f"Row {row_num}: Missing Employee ID")
-        
-        # Validate specific fields if present
-        if 'Email' in update_fields:
-            email = str(row.get('Email', '')).strip()
-            if email and email != 'nan' and not re.match(r'^[\w\.-]+@[\w\.-]+\.\w+$', email):
-                errors.append(f"Row {row_num}: Invalid email format '{email}'")
-        
-        if 'Crew' in update_fields:
-            crew = str(row.get('Crew', '')).strip().upper()
-            if crew and crew != 'NAN' and crew not in ['A', 'B', 'C', 'D']:
-                errors.append(f"Row {row_num}: Invalid crew '{crew}'")
-    
-    if errors:
-        return {
-            'success': False,
-            'errors': errors[:50],
-            'error_count': len(errors)
-        }
-    
-    return {
-        'success': True,
-        'total_rows': len(df),
-        'update_fields': update_fields,
-        'message': f'Validation successful. Ready to update {len(df)} employees.'
-    }
-
 # ==========================================
 # PROCESSING FUNCTIONS
 # ==========================================
@@ -621,17 +441,6 @@ def process_employee_data(df, mode, file_upload):
         successful = 0
         failed = 0
         errors = []
-        
-        # If mode is replace, deactivate existing employees first
-        if mode == 'replace':
-            try:
-                # Instead of deleting, mark as inactive or remove from system
-                # This preserves historical data
-                Employee.query.update({'is_active': False})
-                db.session.commit()
-            except Exception as e:
-                logger.error(f"Error deactivating employees: {e}")
-                db.session.rollback()
         
         # Process each row
         for idx, row in df.iterrows():
@@ -794,86 +603,6 @@ def process_overtime_data(df, mode, file_upload):
         
     except Exception as e:
         logger.error(f"Error processing overtime data: {e}")
-        db.session.rollback()
-        return {
-            'success': False,
-            'error': str(e)
-        }
-
-def process_bulk_update(df, file_upload):
-    """Process bulk employee updates"""
-    try:
-        successful = 0
-        failed = 0
-        errors = []
-        update_fields = [col for col in df.columns if col != 'Employee ID']
-        
-        for idx, row in df.iterrows():
-            try:
-                emp_id = str(row.get('Employee ID', '')).strip()
-                
-                # Find employee
-                employee = Employee.query.filter_by(employee_id=emp_id).first()
-                if not employee:
-                    failed += 1
-                    errors.append(f"Row {idx + 2}: Employee ID '{emp_id}' not found")
-                    continue
-                
-                # Update fields
-                for field in update_fields:
-                    value = row.get(field)
-                    if pd.notna(value):
-                        value_str = str(value).strip()
-                        
-                        if field == 'First Name':
-                            employee.first_name = value_str
-                            employee.name = f"{employee.first_name} {employee.last_name}"
-                        elif field == 'Last Name':
-                            employee.last_name = value_str
-                            employee.name = f"{employee.first_name} {employee.last_name}"
-                        elif field == 'Email':
-                            employee.email = value_str
-                        elif field == 'Crew':
-                            if value_str.upper() in ['A', 'B', 'C', 'D']:
-                                employee.crew = value_str.upper()
-                        elif field == 'Department':
-                            employee.department = value_str
-                        elif field == 'Position':
-                            position = Position.query.filter_by(name=value_str).first()
-                            if position:
-                                employee.position_id = position.id
-                
-                db.session.add(employee)
-                successful += 1
-                
-            except Exception as e:
-                failed += 1
-                errors.append(f"Row {idx + 2}: {str(e)}")
-                logger.error(f"Error updating row {idx + 2}: {e}")
-        
-        # Commit changes
-        try:
-            db.session.commit()
-        except Exception as e:
-            db.session.rollback()
-            return {
-                'success': False,
-                'error': f'Database error: {str(e)}',
-                'successful': successful,
-                'failed': failed
-            }
-        
-        return {
-            'success': True,
-            'total': len(df),
-            'successful': successful,
-            'failed': failed,
-            'errors': errors[:10] if errors else None,
-            'update_fields': update_fields
-        }
-        
-    except Exception as e:
-        logger.error(f"Error processing bulk update: {e}")
         db.session.rollback()
         return {
             'success': False,
@@ -1157,6 +886,112 @@ def upload_overtime():
         logger.error(f"Error loading overtime upload page: {e}")
         flash('Error loading page', 'error')
         return redirect(url_for('supervisor.dashboard'))
+
+@employee_import_bp.route('/upload-overtime', methods=['POST'])
+@login_required
+@supervisor_required
+def upload_overtime_post():
+    """Handle overtime file upload"""
+    try:
+        if 'file' not in request.files:
+            flash('No file selected', 'error')
+            return redirect(request.url)
+        
+        file = request.files['file']
+        if file.filename == '':
+            flash('No file selected', 'error')
+            return redirect(request.url)
+        
+        if not file.filename.endswith(('.xlsx', '.xls')):
+            flash('Invalid file type. Please upload an Excel file (.xlsx or .xls)', 'error')
+            return redirect(request.url)
+        
+        # Save file temporarily
+        filename = secure_filename(file.filename)
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"{timestamp}_{filename}"
+        
+        upload_folder = current_app.config.get('UPLOAD_FOLDER', 'upload_files')
+        os.makedirs(upload_folder, exist_ok=True)
+        
+        filepath = os.path.join(upload_folder, filename)
+        file.save(filepath)
+        
+        # Create upload record
+        file_upload = FileUpload(
+            filename=filename,
+            upload_type='overtime',
+            uploaded_by_id=current_user.id,
+            uploaded_at=datetime.utcnow(),
+            status='processing'
+        )
+        db.session.add(file_upload)
+        db.session.commit()
+        
+        try:
+            # Read and validate
+            df = pd.read_excel(filepath)
+            validation_result = validate_overtime_data(df)
+            
+            if not validation_result.get('success'):
+                # Validation failed
+                file_upload.status = 'failed'
+                file_upload.error_details = validation_result
+                db.session.commit()
+                
+                flash('File validation failed:', 'error')
+                errors = validation_result.get('errors', [])
+                for error in errors[:5]:
+                    flash(f"• {error}", 'error')
+                if len(errors) > 5:
+                    flash(f"... and {len(errors) - 5} more errors", 'error')
+                
+                return redirect(url_for('employee_import.upload_overtime'))
+            
+            # Process the data
+            mode = request.form.get('mode', 'append')
+            result = process_overtime_data(df, mode, file_upload)
+            
+            # Update upload record
+            file_upload.status = 'completed' if result.get('success') else 'failed'
+            file_upload.total_records = result.get('total', 0)
+            file_upload.successful_records = result.get('successful', 0)
+            file_upload.failed_records = result.get('failed', 0)
+            
+            if result.get('error'):
+                file_upload.error_details = {'error': result.get('error')}
+            elif result.get('errors'):
+                file_upload.error_details = {'errors': result.get('errors')}
+                
+            db.session.commit()
+            
+            # Show message
+            if result.get('success'):
+                flash(f"✅ Successfully uploaded overtime data for {result.get('successful', 0)} employees!", 'success')
+                if result.get('failed', 0) > 0:
+                    flash(f"⚠️ {result.get('failed', 0)} records failed to process", 'warning')
+            else:
+                flash(f"❌ Upload failed: {result.get('error', 'Unknown error')}", 'error')
+                
+        except Exception as e:
+            logger.error(f"Error processing overtime file: {e}")
+            file_upload.status = 'failed'
+            file_upload.error_details = {'error': str(e)}
+            db.session.commit()
+            flash(f"Error processing file: {str(e)}", 'error')
+            
+        finally:
+            try:
+                os.remove(filepath)
+            except:
+                pass
+                
+        return redirect(url_for('employee_import.upload_overtime'))
+        
+    except Exception as e:
+        logger.error(f"Upload error: {e}")
+        flash('An error occurred during upload. Please try again.', 'error')
+        return redirect(url_for('employee_import.upload_overtime'))
 
 # ==========================================
 # API ENDPOINTS
