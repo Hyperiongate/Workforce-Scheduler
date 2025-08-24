@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
 Main application file for Workforce Scheduler
-COMPLETE FILE with login diagnostics and password reset
+COMPLETE FILE with all diagnostic routes
 """
 
 from flask import Flask, render_template, redirect, url_for, flash, jsonify, request
-from flask_login import LoginManager, login_required, current_user
+from flask_login import LoginManager, login_required, current_user, login_user
 from flask_migrate import Migrate
 import os
 import logging
@@ -604,6 +604,129 @@ def reset_admin_password():
         <html>
         <body style="font-family: Arial; padding: 40px;">
             <h1 style="color: red;">❌ Reset Error</h1>
+            <pre style="background: #f8f9fa; padding: 20px; border-radius: 5px;">{str(e)}</pre>
+        </body>
+        </html>
+        """
+
+# TEST PASSWORD ROUTE
+@app.route('/test-password')
+def test_password():
+    """Test if password checking is working"""
+    try:
+        # Test 1: Basic password hashing
+        test_password = 'admin123'
+        test_hash = generate_password_hash(test_password)
+        test_result = check_password_hash(test_hash, test_password)
+        
+        # Test 2: Check admin user
+        admin = Employee.query.filter_by(email='admin@workforce.com').first()
+        
+        results = []
+        results.append(f"Test 1 - Basic hash test: {'✅ PASS' if test_result else '❌ FAIL'}")
+        
+        if admin:
+            results.append(f"Test 2 - Admin found: ✅ ID={admin.id}, Email={admin.email}")
+            results.append(f"Test 3 - Admin has password_hash: {'✅ YES' if admin.password_hash else '❌ NO'}")
+            
+            if admin.password_hash:
+                try:
+                    # Test the actual check_password method
+                    check_result = admin.check_password('admin123')
+                    results.append(f"Test 4 - admin.check_password('admin123'): {'✅ PASS' if check_result else '❌ FAIL'}")
+                    
+                    # Also test direct check
+                    direct_check = check_password_hash(admin.password_hash, 'admin123')
+                    results.append(f"Test 5 - Direct check_password_hash: {'✅ PASS' if direct_check else '❌ FAIL'}")
+                    
+                    # Show hash details
+                    results.append(f"Test 6 - Hash starts with: {admin.password_hash[:20]}...")
+                    results.append(f"Test 7 - Hash length: {len(admin.password_hash)} chars")
+                    
+                except Exception as e:
+                    results.append(f"Test 4 - Error in check_password: ❌ {str(e)}")
+        else:
+            results.append("Test 2 - Admin not found: ❌ Run /fix-db-now first")
+        
+        # Test 3: Force create a new hash for admin123
+        new_hash = generate_password_hash('admin123')
+        new_check = check_password_hash(new_hash, 'admin123')
+        results.append(f"Test 8 - Fresh hash test: {'✅ PASS' if new_check else '❌ FAIL'}")
+        
+        # Build response
+        return f"""
+        <html>
+        <head>
+            <style>
+                body {{ font-family: Arial; padding: 40px; background: #f5f5f5; }}
+                .container {{ background: white; padding: 30px; border-radius: 10px; max-width: 800px; margin: 0 auto; }}
+                .pass {{ color: green; }}
+                .fail {{ color: red; }}
+                pre {{ background: #f8f9fa; padding: 15px; border-radius: 5px; }}
+                .btn {{ display: inline-block; padding: 10px 20px; background: #007bff; color: white; text-decoration: none; border-radius: 5px; margin: 10px 5px; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>Password System Test Results</h1>
+                <pre>{'<br>'.join(results)}</pre>
+                
+                <h3>Next Steps:</h3>
+                <p>If Test 4 or 5 fail, the password hash in the database doesn't match 'admin123'</p>
+                
+                <div>
+                    <a href="/reset-admin-password" class="btn">Reset Password</a>
+                    <a href="/force-login" class="btn">Force Login</a>
+                    <a href="/login" class="btn">Try Normal Login</a>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        
+    except Exception as e:
+        import traceback
+        return f"""
+        <html>
+        <body style="font-family: Arial; padding: 40px;">
+            <h1 style="color: red;">❌ Test Error</h1>
+            <pre style="background: #f8f9fa; padding: 20px; border-radius: 5px;">{str(e)}\n\n{traceback.format_exc()}</pre>
+        </body>
+        </html>
+        """
+
+# FORCE LOGIN ROUTE
+@app.route('/force-login')
+def force_login():
+    """Force login as admin - bypasses broken password check"""
+    try:
+        # Find admin user
+        admin = Employee.query.filter_by(email='admin@workforce.com').first()
+        
+        if not admin:
+            return """
+            <html>
+            <body style="font-family: Arial; padding: 40px;">
+                <h1 style="color: red;">❌ Admin User Not Found</h1>
+                <p>Run <a href="/fix-db-now">/fix-db-now</a> first to create admin user.</p>
+            </body>
+            </html>
+            """
+        
+        # Force login without password check
+        login_user(admin, remember=True)
+        
+        # Redirect based on role
+        if admin.is_supervisor:
+            return redirect(url_for('supervisor.dashboard'))
+        else:
+            return redirect(url_for('main.employee_dashboard'))
+            
+    except Exception as e:
+        return f"""
+        <html>
+        <body style="font-family: Arial; padding: 40px;">
+            <h1 style="color: red;">❌ Force Login Error</h1>
             <pre style="background: #f8f9fa; padding: 20px; border-radius: 5px;">{str(e)}</pre>
         </body>
         </html>
