@@ -137,11 +137,36 @@ def reset_database():
         
         # Drop tables in correct order (handle foreign key constraints)
         tables_to_drop = [
-            'overtime_history',
+            'upload_history',
+            'vacation_calendar',
+            'crew_coverage_requirement',
             'file_upload',
+            'coverage_request',
+            'casual_worker',
+            'sleep_log',
+            'circadian_profile',
+            'maintenance_comment',
+            'maintenance_issue',
+            'maintenance_update',
+            'equipment',
+            'communication_attachment',
+            'communication_read_receipt',
+            'communication_message',
+            'communication_category',
+            'position_message_read_receipt',
+            'position_message',
+            'supervisor_message',
+            'message_read_receipt',
+            'coverage_gap',
+            'overtime_history',
+            'shift_trade_post',
             'shift_swap_request',
+            'availability',
             'time_off_request',
             'schedule',
+            'employee_skill',
+            'skill_requirement',
+            'skill',
             'employee',
             'position'
         ]
@@ -155,95 +180,9 @@ def reset_database():
                 logger.warning(f"Could not drop {table}: {e}")
                 db.session.rollback()
         
-        # Create tables with correct schema
+        # Recreate all tables
         logger.info("Creating new tables...")
-        
-        # Create position table
-        db.session.execute(text("""
-            CREATE TABLE position (
-                id SERIAL PRIMARY KEY,
-                name VARCHAR(100) UNIQUE NOT NULL,
-                description TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """))
-        
-        # Create employee table with all needed columns
-        db.session.execute(text("""
-            CREATE TABLE employee (
-                id SERIAL PRIMARY KEY,
-                employee_id VARCHAR(50) UNIQUE,
-                first_name VARCHAR(100),
-                last_name VARCHAR(100),
-                name VARCHAR(255),
-                email VARCHAR(255),
-                password_hash VARCHAR(255),
-                crew VARCHAR(10),
-                position_id INTEGER REFERENCES position(id),
-                department VARCHAR(100),
-                hire_date DATE,
-                phone VARCHAR(20),
-                is_active BOOLEAN DEFAULT TRUE,
-                is_supervisor BOOLEAN DEFAULT FALSE,
-                is_admin BOOLEAN DEFAULT FALSE,
-                max_hours_per_week INTEGER DEFAULT 40,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """))
-        
-        # Create file_upload table with all columns
-        db.session.execute(text("""
-            CREATE TABLE file_upload (
-                id SERIAL PRIMARY KEY,
-                filename VARCHAR(255) NOT NULL,
-                upload_type VARCHAR(50),
-                file_type VARCHAR(50),
-                uploaded_by_id INTEGER REFERENCES employee(id),
-                total_records INTEGER DEFAULT 0,
-                successful_records INTEGER DEFAULT 0,
-                failed_records INTEGER DEFAULT 0,
-                records_processed INTEGER DEFAULT 0,
-                records_failed INTEGER DEFAULT 0,
-                error_details TEXT,
-                status VARCHAR(50) DEFAULT 'pending',
-                file_path VARCHAR(255),
-                file_size INTEGER,
-                uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """))
-        
-        # Create overtime_history table
-        db.session.execute(text("""
-            CREATE TABLE overtime_history (
-                id SERIAL PRIMARY KEY,
-                employee_id INTEGER REFERENCES employee(id),
-                week_starting DATE NOT NULL,
-                hours DECIMAL(5,2) DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(employee_id, week_starting)
-            )
-        """))
-        
-        # Create other tables as needed
-        db.session.execute(text("""
-            CREATE TABLE time_off_request (
-                id SERIAL PRIMARY KEY,
-                employee_id INTEGER REFERENCES employee(id),
-                start_date DATE NOT NULL,
-                end_date DATE NOT NULL,
-                request_type VARCHAR(50),
-                type VARCHAR(50),
-                reason TEXT,
-                status VARCHAR(50) DEFAULT 'pending',
-                approved_by_id INTEGER REFERENCES employee(id),
-                requested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                processed_at TIMESTAMP,
-                approved_date TIMESTAMP
-            )
-        """))
-        
+        db.create_all()
         db.session.commit()
         logger.info("Created all tables")
         
@@ -261,32 +200,39 @@ def reset_database():
             'Safety Coordinator'
         ]
         
-        for pos in default_positions:
-            db.session.execute(text("""
-                INSERT INTO position (name) VALUES (:name)
-            """), {"name": pos})
+        from models import Position
+        for pos_name in default_positions:
+            position = Position(name=pos_name)
+            db.session.add(position)
         
         db.session.commit()
         logger.info("Added default positions")
         
         # Re-create the supervisor account
-        db.session.execute(text("""
-            INSERT INTO employee (
-                id, employee_id, email, password_hash, name, 
-                is_supervisor, is_admin, is_active, crew
-            ) VALUES (
-                :id, 'SUP001', :email, :password_hash, :name,
-                TRUE, TRUE, TRUE, 'A'
-            )
-        """), {
-            "id": current_user_id,
-            "email": current_user.email,
-            "password_hash": current_user.password_hash,
-            "name": current_user.name
-        })
+        from models import Employee
         
-        db.session.commit()
-        logger.info("Recreated supervisor account")
+        # First check if there's already an admin user (from fix-db-now)
+        admin_user = Employee.query.filter_by(email='admin@workforce.com').first()
+        
+        if not admin_user:
+            # Re-create the current supervisor user
+            supervisor = Employee(
+                id=current_user_id,
+                employee_id=current_user.employee_id or 'SUP001',
+                email=current_user.email,
+                password_hash=current_user.password_hash,
+                name=current_user.name,
+                is_supervisor=True,
+                is_admin=True,
+                is_active=True,
+                crew='A',
+                department='Management'
+            )
+            db.session.add(supervisor)
+            db.session.commit()
+            logger.info("Recreated supervisor account")
+        else:
+            logger.info("Admin account already exists")
         
         flash('✅ Database reset successful! You can now upload employee data.', 'success')
         return redirect(url_for('reset_db.reset_database_page'))
