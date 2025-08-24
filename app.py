@@ -96,39 +96,40 @@ def load_user(user_id):
 def fix_db_now():
     """Simple database fix without authentication"""
     try:
-        with db.engine.connect() as conn:
+        # First, ensure any failed transactions are rolled back
+        db.session.rollback()
+        
+        with db.engine.begin() as conn:  # This ensures automatic commit/rollback
             # Add is_admin column if missing
             try:
                 conn.execute(text("ALTER TABLE employee ADD COLUMN is_admin BOOLEAN DEFAULT FALSE"))
-                conn.commit()
-            except:
-                pass
+            except Exception as e:
+                logger.info(f"is_admin column already exists or couldn't be added: {e}")
             
             # Add other potentially missing columns
             try:
                 conn.execute(text("ALTER TABLE employee ADD COLUMN max_hours_per_week INTEGER DEFAULT 40"))
-                conn.commit()
-            except:
-                pass
+            except Exception as e:
+                logger.info(f"max_hours_per_week column already exists: {e}")
             
             try:
                 conn.execute(text("ALTER TABLE employee ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"))
-                conn.commit()
-            except:
-                pass
+            except Exception as e:
+                logger.info(f"created_at column already exists: {e}")
             
             try:
                 conn.execute(text("ALTER TABLE employee ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"))
-                conn.commit()
-            except:
-                pass
+            except Exception as e:
+                logger.info(f"updated_at column already exists: {e}")
             
             # Create or update admin user
             password_hash = generate_password_hash('admin123')
             
-            # Check if admin exists
-            result = conn.execute(text("SELECT id FROM employee WHERE email = 'admin@workforce.com'"))
-            if result.fetchone():
+            # Check if admin exists - use fresh transaction
+            result = conn.execute(text("SELECT id FROM employee WHERE email = :email"), {'email': 'admin@workforce.com'})
+            admin_exists = result.fetchone()
+            
+            if admin_exists:
                 # Update existing
                 conn.execute(text("""
                     UPDATE employee 
@@ -136,8 +137,9 @@ def fix_db_now():
                         is_supervisor = TRUE,
                         password_hash = :pwd,
                         is_active = TRUE
-                    WHERE email = 'admin@workforce.com'
-                """), {'pwd': password_hash})
+                    WHERE email = :email
+                """), {'pwd': password_hash, 'email': 'admin@workforce.com'})
+                logger.info("Updated existing admin user")
             else:
                 # Create new admin user
                 conn.execute(text("""
@@ -145,96 +147,106 @@ def fix_db_now():
                         email, password_hash, name, employee_id, 
                         is_supervisor, is_admin, department, crew, is_active
                     ) VALUES (
-                        'admin@workforce.com', :pwd, 'Admin User', 'ADMIN001',
-                        TRUE, TRUE, 'Management', 'A', TRUE
+                        :email, :pwd, :name, :emp_id,
+                        TRUE, TRUE, :dept, :crew, TRUE
                     )
-                """), {'pwd': password_hash})
+                """), {
+                    'email': 'admin@workforce.com',
+                    'pwd': password_hash,
+                    'name': 'Admin User',
+                    'emp_id': 'ADMIN001',
+                    'dept': 'Management',
+                    'crew': 'A'
+                })
+                logger.info("Created new admin user")
             
-            conn.commit()
-            
-            return """
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Database Fixed!</title>
-                <style>
-                    body { 
-                        font-family: Arial, sans-serif; 
-                        padding: 40px; 
-                        background-color: #f5f5f5;
-                    }
-                    .container {
-                        max-width: 600px;
-                        margin: 0 auto;
-                        background: white;
-                        padding: 30px;
-                        border-radius: 10px;
-                        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-                    }
-                    h1 { color: #28a745; }
-                    .success { 
-                        background: #d4edda; 
-                        border: 1px solid #c3e6cb;
-                        color: #155724;
-                        padding: 15px;
-                        border-radius: 5px;
-                        margin: 20px 0;
-                    }
-                    .credentials {
-                        background: #e9ecef;
-                        padding: 20px;
-                        border-radius: 5px;
-                        margin: 20px 0;
-                    }
-                    .btn { 
-                        display: inline-block; 
-                        margin-top: 20px; 
-                        padding: 12px 30px; 
-                        background: #007bff; 
-                        color: white; 
-                        text-decoration: none; 
-                        border-radius: 5px;
-                        font-size: 16px;
-                    }
-                    .btn:hover { background: #0056b3; }
-                    code {
-                        background: #f8f9fa;
-                        padding: 2px 6px;
-                        border-radius: 3px;
-                        font-family: monospace;
-                    }
-                </style>
-            </head>
-            <body>
-                <div class="container">
-                    <h1>✅ Database Successfully Fixed!</h1>
-                    
-                    <div class="success">
-                        <h3>The following operations completed successfully:</h3>
-                        <ul>
-                            <li>Added <code>is_admin</code> column to employee table</li>
-                            <li>Added <code>max_hours_per_week</code> column</li>
-                            <li>Added <code>created_at</code> and <code>updated_at</code> timestamps</li>
-                            <li>Created/updated admin user account</li>
-                        </ul>
-                    </div>
-                    
-                    <div class="credentials">
-                        <h3>Login Credentials:</h3>
-                        <p><strong>Email:</strong> <code>admin@workforce.com</code></p>
-                        <p><strong>Password:</strong> <code>admin123</code></p>
-                        <p style="color: #856404; margin-top: 10px;">
-                            <strong>⚠️ Important:</strong> Please change this password after your first login!
-                        </p>
-                    </div>
-                    
-                    <a href="/login" class="btn">Go to Login Page →</a>
+        # Success response
+        return """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Database Fixed!</title>
+            <style>
+                body { 
+                    font-family: Arial, sans-serif; 
+                    padding: 40px; 
+                    background-color: #f5f5f5;
+                }
+                .container {
+                    max-width: 600px;
+                    margin: 0 auto;
+                    background: white;
+                    padding: 30px;
+                    border-radius: 10px;
+                    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                }
+                h1 { color: #28a745; }
+                .success { 
+                    background: #d4edda; 
+                    border: 1px solid #c3e6cb;
+                    color: #155724;
+                    padding: 15px;
+                    border-radius: 5px;
+                    margin: 20px 0;
+                }
+                .credentials {
+                    background: #e9ecef;
+                    padding: 20px;
+                    border-radius: 5px;
+                    margin: 20px 0;
+                }
+                .btn { 
+                    display: inline-block; 
+                    margin-top: 20px; 
+                    padding: 12px 30px; 
+                    background: #007bff; 
+                    color: white; 
+                    text-decoration: none; 
+                    border-radius: 5px;
+                    font-size: 16px;
+                }
+                .btn:hover { background: #0056b3; }
+                code {
+                    background: #f8f9fa;
+                    padding: 2px 6px;
+                    border-radius: 3px;
+                    font-family: monospace;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>✅ Database Successfully Fixed!</h1>
+                
+                <div class="success">
+                    <h3>The following operations completed successfully:</h3>
+                    <ul>
+                        <li>Rolled back any failed transactions</li>
+                        <li>Added missing columns to employee table</li>
+                        <li>Created/updated admin user account</li>
+                    </ul>
                 </div>
-            </body>
-            </html>
-            """
+                
+                <div class="credentials">
+                    <h3>Login Credentials:</h3>
+                    <p><strong>Email:</strong> <code>admin@workforce.com</code></p>
+                    <p><strong>Password:</strong> <code>admin123</code></p>
+                    <p style="color: #856404; margin-top: 10px;">
+                        <strong>⚠️ Important:</strong> Please change this password after your first login!
+                    </p>
+                </div>
+                
+                <a href="/login" class="btn">Go to Login Page →</a>
+            </div>
+        </body>
+        </html>
+        """
             
     except Exception as e:
+        # Make sure to rollback on error
+        db.session.rollback()
+        logger.error(f"Fix DB error: {e}")
+        
         return f"""
         <html>
         <body style="font-family: Arial; padding: 40px;">
@@ -243,6 +255,7 @@ def fix_db_now():
 {str(e)}
             </pre>
             <p>Please check the server logs for more details.</p>
+            <p><a href="/fix-db-now">Try again</a></p>
         </body>
         </html>
         """
