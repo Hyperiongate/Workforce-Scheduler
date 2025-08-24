@@ -1,6 +1,7 @@
+#!/usr/bin/env python3
 """
 Main application file for Workforce Scheduler
-FIXED VERSION - With context processor for pending counts and auto database fix
+COMPLETE FILE - Fixed based on ACTUAL Employee model
 """
 
 from flask import Flask, render_template, redirect, url_for, flash, jsonify, request
@@ -63,176 +64,179 @@ try:
 except Exception as e:
     logger.warning(f"Could not create upload folder: {e}")
     # Use temp directory as fallback
-    app.config['UPLOAD_FOLDER'] = '/tmp/upload_files'
-    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+    import tempfile
+    app.config['UPLOAD_FOLDER'] = tempfile.gettempdir()
 
-# Import models that ACTUALLY EXIST in your models.py
-from models import db, Employee, Position, Skill, EmployeeSkill, Schedule
-from models import TimeOffRequest, Availability, ShiftSwapRequest, ShiftTradePost
-from models import OvertimeHistory, CoverageGap, SupervisorMessage, PositionMessage
-from models import PositionMessageReadReceipt, CommunicationCategory, CommunicationMessage
-from models import CommunicationReadReceipt, CommunicationAttachment, Equipment
-from models import MaintenanceIssue, MaintenanceComment, CircadianProfile, SleepLog
-from models import CasualWorker, CoverageRequest, FileUpload, CrewCoverageRequirement
-from models import VacationCalendar, UploadHistory, SkillRequirement, MaintenanceUpdate
-from models import MessageReadReceipt
-
-# Initialize database with app
+# Initialize extensions
+from models import db
 db.init_app(app)
 migrate = Migrate(app, db)
-
-# Initialize Flask-Login
-login_manager = LoginManager()
-login_manager.init_app(app)
+login_manager = LoginManager(app)
 login_manager.login_view = 'auth.login'
-login_manager.login_message = 'Please log in to access this page.'
+
+# Import models after db initialization
+from models import Employee, TimeOffRequest, ShiftSwapRequest
 
 @login_manager.user_loader
 def load_user(user_id):
     return Employee.query.get(int(user_id))
 
-# EMERGENCY DATABASE FIX ROUTE - MUST BE FIRST
+# PROPERLY FIXED DATABASE REPAIR ROUTE - Based on ACTUAL Employee model
 @app.route('/fix-db-now')
 def fix_db_now():
-    """Simple database fix without authentication"""
+    """Database fix based on actual Employee model from models.py"""
     try:
-        # First, ensure any failed transactions are rolled back
+        # First, rollback any failed transaction
         db.session.rollback()
+        db.session.close()
         
-        with db.engine.begin() as conn:  # This ensures automatic commit/rollback
-            # Add is_admin column if missing
+        # Now do the fixes using text() for raw SQL
+        with db.engine.begin() as conn:
+            # Based on the Employee model in models.py, these are the ACTUAL columns:
+            # id, email, password_hash, name, employee_id, phone, position_id, 
+            # department, crew, is_supervisor, is_admin, hire_date, is_active, 
+            # max_hours_per_week, created_at, updated_at
+            
+            # Add is_admin column if missing (CRITICAL for login)
             try:
                 conn.execute(text("ALTER TABLE employee ADD COLUMN is_admin BOOLEAN DEFAULT FALSE"))
+                logger.info("Added is_admin column")
             except Exception as e:
-                logger.info(f"is_admin column already exists or couldn't be added: {e}")
+                if "already exists" not in str(e).lower():
+                    logger.error(f"Error adding is_admin: {e}")
             
-            # Add other potentially missing columns
-            try:
-                conn.execute(text("ALTER TABLE employee ADD COLUMN max_hours_per_week INTEGER DEFAULT 40"))
-            except Exception as e:
-                logger.info(f"max_hours_per_week column already exists: {e}")
+            # Add other potentially missing columns from the model
+            columns_to_add = [
+                ('max_hours_per_week', 'INTEGER DEFAULT 48'),
+                ('created_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP'),
+                ('updated_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP'),
+                ('is_active', 'BOOLEAN DEFAULT TRUE'),
+                ('hire_date', 'DATE'),
+                ('position_id', 'INTEGER'),
+                ('phone', 'VARCHAR(20)')
+            ]
             
-            try:
-                conn.execute(text("ALTER TABLE employee ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"))
-            except Exception as e:
-                logger.info(f"created_at column already exists: {e}")
-            
-            try:
-                conn.execute(text("ALTER TABLE employee ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"))
-            except Exception as e:
-                logger.info(f"updated_at column already exists: {e}")
+            for col_name, col_def in columns_to_add:
+                try:
+                    conn.execute(text(f"ALTER TABLE employee ADD COLUMN {col_name} {col_def}"))
+                    logger.info(f"Added {col_name} column")
+                except Exception as e:
+                    if "already exists" not in str(e).lower():
+                        logger.error(f"Error adding {col_name}: {e}")
             
             # Create or update admin user
             password_hash = generate_password_hash('admin123')
             
-            # Check if admin exists - use fresh transaction
-            result = conn.execute(text("SELECT id FROM employee WHERE email = :email"), {'email': 'admin@workforce.com'})
+            # Check if admin exists
+            result = conn.execute(text("SELECT id FROM employee WHERE email = 'admin@workforce.com'"))
             admin_exists = result.fetchone()
             
             if admin_exists:
-                # Update existing
+                # Update existing - only update fields that EXIST in the model
                 conn.execute(text("""
                     UPDATE employee 
-                    SET is_admin = TRUE, 
-                        is_supervisor = TRUE,
-                        password_hash = :pwd,
-                        is_active = TRUE
-                    WHERE email = :email
-                """), {'pwd': password_hash, 'email': 'admin@workforce.com'})
-                logger.info("Updated existing admin user")
+                    SET password_hash = :password_hash,
+                        name = 'Admin User',
+                        employee_id = 'ADMIN001',
+                        is_supervisor = true,
+                        is_admin = true,
+                        is_active = true,
+                        department = 'Administration',
+                        crew = 'A'
+                    WHERE email = 'admin@workforce.com'
+                """), {'password_hash': password_hash})
+                message = "Admin user updated"
             else:
-                # Create new admin user
+                # Create new - only use fields that EXIST in the model
                 conn.execute(text("""
                     INSERT INTO employee (
-                        email, password_hash, name, employee_id, 
-                        is_supervisor, is_admin, department, crew, is_active
+                        email, password_hash, name, employee_id,
+                        is_supervisor, is_admin, is_active, 
+                        department, crew
                     ) VALUES (
-                        :email, :pwd, :name, :emp_id,
-                        TRUE, TRUE, :dept, :crew, TRUE
+                        'admin@workforce.com', :password_hash, 'Admin User', 'ADMIN001',
+                        true, true, true, 'Administration', 'A'
                     )
-                """), {
-                    'email': 'admin@workforce.com',
-                    'pwd': password_hash,
-                    'name': 'Admin User',
-                    'emp_id': 'ADMIN001',
-                    'dept': 'Management',
-                    'crew': 'A'
-                })
-                logger.info("Created new admin user")
-            
-        # Success response
-        return """
-        <!DOCTYPE html>
+                """), {'password_hash': password_hash})
+                message = "Admin user created"
+        
+        return f"""
         <html>
         <head>
-            <title>Database Fixed!</title>
+            <title>Database Fix - Success</title>
             <style>
-                body { 
+                body {{ 
                     font-family: Arial, sans-serif; 
                     padding: 40px; 
-                    background-color: #f5f5f5;
-                }
-                .container {
-                    max-width: 600px;
-                    margin: 0 auto;
+                    background: #f5f5f5;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    min-height: 100vh;
+                    margin: 0;
+                }}
+                .container {{
                     background: white;
-                    padding: 30px;
+                    padding: 40px;
                     border-radius: 10px;
                     box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-                }
-                h1 { color: #28a745; }
-                .success { 
-                    background: #d4edda; 
-                    border: 1px solid #c3e6cb;
-                    color: #155724;
-                    padding: 15px;
-                    border-radius: 5px;
-                    margin: 20px 0;
-                }
-                .credentials {
-                    background: #e9ecef;
+                    max-width: 500px;
+                    width: 100%;
+                }}
+                h1 {{ 
+                    color: #28a745; 
+                    margin-bottom: 20px;
+                }}
+                .info-box {{
+                    background: #e7f3ff;
+                    border-left: 4px solid #2196F3;
                     padding: 20px;
-                    border-radius: 5px;
                     margin: 20px 0;
-                }
-                .btn { 
-                    display: inline-block; 
-                    margin-top: 20px; 
-                    padding: 12px 30px; 
-                    background: #007bff; 
-                    color: white; 
-                    text-decoration: none; 
+                    border-radius: 4px;
+                }}
+                .info-box h3 {{
+                    margin-top: 0;
+                    color: #1976D2;
+                }}
+                .btn {{
+                    display: inline-block;
+                    padding: 12px 30px;
+                    background: #007bff;
+                    color: white;
+                    text-decoration: none;
                     border-radius: 5px;
-                    font-size: 16px;
-                }
-                .btn:hover { background: #0056b3; }
-                code {
-                    background: #f8f9fa;
-                    padding: 2px 6px;
-                    border-radius: 3px;
-                    font-family: monospace;
-                }
+                    margin-top: 20px;
+                    font-weight: 500;
+                    transition: background 0.3s;
+                }}
+                .btn:hover {{
+                    background: #0056b3;
+                }}
+                .success-message {{
+                    color: #155724;
+                    background-color: #d4edda;
+                    border: 1px solid #c3e6cb;
+                    padding: 15px;
+                    border-radius: 4px;
+                    margin-bottom: 20px;
+                }}
             </style>
         </head>
         <body>
             <div class="container">
-                <h1>✅ Database Successfully Fixed!</h1>
+                <h1>✅ Database Fixed Successfully!</h1>
                 
-                <div class="success">
-                    <h3>The following operations completed successfully:</h3>
-                    <ul>
-                        <li>Rolled back any failed transactions</li>
-                        <li>Added missing columns to employee table</li>
-                        <li>Created/updated admin user account</li>
-                    </ul>
+                <div class="success-message">
+                    <strong>{message}</strong><br>
+                    All required columns have been verified/added.
                 </div>
                 
-                <div class="credentials">
-                    <h3>Login Credentials:</h3>
-                    <p><strong>Email:</strong> <code>admin@workforce.com</code></p>
-                    <p><strong>Password:</strong> <code>admin123</code></p>
-                    <p style="color: #856404; margin-top: 10px;">
-                        <strong>⚠️ Important:</strong> Please change this password after your first login!
+                <div class="info-box">
+                    <h3>Admin Login Credentials:</h3>
+                    <p><strong>Email:</strong> admin@workforce.com<br>
+                    <strong>Password:</strong> admin123</p>
+                    <p style="color: #666; font-size: 14px; margin-top: 10px;">
+                        <em>Please change this password after your first login!</em>
                     </p>
                 </div>
                 
@@ -249,13 +253,63 @@ def fix_db_now():
         
         return f"""
         <html>
-        <body style="font-family: Arial; padding: 40px;">
-            <h1 style="color: red;">❌ Error Occurred</h1>
-            <pre style="background: #f8f9fa; padding: 20px; border-radius: 5px;">
-{str(e)}
-            </pre>
-            <p>Please check the server logs for more details.</p>
-            <p><a href="/fix-db-now">Try again</a></p>
+        <head>
+            <title>Database Fix - Error</title>
+            <style>
+                body {{ 
+                    font-family: Arial, sans-serif; 
+                    padding: 40px; 
+                    background: #f5f5f5;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    min-height: 100vh;
+                    margin: 0;
+                }}
+                .container {{
+                    background: white;
+                    padding: 40px;
+                    border-radius: 10px;
+                    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                    max-width: 600px;
+                    width: 100%;
+                }}
+                h1 {{ 
+                    color: #dc3545; 
+                    margin-bottom: 20px;
+                }}
+                pre {{
+                    background: #f8f9fa;
+                    padding: 20px;
+                    border-radius: 5px;
+                    overflow-x: auto;
+                    border: 1px solid #dee2e6;
+                    white-space: pre-wrap;
+                    word-wrap: break-word;
+                }}
+                .btn {{
+                    display: inline-block;
+                    padding: 12px 30px;
+                    background: #6c757d;
+                    color: white;
+                    text-decoration: none;
+                    border-radius: 5px;
+                    margin-top: 20px;
+                    font-weight: 500;
+                }}
+                .btn:hover {{
+                    background: #5a6268;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>❌ Error Occurred</h1>
+                <p>The following error occurred while fixing the database:</p>
+                <pre>{str(e)}</pre>
+                <p>Please check the server logs for more details.</p>
+                <a href="/fix-db-now" class="btn">Try Again</a>
+            </div>
         </body>
         </html>
         """
@@ -301,8 +355,8 @@ def health_check():
     """Health check endpoint"""
     try:
         with db.engine.connect() as conn:
-            conn.execute(text('SELECT 1'))
-            conn.commit()
+            result = conn.execute(text('SELECT 1'))
+            result.fetchone()
         
         return jsonify({
             'status': 'healthy',
@@ -364,16 +418,20 @@ with app.app_context():
         print("✓ Database tables verified/created")
         
         # Then run the column fixes
-        from fix_db_columns import fix_database_schema
-        print("Checking for missing columns...")
-        fixes = fix_database_schema()
-        if fixes > 0:
-            print(f"✅ Applied {fixes} database fixes successfully!")
-        else:
-            print("✅ Database schema is up to date")
+        try:
+            from fix_db_columns import fix_database_schema
+            print("Checking for missing columns...")
+            fixes = fix_database_schema()
+            if fixes > 0:
+                print(f"✅ Applied {fixes} database fixes successfully!")
+            else:
+                print("✅ Database schema is up to date")
+        except ImportError:
+            print("⚠️  fix_db_columns.py not found - skipping database fixes")
+        except Exception as e:
+            print(f"⚠️  Could not run database fixes: {e}")
+            print("The app will continue but some features may not work correctly")
             
-    except ImportError:
-        print("⚠️  fix_db_columns.py not found - skipping database fixes")
     except Exception as e:
         print(f"⚠️  Could not run database fixes: {e}")
         print("The app will continue but some features may not work correctly")
