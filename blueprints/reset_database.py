@@ -5,8 +5,8 @@ Add this file to your blueprints folder
 """
 
 from flask import Blueprint, render_template_string, redirect, url_for, flash
-from flask_login import login_required, current_user
-from models import db
+from flask_login import login_required, current_user, logout_user, login_user
+from models import db, Employee, Position
 from sqlalchemy import text
 from functools import wraps
 import logging
@@ -127,13 +127,23 @@ def reset_database_page():
 def reset_database():
     """Actually reset the database"""
     try:
-        # Keep the current user's ID to preserve their account
-        current_user_id = current_user.id
+        # Store current user's data BEFORE dropping tables
+        user_data = {
+            'id': current_user.id,
+            'employee_id': current_user.employee_id,
+            'email': current_user.email,
+            'password_hash': current_user.password_hash,
+            'name': current_user.name,
+            'department': getattr(current_user, 'department', 'Management'),
+            'crew': getattr(current_user, 'crew', 'A')
+        }
+        
+        logger.info(f"Preserving user data for: {user_data['email']}")
+        
+        # Log out the current user to avoid session issues
+        logout_user()
         
         logger.info("Starting database reset...")
-        
-        # Drop and recreate tables
-        logger.info("Dropping old tables...")
         
         # Drop tables in correct order (handle foreign key constraints)
         tables_to_drop = [
@@ -146,8 +156,8 @@ def reset_database():
             'sleep_log',
             'circadian_profile',
             'maintenance_comment',
-            'maintenance_issue',
             'maintenance_update',
+            'maintenance_issue',
             'equipment',
             'communication_attachment',
             'communication_read_receipt',
@@ -171,6 +181,7 @@ def reset_database():
             'position'
         ]
         
+        logger.info("Dropping old tables...")
         for table in tables_to_drop:
             try:
                 db.session.execute(text(f"DROP TABLE IF EXISTS {table} CASCADE"))
@@ -179,6 +190,15 @@ def reset_database():
             except Exception as e:
                 logger.warning(f"Could not drop {table}: {e}")
                 db.session.rollback()
+        
+        # Also drop alembic version table to ensure clean migration state
+        try:
+            db.session.execute(text("DROP TABLE IF EXISTS alembic_version"))
+            db.session.commit()
+            logger.info("Dropped alembic_version table")
+        except Exception as e:
+            logger.warning(f"Could not drop alembic_version: {e}")
+            db.session.rollback()
         
         # Recreate all tables
         logger.info("Creating new tables...")
@@ -200,7 +220,6 @@ def reset_database():
             'Safety Coordinator'
         ]
         
-        from models import Position
         for pos_name in default_positions:
             position = Position(name=pos_name)
             db.session.add(position)
@@ -208,31 +227,25 @@ def reset_database():
         db.session.commit()
         logger.info("Added default positions")
         
-        # Re-create the supervisor account
-        from models import Employee
+        # Re-create the supervisor account using stored data
+        supervisor = Employee(
+            id=user_data['id'],
+            employee_id=user_data['employee_id'] or 'SUP001',
+            email=user_data['email'],
+            password_hash=user_data['password_hash'],
+            name=user_data['name'],
+            is_supervisor=True,
+            is_admin=True,
+            is_active=True,
+            crew=user_data['crew'],
+            department=user_data['department']
+        )
+        db.session.add(supervisor)
+        db.session.commit()
+        logger.info(f"Recreated supervisor account: {user_data['email']}")
         
-        # First check if there's already an admin user (from fix-db-now)
-        admin_user = Employee.query.filter_by(email='admin@workforce.com').first()
-        
-        if not admin_user:
-            # Re-create the current supervisor user
-            supervisor = Employee(
-                id=current_user_id,
-                employee_id=current_user.employee_id or 'SUP001',
-                email=current_user.email,
-                password_hash=current_user.password_hash,
-                name=current_user.name,
-                is_supervisor=True,
-                is_admin=True,
-                is_active=True,
-                crew='A',
-                department='Management'
-            )
-            db.session.add(supervisor)
-            db.session.commit()
-            logger.info("Recreated supervisor account")
-        else:
-            logger.info("Admin account already exists")
+        # Log the user back in
+        login_user(supervisor)
         
         flash('✅ Database reset successful! You can now upload employee data.', 'success')
         return redirect(url_for('reset_db.reset_database_page'))
@@ -241,4 +254,4 @@ def reset_database():
         logger.error(f"Database reset failed: {e}")
         db.session.rollback()
         flash(f'❌ Reset failed: {str(e)}', 'danger')
-        return redirect(url_for('reset_db.reset_database_page'))
+        return redirect(url_for('auth.login'))  # Redirect to login on error
