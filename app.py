@@ -1,4 +1,3 @@
-# app.py
 """
 Main application file for Workforce Scheduler
 FIXED VERSION - With context processor for pending counts and auto database fix
@@ -256,6 +255,14 @@ from blueprints.supervisor import supervisor_bp
 from blueprints.schedule import schedule_bp
 from blueprints.employee_import import employee_import_bp
 
+# Import reset database blueprint - ADD THIS
+try:
+    from blueprints.reset_database import reset_db_bp
+    reset_db_available = True
+except ImportError:
+    logger.warning("Reset database blueprint not found")
+    reset_db_available = False
+
 # Register blueprints
 app.register_blueprint(auth_bp)
 app.register_blueprint(main_bp)
@@ -263,6 +270,11 @@ app.register_blueprint(employee_bp)
 app.register_blueprint(supervisor_bp)
 app.register_blueprint(schedule_bp)
 app.register_blueprint(employee_import_bp)
+
+# Register reset database blueprint if available - ADD THIS
+if reset_db_available:
+    app.register_blueprint(reset_db_bp)
+    logger.info("Reset database blueprint registered")
 
 # Add 404 handler
 @app.errorhandler(404)
