@@ -1,0 +1,325 @@
+{% extends "base.html" %}
+
+{% block title %}All Requests - Workforce Scheduler{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-12">
+            <h1 class="mb-4">All Request History</h1>
+            <a href="{{ url_for('supervisor.dashboard') }}" class="btn btn-secondary mb-3">
+                <i class="bi bi-arrow-left"></i> Back to Dashboard
+            </a>
+        </div>
+    </div>
+    
+    <ul class="nav nav-tabs" id="requestTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="timeoff-tab" data-bs-toggle="tab" data-bs-target="#timeoff" type="button" role="tab">
+                Time Off Requests <span class="badge bg-secondary">{{ time_off_requests|length }}</span>
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="swaps-tab" data-bs-toggle="tab" data-bs-target="#swaps" type="button" role="tab">
+                Shift Swaps <span class="badge bg-secondary">{{ shift_swaps|length }}</span>
+            </button>
+        </li>
+    </ul>
+    
+    <div class="tab-content mt-3" id="requestTabContent">
+        <!-- Time Off Tab -->
+        <div class="tab-pane fade show active" id="timeoff" role="tabpanel">
+            <div class="card">
+                <div class="card-header">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h5 class="mb-0">Time Off Request History</h5>
+                        </div>
+                        <div class="col-md-6 text-end">
+                            <input type="text" class="form-control d-inline-block w-auto" id="timeoffSearch" placeholder="Search...">
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover" id="timeoffTable">
+                            <thead>
+                                <tr>
+                                    <th>Date Requested</th>
+                                    <th>Employee</th>
+                                    <th>Start Date</th>
+                                    <th>End Date</th>
+                                    <th>Type</th>
+                                    <th>Reason</th>
+                                    <th>Status</th>
+                                    <th>Processed By</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for request in time_off_requests %}
+                                <tr class="status-{{ request.status }}">
+                                    <td>{{ request.created_at.strftime('%Y-%m-%d') if request.created_at else 'N/A' }}</td>
+                                    <td>{{ request.employee.name if request.employee else 'Unknown' }}</td>
+                                    <td>{{ request.start_date.strftime('%Y-%m-%d') }}</td>
+                                    <td>{{ request.end_date.strftime('%Y-%m-%d') }}</td>
+                                    <td>
+                                        {% if request.type %}
+                                            <span class="badge bg-info">{{ request.type.value if hasattr(request.type, 'value') else request.type }}</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">Not specified</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ request.reason[:50] + '...' if request.reason and request.reason|length > 50 else request.reason or 'N/A' }}</td>
+                                    <td>
+                                        {% if request.status == 'pending' %}
+                                            <span class="badge bg-warning">Pending</span>
+                                        {% elif request.status == 'approved' %}
+                                            <span class="badge bg-success">Approved</span>
+                                        {% elif request.status == 'denied' %}
+                                            <span class="badge bg-danger">Denied</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">{{ request.status }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if request.approved_by %}
+                                            {{ request.approved_by.name }}
+                                        {% else %}
+                                            -
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if request.status == 'pending' %}
+                                            <a href="{{ url_for('supervisor.approve_time_off', request_id=request.id) }}" 
+                                               class="btn btn-sm btn-success" 
+                                               onclick="return confirm('Approve this request?')">
+                                                <i class="bi bi-check"></i>
+                                            </a>
+                                            <a href="{{ url_for('supervisor.deny_time_off', request_id=request.id) }}" 
+                                               class="btn btn-sm btn-danger" 
+                                               onclick="return confirm('Deny this request?')">
+                                                <i class="bi bi-x"></i>
+                                            </a>
+                                        {% else %}
+                                            <button class="btn btn-sm btn-secondary" disabled>Processed</button>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Shift Swaps Tab -->
+        <div class="tab-pane fade" id="swaps" role="tabpanel">
+            <div class="card">
+                <div class="card-header">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h5 class="mb-0">Shift Swap Request History</h5>
+                        </div>
+                        <div class="col-md-6 text-end">
+                            <input type="text" class="form-control d-inline-block w-auto" id="swapSearch" placeholder="Search...">
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover" id="swapTable">
+                            <thead>
+                                <tr>
+                                    <th>Date Requested</th>
+                                    <th>Requester</th>
+                                    <th>Swap With</th>
+                                    <th>Shift Date</th>
+                                    <th>Reason</th>
+                                    <th>Status</th>
+                                    <th>Reviewed By</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for swap in shift_swaps %}
+                                <tr class="status-{{ swap.status }}">
+                                    <td>{{ swap.created_at.strftime('%Y-%m-%d') if swap.created_at else 'N/A' }}</td>
+                                    <td>{{ swap.requester.name if swap.requester else 'Unknown' }}</td>
+                                    <td>{{ swap.requested_with.name if swap.requested_with else 'TBD' }}</td>
+                                    <td>
+                                        {% if swap.requester_schedule %}
+                                            {{ swap.requester_schedule.date.strftime('%Y-%m-%d') }}
+                                        {% else %}
+                                            N/A
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ swap.reason[:50] + '...' if swap.reason and swap.reason|length > 50 else swap.reason or 'N/A' }}</td>
+                                    <td>
+                                        {% if swap.status == 'pending' %}
+                                            <span class="badge bg-warning">Pending</span>
+                                        {% elif swap.status == 'approved' %}
+                                            <span class="badge bg-success">Approved</span>
+                                        {% elif swap.status == 'denied' %}
+                                            <span class="badge bg-danger">Denied</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">{{ swap.status }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if swap.reviewed_by %}
+                                            {{ swap.reviewed_by.name }}
+                                        {% else %}
+                                            -
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if swap.status == 'pending' %}
+                                            <a href="{{ url_for('supervisor.approve_swap', swap_id=swap.id) }}" 
+                                               class="btn btn-sm btn-success" 
+                                               onclick="return confirm('Approve this swap?')">
+                                                <i class="bi bi-check"></i>
+                                            </a>
+                                            <a href="{{ url_for('supervisor.deny_swap', swap_id=swap.id) }}" 
+                                               class="btn btn-sm btn-danger" 
+                                               onclick="return confirm('Deny this swap?')">
+                                                <i class="bi bi-x"></i>
+                                            </a>
+                                        {% else %}
+                                            <button class="btn btn-sm btn-secondary" disabled>Processed</button>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Summary Statistics -->
+    <div class="row mt-4">
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body text-center">
+                    <h3 id="totalRequests">0</h3>
+                    <p class="text-muted">Total Requests</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body text-center">
+                    <h3 id="pendingRequests" class="text-warning">0</h3>
+                    <p class="text-muted">Pending Review</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body text-center">
+                    <h3 id="approvedRequests" class="text-success">0</h3>
+                    <p class="text-muted">Approved</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body text-center">
+                    <h3 id="deniedRequests" class="text-danger">0</h3>
+                    <p class="text-muted">Denied</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.status-pending {
+    background-color: #fff3cd;
+}
+.status-approved {
+    background-color: #d4edda;
+}
+.status-denied {
+    background-color: #f8d7da;
+}
+.table-responsive {
+    max-height: 600px;
+    overflow-y: auto;
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Calculate statistics
+    calculateStats();
+    
+    // Search functionality for time off
+    document.getElementById('timeoffSearch').addEventListener('keyup', function(e) {
+        filterTable('timeoffTable', e.target.value);
+    });
+    
+    // Search functionality for swaps
+    document.getElementById('swapSearch').addEventListener('keyup', function(e) {
+        filterTable('swapTable', e.target.value);
+    });
+});
+
+function calculateStats() {
+    // Count time off requests
+    const timeOffRows = document.querySelectorAll('#timeoffTable tbody tr');
+    const swapRows = document.querySelectorAll('#swapTable tbody tr');
+    
+    let pending = 0, approved = 0, denied = 0;
+    
+    // Count time off statuses
+    timeOffRows.forEach(row => {
+        if (row.classList.contains('status-pending')) pending++;
+        else if (row.classList.contains('status-approved')) approved++;
+        else if (row.classList.contains('status-denied')) denied++;
+    });
+    
+    // Count swap statuses
+    swapRows.forEach(row => {
+        if (row.classList.contains('status-pending')) pending++;
+        else if (row.classList.contains('status-approved')) approved++;
+        else if (row.classList.contains('status-denied')) denied++;
+    });
+    
+    // Update displays
+    document.getElementById('totalRequests').textContent = timeOffRows.length + swapRows.length;
+    document.getElementById('pendingRequests').textContent = pending;
+    document.getElementById('approvedRequests').textContent = approved;
+    document.getElementById('deniedRequests').textContent = denied;
+}
+
+function filterTable(tableId, searchTerm) {
+    const table = document.getElementById(tableId);
+    const rows = table.querySelectorAll('tbody tr');
+    
+    searchTerm = searchTerm.toLowerCase();
+    
+    rows.forEach(row => {
+        const text = row.textContent.toLowerCase();
+        if (text.includes(searchTerm)) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    });
+}
+
+// Auto-refresh pending counts every 30 seconds
+setInterval(function() {
+    const pendingBadges = document.querySelectorAll('.status-pending');
+    if (pendingBadges.length > 0) {
+        // Could make an AJAX call here to check for updates
+        console.log('Checking for updates...');
+    }
+}, 30000);
+</script>
+{% endblock %}
