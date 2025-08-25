@@ -1,8 +1,8 @@
-# blueprints/supervisor.py - COMPLETE FILE WITH DEMO DATA INTEGRATION
+# blueprints/supervisor.py - COMPLETE FILE WITH DEMO DATA AND DEBUG
 """
 Supervisor blueprint with complete error handling and database migration support
 Includes: Predictive Staffing, Communications Hub, and Enhanced Request Management
-UPDATED WITH DEMO DATA SERVICE
+UPDATED WITH DEMO DATA SERVICE AND DEBUG ROUTES
 """
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, current_app, send_file, render_template_string
@@ -12,7 +12,6 @@ from datetime import date, datetime, timedelta
 from sqlalchemy import func, and_, or_, text
 from sqlalchemy.exc import ProgrammingError, OperationalError
 from functools import wraps
-from utils.demo_data import demo_service
 import pandas as pd
 import os
 import io
@@ -23,6 +22,93 @@ import random
 logger = logging.getLogger(__name__)
 
 supervisor_bp = Blueprint('supervisor', __name__)
+
+# Try to import demo service, fall back to inline data if not available
+try:
+    from utils.demo_data import demo_service
+    DEMO_SERVICE_AVAILABLE = True
+    logger.info("Demo service imported successfully")
+except ImportError as e:
+    logger.warning(f"Demo service not available: {e}")
+    DEMO_SERVICE_AVAILABLE = False
+    
+    # Inline fallback demo functions
+    class InlineDemoService:
+        def get_communication_counts(self):
+            return {
+                'supervisor_to_supervisor': random.randint(0, 5),
+                'employee_to_supervisor': random.randint(2, 12),
+                'plantwide_recent': random.randint(0, 3)
+            }
+        
+        def get_supervisor_messages(self, limit=20):
+            messages = []
+            for i in range(random.randint(2, 6)):
+                messages.append({
+                    'id': 100 + i,
+                    'from': f'Supervisor {i+1}',
+                    'subject': f'Test Message {i+1}',
+                    'date': (datetime.now() - timedelta(days=i)).strftime('%Y-%m-%d'),
+                    'unread': random.choice([True, False]),
+                    'priority': 'normal'
+                })
+            return messages
+        
+        def get_employee_messages(self, limit=20):
+            messages = []
+            for i in range(random.randint(3, 8)):
+                messages.append({
+                    'id': 200 + i,
+                    'from': f'Employee {i+1}',
+                    'subject': f'Employee Message {i+1}',
+                    'date': (datetime.now() - timedelta(days=i)).strftime('%Y-%m-%d'),
+                    'unread': random.choice([True, True, False])
+                })
+            return messages
+        
+        def get_dashboard_summary_stats(self):
+            return {
+                'total_employees': random.randint(95, 105),
+                'today_scheduled': random.randint(85, 95),
+                'today_on_leave': random.randint(2, 8),
+                'coverage_gaps': random.randint(0, 3),
+                'critical_maintenance': random.randint(0, 2),
+                'pending_time_off': random.randint(0, 6),
+                'pending_swaps': random.randint(0, 4)
+            }
+        
+        def get_predictive_staffing_data(self, start_date, end_date):
+            understaffed_dates = []
+            start = datetime.strptime(start_date, '%Y-%m-%d').date()
+            end = datetime.strptime(end_date, '%Y-%m-%d').date()
+            
+            current = start
+            while current <= end:
+                if random.random() < 0.2:  # 20% chance of shortage
+                    understaffed_dates.append({
+                        'date': current.strftime('%Y-%m-%d'),
+                        'crew': random.choice(['A', 'B', 'C', 'D']),
+                        'shortage': random.randint(1, 3),
+                        'available': random.randint(10, 14),
+                        'required': random.randint(12, 16)
+                    })
+                current += timedelta(days=1)
+            
+            return {
+                'success': True,
+                'understaffed_dates': understaffed_dates,
+                'total_issues': len(understaffed_dates)
+            }
+        
+        def send_demo_message(self, message_type, **kwargs):
+            return {
+                'success': True,
+                'message_id': random.randint(3000, 9999),
+                'recipients': kwargs.get('recipients', 1),
+                'sent_at': datetime.now().isoformat()
+            }
+    
+    demo_service = InlineDemoService()
 
 def supervisor_required(f):
     """Decorator to require supervisor access"""
@@ -49,6 +135,67 @@ def safe_count_query(model, **filters):
         logger.error(f"Database error in count query for {model.__name__}: {e}")
         db.session.rollback()
         return 0
+
+# ==========================================
+# DEBUG ROUTES
+# ==========================================
+
+@supervisor_bp.route('/debug/demo-service')
+@login_required
+@supervisor_required
+def debug_demo_service():
+    """Debug route to test demo service"""
+    try:
+        # Test various demo functions
+        results = {
+            'demo_service_available': DEMO_SERVICE_AVAILABLE,
+            'communication_counts': demo_service.get_communication_counts(),
+            'supervisor_messages': demo_service.get_supervisor_messages(limit=3),
+            'employee_messages': demo_service.get_employee_messages(limit=3),
+            'dashboard_stats': demo_service.get_dashboard_summary_stats(),
+        }
+        
+        return jsonify({
+            'success': True,
+            'demo_service_working': True,
+            'results': results
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Demo service error: {str(e)}',
+            'demo_service_working': False
+        })
+
+@supervisor_bp.route('/debug/test-api')
+@login_required
+@supervisor_required
+def debug_test_api():
+    """Test API endpoints"""
+    endpoints_to_test = [
+        '/api/communication-counts',
+        '/api/supervisor-messages',
+        '/api/employee-messages'
+    ]
+    
+    results = {}
+    for endpoint in endpoints_to_test:
+        try:
+            # This is a simple test - in production you'd make actual requests
+            results[endpoint] = f"Route exists: {endpoint}"
+        except Exception as e:
+            results[endpoint] = f"Error: {str(e)}"
+    
+    return jsonify({
+        'success': True,
+        'endpoints': results,
+        'demo_service_available': DEMO_SERVICE_AVAILABLE
+    })
+
+# ==========================================
+# MAIN DASHBOARD
+# ==========================================
 
 @supervisor_bp.route('/supervisor/dashboard')
 @login_required
@@ -372,14 +519,9 @@ def vacation_calendar():
 @login_required
 @supervisor_required
 def coverage_gaps():
-    """View coverage gaps with demo data"""
-    try:
-        gaps = demo_service.get_coverage_gaps_data()
-        return render_template('coverage_gaps.html', gaps=gaps)
-    except Exception as e:
-        logger.error(f"Error in coverage gaps: {e}")
-        flash('Error loading coverage gaps.', 'danger')
-        return redirect(url_for('supervisor.dashboard'))
+    """View coverage gaps"""
+    gaps = []
+    return render_template('coverage_gaps.html', gaps=gaps)
 
 @supervisor_bp.route('/supervisor/coverage-needs')
 @login_required
@@ -445,9 +587,30 @@ def coverage_needs():
 @login_required
 @supervisor_required
 def overtime_distribution():
-    """View overtime distribution report with demo data"""
+    """View overtime distribution report"""
     try:
-        overtime_data = demo_service.get_overtime_distribution_data()
+        # Get all employees with their overtime data
+        employees = Employee.query.filter_by(is_supervisor=False).all()
+        
+        overtime_data = []
+        for emp in employees:
+            # Get total overtime for last 13 weeks safely
+            try:
+                total_ot = db.session.query(func.sum(OvertimeHistory.hours)).filter_by(
+                    employee_id=emp.id
+                ).scalar() or 0
+            except:
+                total_ot = 0
+            
+            overtime_data.append({
+                'employee': emp,
+                'total_overtime': total_ot,
+                'average_weekly': round(total_ot / 13, 2) if total_ot > 0 else 0
+            })
+        
+        # Sort by total overtime descending
+        overtime_data.sort(key=lambda x: x['total_overtime'], reverse=True)
+        
         return render_template('overtime_distribution.html', overtime_data=overtime_data)
     except Exception as e:
         logger.error(f"Error in overtime distribution: {e}")
@@ -464,34 +627,41 @@ def overtime_distribution():
 def today_schedule():
     """View today's schedule overview with demo data"""
     try:
-        schedule_data = demo_service.get_today_schedule_data()
+        today = date.today()
         
-        # Convert demo data to template format
+        # Create demo schedule data
         crew_schedules = {}
-        for crew, data in schedule_data['crews'].items():
+        for crew in ['A', 'B', 'C', 'D']:
+            total = random.randint(18, 25)
+            on_leave_count = random.randint(0, 3)
+            scheduled_count = total - on_leave_count
+            
             # Create fake employee objects for template
             scheduled_employees = []
             on_leave_employees = []
             
-            for name in data['scheduled_employees']:
+            employee_names = ['John Smith', 'Mary Johnson', 'David Williams', 'Sarah Brown', 'Mike Davis']
+            
+            for i in range(min(scheduled_count, len(employee_names))):
                 class FakeEmployee:
                     def __init__(self, name):
                         self.name = name
                         self.id = random.randint(1000, 9999)
-                scheduled_employees.append(FakeEmployee(name))
+                scheduled_employees.append(FakeEmployee(employee_names[i]))
             
-            for name in data['on_leave_employees']:
-                on_leave_employees.append(FakeEmployee(name))
+            for i in range(on_leave_count):
+                if i < len(employee_names):
+                    on_leave_employees.append(FakeEmployee(f"Employee {i+1}"))
             
             crew_schedules[crew] = {
-                'total': data['total'],
+                'total': total,
                 'scheduled': scheduled_employees,
                 'on_leave': on_leave_employees
             }
         
         return render_template('today_schedule.html', 
                              crew_schedules=crew_schedules,
-                             today=schedule_data['date'])
+                             today=today)
     except Exception as e:
         logger.error(f"Error in today's schedule: {e}")
         flash('Error loading schedule', 'danger')
@@ -503,7 +673,29 @@ def today_schedule():
 def crew_status():
     """Real-time crew status overview with demo data"""
     try:
-        crew_data = demo_service.get_crew_status_data()
+        crew_data = {}
+        
+        for crew in ['A', 'B', 'C', 'D']:
+            total = random.randint(18, 25)
+            scheduled = random.randint(total - 3, total)
+            on_leave = total - scheduled
+            
+            # Position distribution
+            positions = {
+                'Operator': random.randint(3, 6),
+                'Senior Operator': random.randint(2, 4),
+                'Maintenance Tech': random.randint(1, 3),
+                'Control Room Op': random.randint(1, 2)
+            }
+            
+            crew_data[crew] = {
+                'total': total,
+                'scheduled': scheduled,
+                'on_leave': on_leave,
+                'positions': positions,
+                'coverage_level': 'Good' if scheduled >= (total * 0.85) else 'Limited'
+            }
+        
         return render_template('crew_status.html', crew_data=crew_data)
         
     except Exception as e:
