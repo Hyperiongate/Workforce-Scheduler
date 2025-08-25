@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+
+{% block title %}Today's Schedule - Workforce Scheduler{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-12">
+            <h1 class="mb-4">Today's Schedule - {{ today.strftime('%A, %B %d, %Y') }}</h1>
+            <a href="{{ url_for('supervisor.dashboard') }}" class="btn btn-secondary mb-3">
+                <i class="bi bi-arrow-left"></i> Back to Dashboard
+            </a>
+        </div>
+    </div>
+    
+    <div class="row">
+        {% for crew, data in crew_schedules.items() %}
+        <div class="col-lg-3 col-md-6 mb-4">
+            <div class="card h-100">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">Crew {{ crew }}</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <h6>Summary:</h6>
+                        <ul class="list-unstyled">
+                            <li><strong>Total:</strong> {{ data.total }}</li>
+                            <li class="text-success"><strong>Working:</strong> {{ data.scheduled|length }}</li>
+                            <li class="text-warning"><strong>On Leave:</strong> {{ data.on_leave|length }}</li>
+                        </ul>
+                    </div>
+                    
+                    {% if data.scheduled %}
+                    <h6>Working Today:</h6>
+                    <ul class="small">
+                        {% for emp in data.scheduled[:5] %}
+                        <li>{{ emp.name }} - {{ emp.position.name if emp.position else 'No Position' }}</li>
+                        {% endfor %}
+                        {% if data.scheduled|length > 5 %}
+                        <li><em>... and {{ data.scheduled|length - 5 }} more</em></li>
+                        {% endif %}
+                    </ul>
+                    {% endif %}
+                    
+                    {% if data.on_leave %}
+                    <h6 class="text-warning">On Leave:</h6>
+                    <ul class="small">
+                        {% for emp in data.on_leave %}
+                        <li>{{ emp.name }}</li>
+                        {% endfor %}
+                    </ul>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Coverage Analysis</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="coverageChart" height="100"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// Create coverage chart
+const ctx = document.getElementById('coverageChart').getContext('2d');
+const coverageChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+        labels: ['Crew A', 'Crew B', 'Crew C', 'Crew D'],
+        datasets: [{
+            label: 'Working',
+            data: [
+                {{ crew_schedules.A.scheduled|length }},
+                {{ crew_schedules.B.scheduled|length }},
+                {{ crew_schedules.C.scheduled|length }},
+                {{ crew_schedules.D.scheduled|length }}
+            ],
+            backgroundColor: 'rgba(75, 192, 192, 0.6)',
+            borderColor: 'rgba(75, 192, 192, 1)',
+            borderWidth: 1
+        }, {
+            label: 'On Leave',
+            data: [
+                {{ crew_schedules.A.on_leave|length }},
+                {{ crew_schedules.B.on_leave|length }},
+                {{ crew_schedules.C.on_leave|length }},
+                {{ crew_schedules.D.on_leave|length }}
+            ],
+            backgroundColor: 'rgba(255, 206, 86, 0.6)',
+            borderColor: 'rgba(255, 206, 86, 1)',
+            borderWidth: 1
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+            y: {
+                beginAtZero: true,
+                ticks: {
+                    stepSize: 1
+                }
+            }
+        }
+    }
+});
+</script>
+{% endblock %}
