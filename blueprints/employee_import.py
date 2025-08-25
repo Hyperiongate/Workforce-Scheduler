@@ -2,7 +2,7 @@
 """
 Complete Excel upload system for employee data management
 Modified to accept custom format without email requirement
-WITH DEBUG LOGGING
+WITH DEBUG LOGGING AND MISSING ROUTES ADDED
 """
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, current_app, send_file
@@ -290,6 +290,134 @@ def upload_employees_post():
         logger.error(f"ERROR in upload: {e}")
         flash('An error occurred during upload. Please try again.', 'error')
         return redirect(url_for('employee_import.upload_employees'))
+
+# ==========================================
+# MISSING ROUTES - ADDED TO FIX BASE.HTML ERROR
+# ==========================================
+
+@employee_import_bp.route('/export-employees')
+@login_required
+@supervisor_required
+def export_employees():
+    """Export current employee data to Excel format"""
+    try:
+        # Get all active employees
+        employees = Employee.query.filter_by(is_active=True).order_by(Employee.name).all()
+        
+        if not employees:
+            flash('No employees found to export.', 'warning')
+            return redirect(url_for('supervisor.dashboard'))
+        
+        # Create workbook and worksheet
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Employee Export"
+        
+        # Define headers to match your import format
+        headers = [
+            'Employee ID', 'First Name', 'Last Name', 'Email',
+            'Crew', 'Department', 'Position', 'Phone', 
+            'Hire Date', 'Is Active'
+        ]
+        
+        # Add headers to worksheet
+        for col, header in enumerate(headers, 1):
+            ws.cell(row=1, column=col, value=header)
+        
+        # Add employee data
+        for row, employee in enumerate(employees, 2):
+            ws.cell(row=row, column=1, value=employee.employee_id or '')
+            ws.cell(row=row, column=2, value=employee.first_name or '')
+            ws.cell(row=row, column=3, value=employee.last_name or '')
+            ws.cell(row=row, column=4, value=employee.email or '')
+            ws.cell(row=row, column=5, value=employee.crew or '')
+            ws.cell(row=row, column=6, value=employee.department or '')
+            
+            # Get position name
+            position_name = ''
+            if employee.position:
+                position_name = employee.position.name
+            ws.cell(row=row, column=7, value=position_name)
+            
+            ws.cell(row=row, column=8, value=employee.phone or '')
+            ws.cell(row=row, column=9, value=employee.hire_date.strftime('%Y-%m-%d') if employee.hire_date else '')
+            ws.cell(row=row, column=10, value='Yes' if employee.is_active else 'No')
+        
+        # Prepare file for download
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+        
+        filename = f"employees_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        
+        return send_file(
+            output,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=filename
+        )
+        
+    except Exception as e:
+        logger.error(f"Error exporting employees: {e}")
+        flash('Error exporting employee data. Please try again.', 'danger')
+        return redirect(url_for('supervisor.dashboard'))
+
+@employee_import_bp.route('/export-overtime')
+@login_required  
+@supervisor_required
+def export_overtime():
+    """Export overtime history data"""
+    try:
+        # Get all overtime records
+        overtime_records = OvertimeHistory.query.join(Employee).order_by(
+            Employee.name, OvertimeHistory.week_ending
+        ).all()
+        
+        if not overtime_records:
+            flash('No overtime data found to export.', 'warning')
+            return redirect(url_for('supervisor.dashboard'))
+        
+        # Create workbook
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Overtime Export"
+        
+        # Headers
+        headers = [
+            'Employee ID', 'Employee Name', 'Week Ending', 
+            'Overtime Hours', 'Total Hours', 'Regular Hours'
+        ]
+        
+        for col, header in enumerate(headers, 1):
+            ws.cell(row=1, column=col, value=header)
+        
+        # Add data
+        for row, record in enumerate(overtime_records, 2):
+            ws.cell(row=row, column=1, value=record.employee.employee_id or '')
+            ws.cell(row=row, column=2, value=record.employee.name or '')
+            ws.cell(row=row, column=3, value=record.week_ending.strftime('%Y-%m-%d') if record.week_ending else '')
+            ws.cell(row=row, column=4, value=record.overtime_hours or record.hours or 0)
+            ws.cell(row=row, column=5, value=record.total_hours or 0)
+            ws.cell(row=row, column=6, value=record.regular_hours or 0)
+        
+        # Save to BytesIO
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+        
+        filename = f"overtime_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        
+        return send_file(
+            output,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=filename
+        )
+        
+    except Exception as e:
+        logger.error(f"Error exporting overtime: {e}")
+        flash('Error exporting overtime data. Please try again.', 'danger')
+        return redirect(url_for('supervisor.dashboard'))
 
 # ==========================================
 # CUSTOM VALIDATION FUNCTIONS FOR YOUR FORMAT
@@ -651,8 +779,6 @@ def process_employee_data_standard(df, mode, file_upload):
             'success': False,
             'error': str(e)
         }
-
-# ... rest of the file remains the same ...
 
 def validate_overtime_data(df):
     """Validate overtime history data"""
