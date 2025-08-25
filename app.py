@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Main application file for Workforce Scheduler
-COMPLETE FILE with all diagnostic routes and supervisor dashboard debug
+COMPLETE FILE with ENUM status fix
 """
 
 from flask import Flask, render_template, redirect, url_for, flash, jsonify, request
@@ -79,90 +79,105 @@ from models import Employee, TimeOffRequest, ShiftSwapRequest
 def load_user(user_id):
     return Employee.query.get(int(user_id))
 
-# TEST SUPERVISOR DASHBOARD ROUTE
-@app.route('/test-supervisor-dashboard')
-def test_supervisor_dashboard():
-    """Test what's causing the 500 error"""
-    results = []
-    
-    # Test 1: Can we import the blueprint?
+# FIX ENUM STATUS ROUTE
+@app.route('/fix-enum-status')
+def fix_enum_status_route():
+    """Fix the ENUM status issue"""
     try:
-        from blueprints.supervisor import supervisor_bp
-        results.append("✅ Supervisor blueprint imports successfully")
+        with db.engine.begin() as conn:
+            # Step 1: Convert time_off_request status from ENUM to VARCHAR
+            try:
+                conn.execute(text("""
+                    ALTER TABLE time_off_request 
+                    ALTER COLUMN status TYPE VARCHAR(20) 
+                    USING status::text
+                """))
+                logger.info("✅ Converted time_off_request.status to VARCHAR")
+            except Exception as e:
+                logger.warning(f"time_off_request.status might already be VARCHAR: {e}")
+            
+            # Step 2: Convert shift_swap_request status from ENUM to VARCHAR
+            try:
+                conn.execute(text("""
+                    ALTER TABLE shift_swap_request 
+                    ALTER COLUMN status TYPE VARCHAR(20) 
+                    USING status::text
+                """))
+                logger.info("✅ Converted shift_swap_request.status to VARCHAR")
+            except Exception as e:
+                logger.warning(f"shift_swap_request.status might already be VARCHAR: {e}")
+            
+            # Step 3: Update any existing enum values to lowercase strings
+            conn.execute(text("""
+                UPDATE time_off_request 
+                SET status = LOWER(status)
+                WHERE status IS NOT NULL
+            """))
+            
+            conn.execute(text("""
+                UPDATE shift_swap_request 
+                SET status = LOWER(status)
+                WHERE status IS NOT NULL
+            """))
+            
+            # Step 4: Update any uppercase 'PENDING' to 'pending'
+            conn.execute(text("""
+                UPDATE time_off_request 
+                SET status = 'pending'
+                WHERE UPPER(status) = 'PENDING'
+            """))
+            
+            conn.execute(text("""
+                UPDATE shift_swap_request 
+                SET status = 'pending'
+                WHERE UPPER(status) = 'PENDING'
+            """))
+            
+        return """
+        <html>
+        <head>
+            <style>
+                body { font-family: Arial; padding: 40px; background: #f5f5f5; }
+                .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+                h1 { color: #28a745; }
+                .btn { display: inline-block; padding: 10px 20px; background: #007bff; color: white; text-decoration: none; border-radius: 5px; margin-top: 20px; }
+                .btn:hover { background: #0056b3; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>✅ ENUM Status Fixed!</h1>
+                <p>The status columns have been successfully converted from ENUM to VARCHAR.</p>
+                <p>You can now use 'pending', 'approved', 'denied' as status values without errors.</p>
+                <a href="/supervisor/dashboard" class="btn">Go to Dashboard</a>
+            </div>
+        </body>
+        </html>
+        """
+            
     except Exception as e:
-        results.append(f"❌ Blueprint import error: {str(e)}")
-        import traceback
-        results.append(f"<pre>{traceback.format_exc()}</pre>")
-        
-    # Test 2: Check if user is logged in and is supervisor
-    try:
-        from flask_login import current_user
-        if current_user.is_authenticated:
-            results.append(f"✅ User logged in: {current_user.email}, Supervisor: {getattr(current_user, 'is_supervisor', 'Unknown')}")
-        else:
-            results.append("❌ No user logged in - <a href='/login'>Login here</a>")
-    except Exception as e:
-        results.append(f"❌ Auth check error: {str(e)}")
-        
-    # Test 3: Check database models
-    try:
-        from models import Employee, TimeOffRequest, ShiftSwapRequest
-        emp_count = Employee.query.count()
-        results.append(f"✅ Database works: {emp_count} employees found")
-    except Exception as e:
-        results.append(f"❌ Database error: {str(e)}")
-        
-    # Test 4: Check if templates exist
-    import os
-    templates = ['supervisor_dashboard_enhanced.html', 'supervisor_dashboard.html']
-    template_results = []
-    for t in templates:
-        path = os.path.join('templates', t)
-        if os.path.exists(path):
-            template_results.append(f"✅ {t} exists")
-        else:
-            template_results.append(f"❌ {t} missing")
-    results.extend(template_results)
-    
-    # Test 5: Check specific imports that might fail
-    try:
-        from models import SupervisorMessage, VacationCalendar, Schedule, Position, OvertimeHistory
-        results.append("✅ All model imports successful")
-    except ImportError as e:
-        results.append(f"❌ Model import error: {str(e)}")
-        
-    # Test 6: Check pandas import
-    try:
-        import pandas as pd
-        results.append("✅ Pandas installed")
-    except ImportError:
-        results.append("❌ Pandas not installed - run: pip install pandas")
-    
-    return f"""
-    <html>
-    <head>
-        <style>
-            body {{ font-family: Arial; padding: 40px; background: #f5f5f5; }}
-            .container {{ max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; }}
-            .success {{ color: green; }}
-            .error {{ color: red; }}
-            h1 {{ color: #333; }}
-            p {{ margin: 10px 0; padding: 10px; background: #f9f9f9; border-radius: 5px; }}
-            pre {{ background: #f0f0f0; padding: 10px; border-radius: 5px; overflow-x: auto; }}
-            .btn {{ display: inline-block; padding: 10px 20px; background: #007bff; color: white; text-decoration: none; border-radius: 5px; margin-top: 20px; }}
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <h1>Supervisor Dashboard Debug Results</h1>
-            {"".join(f"<p>{result}</p>" for result in results)}
-            <hr>
-            <a href="/supervisor/dashboard" class="btn">Try Dashboard</a>
-            <a href="/force-login" class="btn" style="background: #28a745;">Force Login as Admin</a>
-        </div>
-    </body>
-    </html>
-    """
+        logger.error(f"Error fixing ENUM status: {e}")
+        return f"""
+        <html>
+        <head>
+            <style>
+                body {{ font-family: Arial; padding: 40px; background: #f5f5f5; }}
+                .container {{ max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
+                h1 {{ color: #dc3545; }}
+                pre {{ background: #f8f9fa; padding: 15px; border-radius: 5px; overflow-x: auto; }}
+                .btn {{ display: inline-block; padding: 10px 20px; background: #6c757d; color: white; text-decoration: none; border-radius: 5px; margin-top: 20px; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>❌ Fix Failed</h1>
+                <p>Could not fix the ENUM status issue:</p>
+                <pre>{str(e)}</pre>
+                <a href="/" class="btn">Go Home</a>
+            </div>
+        </body>
+        </html>
+        """
 
 # DATABASE FIX ROUTE
 @app.route('/fix-db-now')
@@ -437,6 +452,11 @@ def fix_db_now():
                     <p class="note">Please change this password after your first login!</p>
                 </div>
                 
+                <div class="info-box" style="background: #fff3cd; border-color: #ffc107;">
+                    <h3>⚠️ Important: Fix ENUM Status Issue</h3>
+                    <p>Run this next: <a href="/fix-enum-status">/fix-enum-status</a></p>
+                </div>
+                
                 <a href="/login" class="btn">Go to Login Page →</a>
             </div>
         </body>
@@ -509,273 +529,6 @@ def fix_db_now():
                 <p>Please check the server logs for more details.</p>
                 <a href="/fix-db-now" class="btn">Try Again</a>
             </div>
-        </body>
-        </html>
-        """
-
-# DIAGNOSTIC ROUTE
-@app.route('/check-admin')
-def check_admin():
-    """Diagnostic route to check admin user status"""
-    try:
-        with db.engine.connect() as conn:
-            # Check if admin exists
-            result = conn.execute(text("""
-                SELECT id, email, name, password_hash, 
-                       is_admin, is_supervisor, is_active,
-                       LENGTH(password_hash) as hash_length
-                FROM employee 
-                WHERE email = 'admin@workforce.com'
-            """))
-            admin = result.fetchone()
-            
-            if not admin:
-                return """
-                <html>
-                <body style="font-family: Arial; padding: 40px;">
-                    <h1 style="color: red;">❌ Admin User Not Found</h1>
-                    <p>The admin@workforce.com user does not exist in the database.</p>
-                    <p><a href="/fix-db-now" style="padding: 10px 20px; background: #007bff; color: white; text-decoration: none; border-radius: 5px;">Run Database Fix</a></p>
-                </body>
-                </html>
-                """
-            
-            # Test password
-            test_result = "Unknown"
-            if admin[3]:  # password_hash
-                try:
-                    # Test if the hash is valid
-                    is_valid = check_password_hash(admin[3], 'admin123')
-                    test_result = "✅ Password hash is valid" if is_valid else "❌ Password hash does NOT match 'admin123'"
-                except Exception as e:
-                    test_result = f"❌ Error testing password: {str(e)}"
-            else:
-                test_result = "❌ No password hash found"
-            
-            return f"""
-            <html>
-            <head>
-                <style>
-                    body {{ font-family: Arial; padding: 40px; background: #f5f5f5; }}
-                    .container {{ background: white; padding: 30px; border-radius: 10px; max-width: 800px; margin: 0 auto; }}
-                    table {{ width: 100%; border-collapse: collapse; margin: 20px 0; }}
-                    th {{ background: #007bff; color: white; padding: 10px; text-align: left; }}
-                    td {{ padding: 10px; border-bottom: 1px solid #ddd; }}
-                    .good {{ color: green; font-weight: bold; }}
-                    .bad {{ color: red; font-weight: bold; }}
-                    .btn {{ display: inline-block; padding: 10px 20px; background: #28a745; color: white; text-decoration: none; border-radius: 5px; margin-top: 20px; }}
-                </style>
-            </head>
-            <body>
-                <div class="container">
-                    <h1>Admin User Diagnostic</h1>
-                    <table>
-                        <tr><th>Field</th><th>Value</th><th>Status</th></tr>
-                        <tr><td>ID</td><td>{admin[0]}</td><td class="good">✓</td></tr>
-                        <tr><td>Email</td><td>{admin[1]}</td><td class="good">✓</td></tr>
-                        <tr><td>Name</td><td>{admin[2] or 'NULL'}</td><td class="{'good' if admin[2] else 'bad'}">{'✓' if admin[2] else '✗'}</td></tr>
-                        <tr><td>Has Password Hash</td><td>{'Yes' if admin[3] else 'No'}</td><td class="{'good' if admin[3] else 'bad'}">{'✓' if admin[3] else '✗'}</td></tr>
-                        <tr><td>Hash Length</td><td>{admin[7] or 0} chars</td><td class="{'good' if admin[7] and admin[7] > 50 else 'bad'}">{'✓' if admin[7] and admin[7] > 50 else '✗'}</td></tr>
-                        <tr><td>Is Admin</td><td>{admin[4]}</td><td class="{'good' if admin[4] else 'bad'}">{'✓' if admin[4] else '✗'}</td></tr>
-                        <tr><td>Is Supervisor</td><td>{admin[5]}</td><td class="{'good' if admin[5] else 'bad'}">{'✓' if admin[5] else '✗'}</td></tr>
-                        <tr><td>Is Active</td><td>{admin[6]}</td><td class="{'good' if admin[6] else 'bad'}">{'✓' if admin[6] else '✗'}</td></tr>
-                    </table>
-                    
-                    <h3>Password Test:</h3>
-                    <p>{test_result}</p>
-                    
-                    <h3>Next Steps:</h3>
-                    <ol>
-                        <li>If password test failed, run <a href="/fix-db-now">/fix-db-now</a> again</li>
-                        <li>If all checks pass, try <a href="/login">logging in</a></li>
-                        <li>Make sure you're using email: <code>admin@workforce.com</code> and password: <code>admin123</code></li>
-                    </ol>
-                    
-                    <a href="/login" class="btn">Try Login</a>
-                </div>
-            </body>
-            </html>
-            """
-            
-    except Exception as e:
-        return f"""
-        <html>
-        <body style="font-family: Arial; padding: 40px;">
-            <h1 style="color: red;">❌ Diagnostic Error</h1>
-            <pre style="background: #f8f9fa; padding: 20px; border-radius: 5px;">{str(e)}</pre>
-            <p><a href="/fix-db-now">Try Running Fix Again</a></p>
-        </body>
-        </html>
-        """
-
-# PASSWORD RESET ROUTE
-@app.route('/reset-admin-password')
-def reset_admin_password():
-    """Emergency route to reset admin password"""
-    try:
-        # Generate new password hash
-        new_password_hash = generate_password_hash('admin123')
-        
-        with db.engine.begin() as conn:
-            # Update admin password
-            result = conn.execute(text("""
-                UPDATE employee 
-                SET password_hash = :password_hash,
-                    is_admin = true,
-                    is_supervisor = true,
-                    is_active = true
-                WHERE email = 'admin@workforce.com'
-                RETURNING id, email
-            """), {'password_hash': new_password_hash})
-            
-            updated = result.fetchone()
-            
-            if updated:
-                return f"""
-                <html>
-                <head>
-                    <style>
-                        body {{ font-family: Arial; padding: 40px; background: #f5f5f5; }}
-                        .container {{ background: white; padding: 30px; border-radius: 10px; max-width: 600px; margin: 0 auto; }}
-                        .success {{ background: #d4edda; border: 1px solid #c3e6cb; color: #155724; padding: 20px; border-radius: 5px; }}
-                        .credentials {{ background: #e7f3ff; border-left: 4px solid #2196F3; padding: 20px; margin: 20px 0; }}
-                        .btn {{ display: inline-block; padding: 12px 30px; background: #007bff; color: white; text-decoration: none; border-radius: 5px; margin-top: 20px; }}
-                    </style>
-                </head>
-                <body>
-                    <div class="container">
-                        <h1>✅ Password Reset Successful!</h1>
-                        
-                        <div class="success">
-                            <p>Admin password has been reset successfully.</p>
-                            <p>User ID: {updated[0]}, Email: {updated[1]}</p>
-                        </div>
-                        
-                        <div class="credentials">
-                            <h3>Login Credentials:</h3>
-                            <p><strong>Email:</strong> admin@workforce.com<br>
-                            <strong>Password:</strong> admin123</p>
-                        </div>
-                        
-                        <a href="/login" class="btn">Go to Login</a>
-                    </div>
-                </body>
-                </html>
-                """
-            else:
-                # Admin doesn't exist, create it
-                conn.execute(text("""
-                    INSERT INTO employee (email, password_hash, name, is_admin, is_supervisor, is_active)
-                    VALUES ('admin@workforce.com', :password_hash, 'Admin User', true, true, true)
-                """), {'password_hash': new_password_hash})
-                
-                return """
-                <html>
-                <body style="font-family: Arial; padding: 40px;">
-                    <h1 style="color: green;">✅ Admin User Created!</h1>
-                    <p>Admin user was missing and has been created.</p>
-                    <div style="background: #f0f0f0; padding: 20px; margin: 20px 0; border-radius: 5px;">
-                        <strong>Email:</strong> admin@workforce.com<br>
-                        <strong>Password:</strong> admin123
-                    </div>
-                    <a href="/login" style="display: inline-block; padding: 10px 20px; background: #007bff; color: white; text-decoration: none; border-radius: 5px;">Go to Login</a>
-                </body>
-                </html>
-                """
-                
-    except Exception as e:
-        db.session.rollback()
-        return f"""
-        <html>
-        <body style="font-family: Arial; padding: 40px;">
-            <h1 style="color: red;">❌ Reset Error</h1>
-            <pre style="background: #f8f9fa; padding: 20px; border-radius: 5px;">{str(e)}</pre>
-        </body>
-        </html>
-        """
-
-# TEST PASSWORD ROUTE
-@app.route('/test-password')
-def test_password():
-    """Test if password checking is working"""
-    try:
-        # Test 1: Basic password hashing
-        test_password = 'admin123'
-        test_hash = generate_password_hash(test_password)
-        test_result = check_password_hash(test_hash, test_password)
-        
-        # Test 2: Check admin user
-        admin = Employee.query.filter_by(email='admin@workforce.com').first()
-        
-        results = []
-        results.append(f"Test 1 - Basic hash test: {'✅ PASS' if test_result else '❌ FAIL'}")
-        
-        if admin:
-            results.append(f"Test 2 - Admin found: ✅ ID={admin.id}, Email={admin.email}")
-            results.append(f"Test 3 - Admin has password_hash: {'✅ YES' if admin.password_hash else '❌ NO'}")
-            
-            if admin.password_hash:
-                try:
-                    # Test the actual check_password method
-                    check_result = admin.check_password('admin123')
-                    results.append(f"Test 4 - admin.check_password('admin123'): {'✅ PASS' if check_result else '❌ FAIL'}")
-                    
-                    # Also test direct check
-                    direct_check = check_password_hash(admin.password_hash, 'admin123')
-                    results.append(f"Test 5 - Direct check_password_hash: {'✅ PASS' if direct_check else '❌ FAIL'}")
-                    
-                    # Show hash details
-                    results.append(f"Test 6 - Hash starts with: {admin.password_hash[:20]}...")
-                    results.append(f"Test 7 - Hash length: {len(admin.password_hash)} chars")
-                    
-                except Exception as e:
-                    results.append(f"Test 4 - Error in check_password: ❌ {str(e)}")
-        else:
-            results.append("Test 2 - Admin not found: ❌ Run /fix-db-now first")
-        
-        # Test 3: Force create a new hash for admin123
-        new_hash = generate_password_hash('admin123')
-        new_check = check_password_hash(new_hash, 'admin123')
-        results.append(f"Test 8 - Fresh hash test: {'✅ PASS' if new_check else '❌ FAIL'}")
-        
-        # Build response
-        return f"""
-        <html>
-        <head>
-            <style>
-                body {{ font-family: Arial; padding: 40px; background: #f5f5f5; }}
-                .container {{ background: white; padding: 30px; border-radius: 10px; max-width: 800px; margin: 0 auto; }}
-                .pass {{ color: green; }}
-                .fail {{ color: red; }}
-                pre {{ background: #f8f9fa; padding: 15px; border-radius: 5px; }}
-                .btn {{ display: inline-block; padding: 10px 20px; background: #007bff; color: white; text-decoration: none; border-radius: 5px; margin: 10px 5px; }}
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <h1>Password System Test Results</h1>
-                <pre>{'<br>'.join(results)}</pre>
-                
-                <h3>Next Steps:</h3>
-                <p>If Test 4 or 5 fail, the password hash in the database doesn't match 'admin123'</p>
-                
-                <div>
-                    <a href="/reset-admin-password" class="btn">Reset Password</a>
-                    <a href="/force-login" class="btn">Force Login</a>
-                    <a href="/login" class="btn">Try Normal Login</a>
-                </div>
-            </div>
-        </body>
-        </html>
-        """
-        
-    except Exception as e:
-        import traceback
-        return f"""
-        <html>
-        <body style="font-family: Arial; padding: 40px;">
-            <h1 style="color: red;">❌ Test Error</h1>
-            <pre style="background: #f8f9fa; padding: 20px; border-radius: 5px;">{str(e)}\n\n{traceback.format_exc()}</pre>
         </body>
         </html>
         """
