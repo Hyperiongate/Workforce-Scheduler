@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Main application file for Workforce Scheduler
-COMPLETE FILE with all diagnostic routes
+COMPLETE FILE with all diagnostic routes and supervisor dashboard debug
 """
 
 from flask import Flask, render_template, redirect, url_for, flash, jsonify, request
@@ -78,6 +78,91 @@ from models import Employee, TimeOffRequest, ShiftSwapRequest
 @login_manager.user_loader
 def load_user(user_id):
     return Employee.query.get(int(user_id))
+
+# TEST SUPERVISOR DASHBOARD ROUTE
+@app.route('/test-supervisor-dashboard')
+def test_supervisor_dashboard():
+    """Test what's causing the 500 error"""
+    results = []
+    
+    # Test 1: Can we import the blueprint?
+    try:
+        from blueprints.supervisor import supervisor_bp
+        results.append("✅ Supervisor blueprint imports successfully")
+    except Exception as e:
+        results.append(f"❌ Blueprint import error: {str(e)}")
+        import traceback
+        results.append(f"<pre>{traceback.format_exc()}</pre>")
+        
+    # Test 2: Check if user is logged in and is supervisor
+    try:
+        from flask_login import current_user
+        if current_user.is_authenticated:
+            results.append(f"✅ User logged in: {current_user.email}, Supervisor: {getattr(current_user, 'is_supervisor', 'Unknown')}")
+        else:
+            results.append("❌ No user logged in - <a href='/login'>Login here</a>")
+    except Exception as e:
+        results.append(f"❌ Auth check error: {str(e)}")
+        
+    # Test 3: Check database models
+    try:
+        from models import Employee, TimeOffRequest, ShiftSwapRequest
+        emp_count = Employee.query.count()
+        results.append(f"✅ Database works: {emp_count} employees found")
+    except Exception as e:
+        results.append(f"❌ Database error: {str(e)}")
+        
+    # Test 4: Check if templates exist
+    import os
+    templates = ['supervisor_dashboard_enhanced.html', 'supervisor_dashboard.html']
+    template_results = []
+    for t in templates:
+        path = os.path.join('templates', t)
+        if os.path.exists(path):
+            template_results.append(f"✅ {t} exists")
+        else:
+            template_results.append(f"❌ {t} missing")
+    results.extend(template_results)
+    
+    # Test 5: Check specific imports that might fail
+    try:
+        from models import SupervisorMessage, VacationCalendar, Schedule, Position, OvertimeHistory
+        results.append("✅ All model imports successful")
+    except ImportError as e:
+        results.append(f"❌ Model import error: {str(e)}")
+        
+    # Test 6: Check pandas import
+    try:
+        import pandas as pd
+        results.append("✅ Pandas installed")
+    except ImportError:
+        results.append("❌ Pandas not installed - run: pip install pandas")
+    
+    return f"""
+    <html>
+    <head>
+        <style>
+            body {{ font-family: Arial; padding: 40px; background: #f5f5f5; }}
+            .container {{ max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; }}
+            .success {{ color: green; }}
+            .error {{ color: red; }}
+            h1 {{ color: #333; }}
+            p {{ margin: 10px 0; padding: 10px; background: #f9f9f9; border-radius: 5px; }}
+            pre {{ background: #f0f0f0; padding: 10px; border-radius: 5px; overflow-x: auto; }}
+            .btn {{ display: inline-block; padding: 10px 20px; background: #007bff; color: white; text-decoration: none; border-radius: 5px; margin-top: 20px; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>Supervisor Dashboard Debug Results</h1>
+            {"".join(f"<p>{result}</p>" for result in results)}
+            <hr>
+            <a href="/supervisor/dashboard" class="btn">Try Dashboard</a>
+            <a href="/force-login" class="btn" style="background: #28a745;">Force Login as Admin</a>
+        </div>
+    </body>
+    </html>
+    """
 
 # DATABASE FIX ROUTE
 @app.route('/fix-db-now')
