@@ -1,119 +1,172 @@
+<!-- templates/today_schedule.html -->
 {% extends "base.html" %}
 
 {% block title %}Today's Schedule - Workforce Scheduler{% endblock %}
 
 {% block content %}
 <div class="container-fluid mt-4">
-    <div class="row">
-        <div class="col-12">
-            <h1 class="mb-4">Today's Schedule - {{ today.strftime('%A, %B %d, %Y') }}</h1>
-            <a href="{{ url_for('supervisor.dashboard') }}" class="btn btn-secondary mb-3">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>Today's Schedule</h1>
+        <div>
+            <button class="btn btn-primary" onclick="refreshSchedule()">
+                <i class="bi bi-arrow-clockwise"></i> Refresh
+            </button>
+            <a href="{{ url_for('supervisor.dashboard') }}" class="btn btn-outline-secondary">
                 <i class="bi bi-arrow-left"></i> Back to Dashboard
             </a>
         </div>
     </div>
-    
+
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="alert alert-info">
+                <i class="bi bi-calendar-day"></i>
+                Showing schedule for <strong>{{ today.strftime('%A, %B %d, %Y') }}</strong>
+            </div>
+        </div>
+    </div>
+
     <div class="row">
         {% for crew, data in crew_schedules.items() %}
-        <div class="col-lg-3 col-md-6 mb-4">
-            <div class="card h-100">
+        <div class="col-lg-6 mb-4">
+            <div class="card">
                 <div class="card-header bg-primary text-white">
-                    <h5 class="mb-0">Crew {{ crew }}</h5>
+                    <h5 class="mb-0">
+                        <i class="bi bi-people-fill"></i> Crew {{ crew }}
+                        <span class="badge bg-light text-dark ms-2">{{ data.total }} Total</span>
+                    </h5>
                 </div>
                 <div class="card-body">
-                    <div class="mb-3">
-                        <h6>Summary:</h6>
-                        <ul class="list-unstyled">
-                            <li><strong>Total:</strong> {{ data.total }}</li>
-                            <li class="text-success"><strong>Working:</strong> {{ data.scheduled|length }}</li>
-                            <li class="text-warning"><strong>On Leave:</strong> {{ data.on_leave|length }}</li>
-                        </ul>
+                    <div class="row text-center mb-3">
+                        <div class="col-6">
+                            <div class="border-end">
+                                <h4 class="text-success mb-1">{{ data.scheduled|length }}</h4>
+                                <small class="text-muted">Scheduled</small>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <h4 class="text-warning mb-1">{{ data.on_leave|length }}</h4>
+                            <small class="text-muted">On Leave</small>
+                        </div>
                     </div>
-                    
+
                     {% if data.scheduled %}
-                    <h6>Working Today:</h6>
-                    <ul class="small">
-                        {% for emp in data.scheduled[:5] %}
-                        <li>{{ emp.name }} - {{ emp.position.name if emp.position else 'No Position' }}</li>
-                        {% endfor %}
-                        {% if data.scheduled|length > 5 %}
-                        <li><em>... and {{ data.scheduled|length - 5 }} more</em></li>
-                        {% endif %}
-                    </ul>
+                    <div class="mb-3">
+                        <h6 class="text-success">
+                            <i class="bi bi-check-circle"></i> Scheduled ({{ data.scheduled|length }})
+                        </h6>
+                        <div class="scheduled-list">
+                            {% for employee in data.scheduled[:8] %}
+                                <span class="badge bg-success me-1 mb-1">{{ employee.name }}</span>
+                            {% endfor %}
+                            {% if data.scheduled|length > 8 %}
+                                <span class="badge bg-light text-dark">+{{ data.scheduled|length - 8 }} more</span>
+                            {% endif %}
+                        </div>
+                    </div>
                     {% endif %}
-                    
+
                     {% if data.on_leave %}
-                    <h6 class="text-warning">On Leave:</h6>
-                    <ul class="small">
-                        {% for emp in data.on_leave %}
-                        <li>{{ emp.name }}</li>
-                        {% endfor %}
-                    </ul>
+                    <div class="mb-3">
+                        <h6 class="text-warning">
+                            <i class="bi bi-calendar-x"></i> On Leave ({{ data.on_leave|length }})
+                        </h6>
+                        <div class="leave-list">
+                            {% for employee in data.on_leave %}
+                                <span class="badge bg-warning text-dark me-1 mb-1">{{ employee.name }}</span>
+                            {% endfor %}
+                        </div>
+                    </div>
                     {% endif %}
+
+                    {% set coverage_pct = (data.scheduled|length / data.total * 100) | round %}
+                    <div class="coverage-indicator">
+                        <div class="d-flex justify-content-between mb-1">
+                            <small>Coverage Level</small>
+                            <small>{{ coverage_pct }}%</small>
+                        </div>
+                        <div class="progress">
+                            <div class="progress-bar {% if coverage_pct >= 85 %}bg-success{% elif coverage_pct >= 70 %}bg-warning{% else %}bg-danger{% endif %}" 
+                                 style="width: {{ coverage_pct }}%"></div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
         {% endfor %}
     </div>
-    
+
+    <!-- Summary Section -->
     <div class="row mt-4">
         <div class="col-12">
             <div class="card">
                 <div class="card-header">
-                    <h5 class="mb-0">Coverage Analysis</h5>
+                    <h5 class="mb-0"><i class="bi bi-graph-up"></i> Plant Summary</h5>
                 </div>
                 <div class="card-body">
-                    <canvas id="coverageChart" height="100"></canvas>
+                    <div class="row text-center">
+                        {% set total_scheduled = crew_schedules.values() | map(attribute='scheduled') | map('length') | sum %}
+                        {% set total_on_leave = crew_schedules.values() | map(attribute='on_leave') | map('length') | sum %}
+                        {% set total_employees = crew_schedules.values() | map(attribute='total') | sum %}
+                        
+                        <div class="col-md-3">
+                            <h3 class="text-success">{{ total_scheduled }}</h3>
+                            <p class="mb-0">Total Scheduled</p>
+                        </div>
+                        <div class="col-md-3">
+                            <h3 class="text-warning">{{ total_on_leave }}</h3>
+                            <p class="mb-0">On Leave Today</p>
+                        </div>
+                        <div class="col-md-3">
+                            <h3 class="text-primary">{{ total_employees }}</h3>
+                            <p class="mb-0">Total Workforce</p>
+                        </div>
+                        <div class="col-md-3">
+                            {% set plant_coverage = (total_scheduled / total_employees * 100) | round %}
+                            <h3 class="{% if plant_coverage >= 85 %}text-success{% elif plant_coverage >= 70 %}text-warning{% else %}text-danger{% endif %}">
+                                {{ plant_coverage }}%
+                            </h3>
+                            <p class="mb-0">Plant Coverage</p>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-// Create coverage chart
-const ctx = document.getElementById('coverageChart').getContext('2d');
-const coverageChart = new Chart(ctx, {
-    type: 'bar',
-    data: {
-        labels: ['Crew A', 'Crew B', 'Crew C', 'Crew D'],
-        datasets: [{
-            label: 'Working',
-            data: [
-                {{ crew_schedules.A.scheduled|length }},
-                {{ crew_schedules.B.scheduled|length }},
-                {{ crew_schedules.C.scheduled|length }},
-                {{ crew_schedules.D.scheduled|length }}
-            ],
-            backgroundColor: 'rgba(75, 192, 192, 0.6)',
-            borderColor: 'rgba(75, 192, 192, 1)',
-            borderWidth: 1
-        }, {
-            label: 'On Leave',
-            data: [
-                {{ crew_schedules.A.on_leave|length }},
-                {{ crew_schedules.B.on_leave|length }},
-                {{ crew_schedules.C.on_leave|length }},
-                {{ crew_schedules.D.on_leave|length }}
-            ],
-            backgroundColor: 'rgba(255, 206, 86, 0.6)',
-            borderColor: 'rgba(255, 206, 86, 1)',
-            borderWidth: 1
-        }]
-    },
-    options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        scales: {
-            y: {
-                beginAtZero: true,
-                ticks: {
-                    stepSize: 1
-                }
-            }
-        }
-    }
-});
+function refreshSchedule() {
+    const btn = document.querySelector('button[onclick="refreshSchedule()"]');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Refreshing...';
+    btn.disabled = true;
+    
+    setTimeout(() => {
+        location.reload();
+    }, 1000);
+}
 </script>
+
+<style>
+.badge {
+    font-size: 0.75em;
+}
+
+.progress {
+    height: 8px;
+}
+
+.coverage-indicator {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid #eee;
+}
+
+.card-header h5 {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+</style>
 {% endblock %}
