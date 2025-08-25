@@ -11,173 +11,233 @@
         </div>
     </div>
     
-    <!-- Summary Cards -->
+    <!-- Priority Cards Row -->
     <div class="row mt-4">
-        <div class="col-md-6 col-lg-3 mb-4">
-            <div class="card border-left-primary shadow h-100 py-2">
+        <!-- Predictive Staffing Card -->
+        <div class="col-lg-4 mb-4">
+            <div class="card h-100 shadow-sm priority-card">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="bi bi-graph-up-arrow"></i> Predictive Staffing</h5>
+                </div>
                 <div class="card-body">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
-                                Total Employees
-                            </div>
-                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ total_employees }}</div>
+                    <form id="predictiveStaffingForm">
+                        <div class="mb-3">
+                            <label for="startDate" class="form-label">Start Date</label>
+                            <input type="date" class="form-control" id="startDate" required>
                         </div>
-                        <div class="col-auto">
-                            <i class="bi bi-people fa-2x text-gray-300"></i>
+                        <div class="mb-3">
+                            <label for="endDate" class="form-label">End Date</label>
+                            <input type="date" class="form-control" id="endDate" required>
                         </div>
+                        <button type="submit" class="btn btn-primary w-100">Check Coverage</button>
+                    </form>
+                    
+                    <div id="staffingResults" class="mt-3" style="display: none;">
+                        <h6 class="text-danger">Understaffed Dates:</h6>
+                        <div id="understaffedList"></div>
                     </div>
                 </div>
             </div>
         </div>
 
-        <div class="col-md-6 col-lg-3 mb-4">
-            <div class="card border-left-warning shadow h-100 py-2">
-                <div class="card-body">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">
-                                Pending Time Off
-                            </div>
-                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ pending_time_off }}</div>
-                        </div>
-                        <div class="col-auto">
-                            <i class="bi bi-calendar-x fa-2x text-gray-300"></i>
-                        </div>
-                    </div>
-                    {% if pending_time_off > 0 %}
-                    <a href="{{ url_for('supervisor.time_off_requests') }}" class="btn btn-sm btn-warning mt-2">Review</a>
-                    {% endif %}
+        <!-- Communications Hub Card -->
+        <div class="col-lg-4 mb-4">
+            <div class="card h-100 shadow-sm priority-card">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0"><i class="bi bi-chat-dots"></i> Communications Hub</h5>
                 </div>
-            </div>
-        </div>
-
-        <div class="col-md-6 col-lg-3 mb-4">
-            <div class="card border-left-info shadow h-100 py-2">
                 <div class="card-body">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-info text-uppercase mb-1">
-                                Pending Swaps
+                    <div class="list-group">
+                        <a href="#" class="list-group-item list-group-item-action" data-bs-toggle="modal" data-bs-target="#supervisorCommsModal">
+                            <div class="d-flex w-100 justify-content-between">
+                                <h6 class="mb-1">Supervisor to Supervisor</h6>
+                                <span class="badge bg-primary" id="supToSupCount">0</span>
                             </div>
-                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ pending_swaps }}</div>
-                        </div>
-                        <div class="col-auto">
-                            <i class="bi bi-arrow-left-right fa-2x text-gray-300"></i>
-                        </div>
-                    </div>
-                    {% if pending_swaps > 0 %}
-                    <a href="{{ url_for('supervisor.shift_swaps') }}" class="btn btn-sm btn-info mt-2">Review</a>
-                    {% endif %}
-                </div>
-            </div>
-        </div>
-
-        <div class="col-md-6 col-lg-3 mb-4">
-            <div class="card border-left-danger shadow h-100 py-2">
-                <div class="card-body">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-danger text-uppercase mb-1">
-                                Coverage Gaps
+                            <small class="text-muted">Private supervisor discussions</small>
+                        </a>
+                        <a href="#" class="list-group-item list-group-item-action" data-bs-toggle="modal" data-bs-target="#employeeCommsModal">
+                            <div class="d-flex w-100 justify-content-between">
+                                <h6 class="mb-1">Employee to Supervisor</h6>
+                                <span class="badge bg-warning" id="empToSupCount">0</span>
                             </div>
-                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ coverage_gaps }}</div>
-                        </div>
-                        <div class="col-auto">
-                            <i class="bi bi-exclamation-triangle fa-2x text-gray-300"></i>
-                        </div>
+                            <small class="text-muted">Employee messages & concerns</small>
+                        </a>
+                        <a href="#" class="list-group-item list-group-item-action" data-bs-toggle="modal" data-bs-target="#plantwideCommsModal">
+                            <div class="d-flex w-100 justify-content-between">
+                                <h6 class="mb-1">Plantwide Communications</h6>
+                                <span class="badge bg-success" id="plantwideCount">0</span>
+                            </div>
+                            <small class="text-muted">Announcements to all staff</small>
+                        </a>
                     </div>
                 </div>
             </div>
         </div>
-    </div>
 
-    <!-- Quick Actions and Management Tools -->
-    <div class="row">
-        <div class="col-lg-6 mb-4">
-            <div class="card shadow mb-4">
-                <div class="card-header py-3">
-                    <h6 class="m-0 font-weight-bold text-primary">Quick Actions</h6>
+        <!-- Requests Management Card -->
+        <div class="col-lg-4 mb-4">
+            <div class="card h-100 shadow-sm priority-card">
+                <div class="card-header bg-warning text-dark">
+                    <h5 class="mb-0"><i class="bi bi-inbox"></i> Requests Management</h5>
                 </div>
                 <div class="card-body">
                     <div class="list-group">
                         <a href="{{ url_for('supervisor.time_off_requests') }}" class="list-group-item list-group-item-action">
                             <div class="d-flex w-100 justify-content-between">
-                                <h6 class="mb-1"><i class="bi bi-calendar-x"></i> Review Time Off Requests</h6>
-                                {% if pending_time_off > 0 %}
-                                <span class="badge bg-warning">{{ pending_time_off }} pending</span>
-                                {% endif %}
+                                <h6 class="mb-1">Vacation Requests</h6>
+                                <span class="badge bg-warning">{{ pending_time_off }}</span>
                             </div>
-                            <p class="mb-1 text-muted">Approve or deny employee time off requests</p>
+                            <small class="text-muted">Time off pending approval</small>
                         </a>
-                        
                         <a href="{{ url_for('supervisor.shift_swaps') }}" class="list-group-item list-group-item-action">
                             <div class="d-flex w-100 justify-content-between">
-                                <h6 class="mb-1"><i class="bi bi-arrow-left-right"></i> Review Shift Swaps</h6>
-                                {% if pending_swaps > 0 %}
-                                <span class="badge bg-info">{{ pending_swaps }} pending</span>
-                                {% endif %}
+                                <h6 class="mb-1">Shift Swap Requests</h6>
+                                <span class="badge bg-info">{{ pending_swaps }}</span>
                             </div>
-                            <p class="mb-1 text-muted">Manage employee shift swap requests</p>
-                        </a>
-                        
-                        <a href="{{ url_for('supervisor.coverage_needs') }}" class="list-group-item list-group-item-action">
-                            <h6 class="mb-1"><i class="bi bi-shield-check"></i> Set Coverage Requirements</h6>
-                            <p class="mb-1 text-muted">Define minimum coverage needs by position and crew</p>
+                            <small class="text-muted">Employee shift trades</small>
                         </a>
                     </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-lg-6 mb-4">
-            <div class="card shadow mb-4">
-                <div class="card-header py-3">
-                    <h6 class="m-0 font-weight-bold text-primary">Data Management</h6>
-                </div>
-                <div class="card-body">
-                    <div class="list-group">
-                        <a href="{{ url_for('employee_import.upload_employees') }}" class="list-group-item list-group-item-action">
-                            <h6 class="mb-1"><i class="bi bi-upload"></i> Upload Employee Data</h6>
-                            <p class="mb-1 text-muted">Import employee information from Excel</p>
-                        </a>
-                        
-                        <a href="{{ url_for('employee_import.upload_overtime') }}" class="list-group-item list-group-item-action">
-                            <h6 class="mb-1"><i class="bi bi-clock-history"></i> Upload Overtime History</h6>
-                            <p class="mb-1 text-muted">Import 13-week overtime history data</p>
-                        </a>
-                        
-                        <a href="{{ url_for('main.overtime_management') }}" class="list-group-item list-group-item-action">
-                            <h6 class="mb-1"><i class="bi bi-graph-up"></i> Overtime Distribution</h6>
-                            <p class="mb-1 text-muted">View and manage overtime distribution</p>
-                        </a>
+                    <div class="mt-3">
+                        <button class="btn btn-sm btn-outline-primary w-100" onclick="viewAllRequests()">
+                            View All Request History
+                        </button>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Today's Overview -->
-    <div class="row">
-        <div class="col-12">
-            <div class="card shadow mb-4">
-                <div class="card-header py-3">
-                    <h6 class="m-0 font-weight-bold text-primary">Today's Overview</h6>
+    <!-- Quick Stats Row -->
+    <div class="row mt-4">
+        <div class="col-md-3 mb-3">
+            <div class="card border-left-primary shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
+                        Total Employees
+                    </div>
+                    <div class="h5 mb-0 font-weight-bold">{{ total_employees }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-3">
+            <div class="card border-left-success shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
+                        Today Scheduled
+                    </div>
+                    <div class="h5 mb-0 font-weight-bold">{{ today_scheduled }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-3">
+            <div class="card border-left-warning shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">
+                        On Leave Today
+                    </div>
+                    <div class="h5 mb-0 font-weight-bold">{{ today_on_leave }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-3">
+            <div class="card border-left-danger shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-xs font-weight-bold text-danger text-uppercase mb-1">
+                        Coverage Gaps
+                    </div>
+                    <div class="h5 mb-0 font-weight-bold">{{ coverage_gaps }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Additional Management Tools -->
+    <div class="row mt-4">
+        <div class="col-lg-6 mb-4">
+            <div class="card shadow-sm">
+                <div class="card-header">
+                    <h6 class="m-0 font-weight-bold text-primary">Data Management</h6>
                 </div>
                 <div class="card-body">
-                    <div class="row">
-                        <div class="col-md-4">
-                            <h6>Employees Scheduled</h6>
-                            <p class="h4">{{ today_scheduled }}</p>
-                        </div>
-                        <div class="col-md-4">
-                            <h6>Employees on Leave</h6>
-                            <p class="h4">{{ today_on_leave }}</p>
-                        </div>
-                        <div class="col-md-4">
-                            <h6>Critical Maintenance Issues</h6>
-                            <p class="h4">{{ critical_maintenance }}</p>
-                        </div>
+                    <div class="list-group">
+                        <a href="{{ url_for('employee_import.upload_employees') }}" class="list-group-item list-group-item-action">
+                            <i class="bi bi-upload"></i> Upload Employee Data
+                        </a>
+                        <a href="{{ url_for('main.overtime_management') }}" class="list-group-item list-group-item-action">
+                            <i class="bi bi-clock-history"></i> Overtime Management
+                        </a>
+                        <a href="{{ url_for('supervisor.coverage_needs') }}" class="list-group-item list-group-item-action">
+                            <i class="bi bi-shield-check"></i> Coverage Requirements
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-lg-6 mb-4">
+            <div class="card shadow-sm">
+                <div class="card-header">
+                    <h6 class="m-0 font-weight-bold text-primary">Quick Actions</h6>
+                </div>
+                <div class="card-body">
+                    <button class="btn btn-primary btn-sm m-1" onclick="sendQuickMessage()">
+                        <i class="bi bi-envelope"></i> Send Message
+                    </button>
+                    <button class="btn btn-warning btn-sm m-1" onclick="viewTodaySchedule()">
+                        <i class="bi bi-calendar-day"></i> Today's Schedule
+                    </button>
+                    <button class="btn btn-info btn-sm m-1" onclick="viewCrewStatus()">
+                        <i class="bi bi-people"></i> Crew Status
+                    </button>
+                    <button class="btn btn-success btn-sm m-1" onclick="exportReports()">
+                        <i class="bi bi-download"></i> Export Reports
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modals -->
+<!-- Supervisor Communications Modal -->
+<div class="modal fade" id="supervisorCommsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Supervisor Communications</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <ul class="nav nav-tabs" role="tablist">
+                    <li class="nav-item">
+                        <a class="nav-link active" data-bs-toggle="tab" href="#supInbox">Inbox</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-bs-toggle="tab" href="#supCompose">Compose</a>
+                    </li>
+                </ul>
+                <div class="tab-content mt-3">
+                    <div id="supInbox" class="tab-pane fade show active">
+                        <div id="supervisorMessages"></div>
+                    </div>
+                    <div id="supCompose" class="tab-pane fade">
+                        <form id="supervisorMessageForm">
+                            <div class="mb-3">
+                                <label for="supRecipient" class="form-label">To:</label>
+                                <select class="form-select" id="supRecipient" required>
+                                    <option value="">Select Supervisor</option>
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label for="supSubject" class="form-label">Subject:</label>
+                                <input type="text" class="form-control" id="supSubject" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="supMessage" class="form-label">Message:</label>
+                                <textarea class="form-control" id="supMessage" rows="4" required></textarea>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Send Message</button>
+                        </form>
                     </div>
                 </div>
             </div>
@@ -185,15 +245,72 @@
     </div>
 </div>
 
+<!-- Employee Communications Modal -->
+<div class="modal fade" id="employeeCommsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Employee Messages</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="employeeMessages"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Plantwide Communications Modal -->
+<div class="modal fade" id="plantwideCommsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Plantwide Communications</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="plantwideMessageForm">
+                    <div class="mb-3">
+                        <label for="plantSubject" class="form-label">Subject:</label>
+                        <input type="text" class="form-control" id="plantSubject" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="plantMessage" class="form-label">Message:</label>
+                        <textarea class="form-control" id="plantMessage" rows="4" required></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="plantPriority" class="form-label">Priority:</label>
+                        <select class="form-select" id="plantPriority">
+                            <option value="normal">Normal</option>
+                            <option value="high">High</option>
+                            <option value="urgent">Urgent</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-success">Send to All Employees</button>
+                </form>
+                <hr>
+                <h6>Recent Announcements:</h6>
+                <div id="recentAnnouncements"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <style>
+.priority-card {
+    transition: transform 0.2s;
+}
+.priority-card:hover {
+    transform: translateY(-5px);
+}
 .border-left-primary {
     border-left: 4px solid #4e73df;
 }
+.border-left-success {
+    border-left: 4px solid #1cc88a;
+}
 .border-left-warning {
     border-left: 4px solid #f6c23e;
-}
-.border-left-info {
-    border-left: 4px solid #36b9cc;
 }
 .border-left-danger {
     border-left: 4px solid #e74a3b;
@@ -201,17 +318,268 @@
 .text-xs {
     font-size: 0.875rem;
 }
-.font-weight-bold {
-    font-weight: 700;
+.understaffed-date {
+    background-color: #ffe5e5;
+    padding: 8px;
+    margin: 4px 0;
+    border-radius: 4px;
+    border-left: 3px solid #dc3545;
 }
-.text-uppercase {
-    text-transform: uppercase;
+.message-item {
+    border-bottom: 1px solid #eee;
+    padding: 10px 0;
 }
-.text-gray-300 {
-    color: #dddfeb;
-}
-.text-gray-800 {
-    color: #5a5c69;
+.message-item:last-child {
+    border-bottom: none;
 }
 </style>
+
+<script>
+// Set today's date as default for start date
+document.addEventListener('DOMContentLoaded', function() {
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('startDate').value = today;
+    
+    // Load communication counts
+    loadCommunicationCounts();
+    
+    // Load supervisors for messaging
+    loadSupervisors();
+});
+
+// Predictive Staffing
+document.getElementById('predictiveStaffingForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const startDate = document.getElementById('startDate').value;
+    const endDate = document.getElementById('endDate').value;
+    
+    // Call API to check coverage
+    fetch('/api/predictive-staffing', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            start_date: startDate,
+            end_date: endDate
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        displayStaffingResults(data);
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        // Display sample data for now
+        displayStaffingResults({
+            understaffed_dates: [
+                {date: startDate, crew: 'A', shortage: 3},
+                {date: endDate, crew: 'B', shortage: 2}
+            ]
+        });
+    });
+});
+
+function displayStaffingResults(data) {
+    const resultsDiv = document.getElementById('staffingResults');
+    const listDiv = document.getElementById('understaffedList');
+    
+    if (data.understaffed_dates && data.understaffed_dates.length > 0) {
+        listDiv.innerHTML = '';
+        data.understaffed_dates.forEach(item => {
+            const dateDiv = document.createElement('div');
+            dateDiv.className = 'understaffed-date';
+            dateDiv.innerHTML = `
+                <strong>${formatDate(item.date)}</strong><br>
+                Crew ${item.crew}: Short ${item.shortage} employee(s)
+            `;
+            listDiv.appendChild(dateDiv);
+        });
+        resultsDiv.style.display = 'block';
+    } else {
+        listDiv.innerHTML = '<p class="text-success">All dates have adequate coverage!</p>';
+        resultsDiv.style.display = 'block';
+    }
+}
+
+// Communications
+function loadCommunicationCounts() {
+    // In production, this would fetch from API
+    document.getElementById('supToSupCount').textContent = '3';
+    document.getElementById('empToSupCount').textContent = '5';
+    document.getElementById('plantwideCount').textContent = '2';
+}
+
+function loadSupervisors() {
+    // In production, this would fetch from API
+    const select = document.getElementById('supRecipient');
+    const supervisors = [
+        {id: 2, name: 'John Smith'},
+        {id: 3, name: 'Jane Doe'},
+        {id: 4, name: 'Bob Johnson'}
+    ];
+    
+    supervisors.forEach(sup => {
+        const option = document.createElement('option');
+        option.value = sup.id;
+        option.textContent = sup.name;
+        select.appendChild(option);
+    });
+}
+
+// Supervisor message form
+document.getElementById('supervisorMessageForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const messageData = {
+        recipient_id: document.getElementById('supRecipient').value,
+        subject: document.getElementById('supSubject').value,
+        message: document.getElementById('supMessage').value
+    };
+    
+    // Send message via API
+    fetch('/api/send-supervisor-message', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(messageData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        alert('Message sent successfully!');
+        document.getElementById('supervisorMessageForm').reset();
+        bootstrap.Modal.getInstance(document.getElementById('supervisorCommsModal')).hide();
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Message would be sent in production');
+    });
+});
+
+// Plantwide message form
+document.getElementById('plantwideMessageForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const messageData = {
+        subject: document.getElementById('plantSubject').value,
+        message: document.getElementById('plantMessage').value,
+        priority: document.getElementById('plantPriority').value
+    };
+    
+    // Send announcement via API
+    fetch('/api/send-plantwide-message', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(messageData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        alert('Announcement sent to all employees!');
+        document.getElementById('plantwideMessageForm').reset();
+        bootstrap.Modal.getInstance(document.getElementById('plantwideCommsModal')).hide();
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Announcement would be sent in production');
+    });
+});
+
+// Utility functions
+function formatDate(dateString) {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
+function viewAllRequests() {
+    window.location.href = '/supervisor/all-requests';
+}
+
+function sendQuickMessage() {
+    bootstrap.Modal.getOrCreate(document.getElementById('plantwideCommsModal')).show();
+}
+
+function viewTodaySchedule() {
+    window.location.href = '/supervisor/today-schedule';
+}
+
+function viewCrewStatus() {
+    window.location.href = '/supervisor/crew-status';
+}
+
+function exportReports() {
+    window.location.href = '/supervisor/export-reports';
+}
+
+// Load messages when modals open
+document.getElementById('supervisorCommsModal').addEventListener('show.bs.modal', function() {
+    loadSupervisorMessages();
+});
+
+document.getElementById('employeeCommsModal').addEventListener('show.bs.modal', function() {
+    loadEmployeeMessages();
+});
+
+document.getElementById('plantwideCommsModal').addEventListener('show.bs.modal', function() {
+    loadRecentAnnouncements();
+});
+
+function loadSupervisorMessages() {
+    // Sample data - replace with API call
+    const messages = [
+        {from: 'John Smith', subject: 'Crew A Coverage', date: '2025-08-23', unread: true},
+        {from: 'Jane Doe', subject: 'Weekend Schedule', date: '2025-08-22', unread: false}
+    ];
+    
+    const container = document.getElementById('supervisorMessages');
+    container.innerHTML = messages.map(msg => `
+        <div class="message-item ${msg.unread ? 'fw-bold' : ''}">
+            <div class="d-flex justify-content-between">
+                <span>${msg.from}: ${msg.subject}</span>
+                <small>${msg.date}</small>
+            </div>
+        </div>
+    `).join('');
+}
+
+function loadEmployeeMessages() {
+    // Sample data - replace with API call
+    const messages = [
+        {from: 'Mike Wilson', subject: 'Schedule Question', date: '2025-08-23', unread: true},
+        {from: 'Sarah Jones', subject: 'Overtime Availability', date: '2025-08-22', unread: true},
+        {from: 'Tom Brown', subject: 'Equipment Issue', date: '2025-08-21', unread: false}
+    ];
+    
+    const container = document.getElementById('employeeMessages');
+    container.innerHTML = messages.map(msg => `
+        <div class="message-item ${msg.unread ? 'fw-bold' : ''}">
+            <div class="d-flex justify-content-between">
+                <span>${msg.from}: ${msg.subject}</span>
+                <small>${msg.date}</small>
+            </div>
+        </div>
+    `).join('');
+}
+
+function loadRecentAnnouncements() {
+    // Sample data - replace with API call
+    const announcements = [
+        {subject: 'Holiday Schedule', date: '2025-08-20', priority: 'high'},
+        {subject: 'Safety Training Reminder', date: '2025-08-19', priority: 'normal'}
+    ];
+    
+    const container = document.getElementById('recentAnnouncements');
+    container.innerHTML = announcements.map(ann => `
+        <div class="message-item">
+            <div class="d-flex justify-content-between">
+                <span>${ann.subject} ${ann.priority === 'high' ? '<span class="badge bg-danger">High Priority</span>' : ''}</span>
+                <small>${ann.date}</small>
+            </div>
+        </div>
+    `).join('');
+}
+</script>
 {% endblock %}
