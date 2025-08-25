@@ -1,12 +1,12 @@
-# blueprints/supervisor.py - COMPLETE FIXED FILE
+# blueprints/supervisor.py - COMPLETE FILE WITH ALL FEATURES
 """
 Supervisor blueprint with complete error handling and database migration support
-This version includes the fixed coverage_needs route with all required variables
+Includes: Predictive Staffing, Communications Hub, and Enhanced Request Management
 """
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, current_app, send_file, render_template_string
 from flask_login import login_required, current_user
-from models import db, Employee, TimeOffRequest, ShiftSwapRequest, Schedule, Position, OvertimeHistory
+from models import db, Employee, TimeOffRequest, ShiftSwapRequest, Schedule, Position, OvertimeHistory, SupervisorMessage, VacationCalendar
 from datetime import date, datetime, timedelta
 from sqlalchemy import func, and_, or_, text
 from sqlalchemy.exc import ProgrammingError, OperationalError
@@ -15,6 +15,7 @@ import pandas as pd
 import os
 import io
 import logging
+import random
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -51,7 +52,7 @@ def safe_count_query(model, **filters):
 @login_required
 @supervisor_required
 def dashboard():
-    """Supervisor dashboard with complete error handling"""
+    """Enhanced supervisor dashboard with priority features"""
     # Initialize context with safe defaults
     context = {
         'user_name': current_user.name,
@@ -96,108 +97,23 @@ def dashboard():
     try:
         today = date.today()
         context['today_scheduled'] = Schedule.query.filter_by(date=today).count()
+        
+        # Count employees on leave today
+        context['today_on_leave'] = TimeOffRequest.query.filter(
+            TimeOffRequest.status == 'approved',
+            TimeOffRequest.start_date <= today,
+            TimeOffRequest.end_date >= today
+        ).count()
     except Exception as e:
         logger.error(f"Error getting today's schedule: {e}")
         db.session.rollback()
     
-    # Show database errors if any
-    if context['database_errors']:
-        flash('Warning: Some database tables need updating. Contact your administrator.', 'warning')
-    
-    # Try to render the appropriate template
-    templates = [
-        'supervisor_dashboard.html',
-        'dashboard_classic.html',
-        'supervisor_dashboard_simple.html',
-        'dashboard.html',
-        'basic_dashboard.html'
-    ]
-    
-    for template in templates:
-        try:
-            return render_template(template, **context)
-        except Exception as e:
-            logger.debug(f"Template {template} not found or error: {e}")
-            continue
-    
-    # If no template works, use inline template
-    from flask import render_template_string
-    return render_template_string('''
-    {% extends "base.html" %}
-    {% block content %}
-    <div class="container mt-4">
-        <h1>Supervisor Dashboard</h1>
-        <p>Welcome, {{ user_name }}!</p>
-        
-        <div class="row mt-4">
-            <div class="col-md-3">
-                <div class="card">
-                    <div class="card-body">
-                        <h5 class="card-title">Total Employees</h5>
-                        <h2>{{ total_employees }}</h2>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card">
-                    <div class="card-body">
-                        <h5 class="card-title">Pending Time Off</h5>
-                        <h2>{{ pending_time_off }}</h2>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card">
-                    <div class="card-body">
-                        <h5 class="card-title">Pending Swaps</h5>
-                        <h2>{{ pending_swaps }}</h2>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card">
-                    <div class="card-body">
-                        <h5 class="card-title">Coverage Gaps</h5>
-                        <h2>{{ coverage_gaps }}</h2>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
-        <div class="row mt-4">
-            <div class="col-12">
-                <h2>Quick Actions</h2>
-                <div class="list-group">
-                    <a href="{{ url_for('supervisor.time_off_requests') }}" class="list-group-item list-group-item-action">
-                        Time Off Requests
-                    </a>
-                    <a href="{{ url_for('supervisor.shift_swaps') }}" class="list-group-item list-group-item-action">
-                        Shift Swap Requests
-                    </a>
-                    <a href="{{ url_for('employee_import.upload_employees') }}" class="list-group-item list-group-item-action">
-                        Upload Employees
-                    </a>
-                    <a href="{{ url_for('main.overtime_management') }}" class="list-group-item list-group-item-action">
-                        Overtime Management
-                    </a>
-                </div>
-            </div>
-        </div>
-        
-        {% if database_errors %}
-        <div class="alert alert-warning mt-4">
-            <h4>Database Issues Detected</h4>
-            <ul>
-            {% for error in database_errors %}
-                <li>{{ error }}</li>
-            {% endfor %}
-            </ul>
-            <p>Please run the database migration script to fix these issues.</p>
-        </div>
-        {% endif %}
-    </div>
-    {% endblock %}
-    ''', **context)
+    # Try to render the enhanced dashboard template
+    try:
+        return render_template('supervisor_dashboard_enhanced.html', **context)
+    except Exception as e:
+        logger.debug(f"Enhanced template not found, using standard: {e}")
+        return render_template('supervisor_dashboard.html', **context)
 
 # ==========================================
 # TIME OFF MANAGEMENT
@@ -585,7 +501,401 @@ def overtime_distribution():
         return redirect(url_for('supervisor.dashboard'))
 
 # ==========================================
-# API ENDPOINTS
+# NEW PRIORITY FEATURES API ENDPOINTS
+# ==========================================
+
+@supervisor_bp.route('/api/predictive-staffing', methods=['POST'])
+@login_required
+@supervisor_required
+def api_predictive_staffing():
+    """API endpoint for predictive staffing analysis"""
+    try:
+        data = request.get_json()
+        start_date = data.get('start_date')
+        end_date = data.get('end_date')
+        
+        if not start_date or not end_date:
+            return jsonify({'error': 'Start and end dates required'}), 400
+        
+        # Try to use the predictive staffing utility
+        try:
+            from utils.predictive_staffing import get_predictive_staffing_data
+            result = get_predictive_staffing_data(start_date, end_date)
+            return jsonify(result)
+        except ImportError:
+            # If module doesn't exist, use inline logic
+            logger.info("Using inline predictive staffing logic")
+            
+            start = datetime.strptime(start_date, '%Y-%m-%d').date()
+            end = datetime.strptime(end_date, '%Y-%m-%d').date()
+            
+            understaffed_dates = []
+            current = start
+            
+            while current <= end:
+                for crew in ['A', 'B', 'C', 'D']:
+                    # Get total employees in crew
+                    total = Employee.query.filter_by(
+                        crew=crew,
+                        is_supervisor=False,
+                        is_active=True
+                    ).count()
+                    
+                    # Get employees on leave this date
+                    on_leave = TimeOffRequest.query.join(Employee).filter(
+                        Employee.crew == crew,
+                        TimeOffRequest.status == 'approved',
+                        TimeOffRequest.start_date <= current,
+                        TimeOffRequest.end_date >= current
+                    ).count()
+                    
+                    # Also check vacation calendar
+                    vacation = VacationCalendar.query.join(Employee).filter(
+                        Employee.crew == crew,
+                        VacationCalendar.date == current
+                    ).count()
+                    
+                    available = total - max(on_leave, vacation)
+                    required = 12  # Minimum crew size
+                    
+                    if available < required:
+                        understaffed_dates.append({
+                            'date': current.strftime('%Y-%m-%d'),
+                            'crew': crew,
+                            'shortage': required - available,
+                            'available': available,
+                            'required': required
+                        })
+                
+                current += timedelta(days=1)
+            
+            return jsonify({
+                'success': True,
+                'understaffed_dates': understaffed_dates,
+                'total_issues': len(understaffed_dates)
+            })
+            
+    except Exception as e:
+        logger.error(f"Error in predictive staffing API: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@supervisor_bp.route('/api/send-supervisor-message', methods=['POST'])
+@login_required
+@supervisor_required
+def api_send_supervisor_message():
+    """Send message to another supervisor"""
+    try:
+        data = request.get_json()
+        recipient_id = data.get('recipient_id')
+        subject = data.get('subject')
+        message = data.get('message')
+        
+        if not all([recipient_id, subject, message]):
+            return jsonify({'error': 'All fields required'}), 400
+        
+        # Create new message
+        new_message = SupervisorMessage(
+            sender_id=current_user.id,
+            recipient_id=int(recipient_id),
+            subject=subject,
+            message=message,
+            priority='normal'
+        )
+        
+        db.session.add(new_message)
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message_id': new_message.id
+        })
+        
+    except Exception as e:
+        logger.error(f"Error sending supervisor message: {e}")
+        db.session.rollback()
+        return jsonify({'error': 'Failed to send message'}), 500
+
+@supervisor_bp.route('/api/send-plantwide-message', methods=['POST'])
+@login_required
+@supervisor_required
+def api_send_plantwide_message():
+    """Send announcement to all employees"""
+    try:
+        data = request.get_json()
+        subject = data.get('subject')
+        message = data.get('message')
+        priority = data.get('priority', 'normal')
+        
+        if not all([subject, message]):
+            return jsonify({'error': 'Subject and message required'}), 400
+        
+        # Get all active employees
+        employees = Employee.query.filter_by(is_active=True).all()
+        
+        # Create message for each employee
+        for emp in employees:
+            if emp.id != current_user.id:  # Don't send to self
+                new_message = SupervisorMessage(
+                    sender_id=current_user.id,
+                    recipient_id=emp.id,
+                    subject=f"[PLANTWIDE] {subject}",
+                    message=message,
+                    priority=priority
+                )
+                db.session.add(new_message)
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'recipients': len(employees) - 1
+        })
+        
+    except Exception as e:
+        logger.error(f"Error sending plantwide message: {e}")
+        db.session.rollback()
+        return jsonify({'error': 'Failed to send announcement'}), 500
+
+@supervisor_bp.route('/api/supervisor-messages')
+@login_required
+@supervisor_required
+def api_get_supervisor_messages():
+    """Get messages between supervisors"""
+    try:
+        # Get messages where current user is recipient
+        messages = SupervisorMessage.query.filter_by(
+            recipient_id=current_user.id
+        ).order_by(SupervisorMessage.sent_at.desc()).limit(20).all()
+        
+        message_list = []
+        for msg in messages:
+            message_list.append({
+                'id': msg.id,
+                'from': msg.sender.name,
+                'subject': msg.subject,
+                'date': msg.sent_at.strftime('%Y-%m-%d'),
+                'unread': msg.read_at is None,
+                'priority': msg.priority
+            })
+        
+        return jsonify({
+            'success': True,
+            'messages': message_list,
+            'unread_count': sum(1 for m in message_list if m['unread'])
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting supervisor messages: {e}")
+        # Return empty but valid response
+        return jsonify({
+            'success': True,
+            'messages': [],
+            'unread_count': 0
+        })
+
+@supervisor_bp.route('/api/employee-messages')
+@login_required
+@supervisor_required
+def api_get_employee_messages():
+    """Get messages from employees to supervisor"""
+    try:
+        # Get messages from non-supervisors to current supervisor
+        messages = db.session.query(SupervisorMessage).join(
+            Employee, SupervisorMessage.sender_id == Employee.id
+        ).filter(
+            SupervisorMessage.recipient_id == current_user.id,
+            Employee.is_supervisor == False
+        ).order_by(SupervisorMessage.sent_at.desc()).limit(20).all()
+        
+        message_list = []
+        for msg in messages:
+            message_list.append({
+                'id': msg.id,
+                'from': msg.sender.name,
+                'subject': msg.subject,
+                'date': msg.sent_at.strftime('%Y-%m-%d'),
+                'unread': msg.read_at is None
+            })
+        
+        return jsonify({
+            'success': True,
+            'messages': message_list,
+            'unread_count': sum(1 for m in message_list if m['unread'])
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting employee messages: {e}")
+        return jsonify({
+            'success': True,
+            'messages': [],
+            'unread_count': 0
+        })
+
+@supervisor_bp.route('/api/communication-counts')
+@login_required
+@supervisor_required
+def api_communication_counts():
+    """Get unread message counts for communications hub"""
+    try:
+        # Supervisor to supervisor count
+        sup_to_sup = db.session.query(func.count(SupervisorMessage.id)).join(
+            Employee, SupervisorMessage.sender_id == Employee.id
+        ).filter(
+            SupervisorMessage.recipient_id == current_user.id,
+            SupervisorMessage.read_at == None,
+            Employee.is_supervisor == True
+        ).scalar() or 0
+        
+        # Employee to supervisor count
+        emp_to_sup = db.session.query(func.count(SupervisorMessage.id)).join(
+            Employee, SupervisorMessage.sender_id == Employee.id
+        ).filter(
+            SupervisorMessage.recipient_id == current_user.id,
+            SupervisorMessage.read_at == None,
+            Employee.is_supervisor == False
+        ).scalar() or 0
+        
+        # Plantwide messages count (last 7 days)
+        plantwide = SupervisorMessage.query.filter(
+            SupervisorMessage.subject.like('[PLANTWIDE]%'),
+            SupervisorMessage.sent_at >= datetime.utcnow() - timedelta(days=7)
+        ).count()
+        
+        return jsonify({
+            'success': True,
+            'supervisor_to_supervisor': sup_to_sup,
+            'employee_to_supervisor': emp_to_sup,
+            'plantwide_recent': plantwide
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting communication counts: {e}")
+        return jsonify({
+            'success': True,
+            'supervisor_to_supervisor': 0,
+            'employee_to_supervisor': 0,
+            'plantwide_recent': 0
+        })
+
+@supervisor_bp.route('/supervisor/today-schedule')
+@login_required
+@supervisor_required
+def today_schedule():
+    """View today's schedule overview"""
+    try:
+        today = date.today()
+        
+        # Get schedules for today grouped by crew
+        crew_schedules = {}
+        for crew in ['A', 'B', 'C', 'D']:
+            employees = Employee.query.filter_by(
+                crew=crew,
+                is_active=True,
+                is_supervisor=False
+            ).all()
+            
+            scheduled = []
+            on_leave = []
+            
+            for emp in employees:
+                # Check if on leave
+                time_off = TimeOffRequest.query.filter(
+                    TimeOffRequest.employee_id == emp.id,
+                    TimeOffRequest.status == 'approved',
+                    TimeOffRequest.start_date <= today,
+                    TimeOffRequest.end_date >= today
+                ).first()
+                
+                if time_off:
+                    on_leave.append(emp)
+                else:
+                    scheduled.append(emp)
+            
+            crew_schedules[crew] = {
+                'scheduled': scheduled,
+                'on_leave': on_leave,
+                'total': len(employees)
+            }
+        
+        return render_template('today_schedule.html', 
+                             crew_schedules=crew_schedules,
+                             today=today)
+    except Exception as e:
+        logger.error(f"Error in today's schedule: {e}")
+        flash('Error loading schedule', 'danger')
+        return redirect(url_for('supervisor.dashboard'))
+
+@supervisor_bp.route('/supervisor/crew-status')
+@login_required
+@supervisor_required
+def crew_status():
+    """Real-time crew status overview"""
+    try:
+        crew_data = {}
+        
+        for crew in ['A', 'B', 'C', 'D']:
+            # Get all employees in crew
+            employees = Employee.query.filter_by(
+                crew=crew,
+                is_active=True,
+                is_supervisor=False
+            ).all()
+            
+            # Calculate statistics
+            total = len(employees)
+            
+            # Get position distribution
+            position_counts = db.session.query(
+                Position.name,
+                func.count(Employee.id)
+            ).join(
+                Employee
+            ).filter(
+                Employee.crew == crew,
+                Employee.is_active == True,
+                Employee.is_supervisor == False
+            ).group_by(Position.name).all()
+            
+            crew_data[crew] = {
+                'total': total,
+                'positions': dict(position_counts),
+                'employees': employees
+            }
+        
+        return render_template('crew_status.html', crew_data=crew_data)
+        
+    except Exception as e:
+        logger.error(f"Error in crew status: {e}")
+        flash('Error loading crew status', 'danger')
+        return redirect(url_for('supervisor.dashboard'))
+
+@supervisor_bp.route('/supervisor/all-requests')
+@login_required
+@supervisor_required
+def all_requests():
+    """View all request history"""
+    try:
+        # Get all time off requests
+        time_off = TimeOffRequest.query.order_by(
+            TimeOffRequest.created_at.desc()
+        ).limit(100).all()
+        
+        # Get all shift swap requests
+        shift_swaps = ShiftSwapRequest.query.order_by(
+            ShiftSwapRequest.created_at.desc()
+        ).limit(100).all()
+        
+        return render_template('all_requests.html',
+                             time_off_requests=time_off,
+                             shift_swaps=shift_swaps)
+        
+    except Exception as e:
+        logger.error(f"Error in all requests: {e}")
+        flash('Error loading requests', 'danger')
+        return redirect(url_for('supervisor.dashboard'))
+
+# ==========================================
+# API ENDPOINTS (ORIGINAL)
 # ==========================================
 
 @supervisor_bp.route('/api/coverage-needs', methods=['POST'])
