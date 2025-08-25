@@ -1,8 +1,8 @@
-# blueprints/supervisor.py - COMPLETE FIXED FILE
+# blueprints/supervisor.py - COMPLETE FILE WITH DEMO DATA INTEGRATION
 """
 Supervisor blueprint with complete error handling and database migration support
 Includes: Predictive Staffing, Communications Hub, and Enhanced Request Management
-FIXED: Database column issues and missing routes
+UPDATED WITH DEMO DATA SERVICE
 """
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, current_app, send_file, render_template_string
@@ -12,6 +12,7 @@ from datetime import date, datetime, timedelta
 from sqlalchemy import func, and_, or_, text
 from sqlalchemy.exc import ProgrammingError, OperationalError
 from functools import wraps
+from utils.demo_data import demo_service
 import pandas as pd
 import os
 import io
@@ -53,67 +54,37 @@ def safe_count_query(model, **filters):
 @login_required
 @supervisor_required
 def dashboard():
-    """Enhanced supervisor dashboard with priority features - FIXED"""
-    # Initialize context with safe defaults
-    context = {
-        'user_name': current_user.name,
-        'pending_time_off': 0,
-        'pending_swaps': 0,
-        'total_employees': 0,
-        'coverage_gaps': 0,
-        'today_scheduled': 0,
-        'today_on_leave': 0,
-        'critical_maintenance': 0,
-        'recent_time_off': [],
-        'recent_swaps': [],
-        'pending_time_off_count': 0,
-        'pending_swaps_count': 0,
-        'database_errors': []
-    }
-    
-    # Get total employees - this should always work
+    """Enhanced supervisor dashboard with demo data"""
+    # Get demo statistics
     try:
-        context['total_employees'] = Employee.query.filter_by(is_supervisor=False).count()
-    except Exception as e:
-        logger.error(f"Error getting total employees: {e}")
-        db.session.rollback()
-    
-    # Get pending time off with FIXED error handling
-    try:
-        context['pending_time_off'] = get_pending_time_off_count()
-        context['pending_time_off_count'] = context['pending_time_off']
-    except Exception as e:
-        logger.error(f"General error getting pending time off: {e}")
-        db.session.rollback()
-        # Ensure we don't fail completely
-        context['pending_time_off'] = 0
-        context['pending_time_off_count'] = 0
-    
-    # Get pending swaps with FIXED error handling
-    try:
-        context['pending_swaps'] = get_pending_swaps_count()
-        context['pending_swaps_count'] = context['pending_swaps']
-    except Exception as e:
-        logger.error(f"General error getting pending swaps: {e}")
-        db.session.rollback()
-        # Ensure we don't fail completely
-        context['pending_swaps'] = 0
-        context['pending_swaps_count'] = 0
-    
-    # Get today's schedule info with error handling
-    try:
-        today = date.today()
-        context['today_scheduled'] = Schedule.query.filter_by(date=today).count()
+        stats = demo_service.get_dashboard_summary_stats()
         
-        # Count employees on leave today with safe query
-        context['today_on_leave'] = get_employees_on_leave_today()
+        context = {
+            'user_name': current_user.name,
+            **stats  # Spread all the demo stats
+        }
+        
+        # Add aliases for backward compatibility
+        context['pending_time_off_count'] = context['pending_time_off']
+        context['pending_swaps_count'] = context['pending_swaps']
+        
     except Exception as e:
-        logger.error(f"Error getting today's schedule: {e}")
-        db.session.rollback()
-        context['today_scheduled'] = 0
-        context['today_on_leave'] = 0
+        logger.error(f"Error getting demo stats: {e}")
+        # Fallback to safe defaults
+        context = {
+            'user_name': current_user.name,
+            'pending_time_off': 0,
+            'pending_swaps': 0,
+            'total_employees': 0,
+            'coverage_gaps': 0,
+            'today_scheduled': 0,
+            'today_on_leave': 0,
+            'critical_maintenance': 0,
+            'pending_time_off_count': 0,
+            'pending_swaps_count': 0
+        }
     
-    # Try to render the enhanced dashboard template, fall back to standard
+    # Try to render the enhanced dashboard template
     try:
         return render_template('supervisor_dashboard_enhanced.html', **context)
     except Exception as e:
@@ -122,15 +93,8 @@ def dashboard():
             return render_template('supervisor_dashboard.html', **context)
         except Exception as e2:
             logger.error(f"Both templates failed: {e2}")
-            # Emergency fallback - simple HTML response
-            return f"""
-            <h1>Supervisor Dashboard</h1>
-            <p>Total Employees: {context['total_employees']}</p>
-            <p>Pending Time Off: {context['pending_time_off']}</p>
-            <p>Pending Swaps: {context['pending_swaps']}</p>
-            <p><a href="{url_for('supervisor.time_off_requests')}">Time Off Requests</a></p>
-            <p><a href="{url_for('supervisor.shift_swaps')}">Shift Swaps</a></p>
-            """
+            flash('Dashboard templates have an error. Please check template files.', 'danger')
+            return redirect(url_for('main.index'))
 
 # ==========================================
 # TIME OFF MANAGEMENT
@@ -408,9 +372,14 @@ def vacation_calendar():
 @login_required
 @supervisor_required
 def coverage_gaps():
-    """View coverage gaps"""
-    gaps = []
-    return render_template('coverage_gaps.html', gaps=gaps)
+    """View coverage gaps with demo data"""
+    try:
+        gaps = demo_service.get_coverage_gaps_data()
+        return render_template('coverage_gaps.html', gaps=gaps)
+    except Exception as e:
+        logger.error(f"Error in coverage gaps: {e}")
+        flash('Error loading coverage gaps.', 'danger')
+        return redirect(url_for('supervisor.dashboard'))
 
 @supervisor_bp.route('/supervisor/coverage-needs')
 @login_required
@@ -476,30 +445,9 @@ def coverage_needs():
 @login_required
 @supervisor_required
 def overtime_distribution():
-    """View overtime distribution report"""
+    """View overtime distribution report with demo data"""
     try:
-        # Get all employees with their overtime data
-        employees = Employee.query.filter_by(is_supervisor=False).all()
-        
-        overtime_data = []
-        for emp in employees:
-            # Get total overtime for last 13 weeks safely
-            try:
-                total_ot = db.session.query(func.sum(OvertimeHistory.hours)).filter_by(
-                    employee_id=emp.id
-                ).scalar() or 0
-            except:
-                total_ot = 0
-            
-            overtime_data.append({
-                'employee': emp,
-                'total_overtime': total_ot,
-                'average_weekly': round(total_ot / 13, 2) if total_ot > 0 else 0
-            })
-        
-        # Sort by total overtime descending
-        overtime_data.sort(key=lambda x: x['total_overtime'], reverse=True)
-        
+        overtime_data = demo_service.get_overtime_distribution_data()
         return render_template('overtime_distribution.html', overtime_data=overtime_data)
     except Exception as e:
         logger.error(f"Error in overtime distribution: {e}")
@@ -507,56 +455,43 @@ def overtime_distribution():
         return redirect(url_for('supervisor.dashboard'))
 
 # ==========================================
-# OTHER ROUTES (KEEPING ALL EXISTING)
+# NEW DASHBOARD PAGES WITH DEMO DATA
 # ==========================================
 
 @supervisor_bp.route('/supervisor/today-schedule')
 @login_required
 @supervisor_required
 def today_schedule():
-    """View today's schedule overview"""
+    """View today's schedule overview with demo data"""
     try:
-        today = date.today()
+        schedule_data = demo_service.get_today_schedule_data()
         
-        # Get schedules for today grouped by crew
+        # Convert demo data to template format
         crew_schedules = {}
-        for crew in ['A', 'B', 'C', 'D']:
-            employees = Employee.query.filter_by(
-                crew=crew,
-                is_active=True,
-                is_supervisor=False
-            ).all()
+        for crew, data in schedule_data['crews'].items():
+            # Create fake employee objects for template
+            scheduled_employees = []
+            on_leave_employees = []
             
-            scheduled = []
-            on_leave = []
+            for name in data['scheduled_employees']:
+                class FakeEmployee:
+                    def __init__(self, name):
+                        self.name = name
+                        self.id = random.randint(1000, 9999)
+                scheduled_employees.append(FakeEmployee(name))
             
-            for emp in employees:
-                # Check if on leave with safe query
-                try:
-                    time_off = TimeOffRequest.query.filter(
-                        TimeOffRequest.employee_id == emp.id,
-                        TimeOffRequest.status == 'approved',
-                        TimeOffRequest.start_date <= today,
-                        TimeOffRequest.end_date >= today
-                    ).first()
-                    
-                    if time_off:
-                        on_leave.append(emp)
-                    else:
-                        scheduled.append(emp)
-                except:
-                    # If query fails, assume scheduled
-                    scheduled.append(emp)
+            for name in data['on_leave_employees']:
+                on_leave_employees.append(FakeEmployee(name))
             
             crew_schedules[crew] = {
-                'scheduled': scheduled,
-                'on_leave': on_leave,
-                'total': len(employees)
+                'total': data['total'],
+                'scheduled': scheduled_employees,
+                'on_leave': on_leave_employees
             }
         
         return render_template('today_schedule.html', 
                              crew_schedules=crew_schedules,
-                             today=today)
+                             today=schedule_data['date'])
     except Exception as e:
         logger.error(f"Error in today's schedule: {e}")
         flash('Error loading schedule', 'danger')
@@ -566,42 +501,9 @@ def today_schedule():
 @login_required
 @supervisor_required
 def crew_status():
-    """Real-time crew status overview"""
+    """Real-time crew status overview with demo data"""
     try:
-        crew_data = {}
-        
-        for crew in ['A', 'B', 'C', 'D']:
-            # Get all employees in crew
-            employees = Employee.query.filter_by(
-                crew=crew,
-                is_active=True,
-                is_supervisor=False
-            ).all()
-            
-            # Calculate statistics
-            total = len(employees)
-            
-            # Get position distribution safely
-            try:
-                position_counts = db.session.query(
-                    Position.name,
-                    func.count(Employee.id)
-                ).join(
-                    Employee
-                ).filter(
-                    Employee.crew == crew,
-                    Employee.is_active == True,
-                    Employee.is_supervisor == False
-                ).group_by(Position.name).all()
-            except:
-                position_counts = []
-            
-            crew_data[crew] = {
-                'total': total,
-                'positions': dict(position_counts),
-                'employees': employees
-            }
-        
+        crew_data = demo_service.get_crew_status_data()
         return render_template('crew_status.html', crew_data=crew_data)
         
     except Exception as e:
@@ -643,7 +545,158 @@ def all_requests():
         return redirect(url_for('supervisor.dashboard'))
 
 # ==========================================
-# API ENDPOINTS
+# DEMO API ENDPOINTS - REPLACE EXISTING
+# ==========================================
+
+@supervisor_bp.route('/api/predictive-staffing', methods=['POST'])
+@login_required
+@supervisor_required
+def api_predictive_staffing():
+    """API endpoint for predictive staffing analysis - DEMO VERSION"""
+    try:
+        data = request.get_json()
+        start_date = data.get('start_date')
+        end_date = data.get('end_date')
+        
+        if not start_date or not end_date:
+            return jsonify({'error': 'Start and end dates required'}), 400
+        
+        # Use demo service
+        result = demo_service.get_predictive_staffing_data(start_date, end_date)
+        return jsonify(result)
+        
+    except Exception as e:
+        logger.error(f"Error in predictive staffing API: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@supervisor_bp.route('/api/communication-counts')
+@login_required
+@supervisor_required
+def api_communication_counts():
+    """Get unread message counts for communications hub - DEMO VERSION"""
+    try:
+        counts = demo_service.get_communication_counts()
+        return jsonify({
+            'success': True,
+            **counts
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting communication counts: {e}")
+        return jsonify({
+            'success': True,
+            'supervisor_to_supervisor': 0,
+            'employee_to_supervisor': 0,
+            'plantwide_recent': 0
+        })
+
+@supervisor_bp.route('/api/supervisor-messages')
+@login_required
+@supervisor_required
+def api_get_supervisor_messages():
+    """Get messages between supervisors - DEMO VERSION"""
+    try:
+        messages = demo_service.get_supervisor_messages()
+        unread_count = sum(1 for m in messages if m['unread'])
+        
+        return jsonify({
+            'success': True,
+            'messages': messages,
+            'unread_count': unread_count
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting supervisor messages: {e}")
+        return jsonify({
+            'success': True,
+            'messages': [],
+            'unread_count': 0
+        })
+
+@supervisor_bp.route('/api/employee-messages')
+@login_required
+@supervisor_required
+def api_get_employee_messages():
+    """Get messages from employees to supervisor - DEMO VERSION"""
+    try:
+        messages = demo_service.get_employee_messages()
+        unread_count = sum(1 for m in messages if m['unread'])
+        
+        return jsonify({
+            'success': True,
+            'messages': messages,
+            'unread_count': unread_count
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting employee messages: {e}")
+        return jsonify({
+            'success': True,
+            'messages': [],
+            'unread_count': 0
+        })
+
+@supervisor_bp.route('/api/send-supervisor-message', methods=['POST'])
+@login_required
+@supervisor_required
+def api_send_supervisor_message():
+    """Send message to another supervisor - DEMO VERSION"""
+    try:
+        data = request.get_json()
+        recipient_id = data.get('recipient_id')
+        subject = data.get('subject')
+        message = data.get('message')
+        
+        if not all([recipient_id, subject, message]):
+            return jsonify({'error': 'All fields required'}), 400
+        
+        # Use demo service
+        result = demo_service.send_demo_message(
+            'supervisor',
+            recipient_id=recipient_id,
+            subject=subject,
+            message=message
+        )
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        logger.error(f"Error sending supervisor message: {e}")
+        return jsonify({'error': 'Failed to send message'}), 500
+
+@supervisor_bp.route('/api/send-plantwide-message', methods=['POST'])
+@login_required
+@supervisor_required
+def api_send_plantwide_message():
+    """Send announcement to all employees - DEMO VERSION"""
+    try:
+        data = request.get_json()
+        subject = data.get('subject')
+        message = data.get('message')
+        priority = data.get('priority', 'normal')
+        
+        if not all([subject, message]):
+            return jsonify({'error': 'Subject and message required'}), 400
+        
+        # Simulate sending to all employees (demo)
+        recipient_count = random.randint(95, 105)  # Simulated employee count
+        
+        result = demo_service.send_demo_message(
+            'plantwide',
+            subject=subject,
+            message=message,
+            priority=priority,
+            recipients=recipient_count
+        )
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        logger.error(f"Error sending plantwide message: {e}")
+        return jsonify({'error': 'Failed to send announcement'}), 500
+
+# ==========================================
+# API ENDPOINTS (ORIGINAL)
 # ==========================================
 
 @supervisor_bp.route('/api/coverage-needs', methods=['POST'])
