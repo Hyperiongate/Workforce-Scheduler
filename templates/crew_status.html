@@ -1,160 +1,205 @@
+<!-- templates/crew_status.html -->
 {% extends "base.html" %}
 
 {% block title %}Crew Status - Workforce Scheduler{% endblock %}
 
 {% block content %}
 <div class="container-fluid mt-4">
-    <div class="row">
-        <div class="col-12">
-            <h1 class="mb-4">Crew Status Overview</h1>
-            <a href="{{ url_for('supervisor.dashboard') }}" class="btn btn-secondary mb-3">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>Real-time Crew Status</h1>
+        <div>
+            <button class="btn btn-success" onclick="refreshStatus()">
+                <i class="bi bi-arrow-clockwise"></i> Refresh Status
+            </button>
+            <a href="{{ url_for('supervisor.dashboard') }}" class="btn btn-outline-secondary">
                 <i class="bi bi-arrow-left"></i> Back to Dashboard
             </a>
         </div>
     </div>
-    
+
     <div class="row">
         {% for crew, data in crew_data.items() %}
         <div class="col-lg-6 mb-4">
-            <div class="card">
-                <div class="card-header bg-primary text-white">
-                    <h5 class="mb-0">Crew {{ crew }} - {{ data.total }} Employees</h5>
+            <div class="card h-100">
+                <div class="card-header bg-info text-white">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0"><i class="bi bi-people"></i> Crew {{ crew }}</h5>
+                        <span class="badge bg-light text-dark">{{ data.total }} Total</span>
+                    </div>
                 </div>
                 <div class="card-body">
-                    <div class="row">
-                        <div class="col-md-6">
-                            <h6>Position Distribution:</h6>
-                            <ul class="list-unstyled">
-                                {% for position, count in data.positions.items() %}
-                                <li>
-                                    <strong>{{ position }}:</strong> 
-                                    <span class="badge bg-secondary">{{ count }}</span>
-                                </li>
-                                {% endfor %}
-                            </ul>
+                    <!-- Overall Status -->
+                    <div class="row text-center mb-3">
+                        <div class="col-4">
+                            <h4 class="text-primary mb-1">{{ data.scheduled }}</h4>
+                            <small class="text-muted">On Shift</small>
                         </div>
-                        <div class="col-md-6">
-                            <canvas id="crewChart{{ crew }}" width="200" height="200"></canvas>
+                        <div class="col-4">
+                            <h4 class="text-warning mb-1">{{ data.on_leave }}</h4>
+                            <small class="text-muted">Off Duty</small>
+                        </div>
+                        <div class="col-4">
+                            <span class="badge {% if data.coverage_level == 'Good' %}bg-success{% else %}bg-warning{% endif %} fs-6">
+                                {{ data.coverage_level }}
+                            </span>
+                            <small class="d-block text-muted">Coverage</small>
                         </div>
                     </div>
-                    
-                    <hr>
-                    
-                    <h6>Employee List:</h6>
-                    <div class="table-responsive">
-                        <table class="table table-sm">
-                            <thead>
-                                <tr>
-                                    <th>Name</th>
-                                    <th>Position</th>
-                                    <th>Department</th>
-                                    <th>Status</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for emp in data.employees[:10] %}
-                                <tr>
-                                    <td>{{ emp.name }}</td>
-                                    <td>{{ emp.position.name if emp.position else 'Unassigned' }}</td>
-                                    <td>{{ emp.department or 'N/A' }}</td>
-                                    <td>
-                                        <span class="badge bg-success">Active</span>
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                                {% if data.employees|length > 10 %}
-                                <tr>
-                                    <td colspan="4" class="text-center">
-                                        <em>... and {{ data.employees|length - 10 }} more employees</em>
-                                    </td>
-                                </tr>
-                                {% endif %}
-                            </tbody>
-                        </table>
+
+                    <!-- Position Breakdown -->
+                    <div class="position-breakdown">
+                        <h6 class="mb-2"><i class="bi bi-diagram-3"></i> Position Distribution</h6>
+                        {% for position, count in data.positions.items() %}
+                        {% if count > 0 %}
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="small">{{ position }}</span>
+                            <span class="badge bg-secondary">{{ count }}</span>
+                        </div>
+                        {% endif %}
+                        {% endfor %}
+                        
+                        {% if not data.positions or not data.positions.values() | select('>', 0) | list %}
+                        <p class="text-muted small">No position data available</p>
+                        {% endif %}
                     </div>
+                </div>
+                <div class="card-footer">
+                    <small class="text-muted">
+                        <i class="bi bi-clock"></i> Last updated: {{ moment().format('HH:mm') if moment else datetime.now().strftime('%H:%M') }}
+                    </small>
                 </div>
             </div>
         </div>
         {% endfor %}
     </div>
-    
+
+    <!-- Plant Overview -->
     <div class="row mt-4">
         <div class="col-12">
             <div class="card">
                 <div class="card-header">
-                    <h5 class="mb-0">Overall Statistics</h5>
+                    <h5 class="mb-0"><i class="bi bi-building"></i> Plant Overview</h5>
                 </div>
                 <div class="card-body">
                     <div class="row text-center">
+                        {% set total_scheduled = crew_data.values() | map(attribute='scheduled') | sum %}
+                        {% set total_workforce = crew_data.values() | map(attribute='total') | sum %}
+                        {% set total_on_leave = crew_data.values() | map(attribute='on_leave') | sum %}
+                        {% set plant_coverage = (total_scheduled / total_workforce * 100) | round if total_workforce > 0 else 0 %}
+                        
                         <div class="col-md-3">
-                            <h2>{{ crew_data.values() | sum(attribute='total') }}</h2>
-                            <p class="text-muted">Total Employees</p>
+                            <h3 class="text-primary">{{ total_scheduled }}</h3>
+                            <p class="mb-0">Total On Shift</p>
                         </div>
                         <div class="col-md-3">
-                            <h2>{{ crew_data | length }}</h2>
-                            <p class="text-muted">Active Crews</p>
+                            <h3 class="text-success">{{ total_workforce }}</h3>
+                            <p class="mb-0">Total Workforce</p>
                         </div>
                         <div class="col-md-3">
-                            <h2>{{ (crew_data.values() | sum(attribute='total')) / (crew_data | length) | round(1) }}</h2>
-                            <p class="text-muted">Avg. Crew Size</p>
+                            <h3 class="text-warning">{{ total_on_leave }}</h3>
+                            <p class="mb-0">Currently Off</p>
                         </div>
                         <div class="col-md-3">
-                            <h2 id="positionCount">0</h2>
-                            <p class="text-muted">Unique Positions</p>
+                            <h3 class="{% if plant_coverage >= 85 %}text-success{% elif plant_coverage >= 70 %}text-warning{% else %}text-danger{% endif %}">{{ plant_coverage }}%</h3>
+                            <p class="mb-0">Plant Coverage</p>
                         </div>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Coverage Alerts (if any) -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="mb-0"><i class="bi bi-exclamation-triangle"></i> Coverage Alerts</h6>
+                </div>
+                <div class="card-body">
+                    {% set low_coverage_crews = crew_data.items() | selectattr('1.coverage_level', 'equalto', 'Limited') | list %}
+                    {% if low_coverage_crews %}
+                        {% for crew, data in low_coverage_crews %}
+                        <div class="alert alert-warning alert-dismissible fade show" role="alert">
+                            <strong>Crew {{ crew }}</strong> has limited coverage: {{ data.scheduled }}/{{ data.total }} employees on shift
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                    <div class="alert alert-success" role="alert">
+                        <i class="bi bi-check-circle"></i> All crews have adequate coverage levels
+                    </div>
+                    {% endif %}
                 </div>
             </div>
         </div>
     </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-// Create pie charts for each crew
-{% for crew, data in crew_data.items() %}
-const ctx{{ crew }} = document.getElementById('crewChart{{ crew }}').getContext('2d');
-const chart{{ crew }} = new Chart(ctx{{ crew }}, {
-    type: 'doughnut',
-    data: {
-        labels: [{% for position in data.positions.keys() %}'{{ position }}'{% if not loop.last %}, {% endif %}{% endfor %}],
-        datasets: [{
-            data: [{% for count in data.positions.values() %}{{ count }}{% if not loop.last %}, {% endif %}{% endfor %}],
-            backgroundColor: [
-                'rgba(255, 99, 132, 0.8)',
-                'rgba(54, 162, 235, 0.8)',
-                'rgba(255, 206, 86, 0.8)',
-                'rgba(75, 192, 192, 0.8)',
-                'rgba(153, 102, 255, 0.8)',
-                'rgba(255, 159, 64, 0.8)'
-            ]
-        }]
-    },
-    options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-            legend: {
-                position: 'bottom',
-                labels: {
-                    boxWidth: 12,
-                    font: {
-                        size: 11
-                    }
-                }
-            }
-        }
-    }
-});
-{% endfor %}
+function refreshStatus() {
+    // Add loading state
+    const btn = document.querySelector('button[onclick="refreshStatus()"]');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Refreshing...';
+    btn.disabled = true;
+    
+    // Simulate refresh delay
+    setTimeout(() => {
+        location.reload();
+    }, 1500);
+}
 
-// Count unique positions
-const allPositions = new Set();
-{% for crew, data in crew_data.items() %}
-    {% for position in data.positions.keys() %}
-    allPositions.add('{{ position }}');
-    {% endfor %}
-{% endfor %}
-document.getElementById('positionCount').textContent = allPositions.size;
+// Auto-refresh every 5 minutes
+setInterval(() => {
+    location.reload();
+}, 300000); // 5 minutes
+
+// Add timestamp to show live updating
+document.addEventListener('DOMContentLoaded', function() {
+    const footers = document.querySelectorAll('.card-footer small');
+    const currentTime = new Date().toLocaleTimeString('en-US', { 
+        hour12: false, 
+        hour: '2-digit', 
+        minute: '2-digit' 
+    });
+    
+    footers.forEach(footer => {
+        footer.innerHTML = `<i class="bi bi-clock"></i> Last updated: ${currentTime}`;
+    });
+});
 </script>
+
+<style>
+.card-header {
+    border-bottom: 2px solid rgba(255,255,255,0.2);
+}
+
+.position-breakdown {
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.badge.fs-6 {
+    font-size: 0.9rem !important;
+}
+
+.alert {
+    margin-bottom: 0.5rem;
+}
+
+.alert:last-child {
+    margin-bottom: 0;
+}
+
+.card-footer {
+    background-color: #f8f9fa;
+    border-top: 1px solid #dee2e6;
+}
+
+.text-primary { color: #0d6efd !important; }
+.text-success { color: #198754 !important; }
+.text-warning { color: #ffc107 !important; }
+.text-danger { color: #dc3545 !important; }
+</style>
 {% endblock %}
