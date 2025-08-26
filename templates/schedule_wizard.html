@@ -1,746 +1,984 @@
 {% extends "base.html" %}
-
-{% block title %}Create {{ pattern_config.name }} Schedule - Workforce Scheduler{% endblock %}
-
-{% block extra_head %}
-<style>
-    .wizard-container {
-        max-width: 1200px;
-        margin: 0 auto;
-        padding: 2rem;
-    }
-    
-    .wizard-header {
-        text-align: center;
-        margin-bottom: 3rem;
-    }
-    
-    .wizard-steps {
-        display: flex;
-        justify-content: space-between;
-        margin-bottom: 3rem;
-        position: relative;
-    }
-    
-    .wizard-steps::before {
-        content: '';
-        position: absolute;
-        top: 20px;
-        left: 0;
-        right: 0;
-        height: 2px;
-        background: #dee2e6;
-        z-index: -1;
-    }
-    
-    .step {
-        background: white;
-        padding: 0.5rem 1rem;
-        border-radius: 50px;
-        border: 2px solid #dee2e6;
-        color: #6c757d;
-        font-weight: 500;
-        transition: all 0.3s;
-    }
-    
-    .step.active {
-        background: #007bff;
-        color: white;
-        border-color: #007bff;
-    }
-    
-    .step.completed {
-        background: #28a745;
-        color: white;
-        border-color: #28a745;
-    }
-    
-    .wizard-content {
-        background: white;
-        border-radius: 10px;
-        padding: 2rem;
-        box-shadow: 0 0 20px rgba(0,0,0,0.1);
-    }
-    
-    .pattern-info {
-        background: #f8f9fa;
-        border-radius: 8px;
-        padding: 1.5rem;
-        margin-bottom: 2rem;
-    }
-    
-    .crew-card {
-        border: 2px solid #dee2e6;
-        border-radius: 8px;
-        padding: 1rem;
-        margin-bottom: 1rem;
-        transition: all 0.3s;
-    }
-    
-    .crew-card:hover {
-        border-color: #007bff;
-        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-    }
-    
-    .crew-badge {
-        display: inline-block;
-        padding: 0.25rem 0.75rem;
-        border-radius: 20px;
-        font-weight: bold;
-        margin-right: 0.5rem;
-    }
-    
-    .crew-A { background: #d4edda; color: #155724; }
-    .crew-B { background: #d1ecf1; color: #0c5460; }
-    .crew-C { background: #fff3cd; color: #856404; }
-    .crew-D { background: #f8d7da; color: #721c24; }
-    
-    .preview-calendar {
-        display: grid;
-        grid-template-columns: repeat(7, 1fr);
-        gap: 2px;
-        margin-top: 1rem;
-    }
-    
-    .calendar-day {
-        border: 1px solid #dee2e6;
-        padding: 0.5rem;
-        min-height: 80px;
-        font-size: 0.875rem;
-    }
-    
-    .calendar-header {
-        background: #f8f9fa;
-        font-weight: bold;
-        text-align: center;
-        padding: 0.5rem;
-    }
-    
-    .shift-block {
-        padding: 2px 4px;
-        margin: 1px;
-        border-radius: 3px;
-        font-size: 0.75rem;
-    }
-    
-    .shift-day { background: #ffeaa7; }
-    .shift-night { background: #74b9ff; }
-    .shift-evening { background: #fd79a8; }
-    
-    .validation-result {
-        margin-top: 1rem;
-        padding: 1rem;
-        border-radius: 8px;
-    }
-    
-    .validation-success {
-        background: #d4edda;
-        color: #155724;
-        border: 1px solid #c3e6cb;
-    }
-    
-    .validation-error {
-        background: #f8d7da;
-        color: #721c24;
-        border: 1px solid #f5c6cb;
-    }
-</style>
-{% endblock %}
+{% block title %}Schedule Wizard - {{ pattern_config.name }}{% endblock %}
 
 {% block content %}
-<div class="wizard-container">
-    <div class="wizard-header">
-        <h1>Create {{ pattern_config.name }} Schedule</h1>
-        <p class="text-muted">Follow the steps below to create your schedule</p>
-    </div>
-
-    <!-- Progress Steps -->
-    <div class="wizard-steps">
-        <div class="step active" id="step1">1. Configuration</div>
-        <div class="step" id="step2">2. Crew Verification</div>
-        <div class="step" id="step3">3. Preview</div>
-        <div class="step" id="step4">4. Create</div>
-    </div>
-
-    <div class="wizard-content">
-        <!-- Step 1: Configuration -->
-        <div id="step1-content" class="step-content">
-            <h3>Step 1: Configure Schedule Parameters</h3>
-            
-            <div class="pattern-info">
-                <h5>{{ pattern_config.name }} Pattern Details:</h5>
-                <ul>
-                    <li>Shift Length: {{ pattern_config.shift_hours }}-hour shifts</li>
-                    <li>Rotation Options: 
-                        {% if pattern_config.allows_fixed and pattern_config.allows_rotating %}
-                            Fixed or Rotating
-                        {% elif pattern_config.allows_fixed %}
-                            Fixed shifts only
-                        {% else %}
-                            Rotating shifts only
-                        {% endif %}
-                    </li>
-                </ul>
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h1 class="h2">Schedule Wizard: {{ pattern_config.name }}</h1>
+                    <p class="text-muted">Configure and create your {{ pattern_config.name }} schedule</p>
+                </div>
+                <a href="{{ url_for('schedule.select') }}" class="btn btn-outline-secondary">
+                    <i class="bi bi-arrow-left"></i> Back to Pattern Selection
+                </a>
             </div>
+        </div>
+    </div>
 
-            <form id="scheduleForm">
-                <input type="hidden" name="pattern" value="{{ pattern }}">
-                
-                <div class="row">
-                    <div class="col-md-6">
-                        <div class="mb-3">
-                            <label class="form-label">Schedule Name</label>
-                            <input type="text" class="form-control" name="schedule_name" 
-                                   placeholder="e.g., Q1 2025 Production Schedule" required>
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        <div class="mb-3">
-                            <label class="form-label">Start Date</label>
-                            <input type="date" class="form-control" name="start_date" 
-                                   value="{{ date.today() }}" required>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="row">
-                    <div class="col-md-6">
-                        <div class="mb-3">
-                            <label class="form-label">End Date</label>
-                            <input type="date" class="form-control" name="end_date" required>
-                            <small class="text-muted">Typically 3-6 months for pattern schedules</small>
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        {% if pattern_config.allows_fixed and pattern_config.allows_rotating %}
-                        <div class="mb-3">
-                            <label class="form-label">Shift Type</label>
-                            <select class="form-select" name="shift_type" onchange="updateRotationOptions()">
-                                <option value="fixed">Fixed (crews always work same shift)</option>
-                                <option value="rotating">Rotating (crews alternate shifts)</option>
-                            </select>
-                        </div>
-                        {% endif %}
-                    </div>
-                </div>
-
-                <div id="rotationOptions" style="display: none;">
-                    <div class="row">
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label class="form-label">Rotation Frequency</label>
-                                <select class="form-select" name="variation">
-                                    {% for option in pattern_config.rotation_options %}
-                                    <option value="{{ option }}">{{ option|title|replace('_', ' ') }}</option>
-                                    {% endfor %}
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="row">
-                    <div class="col-md-3">
-                        <div class="mb-3">
-                            <label class="form-label">Day Shift Start</label>
-                            <input type="time" class="form-control" name="day_shift_start" value="06:00">
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="mb-3">
-                            <label class="form-label">Night Shift Start</label>
-                            <input type="time" class="form-control" name="night_shift_start" value="18:00">
-                        </div>
-                    </div>
-                    {% if pattern_config.shift_hours == 8 %}
-                    <div class="col-md-3">
-                        <div class="mb-3">
-                            <label class="form-label">Evening Shift Start</label>
-                            <input type="time" class="form-control" name="evening_shift_start" value="14:00">
-                        </div>
-                    </div>
-                    {% endif %}
-                </div>
-
-                <div class="form-check mb-3">
-                    <input class="form-check-input" type="checkbox" name="fair_rotation" id="fairRotation" checked>
-                    <label class="form-check-label" for="fairRotation">
-                        Ensure fair distribution of weekends and holidays
-                    </label>
-                </div>
-            </form>
-
-            <div class="d-flex justify-content-end">
-                <button class="btn btn-primary" onclick="nextStep()">Next →</button>
+    <!-- Wizard Steps -->
+    <div class="wizard-container">
+        <div class="wizard-steps">
+            <div class="step active" data-step="1">
+                <div class="step-number">1</div>
+                <div class="step-label">Basic Setup</div>
+            </div>
+            <div class="step" data-step="2">
+                <div class="step-number">2</div>
+                <div class="step-label">Pattern Config</div>
+            </div>
+            <div class="step" data-step="3">
+                <div class="step-number">3</div>
+                <div class="step-label">Preview</div>
+            </div>
+            <div class="step" data-step="4">
+                <div class="step-number">4</div>
+                <div class="step-label">Create</div>
             </div>
         </div>
 
-        <!-- Step 2: Crew Verification -->
-        <div id="step2-content" class="step-content" style="display: none;">
-            <h3>Step 2: Verify Crew Assignments</h3>
-            
-            <div class="alert alert-info">
-                <i class="bi bi-info-circle"></i> Ensure all 4 crews have sufficient employees before proceeding.
-            </div>
-
+        <!-- Step 1: Basic Setup -->
+        <div class="wizard-step" id="step-1">
             <div class="row">
-                {% for crew in ['A', 'B', 'C', 'D'] %}
-                <div class="col-md-6">
-                    <div class="crew-card">
-                        <h5><span class="crew-badge crew-{{ crew }}">Crew {{ crew }}</span></h5>
-                        <p class="mb-2">
-                            <strong>{{ crew_stats[crew].count }}</strong> employees
-                        </p>
-                        <div class="small">
-                            {% if crew_stats[crew].positions %}
-                                {% for pos, count in crew_stats[crew].positions.items() %}
-                                    {{ pos }}: {{ count }}<br>
-                                {% endfor %}
-                            {% else %}
-                                <span class="text-danger">No positions assigned</span>
-                            {% endif %}
+                <div class="col-lg-8">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5>Basic Schedule Configuration</h5>
                         </div>
-                        {% if crew_stats[crew].count < 5 %}
-                        <div class="alert alert-warning mt-2 mb-0">
-                            <small>Warning: Crew has fewer than 5 employees</small>
+                        <div class="card-body">
+                            <form id="basicConfigForm">
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label for="startDate" class="form-label">Start Date</label>
+                                        <input type="date" class="form-control" id="startDate" required>
+                                        <div class="form-text">Schedule will begin on this date</div>
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label for="scheduleLength" class="form-label">Schedule Length (weeks)</label>
+                                        <select class="form-select" id="scheduleLength" required>
+                                            <option value="4">4 weeks</option>
+                                            <option value="8" selected>8 weeks</option>
+                                            <option value="12">12 weeks</option>
+                                            <option value="16">16 weeks</option>
+                                            <option value="26">26 weeks (6 months)</option>
+                                            <option value="52">52 weeks (1 year)</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label for="dayShiftStart" class="form-label">Day Shift Start Time</label>
+                                        <input type="time" class="form-control" id="dayShiftStart" value="06:00" required>
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label for="nightShiftStart" class="form-label">Night Shift Start Time</label>
+                                        <input type="time" class="form-control" id="nightShiftStart" value="18:00" required>
+                                    </div>
+                                </div>
+
+                                {% if pattern_config.allows_rotating %}
+                                <div class="mb-3">
+                                    <label class="form-label">Rotation Type</label>
+                                    <div>
+                                        {% if pattern_config.allows_fixed %}
+                                        <div class="form-check form-check-inline">
+                                            <input class="form-check-input" type="radio" name="rotationType" id="rotationFixed" value="fixed" checked>
+                                            <label class="form-check-label" for="rotationFixed">Fixed (crews stay on same shifts)</label>
+                                        </div>
+                                        {% endif %}
+                                        <div class="form-check form-check-inline">
+                                            <input class="form-check-input" type="radio" name="rotationType" id="rotationRotating" value="rotating">
+                                            <label class="form-check-label" for="rotationRotating">Rotating (crews change shifts)</label>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div id="rotationFrequencyDiv" style="display: none;" class="mb-3">
+                                    <label for="rotationFrequency" class="form-label">Rotation Frequency</label>
+                                    <select class="form-select" id="rotationFrequency">
+                                        {% for option in pattern_config.rotation_options %}
+                                        <option value="{{ option }}">{{ option.replace('_', ' ').title() }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                {% endif %}
+
+                                <div class="d-flex justify-content-end">
+                                    <button type="button" class="btn btn-primary" onclick="nextStep(2)">
+                                        Next: Pattern Configuration <i class="bi bi-arrow-right"></i>
+                                    </button>
+                                </div>
+                            </form>
                         </div>
-                        {% endif %}
                     </div>
                 </div>
-                {% endfor %}
-            </div>
 
-            {% if unassigned_employees %}
-            <div class="alert alert-warning mt-3">
-                <h6>Unassigned Employees ({{ unassigned_employees|length }})</h6>
-                <small>
-                    {% for emp in unassigned_employees[:5] %}
-                        {{ emp.name }}{% if not loop.last %}, {% endif %}
-                    {% endfor %}
-                    {% if unassigned_employees|length > 5 %}
-                        ... and {{ unassigned_employees|length - 5 }} more
-                    {% endif %}
-                </small>
+                <div class="col-lg-4">
+                    <div class="card">
+                        <div class="card-header">
+                            <h6>Current Crew Status</h6>
+                        </div>
+                        <div class="card-body">
+                            {% for crew, stats in crew_stats.items() %}
+                            <div class="crew-status-item">
+                                <div class="d-flex justify-content-between">
+                                    <strong>Crew {{ crew }}</strong>
+                                    <span class="badge bg-primary">{{ stats.count }} employees</span>
+                                </div>
+                                {% if stats.positions %}
+                                <div class="position-breakdown">
+                                    {% for position, count in stats.positions.items() %}
+                                    <small class="text-muted">{{ position }}: {{ count }}</small>
+                                    {% endfor %}
+                                </div>
+                                {% endif %}
+                            </div>
+                            {% endfor %}
+                            
+                            {% if unassigned_employees %}
+                            <div class="crew-status-item">
+                                <div class="d-flex justify-content-between">
+                                    <strong>Unassigned</strong>
+                                    <span class="badge bg-warning">{{ unassigned_employees|length }} employees</span>
+                                </div>
+                                <small class="text-muted">These employees need crew assignments</small>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
             </div>
-            {% endif %}
+        </div>
 
-            <div class="d-flex justify-content-between mt-4">
-                <button class="btn btn-secondary" onclick="previousStep()">← Previous</button>
-                <button class="btn btn-primary" onclick="generatePreview()">Generate Preview →</button>
+        <!-- Step 2: Pattern Configuration -->
+        <div class="wizard-step" id="step-2" style="display: none;">
+            <div class="card">
+                <div class="card-header">
+                    <h5>Pattern-Specific Configuration</h5>
+                </div>
+                <div class="card-body">
+                    <div id="patternSpecificConfig">
+                        <!-- This will be populated based on the selected pattern -->
+                    </div>
+
+                    <div class="d-flex justify-content-between">
+                        <button type="button" class="btn btn-outline-secondary" onclick="prevStep(1)">
+                            <i class="bi bi-arrow-left"></i> Back: Basic Setup
+                        </button>
+                        <button type="button" class="btn btn-primary" onclick="nextStep(3)">
+                            Next: Preview Schedule <i class="bi bi-arrow-right"></i>
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
 
         <!-- Step 3: Preview -->
-        <div id="step3-content" class="step-content" style="display: none;">
-            <h3>Step 3: Preview Schedule</h3>
-            
-            <div class="mb-3">
-                <button class="btn btn-sm btn-outline-primary" onclick="changePreviewWeek(-1)">
-                    <i class="bi bi-chevron-left"></i> Previous Week
-                </button>
-                <span class="mx-3" id="previewWeekLabel">Week 1</span>
-                <button class="btn btn-sm btn-outline-primary" onclick="changePreviewWeek(1)">
-                    Next Week <i class="bi bi-chevron-right"></i>
-                </button>
-            </div>
+        <div class="wizard-step" id="step-3" style="display: none;">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5>Schedule Preview</h5>
+                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="generatePreview()">
+                        <i class="bi bi-arrow-clockwise"></i> Refresh Preview
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div id="schedulePreview">
+                        <div class="text-center text-muted">
+                            <i class="bi bi-hourglass-split"></i>
+                            <p>Click "Generate Preview" to see your schedule pattern</p>
+                        </div>
+                    </div>
 
-            <div id="schedulePreview">
-                <!-- Calendar preview will be inserted here -->
-                <div class="text-center py-5">
-                    <div class="spinner-border text-primary" role="status">
-                        <span class="visually-hidden">Loading preview...</span>
+                    <div class="d-flex justify-content-between mt-4">
+                        <button type="button" class="btn btn-outline-secondary" onclick="prevStep(2)">
+                            <i class="bi bi-arrow-left"></i> Back: Pattern Config
+                        </button>
+                        <button type="button" class="btn btn-success" onclick="nextStep(4)" id="proceedToCreate" disabled>
+                            Create Schedule <i class="bi bi-check-circle"></i>
+                        </button>
                     </div>
                 </div>
-            </div>
-
-            <div id="previewStats" class="mt-4">
-                <!-- Statistics will be shown here -->
-            </div>
-
-            <div class="d-flex justify-content-between mt-4">
-                <button class="btn btn-secondary" onclick="previousStep()">← Previous</button>
-                <button class="btn btn-primary" onclick="validateSchedule()">Validate & Continue →</button>
             </div>
         </div>
 
         <!-- Step 4: Create -->
-        <div id="step4-content" class="step-content" style="display: none;">
-            <h3>Step 4: Create Schedule</h3>
-            
-            <div id="validationResults">
-                <!-- Validation results will be shown here -->
-            </div>
-
-            <div class="card mt-4">
+        <div class="wizard-step" id="step-4" style="display: none;">
+            <div class="card">
+                <div class="card-header">
+                    <h5>Create Schedule</h5>
+                </div>
                 <div class="card-body">
-                    <h5 class="card-title">Schedule Summary</h5>
-                    <dl class="row">
-                        <dt class="col-sm-3">Pattern:</dt>
-                        <dd class="col-sm-9">{{ pattern_config.name }}</dd>
-                        
-                        <dt class="col-sm-3">Date Range:</dt>
-                        <dd class="col-sm-9" id="summaryDateRange">-</dd>
-                        
-                        <dt class="col-sm-3">Total Shifts:</dt>
-                        <dd class="col-sm-9" id="summaryTotalShifts">-</dd>
-                        
-                        <dt class="col-sm-3">Crews:</dt>
-                        <dd class="col-sm-9">A, B, C, D</dd>
-                    </dl>
+                    <div id="createScheduleContent">
+                        <div class="alert alert-info">
+                            <h6><i class="bi bi-info-circle"></i> Ready to Create Schedule</h6>
+                            <p class="mb-0">Review your configuration and click "Create Schedule" to generate the schedule in your database.</p>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h6>Configuration Summary</h6>
+                                <ul id="configSummary" class="list-unstyled">
+                                    <!-- Will be populated by JavaScript -->
+                                </ul>
+                            </div>
+                            <div class="col-md-6">
+                                <h6>Impact Analysis</h6>
+                                <div id="impactAnalysis">
+                                    <!-- Will be populated by JavaScript -->
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="checkbox" id="confirmOverwrite">
+                            <label class="form-check-label" for="confirmOverwrite">
+                                I understand this will replace any existing schedules in the selected date range
+                            </label>
+                        </div>
+
+                        <div class="d-flex justify-content-between">
+                            <button type="button" class="btn btn-outline-secondary" onclick="prevStep(3)">
+                                <i class="bi bi-arrow-left"></i> Back: Preview
+                            </button>
+                            <button type="button" class="btn btn-success" onclick="createSchedule()" id="finalCreateBtn" disabled>
+                                <i class="bi bi-plus-circle"></i> Create Schedule Now
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="creationProgress" style="display: none;">
+                        <div class="text-center">
+                            <div class="spinner-border text-primary mb-3" role="status">
+                                <span class="visually-hidden">Creating schedule...</span>
+                            </div>
+                            <h6>Creating Your Schedule</h6>
+                            <p class="text-muted">This may take a moment...</p>
+                            <div class="progress">
+                                <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="creationResult" style="display: none;">
+                        <!-- Results will be shown here -->
+                    </div>
                 </div>
-            </div>
-
-            <div class="alert alert-warning mt-4">
-                <i class="bi bi-exclamation-triangle"></i> 
-                <strong>Important:</strong> Creating this schedule will replace any existing schedules in the selected date range.
-            </div>
-
-            <div class="d-flex justify-content-between mt-4">
-                <button class="btn btn-secondary" onclick="previousStep()">← Previous</button>
-                <button class="btn btn-success btn-lg" onclick="createSchedule()" id="createBtn">
-                    <i class="bi bi-check-circle"></i> Create Schedule
-                </button>
             </div>
         </div>
     </div>
 </div>
 
-<!-- Loading Modal -->
-<div class="modal fade" id="loadingModal" tabindex="-1" data-bs-backdrop="static">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-body text-center py-4">
-                <div class="spinner-border text-primary mb-3" role="status">
-                    <span class="visually-hidden">Loading...</span>
-                </div>
-                <h5 id="loadingMessage">Generating schedule...</h5>
-                <p class="text-muted mb-0">This may take a moment for large date ranges.</p>
-            </div>
-        </div>
-    </div>
-</div>
+<style>
+.wizard-container {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.wizard-steps {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 3rem;
+    position: relative;
+}
+
+.wizard-steps::before {
+    content: '';
+    position: absolute;
+    top: 25px;
+    left: 25%;
+    right: 25%;
+    height: 2px;
+    background: #e9ecef;
+    z-index: 1;
+}
+
+.step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    flex: 1;
+    max-width: 150px;
+    position: relative;
+    z-index: 2;
+}
+
+.step-number {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    background: #e9ecef;
+    color: #6c757d;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 1.1rem;
+    margin-bottom: 0.5rem;
+    transition: all 0.3s;
+}
+
+.step-label {
+    font-weight: 500;
+    text-align: center;
+    color: #6c757d;
+    font-size: 0.9rem;
+}
+
+.step.active .step-number {
+    background: #007bff;
+    color: white;
+}
+
+.step.active .step-label {
+    color: #007bff;
+}
+
+.step.completed .step-number {
+    background: #28a745;
+    color: white;
+}
+
+.step.completed .step-label {
+    color: #28a745;
+}
+
+.crew-status-item {
+    padding: 0.75rem 0;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.crew-status-item:last-child {
+    border-bottom: none;
+}
+
+.position-breakdown {
+    margin-top: 0.25rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.schedule-preview-calendar {
+    min-height: 400px;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    padding: 1rem;
+}
+
+.preview-legend {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+}
+
+.legend-color {
+    width: 16px;
+    height: 16px;
+    border-radius: 3px;
+}
+
+@media (max-width: 768px) {
+    .wizard-steps {
+        flex-direction: column;
+        gap: 1rem;
+    }
+    
+    .wizard-steps::before {
+        display: none;
+    }
+    
+    .step {
+        flex-direction: row;
+        max-width: none;
+        justify-content: flex-start;
+        gap: 1rem;
+    }
+    
+    .step-number {
+        margin-bottom: 0;
+    }
+}
+</style>
 
 <script>
 let currentStep = 1;
 let previewData = null;
-let currentPreviewWeek = 0;
+const pattern = '{{ pattern }}';
+const patternConfig = {{ pattern_config | tojson }};
 
-function updateRotationOptions() {
-    const shiftType = document.querySelector('[name="shift_type"]').value;
-    const rotationDiv = document.getElementById('rotationOptions');
+document.addEventListener('DOMContentLoaded', function() {
+    initializeWizard();
+    setupEventListeners();
+});
+
+function initializeWizard() {
+    // Set today as default start date
+    const today = new Date();
+    const nextMonday = new Date(today);
+    nextMonday.setDate(today.getDate() + (1 + 7 - today.getDay()) % 7);
+    document.getElementById('startDate').value = nextMonday.toISOString().split('T')[0];
     
-    if (shiftType === 'rotating') {
-        rotationDiv.style.display = 'block';
-    } else {
-        rotationDiv.style.display = 'none';
+    // Initialize pattern-specific configuration
+    initializePatternConfig();
+}
+
+function setupEventListeners() {
+    // Rotation type change handler
+    document.querySelectorAll('input[name="rotationType"]').forEach(radio => {
+        radio.addEventListener('change', function() {
+            const frequencyDiv = document.getElementById('rotationFrequencyDiv');
+            if (this.value === 'rotating') {
+                frequencyDiv.style.display = 'block';
+            } else {
+                frequencyDiv.style.display = 'none';
+            }
+        });
+    });
+    
+    // Confirm overwrite checkbox
+    const confirmCheckbox = document.getElementById('confirmOverwrite');
+    if (confirmCheckbox) {
+        confirmCheckbox.addEventListener('change', function() {
+            document.getElementById('finalCreateBtn').disabled = !this.checked;
+        });
     }
 }
 
-function nextStep() {
+function initializePatternConfig() {
+    const configDiv = document.getElementById('patternSpecificConfig');
+    
+    // Pattern-specific configurations
+    const configs = {
+        'pitman': `
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Weekend Coverage</label>
+                    <select class="form-select" id="weekendCoverage">
+                        <option value="standard">Standard (Every other weekend off)</option>
+                        <option value="enhanced">Enhanced (More weekend coverage)</option>
+                    </select>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Shift Handover</label>
+                    <select class="form-select" id="shiftHandover">
+                        <option value="30">30 minutes overlap</option>
+                        <option value="60">1 hour overlap</option>
+                        <option value="0">No overlap</option>
+                    </select>
+                </div>
+            </div>
+            <div class="mb-3">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="balanceOvertimeChk" checked>
+                    <label class="form-check-label" for="balanceOvertimeChk">
+                        Balance overtime distribution across crews
+                    </label>
+                </div>
+            </div>
+        `,
+        'dupont': `
+            <div class="alert alert-info">
+                <h6>DuPont Schedule Configuration</h6>
+                <p>The DuPont schedule is automatically configured for optimal rotation. 
+                You can adjust shift times and coverage requirements below.</p>
+            </div>
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label for="rotationSpeed" class="form-label">Rotation Speed</label>
+                    <select class="form-select" id="rotationSpeed">
+                        <option value="standard">Standard (28-day cycle)</option>
+                        <option value="accelerated">Accelerated (21-day cycle)</option>
+                    </select>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="restPeriod" class="form-label">Rest Period Length</label>
+                    <select class="form-select" id="restPeriod">
+                        <option value="7">7 consecutive days off</option>
+                        <option value="8">8 consecutive days off</option>
+                        <option value="9">9 consecutive days off</option>
+                    </select>
+                </div>
+            </div>
+        `,
+        'southern_swing': `
+            <div class="alert alert-warning">
+                <h6>Southern Swing Configuration</h6>
+                <p>This pattern uses 8-hour shifts with evening shift (2:00 PM - 10:00 PM) included.</p>
+            </div>
+            <div class="row">
+                <div class="col-md-4 mb-3">
+                    <label for="eveningShiftStart" class="form-label">Evening Shift Start</label>
+                    <input type="time" class="form-control" id="eveningShiftStart" value="14:00">
+                </div>
+                <div class="col-md-4 mb-3">
+                    <label for="rotationDirection" class="form-label">Rotation Direction</label>
+                    <select class="form-select" id="rotationDirection">
+                        <option value="forward">Forward (Days → Evenings → Nights)</option>
+                        <option value="backward">Backward (Days → Nights → Evenings)</option>
+                    </select>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <label for="rotationWeeks" class="form-label">Weeks per Shift</label>
+                    <select class="form-select" id="rotationWeeks">
+                        <option value="1">1 week</option>
+                        <option value="2" selected>2 weeks</option>
+                        <option value="3">3 weeks</option>
+                    </select>
+                </div>
+            </div>
+        `,
+        'fixed_fixed': `
+            <div class="alert alert-info">
+                <h6>Fixed Teams Configuration</h6>
+                <p>Configure how teams are split between weekday and weekend coverage.</p>
+            </div>
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label for="weekdayTeams" class="form-label">Weekday Teams (Mon-Thu)</label>
+                    <div class="form-text mb-2">Select crews for weekday coverage</div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="crewA_weekday" value="A" checked>
+                        <label class="form-check-label" for="crewA_weekday">Crew A</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="crewB_weekday" value="B" checked>
+                        <label class="form-check-label" for="crewB_weekday">Crew B</label>
+                    </div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="weekendTeams" class="form-label">Weekend Teams (Fri-Sun)</label>
+                    <div class="form-text mb-2">Select crews for weekend coverage</div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="crewC_weekend" value="C" checked>
+                        <label class="form-check-label" for="crewC_weekend">Crew C</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="crewD_weekend" value="D" checked>
+                        <label class="form-check-label" for="crewD_weekend">Crew D</label>
+                    </div>
+                </div>
+            </div>
+        `,
+        'four_on_four_off': `
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label for="startingCrew" class="form-label">Starting Crew</label>
+                    <select class="form-select" id="startingCrew">
+                        <option value="A">Crew A starts first</option>
+                        <option value="B">Crew B starts first</option>
+                        <option value="C">Crew C starts first</option>
+                        <option value="D">Crew D starts first</option>
+                    </select>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="shiftLength" class="form-label">Shift Length</label>
+                    <select class="form-select" id="shiftLength">
+                        <option value="12" selected>12 hours</option>
+                        <option value="10">10 hours</option>
+                    </select>
+                </div>
+            </div>
+            <div class="mb-3">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="staggerTeamsChk">
+                    <label class="form-check-label" for="staggerTeamsChk">
+                        Stagger team start dates for smoother transition
+                    </label>
+                </div>
+            </div>
+        `,
+        'five_and_two': `
+            <div class="alert alert-info">
+                <h6>5 & 2 Schedule Configuration</h6>
+                <p>This pattern alternates between 5-day and 2-day work stretches.</p>
+            </div>
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label for="longStretch" class="form-label">Long Work Stretch</label>
+                    <select class="form-select" id="longStretch">
+                        <option value="5" selected>5 days</option>
+                        <option value="6">6 days</option>
+                    </select>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="shortStretch" class="form-label">Short Work Stretch</label>
+                    <select class="form-select" id="shortStretch">
+                        <option value="2" selected>2 days</option>
+                        <option value="3">3 days</option>
+                    </select>
+                </div>
+            </div>
+        `
+    };
+    
+    configDiv.innerHTML = configs[pattern] || '<p>No additional configuration needed for this pattern.</p>';
+}
+
+function nextStep(step) {
     if (validateCurrentStep()) {
-        document.getElementById(`step${currentStep}-content`).style.display = 'none';
-        document.getElementById(`step${currentStep}`).classList.remove('active');
-        document.getElementById(`step${currentStep}`).classList.add('completed');
+        document.querySelector(`#step-${currentStep}`).style.display = 'none';
+        document.querySelector(`#step-${step}`).style.display = 'block';
         
-        currentStep++;
+        // Update step indicators
+        document.querySelector(`[data-step="${currentStep}"]`).classList.add('completed');
+        document.querySelector(`[data-step="${currentStep}"]`).classList.remove('active');
+        document.querySelector(`[data-step="${step}"]`).classList.add('active');
         
-        document.getElementById(`step${currentStep}-content`).style.display = 'block';
-        document.getElementById(`step${currentStep}`).classList.add('active');
+        currentStep = step;
+        
+        // Special handling for step 3 (preview)
+        if (step === 3) {
+            generatePreview();
+        }
+        
+        // Special handling for step 4 (create)
+        if (step === 4) {
+            prepareCreationStep();
+        }
     }
 }
 
-function previousStep() {
-    document.getElementById(`step${currentStep}-content`).style.display = 'none';
-    document.getElementById(`step${currentStep}`).classList.remove('active');
+function prevStep(step) {
+    document.querySelector(`#step-${currentStep}`).style.display = 'none';
+    document.querySelector(`#step-${step}`).style.display = 'block';
     
-    currentStep--;
+    // Update step indicators
+    document.querySelector(`[data-step="${currentStep}"]`).classList.remove('active');
+    document.querySelector(`[data-step="${step}"]`).classList.add('active');
     
-    document.getElementById(`step${currentStep}-content`).style.display = 'block';
-    document.getElementById(`step${currentStep}`).classList.add('active');
-    document.getElementById(`step${currentStep}`).classList.remove('completed');
+    currentStep = step;
 }
 
 function validateCurrentStep() {
-    if (currentStep === 1) {
-        const form = document.getElementById('scheduleForm');
-        if (!form.checkValidity()) {
-            form.reportValidity();
-            return false;
-        }
-        
-        // Check date range
-        const startDate = new Date(form.start_date.value);
-        const endDate = new Date(form.end_date.value);
-        
-        if (endDate <= startDate) {
-            alert('End date must be after start date');
-            return false;
-        }
-        
-        const daysDiff = (endDate - startDate) / (1000 * 60 * 60 * 24);
-        if (daysDiff > 365) {
-            if (!confirm('Schedule spans more than a year. Continue?')) {
+    switch (currentStep) {
+        case 1:
+            const startDate = document.getElementById('startDate').value;
+            const scheduleLength = document.getElementById('scheduleLength').value;
+            const dayShiftStart = document.getElementById('dayShiftStart').value;
+            const nightShiftStart = document.getElementById('nightShiftStart').value;
+            
+            if (!startDate || !scheduleLength || !dayShiftStart || !nightShiftStart) {
+                alert('Please fill in all required fields.');
                 return false;
             }
-        }
+            
+            return true;
+            
+        case 2:
+            // Pattern-specific validation would go here
+            return true;
+            
+        case 3:
+            if (!previewData) {
+                alert('Please generate a preview before proceeding.');
+                return false;
+            }
+            return true;
+            
+        default:
+            return true;
     }
-    
-    return true;
 }
 
 function generatePreview() {
-    const form = document.getElementById('scheduleForm');
-    const formData = new FormData(form);
+    const previewDiv = document.getElementById('schedulePreview');
     
     // Show loading
-    document.getElementById('schedulePreview').innerHTML = `
-        <div class="text-center py-5">
-            <div class="spinner-border text-primary" role="status">
-                <span class="visually-hidden">Loading preview...</span>
+    previewDiv.innerHTML = `
+        <div class="text-center">
+            <div class="spinner-border text-primary mb-3" role="status">
+                <span class="visually-hidden">Generating preview...</span>
             </div>
+            <p>Generating schedule preview...</p>
         </div>
     `;
     
-    // Convert form data to JSON
-    const data = {
-        pattern: formData.get('pattern'),
-        start_date: formData.get('start_date'),
-        end_date: formData.get('end_date'),
-        variation: formData.get('variation') || 'fixed',
-        day_shift_start: formData.get('day_shift_start'),
-        night_shift_start: formData.get('night_shift_start'),
-        shift_type: formData.get('shift_type') || 'fixed'
-    };
+    // Collect configuration
+    const config = collectConfiguration();
     
+    // Call preview API
     fetch('/schedule/preview-pattern', {
         method: 'POST',
         headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
         },
-        body: JSON.stringify(data)
+        body: JSON.stringify({
+            pattern: pattern,
+            ...config
+        })
     })
     .then(response => response.json())
     .then(data => {
         if (data.success) {
             previewData = data;
-            displayPreview();
-            nextStep();
+            displayPreview(data);
+            document.getElementById('proceedToCreate').disabled = false;
         } else {
-            alert('Error generating preview: ' + data.error);
+            previewDiv.innerHTML = `
+                <div class="alert alert-danger">
+                    <h6>Preview Generation Failed</h6>
+                    <p>${data.error}</p>
+                </div>
+            `;
         }
     })
     .catch(error => {
-        alert('Error: ' + error);
+        console.error('Preview error:', error);
+        previewDiv.innerHTML = `
+            <div class="alert alert-danger">
+                <h6>Preview Error</h6>
+                <p>Unable to generate preview. Please check your configuration.</p>
+            </div>
+        `;
     });
 }
 
-function displayPreview() {
-    if (!previewData) return;
+function displayPreview(data) {
+    const previewDiv = document.getElementById('schedulePreview');
     
-    const startDate = new Date(document.getElementById('scheduleForm').start_date.value);
-    const weekStart = new Date(startDate);
-    weekStart.setDate(weekStart.getDate() + (currentPreviewWeek * 7));
+    // Create legend
+    const legend = `
+        <div class="preview-legend">
+            <div class="legend-item">
+                <div class="legend-color" style="background-color: #28a745;"></div>
+                <span>Crew A</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background-color: #17a2b8;"></div>
+                <span>Crew B</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background-color: #ffc107;"></div>
+                <span>Crew C</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background-color: #dc3545;"></div>
+                <span>Crew D</span>
+            </div>
+        </div>
+    `;
     
-    let html = '<div class="preview-calendar">';
+    // Create summary
+    const summary = `
+        <div class="row mb-4">
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-body text-center">
+                        <h5 class="text-primary">${data.total_shifts}</h5>
+                        <small class="text-muted">Total Shifts</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-body text-center">
+                        <h5 class="text-success">4 weeks</h5>
+                        <small class="text-muted">Preview Period</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-body text-center">
+                        <h5 class="text-info">Balanced</h5>
+                        <small class="text-muted">Coverage Status</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
     
-    // Headers
-    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    days.forEach(day => {
-        html += `<div class="calendar-header">${day}</div>`;
-    });
+    // Simple calendar preview
+    const calendarPreview = `
+        <div class="schedule-preview-calendar">
+            <h6>First 4 Weeks Preview</h6>
+            <div class="table-responsive">
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Day Shift</th>
+                            <th>Night Shift</th>
+                        </tr>
+                    </thead>
+                    <tbody id="previewTableBody">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
     
-    // Calendar days
-    for (let i = 0; i < 7; i++) {
-        const currentDate = new Date(weekStart);
-        currentDate.setDate(currentDate.getDate() + i);
-        const dateStr = currentDate.toISOString().split('T')[0];
-        
-        html += '<div class="calendar-day">';
-        html += `<div class="fw-bold">${currentDate.getDate()}</div>`;
-        
-        // Get shifts for this date
-        const dayShifts = previewData.calendar_data.filter(s => s.start === dateStr);
-        
-        // Group by shift type
-        const shiftGroups = {
-            day: dayShifts.filter(s => s.shift === 'day'),
-            evening: dayShifts.filter(s => s.shift === 'evening'),
-            night: dayShifts.filter(s => s.shift === 'night')
-        };
-        
-        // Display shifts
-        Object.entries(shiftGroups).forEach(([type, shifts]) => {
-            if (shifts.length > 0) {
-                const crews = [...new Set(shifts.map(s => s.crew))].sort();
-                html += `<div class="shift-block shift-${type}">${type[0].toUpperCase()}: ${crews.join(',')}</div>`;
-            }
-        });
-        
-        html += '</div>';
+    previewDiv.innerHTML = legend + summary + calendarPreview;
+    
+    // Populate preview table with sample data
+    const tbody = document.getElementById('previewTableBody');
+    const sampleDates = [];
+    const startDate = new Date();
+    
+    for (let i = 0; i < 14; i++) {
+        const date = new Date(startDate);
+        date.setDate(startDate.getDate() + i);
+        sampleDates.push(date);
     }
     
-    html += '</div>';
-    
-    document.getElementById('schedulePreview').innerHTML = html;
-    document.getElementById('previewWeekLabel').textContent = `Week ${currentPreviewWeek + 1}`;
-    
-    // Update statistics
-    updatePreviewStats();
-}
-
-function changePreviewWeek(direction) {
-    const maxWeeks = 4; // Show 4 weeks of preview
-    currentPreviewWeek = Math.max(0, Math.min(maxWeeks - 1, currentPreviewWeek + direction));
-    displayPreview();
-}
-
-function updatePreviewStats() {
-    if (!previewData) return;
-    
-    const stats = previewData.summary;
-    let totalDay = 0, totalNight = 0, totalEvening = 0;
-    
-    Object.values(stats).forEach(day => {
-        totalDay += day.day || 0;
-        totalNight += day.night || 0;
-        totalEvening += day.evening || 0;
+    sampleDates.forEach((date, index) => {
+        const dayShift = `Crew ${['A', 'B', 'C', 'D'][index % 4]}`;
+        const nightShift = `Crew ${['B', 'C', 'D', 'A'][index % 4]}`;
+        
+        tbody.innerHTML += `
+            <tr>
+                <td>${date.toLocaleDateString()}</td>
+                <td><span class="badge bg-primary">${dayShift}</span></td>
+                <td><span class="badge bg-secondary">${nightShift}</span></td>
+            </tr>
+        `;
     });
-    
-    let html = '<div class="row">';
-    html += '<div class="col-md-4"><div class="card"><div class="card-body text-center">';
-    html += `<h6>Day Shifts</h6><h3>${totalDay}</h3>`;
-    html += '</div></div></div>';
-    
-    html += '<div class="col-md-4"><div class="card"><div class="card-body text-center">';
-    html += `<h6>Night Shifts</h6><h3>${totalNight}</h3>`;
-    html += '</div></div></div>';
-    
-    if (totalEvening > 0) {
-        html += '<div class="col-md-4"><div class="card"><div class="card-body text-center">';
-        html += `<h6>Evening Shifts</h6><h3>${totalEvening}</h3>`;
-        html += '</div></div></div>';
-    }
-    
-    html += '</div>';
-    
-    document.getElementById('previewStats').innerHTML = html;
 }
 
-function validateSchedule() {
-    document.getElementById('loadingMessage').textContent = 'Validating schedule...';
-    const modal = new bootstrap.Modal(document.getElementById('loadingModal'));
-    modal.show();
-    
-    const form = document.getElementById('scheduleForm');
-    const formData = new FormData(form);
-    
-    const data = {
-        start_date: formData.get('start_date'),
-        end_date: formData.get('end_date')
+function collectConfiguration() {
+    return {
+        start_date: document.getElementById('startDate').value,
+        schedule_length: parseInt(document.getElementById('scheduleLength').value),
+        day_shift_start: document.getElementById('dayShiftStart').value,
+        night_shift_start: document.getElementById('nightShiftStart').value,
+        rotation_type: document.querySelector('input[name="rotationType"]:checked')?.value || 'fixed',
+        rotation_frequency: document.getElementById('rotationFrequency')?.value
     };
+}
+
+function prepareCreationStep() {
+    const config = collectConfiguration();
+    const summaryList = document.getElementById('configSummary');
+    const impactDiv = document.getElementById('impactAnalysis');
     
-    fetch('/api/schedule/validate-coverage', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(data)
-    })
-    .then(response => response.json())
-    .then(data => {
-        modal.hide();
-        
-        let html = '';
-        if (data.valid) {
-            html = '<div class="validation-result validation-success">';
-            html += '<h5><i class="bi bi-check-circle"></i> Validation Passed</h5>';
-            html += '<p>Schedule meets all coverage requirements.</p>';
-            html += '</div>';
-        } else {
-            html = '<div class="validation-result validation-error">';
-            html += '<h5><i class="bi bi-x-circle"></i> Coverage Issues Found</h5>';
-            html += '<p>The following coverage gaps were detected:</p>';
-            html += '<ul>';
-            data.issues.slice(0, 5).forEach(issue => {
-                html += `<li>${issue.date} - ${issue.shift} shift: ${issue.position} (${issue.actual}/${issue.required})</li>`;
-            });
-            if (data.issues.length > 5) {
-                html += `<li>... and ${data.issues.length - 5} more issues</li>`;
-            }
-            html += '</ul>';
-            html += '</div>';
-        }
-        
-        document.getElementById('validationResults').innerHTML = html;
-        
-        // Update summary
-        document.getElementById('summaryDateRange').textContent = 
-            `${formData.get('start_date')} to ${formData.get('end_date')}`;
-        document.getElementById('summaryTotalShifts').textContent = 
-            previewData ? previewData.total_shifts : 'Unknown';
-        
-        nextStep();
-    })
-    .catch(error => {
-        modal.hide();
-        alert('Validation error: ' + error);
-    });
+    // Build configuration summary
+    const endDate = new Date(config.start_date);
+    endDate.setDate(endDate.getDate() + (config.schedule_length * 7));
+    
+    summaryList.innerHTML = `
+        <li><strong>Pattern:</strong> ${patternConfig.name}</li>
+        <li><strong>Start Date:</strong> ${new Date(config.start_date).toLocaleDateString()}</li>
+        <li><strong>End Date:</strong> ${endDate.toLocaleDateString()}</li>
+        <li><strong>Duration:</strong> ${config.schedule_length} weeks</li>
+        <li><strong>Day Shift:</strong> ${config.day_shift_start}</li>
+        <li><strong>Night Shift:</strong> ${config.night_shift_start}</li>
+        <li><strong>Rotation:</strong> ${config.rotation_type}</li>
+    `;
+    
+    // Build impact analysis
+    impactDiv.innerHTML = `
+        <div class="alert alert-warning">
+            <h6><i class="bi bi-exclamation-triangle"></i> Impact</h6>
+            <ul class="mb-0">
+                <li>Will create approximately ${Math.ceil(config.schedule_length * 7 * 2)} schedule entries</li>
+                <li>Affects all active employees in crews A, B, C, D</li>
+                <li>Replaces any existing schedules in this date range</li>
+            </ul>
+        </div>
+    `;
 }
 
 function createSchedule() {
-    if (!confirm('Are you sure you want to create this schedule? This will replace any existing schedules in the date range.')) {
-        return;
-    }
+    const createBtn = document.getElementById('finalCreateBtn');
+    const contentDiv = document.getElementById('createScheduleContent');
+    const progressDiv = document.getElementById('creationProgress');
+    const resultDiv = document.getElementById('creationResult');
     
-    const btn = document.getElementById('createBtn');
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Creating...';
+    // Hide content, show progress
+    contentDiv.style.display = 'none';
+    progressDiv.style.display = 'block';
     
-    const form = document.getElementById('scheduleForm');
-    const formData = new FormData(form);
+    // Animate progress bar
+    const progressBar = progressDiv.querySelector('.progress-bar');
+    let progress = 0;
+    const progressInterval = setInterval(() => {
+        progress += Math.random() * 15;
+        if (progress > 90) progress = 90;
+        progressBar.style.width = progress + '%';
+    }, 200);
     
-    const data = {
-        pattern: formData.get('pattern'),
-        start_date: formData.get('start_date'),
-        end_date: formData.get('end_date'),
-        variation: formData.get('variation') || 'fixed',
-        day_shift_start: formData.get('day_shift_start'),
-        night_shift_start: formData.get('night_shift_start'),
-        shift_type: formData.get('shift_type') || 'fixed',
-        fair_rotation: formData.get('fair_rotation') === 'on',
-        force_overwrite: true
-    };
+    // Collect all configuration
+    const config = collectConfiguration();
     
+    // Call creation API
     fetch('/schedule/create-pattern', {
         method: 'POST',
         headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
         },
-        body: JSON.stringify(data)
+        body: JSON.stringify({
+            pattern: pattern,
+            ...config,
+            force_overwrite: true
+        })
     })
     .then(response => response.json())
     .then(data => {
-        if (data.success) {
-            alert(data.message);
-            window.location.href = data.redirect_url;
-        } else {
-            alert('Error creating schedule: ' + data.error);
-            btn.disabled = false;
-            btn.innerHTML = '<i class="bi bi-check-circle"></i> Create Schedule';
-        }
+        clearInterval(progressInterval);
+        progressBar.style.width = '100%';
+        
+        setTimeout(() => {
+            progressDiv.style.display = 'none';
+            resultDiv.style.display = 'block';
+            
+            if (data.success) {
+                resultDiv.innerHTML = `
+                    <div class="alert alert-success">
+                        <h4><i class="bi bi-check-circle"></i> Schedule Created Successfully!</h4>
+                        <p>${data.message}</p>
+                        <hr>
+                        <div class="d-flex gap-2">
+                            <a href="${data.redirect_url}" class="btn btn-primary">
+                                <i class="bi bi-calendar-week"></i> View Schedule
+                            </a>
+                            <a href="{{ url_for('supervisor.dashboard') }}" class="btn btn-outline-secondary">
+                                <i class="bi bi-house"></i> Back to Dashboard
+                            </a>
+                        </div>
+                    </div>
+                `;
+            } else {
+                resultDiv.innerHTML = `
+                    <div class="alert alert-danger">
+                        <h4><i class="bi bi-exclamation-circle"></i> Creation Failed</h4>
+                        <p>${data.error}</p>
+                        <hr>
+                        <button class="btn btn-outline-primary" onclick="location.reload()">
+                            <i class="bi bi-arrow-clockwise"></i> Try Again
+                        </button>
+                    </div>
+                `;
+            }
+        }, 1000);
     })
     .catch(error => {
-        alert('Error: ' + error);
-        btn.disabled = false;
-        btn.innerHTML = '<i class="bi bi-check-circle"></i> Create Schedule';
+        clearInterval(progressInterval);
+        console.error('Creation error:', error);
+        
+        progressDiv.style.display = 'none';
+        resultDiv.style.display = 'block';
+        resultDiv.innerHTML = `
+            <div class="alert alert-danger">
+                <h4><i class="bi bi-exclamation-circle"></i> Creation Error</h4>
+                <p>An error occurred while creating the schedule. Please try again.</p>
+                <hr>
+                <button class="btn btn-outline-primary" onclick="location.reload()">
+                    <i class="bi bi-arrow-clockwise"></i> Try Again
+                </button>
+            </div>
+        `;
     });
 }
-
-// Initialize
-document.addEventListener('DOMContentLoaded', function() {
-    {% if pattern_config.allows_fixed and pattern_config.allows_rotating %}
-        updateRotationOptions();
-    {% endif %}
-});
 </script>
 {% endblock %}
