@@ -1,98 +1,163 @@
 {% extends "base.html" %}
-{% block title %}Schedule View{% endblock %}
+
+{% block title %}Schedule View - Workforce Scheduler{% endblock %}
+
+{% block extra_css %}
+<style>
+    .schedule-grid {
+        font-size: 0.85rem;
+    }
+    
+    .crew-a { background-color: #e3f2fd; border-left: 4px solid #2196f3; }
+    .crew-b { background-color: #e8f5e8; border-left: 4px solid #4caf50; }
+    .crew-c { background-color: #fff3e0; border-left: 4px solid #ff9800; }
+    .crew-d { background-color: #fce4ec; border-left: 4px solid #e91e63; }
+    
+    .shift-day { background-color: #fff8e1; }
+    .shift-night { background-color: #e8eaf6; }
+    .shift-evening { background-color: #f3e5f5; }
+    
+    .schedule-card {
+        margin-bottom: 2px;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 0.8rem;
+    }
+    
+    .date-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        writing-mode: vertical-rl;
+        text-orientation: mixed;
+    }
+    
+    .crew-header {
+        background: #f8f9fa;
+        font-weight: bold;
+        text-align: center;
+        min-height: 60px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .schedule-cell {
+        min-height: 120px;
+        vertical-align: top;
+        border: 1px solid #dee2e6;
+    }
+    
+    .stats-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+    }
+    
+    .filter-section {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+    }
+    
+    .employee-name {
+        font-weight: 500;
+        color: #495057;
+    }
+    
+    .position-name {
+        color: #6c757d;
+        font-size: 0.75rem;
+    }
+    
+    .shift-time {
+        color: #28a745;
+        font-size: 0.7rem;
+    }
+    
+    .hours-badge {
+        font-size: 0.7rem;
+    }
+</style>
+{% endblock %}
 
 {% block content %}
-<div class="container-fluid">
-    <div class="row">
+<div class="container-fluid mt-4">
+    <!-- Header -->
+    <div class="row mb-4">
         <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center mb-4">
+            <div class="d-flex justify-content-between align-items-center">
+                <h2><i class="bi bi-calendar3"></i> Schedule View</h2>
                 <div>
-                    <h1 class="h2">Schedule View</h1>
-                    <p class="text-muted">{{ start_date.strftime('%B %d, %Y') }} - {{ end_date.strftime('%B %d, %Y') }}</p>
-                </div>
-                <div class="btn-group">
-                    <a href="{{ url_for('schedule.select') }}" class="btn btn-primary">
-                        <i class="bi bi-plus-circle"></i> Create Schedule
+                    <a href="{{ url_for('pitman_preview') }}" class="btn btn-success me-2">
+                        <i class="bi bi-plus-circle"></i> Generate New Schedule
                     </a>
                     <a href="{{ url_for('supervisor.dashboard') }}" class="btn btn-outline-secondary">
-                        <i class="bi bi-house"></i> Dashboard
+                        <i class="bi bi-arrow-left"></i> Back to Dashboard
                     </a>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- View Controls -->
+    <!-- Date Range Filter -->
     <div class="row mb-4">
         <div class="col-12">
-            <div class="card">
-                <div class="card-body">
-                    <form method="GET" class="row g-3">
-                        <div class="col-md-3">
-                            <label for="start_date" class="form-label">Start Date</label>
-                            <input type="date" class="form-control" id="start_date" name="start_date" 
-                                   value="{{ start_date.strftime('%Y-%m-%d') }}">
-                        </div>
-                        <div class="col-md-3">
-                            <label for="end_date" class="form-label">End Date</label>
-                            <input type="date" class="form-control" id="end_date" name="end_date" 
-                                   value="{{ end_date.strftime('%Y-%m-%d') }}">
-                        </div>
-                        <div class="col-md-2">
-                            <label for="view" class="form-label">View Type</label>
-                            <select class="form-select" id="view" name="view">
-                                <option value="week" {{ 'selected' if view_type == 'week' else '' }}>Week</option>
-                                <option value="month" {{ 'selected' if view_type == 'month' else '' }}>Month</option>
-                                <option value="pattern" {{ 'selected' if view_type == 'pattern' else '' }}>Pattern</option>
-                            </select>
-                        </div>
-                        <div class="col-md-2">
-                            <label class="form-label">&nbsp;</label>
-                            <button type="submit" class="btn btn-outline-primary d-block w-100">
-                                <i class="bi bi-search"></i> Update View
-                            </button>
-                        </div>
-                        <div class="col-md-2">
-                            <label class="form-label">&nbsp;</label>
-                            <button type="button" class="btn btn-outline-success d-block w-100" onclick="exportSchedule()">
-                                <i class="bi bi-download"></i> Export
-                            </button>
-                        </div>
-                    </form>
-                </div>
+            <div class="filter-section">
+                <form method="GET" class="row g-3 align-items-end">
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold">Start Date:</label>
+                        <input type="date" name="start_date" class="form-control" 
+                               value="{{ start_date.strftime('%Y-%m-%d') }}">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold">End Date:</label>
+                        <input type="date" name="end_date" class="form-control" 
+                               value="{{ end_date.strftime('%Y-%m-%d') }}">
+                    </div>
+                    <div class="col-md-4">
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class="bi bi-search"></i> Update View
+                        </button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>
 
+    {% if schedule_grid %}
     <!-- Schedule Statistics -->
     <div class="row mb-4">
-        <div class="col-12">
-            <div class="row">
-                {% for crew, stats in crew_stats.items() %}
-                <div class="col-md-3 mb-3">
-                    <div class="card crew-stats-card">
-                        <div class="card-body">
-                            <h6 class="text-muted">Crew {{ crew }}</h6>
-                            <div class="d-flex justify-content-between">
-                                <div>
-                                    <div class="fw-bold">{{ stats.total_shifts }}</div>
-                                    <small class="text-muted">Total Shifts</small>
-                                </div>
-                                <div class="text-end">
-                                    <div class="fw-bold">{{ stats.hours }}</div>
-                                    <small class="text-muted">Hours</small>
-                                </div>
-                            </div>
-                            <div class="mt-2">
-                                <div class="d-flex justify-content-between">
-                                    <span class="badge bg-warning">{{ stats.day_shifts }} Day</span>
-                                    <span class="badge bg-dark">{{ stats.night_shifts }} Night</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+        <div class="col-md-3">
+            <div class="card stats-card">
+                <div class="card-body text-center">
+                    <h5>Total Days</h5>
+                    <h2>{{ date_range|length }}</h2>
                 </div>
-                {% endfor %}
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card stats-card">
+                <div class="card-body text-center">
+                    <h5>Total Shifts</h5>
+                    <h2>{{ schedule_grid.values()|map('values')|map('map', 'length')|map('sum')|sum }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card stats-card">
+                <div class="card-body text-center">
+                    <h5>Date Range</h5>
+                    <h6>{{ start_date.strftime('%m/%d') }} - {{ end_date.strftime('%m/%d') }}</h6>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card stats-card">
+                <div class="card-body text-center">
+                    <h5>Pattern Type</h5>
+                    <h6>Pitman 2-2-3</h6>
+                </div>
             </div>
         </div>
     </div>
@@ -101,83 +166,54 @@
     <div class="row">
         <div class="col-12">
             <div class="card">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0">Schedule Grid</h5>
-                    <div class="schedule-legend">
-                        <span class="legend-item">
-                            <span class="legend-color bg-warning"></span> Day Shift
-                        </span>
-                        <span class="legend-item">
-                            <span class="legend-color bg-dark"></span> Night Shift
-                        </span>
-                        <span class="legend-item">
-                            <span class="legend-color bg-secondary"></span> Evening Shift
-                        </span>
-                    </div>
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-calendar-week"></i> Schedule Grid
+                    </h5>
                 </div>
-                <div class="card-body">
+                <div class="card-body p-0">
                     <div class="table-responsive">
-                        <table class="table table-bordered schedule-table">
-                            <thead class="table-light">
+                        <table class="table table-bordered mb-0 schedule-grid">
+                            <thead>
                                 <tr>
-                                    <th>Date</th>
-                                    <th>Day</th>
-                                    <th>Day Shift</th>
-                                    <th>Evening Shift</th>
-                                    <th>Night Shift</th>
-                                    <th>Total Coverage</th>
+                                    <th class="crew-header" style="width: 80px;">Crew</th>
+                                    {% for date_str in date_range %}
+                                    {% set date_obj = date_str|strptime('%Y-%m-%d') %}
+                                    <th class="date-header text-center" style="width: 150px;">
+                                        <div class="p-2">
+                                            <div>{{ date_obj.strftime('%a') }}</div>
+                                            <div>{{ date_obj.strftime('%m/%d') }}</div>
+                                        </div>
+                                    </th>
+                                    {% endfor %}
                                 </tr>
                             </thead>
                             <tbody>
-                                {% for date in dates %}
+                                {% for crew in ['A', 'B', 'C', 'D'] %}
                                 <tr>
-                                    <td class="date-cell">
-                                        <div class="fw-bold">{{ date.strftime('%m/%d') }}</div>
-                                        <small class="text-muted">{{ date.strftime('%a') }}</small>
+                                    <td class="crew-header crew-{{ crew|lower }}">
+                                        <strong>Crew {{ crew }}</strong>
                                     </td>
-                                    <td class="day-name">{{ date.strftime('%A') }}</td>
-                                    <td class="shift-cell">
-                                        {% for schedule in schedule_grid[date]['day'] %}
-                                        <div class="schedule-item day-shift">
-                                            <span class="crew-badge crew-{{ schedule.employee.crew }}">{{ schedule.employee.crew }}</span>
-                                            <span class="employee-name">{{ schedule.employee.name.split(' ')[0] }}</span>
-                                            <span class="position-badge">{{ schedule.position.name if schedule.position else 'N/A' }}</span>
-                                        </div>
-                                        {% endfor %}
-                                        {% if not schedule_grid[date]['day'] %}
-                                        <span class="text-muted">No coverage</span>
+                                    {% for date_str in date_range %}
+                                    <td class="schedule-cell">
+                                        {% if date_str in schedule_grid and crew in schedule_grid[date_str] %}
+                                            {% for schedule in schedule_grid[date_str][crew] %}
+                                            <div class="schedule-card shift-{{ schedule.shift_type }}">
+                                                <div class="employee-name">{{ schedule.employee.name }}</div>
+                                                <div class="position-name">{{ schedule.employee.position.name if schedule.employee.position else 'No Position' }}</div>
+                                                <div class="shift-time">
+                                                    {{ schedule.start_time.strftime('%H:%M') }} - {{ schedule.end_time.strftime('%H:%M') if schedule.end_time else 'N/A' }}
+                                                </div>
+                                                <span class="badge bg-secondary hours-badge">{{ schedule.hours }}h</span>
+                                            </div>
+                                            {% endfor %}
+                                        {% else %}
+                                            <div class="text-muted text-center">
+                                                <small>Off</small>
+                                            </div>
                                         {% endif %}
                                     </td>
-                                    <td class="shift-cell">
-                                        {% for schedule in schedule_grid[date]['evening'] %}
-                                        <div class="schedule-item evening-shift">
-                                            <span class="crew-badge crew-{{ schedule.employee.crew }}">{{ schedule.employee.crew }}</span>
-                                            <span class="employee-name">{{ schedule.employee.name.split(' ')[0] }}</span>
-                                            <span class="position-badge">{{ schedule.position.name if schedule.position else 'N/A' }}</span>
-                                        </div>
-                                        {% endfor %}
-                                        {% if not schedule_grid[date]['evening'] %}
-                                        <span class="text-muted">-</span>
-                                        {% endif %}
-                                    </td>
-                                    <td class="shift-cell">
-                                        {% for schedule in schedule_grid[date]['night'] %}
-                                        <div class="schedule-item night-shift">
-                                            <span class="crew-badge crew-{{ schedule.employee.crew }}">{{ schedule.employee.crew }}</span>
-                                            <span class="employee-name">{{ schedule.employee.name.split(' ')[0] }}</span>
-                                            <span class="position-badge">{{ schedule.position.name if schedule.position else 'N/A' }}</span>
-                                        </div>
-                                        {% endfor %}
-                                        {% if not schedule_grid[date]['night'] %}
-                                        <span class="text-muted">No coverage</span>
-                                        {% endif %}
-                                    </td>
-                                    <td class="coverage-cell">
-                                        {% set total_coverage = schedule_grid[date]['day']|length + schedule_grid[date]['evening']|length + schedule_grid[date]['night']|length %}
-                                        <span class="badge {{ 'bg-success' if total_coverage >= 6 else 'bg-warning' if total_coverage >= 3 else 'bg-danger' }}">
-                                            {{ total_coverage }} employees
-                                        </span>
-                                    </td>
+                                    {% endfor %}
                                 </tr>
                                 {% endfor %}
                             </tbody>
@@ -188,365 +224,25 @@
         </div>
     </div>
 
-    <!-- Quick Actions -->
+    <!-- Legend -->
     <div class="row mt-4">
         <div class="col-12">
             <div class="card">
                 <div class="card-header">
-                    <h6>Quick Actions</h6>
+                    <h6 class="mb-0"><i class="bi bi-info-circle"></i> Legend</h6>
                 </div>
                 <div class="card-body">
-                    <div class="btn-group me-2">
-                        <button type="button" class="btn btn-outline-primary btn-sm" onclick="printSchedule()">
-                            <i class="bi bi-printer"></i> Print Schedule
-                        </button>
-                        <button type="button" class="btn btn-outline-success btn-sm" onclick="exportToExcel()">
-                            <i class="bi bi-file-excel"></i> Export to Excel
-                        </button>
-                        <button type="button" class="btn btn-outline-info btn-sm" onclick="emailSchedule()">
-                            <i class="bi bi-envelope"></i> Email Schedule
-                        </button>
-                    </div>
-                    
-                    <div class="btn-group">
-                        <button type="button" class="btn btn-outline-warning btn-sm" onclick="identifyGaps()">
-                            <i class="bi bi-exclamation-triangle"></i> Identify Gaps
-                        </button>
-                        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="copySchedule()">
-                            <i class="bi bi-copy"></i> Copy Schedule
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Coverage Gap Modal -->
-<div class="modal fade" id="coverageGapModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Coverage Gaps Analysis</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <div id="coverageGapContent">
-                    <!-- Gap analysis will be loaded here -->
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<style>
-.crew-stats-card {
-    border-left: 4px solid #007bff;
-    transition: transform 0.2s;
-}
-
-.crew-stats-card:hover {
-    transform: translateY(-2px);
-}
-
-.schedule-legend {
-    display: flex;
-    gap: 1rem;
-}
-
-.legend-item {
-    display: flex;
-    align-items: center;
-    gap: 0.25rem;
-    font-size: 0.875rem;
-}
-
-.legend-color {
-    width: 12px;
-    height: 12px;
-    border-radius: 2px;
-}
-
-.schedule-table {
-    font-size: 0.875rem;
-}
-
-.date-cell {
-    min-width: 80px;
-    text-align: center;
-}
-
-.day-name {
-    min-width: 100px;
-    font-weight: 500;
-}
-
-.shift-cell {
-    min-width: 200px;
-    vertical-align: top;
-    padding: 0.75rem 0.5rem;
-}
-
-.schedule-item {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin-bottom: 0.25rem;
-    padding: 0.25rem 0.5rem;
-    border-radius: 4px;
-    background: #f8f9fa;
-}
-
-.day-shift {
-    border-left: 3px solid #ffc107;
-}
-
-.evening-shift {
-    border-left: 3px solid #6c757d;
-}
-
-.night-shift {
-    border-left: 3px solid #343a40;
-}
-
-.crew-badge {
-    width: 24px;
-    height: 24px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    font-weight: 600;
-    font-size: 0.75rem;
-}
-
-.crew-A { background-color: #28a745; }
-.crew-B { background-color: #17a2b8; }
-.crew-C { background-color: #ffc107; color: #333; }
-.crew-D { background-color: #dc3545; }
-
-.employee-name {
-    font-weight: 500;
-    flex: 1;
-}
-
-.position-badge {
-    background: #e9ecef;
-    color: #495057;
-    padding: 0.125rem 0.375rem;
-    border-radius: 12px;
-    font-size: 0.6875rem;
-    font-weight: 500;
-}
-
-.coverage-cell {
-    text-align: center;
-    min-width: 100px;
-}
-
-@media (max-width: 768px) {
-    .schedule-table {
-        font-size: 0.75rem;
-    }
-    
-    .shift-cell {
-        min-width: 150px;
-    }
-    
-    .schedule-item {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 0.25rem;
-    }
-    
-    .schedule-legend {
-        flex-direction: column;
-        gap: 0.5rem;
-    }
-}
-
-@media print {
-    .btn, .card-header, .form-control, .btn-group {
-        display: none !important;
-    }
-    
-    .card {
-        border: none !important;
-        box-shadow: none !important;
-    }
-    
-    .schedule-table {
-        font-size: 0.7rem;
-    }
-    
-    .container-fluid {
-        padding: 0;
-    }
-}
-</style>
-
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    // Initialize tooltips if Bootstrap is available
-    if (typeof bootstrap !== 'undefined') {
-        const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
-        tooltipTriggerList.map(function (tooltipTriggerEl) {
-            return new bootstrap.Tooltip(tooltipTriggerEl);
-        });
-    }
-});
-
-function exportSchedule() {
-    const startDate = document.getElementById('start_date').value;
-    const endDate = document.getElementById('end_date').value;
-    const viewType = document.getElementById('view').value;
-    
-    const params = new URLSearchParams({
-        start_date: startDate,
-        end_date: endDate,
-        view: viewType,
-        format: 'excel'
-    });
-    
-    window.location.href = `/schedule/export?${params.toString()}`;
-}
-
-function printSchedule() {
-    window.print();
-}
-
-function exportToExcel() {
-    const startDate = document.getElementById('start_date').value;
-    const endDate = document.getElementById('end_date').value;
-    
-    const params = new URLSearchParams({
-        start_date: startDate,
-        end_date: endDate,
-        format: 'xlsx'
-    });
-    
-    window.location.href = `/schedule/export?${params.toString()}`;
-}
-
-function emailSchedule() {
-    const subject = `Schedule: ${document.getElementById('start_date').value} to ${document.getElementById('end_date').value}`;
-    const body = `Please find the attached schedule for the selected date range.`;
-    
-    const mailtoLink = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    window.location.href = mailtoLink;
-}
-
-function identifyGaps() {
-    const modal = new bootstrap.Modal(document.getElementById('coverageGapModal'));
-    const content = document.getElementById('coverageGapContent');
-    
-    // Show loading
-    content.innerHTML = `
-        <div class="text-center">
-            <div class="spinner-border" role="status">
-                <span class="visually-hidden">Analyzing coverage gaps...</span>
-            </div>
-            <p class="mt-2">Analyzing coverage gaps...</p>
-        </div>
-    `;
-    
-    modal.show();
-    
-    // Simulate gap analysis
-    setTimeout(() => {
-        content.innerHTML = `
-            <div class="alert alert-info">
-                <h6><i class="bi bi-info-circle"></i> Coverage Analysis Complete</h6>
-                <p>Analysis of schedule from ${document.getElementById('start_date').value} to ${document.getElementById('end_date').value}</p>
-            </div>
-            
-            <div class="row">
-                <div class="col-md-6">
-                    <h6 class="text-warning">Potential Gaps</h6>
-                    <ul class="list-group list-group-flush">
-                        <li class="list-group-item d-flex justify-content-between">
-                            <span>Weekend night coverage</span>
-                            <span class="badge bg-warning">2 dates</span>
-                        </li>
-                        <li class="list-group-item d-flex justify-content-between">
-                            <span>Holiday coverage</span>
-                            <span class="badge bg-warning">1 date</span>
-                        </li>
-                    </ul>
-                </div>
-                <div class="col-md-6">
-                    <h6 class="text-success">Well Covered</h6>
-                    <ul class="list-group list-group-flush">
-                        <li class="list-group-item d-flex justify-content-between">
-                            <span>Weekday coverage</span>
-                            <span class="badge bg-success">100%</span>
-                        </li>
-                        <li class="list-group-item d-flex justify-content-between">
-                            <span>Day shift coverage</span>
-                            <span class="badge bg-success">98%</span>
-                        </li>
-                    </ul>
-                </div>
-            </div>
-            
-            <div class="mt-3">
-                <h6>Recommendations</h6>
-                <ul class="small">
-                    <li>Consider adding overtime coverage for weekend nights</li>
-                    <li>Plan holiday coverage in advance</li>
-                    <li>Review crew A availability for improved night coverage</li>
-                </ul>
-            </div>
-        `;
-    }, 2000);
-}
-
-function copySchedule() {
-    const startDate = document.getElementById('start_date').value;
-    const endDate = document.getElementById('end_date').value;
-    
-    const url = `${window.location.origin}/schedule/copy?start_date=${startDate}&end_date=${endDate}`;
-    
-    if (confirm('Copy this schedule pattern to a new date range?')) {
-        window.location.href = url;
-    }
-}
-
-// Navigation helpers
-function navigateToWeek(direction) {
-    const currentStart = new Date(document.getElementById('start_date').value);
-    const newStart = new Date(currentStart);
-    
-    if (direction === 'prev') {
-        newStart.setDate(currentStart.getDate() - 7);
-    } else {
-        newStart.setDate(currentStart.getDate() + 7);
-    }
-    
-    document.getElementById('start_date').value = newStart.toISOString().split('T')[0];
-    
-    const newEnd = new Date(newStart);
-    newEnd.setDate(newStart.getDate() + 6);
-    document.getElementById('end_date').value = newEnd.toISOString().split('T')[0];
-    
-    document.querySelector('form').submit();
-}
-
-// Keyboard shortcuts
-document.addEventListener('keydown', function(e) {
-    if (e.ctrlKey || e.metaKey) {
-        switch (e.key) {
-            case 'p':
-                e.preventDefault();
-                printSchedule();
-                break;
-            case 'e':
-                e.preventDefault();
-                exportSchedule();
-                break;
-        }
-    }
-});
-</script>
-{% endblock %}
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>Crews:</h6>
+                            <div class="d-flex flex-wrap">
+                                <span class="badge me-2 mb-2 p-2 crew-a">Crew A</span>
+                                <span class="badge me-2 mb-2 p-2 crew-b">Crew B</span>
+                                <span class="badge me-2 mb-2 p-2 crew-c">Crew C</span>
+                                <span class="badge me-2 mb-2 p-2 crew-d">Crew D</span>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>Shifts:</h6>
+                            <div class="d-flex flex-wrap">
+                                <span class="badge me-2 mb-2 p-2 shift-
