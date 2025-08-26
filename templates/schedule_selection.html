@@ -1,423 +1,488 @@
 {% extends "base.html" %}
+{% block title %}Select Schedule Pattern{% endblock %}
 
-{% block title %}Select Schedule Pattern - Workforce Scheduler{% endblock %}
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h1 class="h2">Create New Schedule</h1>
+                    <p class="text-muted">Select a schedule pattern to create your workforce schedule</p>
+                </div>
+                <a href="{{ url_for('supervisor.dashboard') }}" class="btn btn-outline-secondary">
+                    <i class="bi bi-arrow-left"></i> Back to Dashboard
+                </a>
+            </div>
+        </div>
+    </div>
 
-{% block extra_head %}
+    <!-- Pattern Selection Grid -->
+    <div class="row">
+        <div class="col-12">
+            <div class="pattern-grid">
+                
+                <!-- Pitman Pattern -->
+                <div class="pattern-card" data-pattern="pitman">
+                    <div class="pattern-header">
+                        <h4><i class="bi bi-calendar2-week text-primary"></i> Pitman (2-2-3)</h4>
+                        <span class="badge bg-success">Recommended</span>
+                    </div>
+                    <div class="pattern-body">
+                        <p class="pattern-description">2 days on, 2 off, 3 on, 2 off, 2 on, 3 off</p>
+                        <div class="pattern-details">
+                            <div class="detail-item">
+                                <strong>Shift Length:</strong> 12 hours
+                            </div>
+                            <div class="detail-item">
+                                <strong>Cycle:</strong> 14 days
+                            </div>
+                            <div class="detail-item">
+                                <strong>Variations:</strong> Fixed, Rapid Rotation, 2-Week, 4-Week
+                            </div>
+                        </div>
+                        <div class="pros-cons">
+                            <div class="pros">
+                                <h6>Advantages:</h6>
+                                <ul>
+                                    <li>Every other weekend off</li>
+                                    <li>No more than 3 consecutive days</li>
+                                    <li>Balanced coverage</li>
+                                </ul>
+                            </div>
+                            <div class="cons">
+                                <h6>Considerations:</h6>
+                                <ul>
+                                    <li>Can have 7 days in a row across boundaries</li>
+                                    <li>Requires crew coordination</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="pattern-footer">
+                        <button class="btn btn-primary w-100 select-pattern" data-pattern="pitman">
+                            Select Pitman Schedule
+                        </button>
+                    </div>
+                </div>
+
+                <!-- DuPont Pattern -->
+                <div class="pattern-card" data-pattern="dupont">
+                    <div class="pattern-header">
+                        <h4><i class="bi bi-calendar3 text-info"></i> DuPont</h4>
+                        <span class="badge bg-info">Popular</span>
+                    </div>
+                    <div class="pattern-body">
+                        <p class="pattern-description">4 nights, 3 off, 3 days, 1 off, 3 nights, 3 off, 4 days, 7 off</p>
+                        <div class="pattern-details">
+                            <div class="detail-item">
+                                <strong>Shift Length:</strong> 12 hours
+                            </div>
+                            <div class="detail-item">
+                                <strong>Cycle:</strong> 28 days
+                            </div>
+                            <div class="detail-item">
+                                <strong>Variations:</strong> Standard (rotating only)
+                            </div>
+                        </div>
+                        <div class="pros-cons">
+                            <div class="pros">
+                                <h6>Advantages:</h6>
+                                <ul>
+                                    <li>7 consecutive days off</li>
+                                    <li>Built-in recovery time</li>
+                                    <li>Work-life balance</li>
+                                </ul>
+                            </div>
+                            <div class="cons">
+                                <h6>Considerations:</h6>
+                                <ul>
+                                    <li>Complex pattern</li>
+                                    <li>Requires rotation</li>
+                                    <li>Learning curve</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="pattern-footer">
+                        <button class="btn btn-info w-100 select-pattern" data-pattern="dupont">
+                            Select DuPont Schedule
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Southern Swing Pattern -->
+                <div class="pattern-card" data-pattern="southern_swing">
+                    <div class="pattern-header">
+                        <h4><i class="bi bi-arrow-repeat text-warning"></i> Southern Swing</h4>
+                        <span class="badge bg-warning text-dark">8-Hour</span>
+                    </div>
+                    <div class="pattern-body">
+                        <p class="pattern-description">Rotating through days, evenings, and nights</p>
+                        <div class="pattern-details">
+                            <div class="detail-item">
+                                <strong>Shift Length:</strong> 8 hours
+                            </div>
+                            <div class="detail-item">
+                                <strong>Cycle:</strong> 28 days
+                            </div>
+                            <div class="detail-item">
+                                <strong>Variations:</strong> Standard
+                            </div>
+                        </div>
+                        <div class="pros-cons">
+                            <div class="pros">
+                                <h6>Advantages:</h6>
+                                <ul>
+                                    <li>Gradual shift changes</li>
+                                    <li>Experience all shifts</li>
+                                    <li>Traditional pattern</li>
+                                </ul>
+                            </div>
+                            <div class="cons">
+                                <h6>Considerations:</h6>
+                                <ul>
+                                    <li>Only 1 weekend off per month</li>
+                                    <li>Constant rotation</li>
+                                    <li>More shift changes</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="pattern-footer">
+                        <button class="btn btn-warning w-100 select-pattern" data-pattern="southern_swing">
+                            Select Southern Swing
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Fixed Teams Pattern -->
+                <div class="pattern-card" data-pattern="fixed_fixed">
+                    <div class="pattern-header">
+                        <h4><i class="bi bi-people-fill text-success"></i> Fixed Teams</h4>
+                        <span class="badge bg-secondary">Simple</span>
+                    </div>
+                    <div class="pattern-body">
+                        <p class="pattern-description">Mon-Thu teams (4x12) and Fri-Sun teams (3x12)</p>
+                        <div class="pattern-details">
+                            <div class="detail-item">
+                                <strong>Shift Length:</strong> 12 hours
+                            </div>
+                            <div class="detail-item">
+                                <strong>Cycle:</strong> 7 days
+                            </div>
+                            <div class="detail-item">
+                                <strong>Variations:</strong> Standard
+                            </div>
+                        </div>
+                        <div class="pros-cons">
+                            <div class="pros">
+                                <h6>Advantages:</h6>
+                                <ul>
+                                    <li>Completely predictable</li>
+                                    <li>Choose lifestyle</li>
+                                    <li>Easy to understand</li>
+                                </ul>
+                            </div>
+                            <div class="cons">
+                                <h6>Considerations:</h6>
+                                <ul>
+                                    <li>Unequal hours</li>
+                                    <li>Weekend teams work every weekend</li>
+                                    <li>Less flexibility</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="pattern-footer">
+                        <button class="btn btn-success w-100 select-pattern" data-pattern="fixed_fixed">
+                            Select Fixed Teams
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 4-on-4-off Pattern -->
+                <div class="pattern-card" data-pattern="four_on_four_off">
+                    <div class="pattern-header">
+                        <h4><i class="bi bi-calendar4-week text-primary"></i> 4-on-4-off</h4>
+                        <span class="badge bg-primary">Balanced</span>
+                    </div>
+                    <div class="pattern-body">
+                        <p class="pattern-description">Work 4 days, off 4 days</p>
+                        <div class="pattern-details">
+                            <div class="detail-item">
+                                <strong>Shift Length:</strong> 12 hours
+                            </div>
+                            <div class="detail-item">
+                                <strong>Cycle:</strong> 8 days
+                            </div>
+                            <div class="detail-item">
+                                <strong>Variations:</strong> Fixed, Rotating
+                            </div>
+                        </div>
+                        <div class="pros-cons">
+                            <div class="pros">
+                                <h6>Advantages:</h6>
+                                <ul>
+                                    <li>Simple pattern</li>
+                                    <li>Equal work/off days</li>
+                                    <li>Good work-life balance</li>
+                                </ul>
+                            </div>
+                            <div class="cons">
+                                <h6>Considerations:</h6>
+                                <ul>
+                                    <li>Averages 42 hours/week</li>
+                                    <li>May need overtime for coverage</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="pattern-footer">
+                        <button class="btn btn-primary w-100 select-pattern" data-pattern="four_on_four_off">
+                            Select 4-on-4-off
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 5 & 2 Pattern -->
+                <div class="pattern-card" data-pattern="five_and_two">
+                    <div class="pattern-header">
+                        <h4><i class="bi bi-calendar-range text-danger"></i> 5 & 2 Schedule</h4>
+                        <span class="badge bg-outline-secondary">Advanced</span>
+                    </div>
+                    <div class="pattern-body">
+                        <p class="pattern-description">Work stretches of 5 and 2 days</p>
+                        <div class="pattern-details">
+                            <div class="detail-item">
+                                <strong>Shift Length:</strong> 12 hours
+                            </div>
+                            <div class="detail-item">
+                                <strong>Cycle:</strong> 14 days
+                            </div>
+                            <div class="detail-item">
+                                <strong>Variations:</strong> Fixed only
+                            </div>
+                        </div>
+                        <div class="pros-cons">
+                            <div class="pros">
+                                <h6>Advantages:</h6>
+                                <ul>
+                                    <li>Long breaks</li>
+                                    <li>Balanced coverage</li>
+                                    <li>Predictable pattern</li>
+                                </ul>
+                            </div>
+                            <div class="cons">
+                                <h6>Considerations:</h6>
+                                <ul>
+                                    <li>Complex pattern</li>
+                                    <li>5 consecutive work days</li>
+                                    <li>Requires planning</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="pattern-footer">
+                        <button class="btn btn-outline-danger w-100 select-pattern" data-pattern="five_and_two">
+                            Select 5 & 2 Schedule
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- Help Section -->
+    <div class="row mt-5">
+        <div class="col-12">
+            <div class="card bg-light">
+                <div class="card-header">
+                    <h5><i class="bi bi-question-circle"></i> Need Help Choosing?</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <h6>First Time?</h6>
+                            <p>Start with <strong>Pitman (2-2-3)</strong> - it's widely used and balances work-life needs.</p>
+                        </div>
+                        <div class="col-md-4">
+                            <h6>8-Hour Shifts?</h6>
+                            <p>Choose <strong>Southern Swing</strong> for traditional 8-hour rotating shifts.</p>
+                        </div>
+                        <div class="col-md-4">
+                            <h6>Want Predictability?</h6>
+                            <p>Use <strong>Fixed Teams</strong> for completely predictable schedules.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <style>
-    .pattern-selection {
-        max-width: 1400px;
-        margin: 0 auto;
-        padding: 2rem;
+.pattern-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+    gap: 2rem;
+    margin-bottom: 2rem;
+}
+
+.pattern-card {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.07);
+    transition: all 0.3s ease;
+    border: 2px solid transparent;
+    overflow: hidden;
+}
+
+.pattern-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+    border-color: #007bff;
+}
+
+.pattern-header {
+    padding: 1.5rem 1.5rem 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.pattern-header h4 {
+    margin: 0;
+    color: #333;
+    font-weight: 600;
+}
+
+.pattern-header .badge {
+    margin-left: auto;
+}
+
+.pattern-body {
+    padding: 0 1.5rem;
+}
+
+.pattern-description {
+    color: #666;
+    font-size: 1rem;
+    margin-bottom: 1rem;
+    font-style: italic;
+}
+
+.pattern-details {
+    background: #f8f9fa;
+    padding: 1rem;
+    border-radius: 6px;
+    margin-bottom: 1rem;
+}
+
+.detail-item {
+    margin-bottom: 0.5rem;
+    font-size: 0.9rem;
+}
+
+.detail-item:last-child {
+    margin-bottom: 0;
+}
+
+.pros-cons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.pros, .cons {
+    font-size: 0.85rem;
+}
+
+.pros h6 {
+    color: #28a745;
+    margin-bottom: 0.5rem;
+}
+
+.cons h6 {
+    color: #dc3545;
+    margin-bottom: 0.5rem;
+}
+
+.pros ul, .cons ul {
+    padding-left: 1rem;
+    margin: 0;
+}
+
+.pros li, .cons li {
+    margin-bottom: 0.25rem;
+}
+
+.pattern-footer {
+    padding: 1.5rem;
+    background: #f8f9fa;
+    border-top: 1px solid #e9ecef;
+}
+
+.select-pattern {
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+@media (max-width: 768px) {
+    .pattern-grid {
+        grid-template-columns: 1fr;
+        gap: 1rem;
     }
     
-    .pattern-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-        gap: 1.5rem;
-        margin-top: 2rem;
+    .pros-cons {
+        grid-template-columns: 1fr;
     }
     
     .pattern-card {
-        background: white;
-        border: 2px solid #dee2e6;
-        border-radius: 10px;
-        padding: 1.5rem;
-        transition: all 0.3s;
-        cursor: pointer;
-        position: relative;
-        overflow: hidden;
-    }
-    
-    .pattern-card:hover {
-        border-color: #007bff;
-        transform: translateY(-5px);
-        box-shadow: 0 10px 20px rgba(0,0,0,0.1);
-    }
-    
-    .pattern-card.recommended::before {
-        content: 'RECOMMENDED';
-        position: absolute;
-        top: 10px;
-        right: -30px;
-        background: #28a745;
-        color: white;
-        padding: 5px 40px;
-        font-size: 0.75rem;
-        font-weight: bold;
-        transform: rotate(45deg);
+        margin-bottom: 1rem;
     }
     
     .pattern-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: start;
-        margin-bottom: 1rem;
-    }
-    
-    .pattern-title {
-        font-size: 1.25rem;
-        font-weight: bold;
-        color: #333;
-        margin: 0;
-    }
-    
-    .pattern-badge {
-        display: inline-block;
-        padding: 0.25rem 0.75rem;
-        border-radius: 20px;
-        font-size: 0.75rem;
-        font-weight: 500;
-    }
-    
-    .hours-12 { background: #e3f2fd; color: #1565c0; }
-    .hours-8 { background: #fff3e0; color: #e65100; }
-    
-    .pattern-description {
-        color: #666;
-        font-size: 0.9rem;
-        margin-bottom: 1rem;
-    }
-    
-    .pattern-details {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 0.5rem;
-        margin-bottom: 1rem;
-        font-size: 0.875rem;
-    }
-    
-    .detail-item {
-        display: flex;
-        align-items: center;
+        flex-direction: column;
+        align-items: flex-start;
         gap: 0.5rem;
     }
-    
-    .detail-label {
-        color: #666;
-    }
-    
-    .pattern-pros-cons {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 1rem;
-        margin-top: 1rem;
-        padding-top: 1rem;
-        border-top: 1px solid #dee2e6;
-    }
-    
-    .pros, .cons {
-        font-size: 0.875rem;
-    }
-    
-    .pros h6 {
-        color: #28a745;
-        font-size: 0.875rem;
-        margin-bottom: 0.5rem;
-    }
-    
-    .cons h6 {
-        color: #dc3545;
-        font-size: 0.875rem;
-        margin-bottom: 0.5rem;
-    }
-    
-    .pros ul, .cons ul {
-        margin: 0;
-        padding-left: 1.25rem;
-    }
-    
-    .pattern-action {
-        margin-top: 1rem;
-        text-align: center;
-    }
-    
-    .comparison-toggle {
-        position: fixed;
-        bottom: 2rem;
-        right: 2rem;
-        z-index: 1000;
-    }
-    
-    .filter-section {
-        background: #f8f9fa;
-        border-radius: 10px;
-        padding: 1.5rem;
-        margin-bottom: 2rem;
-    }
-    
-    .filter-chips {
-        display: flex;
-        gap: 0.5rem;
-        flex-wrap: wrap;
-        margin-top: 1rem;
-    }
-    
-    .filter-chip {
-        padding: 0.5rem 1rem;
-        border: 1px solid #dee2e6;
-        border-radius: 20px;
-        background: white;
-        cursor: pointer;
-        transition: all 0.3s;
-    }
-    
-    .filter-chip:hover {
-        border-color: #007bff;
-    }
-    
-    .filter-chip.active {
-        background: #007bff;
-        color: white;
-        border-color: #007bff;
-    }
-    
-    .info-banner {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        padding: 2rem;
-        border-radius: 10px;
-        margin-bottom: 2rem;
-    }
-    
-    .info-banner h2 {
-        margin-bottom: 0.5rem;
-    }
+}
 </style>
-{% endblock %}
-
-{% block content %}
-<div class="pattern-selection">
-    <div class="info-banner">
-        <h2>Select a Schedule Pattern</h2>
-        <p class="mb-0">Choose the shift pattern that best fits your operational needs. Each pattern has unique characteristics for coverage, work-life balance, and overtime management.</p>
-    </div>
-
-    <!-- Filters -->
-    <div class="filter-section">
-        <h5>Quick Filters</h5>
-        <div class="filter-chips">
-            <div class="filter-chip active" onclick="filterPatterns('all')">All Patterns</div>
-            <div class="filter-chip" onclick="filterPatterns('12-hour')">12-Hour Shifts</div>
-            <div class="filter-chip" onclick="filterPatterns('8-hour')">8-Hour Shifts</div>
-            <div class="filter-chip" onclick="filterPatterns('fixed')">Fixed Shifts</div>
-            <div class="filter-chip" onclick="filterPatterns('rotating')">Rotating Shifts</div>
-            <div class="filter-chip" onclick="filterPatterns('popular')">Most Popular</div>
-        </div>
-    </div>
-
-    <!-- Pattern Grid -->
-    <div class="pattern-grid">
-        {% for pattern in patterns %}
-        <div class="pattern-card {% if pattern.id == 'pitman' %}recommended{% endif %}" 
-             data-pattern="{{ pattern.id }}"
-             data-shift-length="{{ pattern.shift_length }}"
-             data-variations="{{ pattern.variations|join(',') }}"
-             onclick="selectPattern('{{ pattern.id }}')">
-            
-            <div class="pattern-header">
-                <h3 class="pattern-title">{{ pattern.name }}</h3>
-                <span class="pattern-badge hours-{{ pattern.shift_length.split('-')[0] }}">
-                    {{ pattern.shift_length }}
-                </span>
-            </div>
-            
-            <p class="pattern-description">{{ pattern.description }}</p>
-            
-            <div class="pattern-details">
-                <div class="detail-item">
-                    <i class="bi bi-calendar3"></i>
-                    <span class="detail-label">Cycle:</span>
-                    <strong>{{ pattern.cycle_days }} days</strong>
-                </div>
-                <div class="detail-item">
-                    <i class="bi bi-arrow-repeat"></i>
-                    <span class="detail-label">Type:</span>
-                    <strong>
-                        {% if 'Fixed' in pattern.variations and 'Rotating' not in pattern.variations[0] %}
-                            Fixed
-                        {% elif 'Fixed' not in pattern.variations %}
-                            Rotating
-                        {% else %}
-                            Flexible
-                        {% endif %}
-                    </strong>
-                </div>
-            </div>
-            
-            <div class="pattern-pros-cons">
-                <div class="pros">
-                    <h6><i class="bi bi-check-circle"></i> Pros</h6>
-                    <ul>
-                        {% for pro in pattern.pros[:2] %}
-                        <li>{{ pro }}</li>
-                        {% endfor %}
-                    </ul>
-                </div>
-                <div class="cons">
-                    <h6><i class="bi bi-x-circle"></i> Cons</h6>
-                    <ul>
-                        {% for con in pattern.cons[:2] %}
-                        <li>{{ con }}</li>
-                        {% endfor %}
-                    </ul>
-                </div>
-            </div>
-            
-            <div class="pattern-action">
-                <button class="btn btn-primary btn-sm">
-                    Select This Pattern <i class="bi bi-arrow-right"></i>
-                </button>
-            </div>
-        </div>
-        {% endfor %}
-    </div>
-
-    <!-- Additional Patterns Coming Soon -->
-    <div class="text-center mt-5">
-        <h4>More Patterns Coming Soon</h4>
-        <p class="text-muted">Continental, Metropolitan, and custom patterns will be available in future updates.</p>
-    </div>
-</div>
-
-<!-- Pattern Comparison Modal -->
-<div class="modal fade" id="comparisonModal" tabindex="-1">
-    <div class="modal-dialog modal-xl">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Compare Schedule Patterns</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <div class="table-responsive">
-                    <table class="table table-bordered">
-                        <thead>
-                            <tr>
-                                <th>Pattern</th>
-                                <th>Shift Length</th>
-                                <th>Cycle Days</th>
-                                <th>Avg Hours/Week</th>
-                                <th>Weekends Off</th>
-                                <th>Best For</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td><strong>Pitman (2-2-3)</strong></td>
-                                <td>12 hours</td>
-                                <td>14 days</td>
-                                <td>42 hours</td>
-                                <td>Every other</td>
-                                <td>Most operations</td>
-                            </tr>
-                            <tr>
-                                <td><strong>DuPont</strong></td>
-                                <td>12 hours</td>
-                                <td>28 days</td>
-                                <td>42 hours</td>
-                                <td>Varies</td>
-                                <td>Long breaks needed</td>
-                            </tr>
-                            <tr>
-                                <td><strong>Southern Swing</strong></td>
-                                <td>8 hours</td>
-                                <td>28 days</td>
-                                <td>40 hours</td>
-                                <td>1 per month</td>
-                                <td>3-shift operations</td>
-                            </tr>
-                            <tr>
-                                <td><strong>Fixed Teams</strong></td>
-                                <td>12 hours</td>
-                                <td>7 days</td>
-                                <td>36-48 hours</td>
-                                <td>All or none</td>
-                                <td>Lifestyle preference</td>
-                            </tr>
-                            <tr>
-                                <td><strong>4-on-4-off</strong></td>
-                                <td>12 hours</td>
-                                <td>8 days</td>
-                                <td>42 hours</td>
-                                <td>Varies</td>
-                                <td>Simple pattern</td>
-                            </tr>
-                            <tr>
-                                <td><strong>5 & 2</strong></td>
-                                <td>12 hours</td>
-                                <td>14 days</td>
-                                <td>42 hours</td>
-                                <td>Mixed</td>
-                                <td>Coverage balance</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Comparison Toggle Button -->
-<button class="btn btn-info comparison-toggle" onclick="showComparison()">
-    <i class="bi bi-table"></i> Compare All Patterns
-</button>
 
 <script>
-function selectPattern(patternId) {
-    window.location.href = `/schedule/wizard/${patternId}`;
-}
-
-function filterPatterns(filter) {
-    // Update active filter
-    document.querySelectorAll('.filter-chip').forEach(chip => {
-        chip.classList.remove('active');
+document.addEventListener('DOMContentLoaded', function() {
+    // Add click handlers to pattern selection buttons
+    document.querySelectorAll('.select-pattern').forEach(button => {
+        button.addEventListener('click', function() {
+            const pattern = this.dataset.pattern;
+            
+            // Show loading state
+            const originalText = this.innerHTML;
+            this.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Loading...';
+            this.disabled = true;
+            
+            // Navigate to wizard
+            setTimeout(() => {
+                window.location.href = `/schedule/wizard/${pattern}`;
+            }, 500);
+        });
     });
-    event.target.classList.add('active');
     
-    // Filter cards
-    const cards = document.querySelectorAll('.pattern-card');
-    
-    cards.forEach(card => {
-        let show = true;
+    // Add hover effects to cards
+    document.querySelectorAll('.pattern-card').forEach(card => {
+        card.addEventListener('mouseenter', function() {
+            this.style.borderColor = '#007bff';
+        });
         
-        switch(filter) {
-            case '12-hour':
-                show = card.dataset.shiftLength.includes('12-hour');
-                break;
-            case '8-hour':
-                show = card.dataset.shiftLength.includes('8-hour');
-                break;
-            case 'fixed':
-                show = card.dataset.variations.toLowerCase().includes('fixed') && 
-                       !card.dataset.variations.toLowerCase().includes('rotating');
-                break;
-            case 'rotating':
-                show = !card.dataset.variations.toLowerCase().includes('fixed') ||
-                       card.dataset.variations.toLowerCase().includes('rotating');
-                break;
-            case 'popular':
-                show = ['pitman', 'dupont', 'four_on_four_off'].includes(card.dataset.pattern);
-                break;
-        }
-        
-        card.style.display = show ? 'block' : 'none';
+        card.addEventListener('mouseleave', function() {
+            this.style.borderColor = 'transparent';
+        });
     });
-}
-
-function showComparison() {
-    const modal = new bootstrap.Modal(document.getElementById('comparisonModal'));
-    modal.show();
-}
-
-// Keyboard navigation
-document.addEventListener('keydown', function(e) {
-    if (e.key >= '1' && e.key <= '6') {
-        const index = parseInt(e.key) - 1;
-        const cards = document.querySelectorAll('.pattern-card');
-        if (cards[index]) {
-            cards[index].click();
-        }
-    }
 });
 </script>
 {% endblock %}
