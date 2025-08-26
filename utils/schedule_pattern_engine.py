@@ -2,6 +2,7 @@
 """
 Core schedule generation engine for all shift patterns
 Implements Pitman, DuPont, Southern Swing, and other patterns
+UPDATED WITH COMPLETE HOURS SUPPORT
 """
 
 from datetime import datetime, date, timedelta
@@ -12,18 +13,24 @@ import logging
 logger = logging.getLogger(__name__)
 
 class SchedulePatternEngine:
-    """Generate schedules based on various shift patterns"""
+    """Generate schedules based on various shift patterns with proper hours tracking"""
     
-    # Shift timing defaults
+    # Shift timing defaults with hours
     SHIFT_TIMES = {
         '12-hour': {
-            'day': {'start': '06:00', 'end': '18:00', 'hours': 12},
-            'night': {'start': '18:00', 'end': '06:00', 'hours': 12}
+            'day': {'start': '06:00', 'end': '18:00', 'hours': 12.0},
+            'night': {'start': '18:00', 'end': '06:00', 'hours': 12.0}
         },
         '8-hour': {
-            'day': {'start': '07:00', 'end': '15:00', 'hours': 8},
-            'evening': {'start': '15:00', 'end': '23:00', 'hours': 8},
-            'night': {'start': '23:00', 'end': '07:00', 'hours': 8}
+            'day': {'start': '07:00', 'end': '15:00', 'hours': 8.0},
+            'evening': {'start': '15:00', 'end': '23:00', 'hours': 8.0},
+            'night': {'start': '23:00', 'end': '07:00', 'hours': 8.0}
+        },
+        'custom': {
+            # Can be overridden in config
+            'day': {'start': '06:00', 'end': '18:00', 'hours': 12.0},
+            'evening': {'start': '14:00', 'end': '22:00', 'hours': 8.0},
+            'night': {'start': '22:00', 'end': '06:00', 'hours': 8.0}
         }
     }
     
@@ -39,8 +46,14 @@ class SchedulePatternEngine:
             pattern: Pattern name (pitman, dupont, etc.)
             start_date: Start date for schedule
             end_date: End date for schedule
-            config: Pattern-specific configuration
-            
+            config: Pattern-specific configuration including:
+                - shift_length: '12-hour', '8-hour', or 'custom'
+                - day_shift_start: Start time for day shifts
+                - night_shift_start: Start time for night shifts
+                - evening_shift_start: Start time for evening shifts
+                - custom_hours: Dict with custom hours per shift type
+                - created_by_id: ID of user creating the schedule
+                
         Returns:
             List of Schedule objects (not yet committed to DB)
         """
@@ -59,8 +72,79 @@ class SchedulePatternEngine:
         generator = pattern_generators.get(pattern)
         if not generator:
             raise ValueError(f"Unknown pattern: {pattern}")
-            
+        
+        # Set up shift times based on configuration
+        self._setup_shift_times(config)
+        
         return generator(start_date, end_date, config)
+    
+    def _setup_shift_times(self, config: Dict):
+        """Setup shift times based on configuration"""
+        shift_length = config.get('shift_length', '12-hour')
+        
+        if shift_length in self.SHIFT_TIMES:
+            self.current_shift_times = self.SHIFT_TIMES[shift_length].copy()
+        else:
+            # Default to 12-hour
+            self.current_shift_times = self.SHIFT_TIMES['12-hour'].copy()
+        
+        # Override with custom times if provided
+        custom_times = config.get('custom_shift_times', {})
+        for shift_type, times in custom_times.items():
+            if shift_type in self.current_shift_times:
+                self.current_shift_times[shift_type].update(times)
+        
+        # Override with individual time settings
+        if config.get('day_shift_start'):
+            self.current_shift_times['day']['start'] = config['day_shift_start']
+        if config.get('night_shift_start'):
+            self.current_shift_times['night']['start'] = config['night_shift_start']
+        if config.get('evening_shift_start') and 'evening' in self.current_shift_times:
+            self.current_shift_times['evening']['start'] = config['evening_shift_start']
+        
+        # Override hours if specified
+        custom_hours = config.get('custom_hours', {})
+        for shift_type, hours in custom_hours.items():
+            if shift_type in self.current_shift_times:
+                self.current_shift_times[shift_type]['hours'] = float(hours)
+    
+    def _create_schedule(self, employee_id: int, date: date, shift_type: str, 
+                        position_id: Optional[int] = None, 
+                        created_by_id: Optional[int] = None,
+                        is_overtime: bool = False) -> Schedule:
+        """Create a single schedule entry with proper hours calculation"""
+        
+        shift_info = self.current_shift_times.get(shift_type, self.current_shift_times['day'])
+        
+        start_time_str = shift_info['start']
+        hours = shift_info['hours']
+        
+        # Parse start time
+        start_time = datetime.strptime(start_time_str, '%H:%M').time()
+        
+        # Calculate end time
+        start_datetime = datetime.combine(date, start_time)
+        end_datetime = start_datetime + timedelta(hours=hours)
+        end_time = end_datetime.time()
+        
+        # Handle day overflow for night shifts
+        if end_datetime.date() > date:
+            # Night shift crosses midnight
+            pass  # end_time is correct for next day
+        
+        return Schedule(
+            employee_id=employee_id,
+            date=date,
+            shift_type=shift_type,
+            start_time=start_time,
+            end_time=end_time,
+            hours=hours,
+            position_id=position_id,
+            created_by_id=created_by_id,
+            is_overtime=is_overtime,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow()
+        )
     
     def _generate_pitman(self, start_date: date, end_date: date, config: Dict) -> List[Schedule]:
         """
@@ -71,8 +155,7 @@ class SchedulePatternEngine:
         
         # Get configuration
         variation = config.get('variation', 'fixed')  # fixed, rapid, 2_week, 4_week
-        day_start = config.get('day_shift_start', '06:00')
-        night_start = config.get('night_shift_start', '18:00')
+        created_by_id = config.get('created_by_id')
         
         # Pitman pattern (14-day cycle)
         # 1 = work, 0 = off
@@ -82,7 +165,7 @@ class SchedulePatternEngine:
         crew_patterns = {
             'A': base_pattern,
             'B': self._rotate_pattern(base_pattern, 7),  # Offset by 7 days
-            'C': self._rotate_pattern(base_pattern, 0),  # Same as A but nights
+            'C': base_pattern,  # Same as A but nights
             'D': self._rotate_pattern(base_pattern, 7)   # Same as B but nights
         }
         
@@ -104,28 +187,28 @@ class SchedulePatternEngine:
             # Get employees for each crew
             for crew in self.crews:
                 if crew_patterns[crew][cycle_day] == 1:  # Working day
-                    crew_employees = Employee.query.filter_by(crew=crew, is_supervisor=False).all()
+                    crew_employees = Employee.query.filter_by(
+                        crew=crew, 
+                        is_active=True
+                    ).all()
                     
                     # Determine shift type
                     if variation == 'fixed':
                         shift_type = 'day' if crew in day_crews else 'night'
-                        shift_start = day_start if shift_type == 'day' else night_start
                     else:
                         # Handle rotating variations
-                        shift_type, shift_start = self._get_rotating_shift(
+                        shift_type, _ = self._get_rotating_shift(
                             crew, current_date, start_date, variation
                         )
                     
                     # Create schedules for all employees in this crew
                     for emp in crew_employees:
-                        schedule = Schedule(
+                        schedule = self._create_schedule(
                             employee_id=emp.id,
                             date=current_date,
                             shift_type=shift_type,
-                            start_time=datetime.strptime(shift_start, '%H:%M').time(),
-                            hours=12,
                             position_id=emp.position_id,
-                            created_by_id=config.get('created_by_id')
+                            created_by_id=created_by_id
                         )
                         schedules.append(schedule)
             
@@ -141,6 +224,7 @@ class SchedulePatternEngine:
         Pattern: 4N-3off-3D-1off-3N-3off-4D-7off
         """
         schedules = []
+        created_by_id = config.get('created_by_id')
         
         # DuPont pattern (28-day cycle)
         # D = day, N = night, O = off
@@ -165,20 +249,20 @@ class SchedulePatternEngine:
                 shift = pattern[crew_day_index]
                 
                 if shift != 'O':  # Not an off day
-                    crew_employees = Employee.query.filter_by(crew=crew, is_supervisor=False).all()
+                    crew_employees = Employee.query.filter_by(
+                        crew=crew, 
+                        is_active=True
+                    ).all()
                     
                     shift_type = 'day' if shift == 'D' else 'night'
-                    shift_start = config.get('day_shift_start', '06:00') if shift == 'D' else config.get('night_shift_start', '18:00')
                     
                     for emp in crew_employees:
-                        schedule = Schedule(
+                        schedule = self._create_schedule(
                             employee_id=emp.id,
                             date=current_date,
                             shift_type=shift_type,
-                            start_time=datetime.strptime(shift_start, '%H:%M').time(),
-                            hours=12,
                             position_id=emp.position_id,
-                            created_by_id=config.get('created_by_id')
+                            created_by_id=created_by_id
                         )
                         schedules.append(schedule)
             
@@ -193,6 +277,7 @@ class SchedulePatternEngine:
         8-hour shifts rotating through days, evenings, nights over 4 weeks
         """
         schedules = []
+        created_by_id = config.get('created_by_id')
         
         # Southern Swing pattern (28-day cycle)
         # Each week has different shift pattern
@@ -224,26 +309,27 @@ class SchedulePatternEngine:
                 shift = weekly_patterns[crew_week][day_of_week]
                 
                 if shift != 'O':  # Not an off day
-                    crew_employees = Employee.query.filter_by(crew=crew, is_supervisor=False).all()
+                    crew_employees = Employee.query.filter_by(
+                        crew=crew, 
+                        is_active=True
+                    ).all()
                     
-                    # Map shift type and times
+                    # Map shift type
                     shift_mapping = {
-                        'D': ('day', '07:00', 8),
-                        'E': ('evening', '15:00', 8),
-                        'N': ('night', '23:00', 8)
+                        'D': 'day',
+                        'E': 'evening',
+                        'N': 'night'
                     }
                     
-                    shift_type, shift_start, hours = shift_mapping[shift]
+                    shift_type = shift_mapping[shift]
                     
                     for emp in crew_employees:
-                        schedule = Schedule(
+                        schedule = self._create_schedule(
                             employee_id=emp.id,
                             date=current_date,
                             shift_type=shift_type,
-                            start_time=datetime.strptime(shift_start, '%H:%M').time(),
-                            hours=hours,
                             position_id=emp.position_id,
-                            created_by_id=config.get('created_by_id')
+                            created_by_id=created_by_id
                         )
                         schedules.append(schedule)
             
@@ -258,6 +344,7 @@ class SchedulePatternEngine:
         Fri-Sun crews work 3 days (36 hrs/week)
         """
         schedules = []
+        created_by_id = config.get('created_by_id')
         
         # Crew assignments for Fixed-Fixed
         weekday_crews = ['A', 'B']  # Mon-Thu
@@ -276,21 +363,21 @@ class SchedulePatternEngine:
             
             # Assign shifts
             for i, crew in enumerate(working_crews):
-                crew_employees = Employee.query.filter_by(crew=crew, is_supervisor=False).all()
+                crew_employees = Employee.query.filter_by(
+                    crew=crew, 
+                    is_active=True
+                ).all()
                 
                 # Alternate day/night between crews
                 shift_type = 'day' if i == 0 else 'night'
-                shift_start = config.get('day_shift_start', '06:00') if shift_type == 'day' else config.get('night_shift_start', '18:00')
                 
                 for emp in crew_employees:
-                    schedule = Schedule(
+                    schedule = self._create_schedule(
                         employee_id=emp.id,
                         date=current_date,
                         shift_type=shift_type,
-                        start_time=datetime.strptime(shift_start, '%H:%M').time(),
-                        hours=12,
                         position_id=emp.position_id,
-                        created_by_id=config.get('created_by_id')
+                        created_by_id=created_by_id
                     )
                     schedules.append(schedule)
             
@@ -304,6 +391,7 @@ class SchedulePatternEngine:
         Work stretches of 5 and 2 days, off stretches of 5 and 2 days
         """
         schedules = []
+        created_by_id = config.get('created_by_id')
         
         # 5&2 patterns (14-day cycles)
         # Different patterns for day and night crews
@@ -326,21 +414,21 @@ class SchedulePatternEngine:
             for crew in self.crews:
                 pattern = day_patterns.get(crew, night_patterns.get(crew))
                 
-                if pattern[cycle_day] == 1:  # Working day
-                    crew_employees = Employee.query.filter_by(crew=crew, is_supervisor=False).all()
+                if pattern and pattern[cycle_day] == 1:  # Working day
+                    crew_employees = Employee.query.filter_by(
+                        crew=crew, 
+                        is_active=True
+                    ).all()
                     
                     shift_type = 'day' if crew in ['A', 'B'] else 'night'
-                    shift_start = config.get('day_shift_start', '06:00') if shift_type == 'day' else config.get('night_shift_start', '18:00')
                     
                     for emp in crew_employees:
-                        schedule = Schedule(
+                        schedule = self._create_schedule(
                             employee_id=emp.id,
                             date=current_date,
                             shift_type=shift_type,
-                            start_time=datetime.strptime(shift_start, '%H:%M').time(),
-                            hours=12,
                             position_id=emp.position_id,
-                            created_by_id=config.get('created_by_id')
+                            created_by_id=created_by_id
                         )
                         schedules.append(schedule)
             
@@ -355,6 +443,7 @@ class SchedulePatternEngine:
         Simple pattern: Work 4 days, off 4 days
         """
         schedules = []
+        created_by_id = config.get('created_by_id')
         
         # 4-on-4-off pattern (8-day cycle)
         base_pattern = [1,1,1,1,0,0,0,0]
@@ -375,21 +464,21 @@ class SchedulePatternEngine:
             
             for crew in self.crews:
                 if crew_patterns[crew][cycle_day] == 1:
-                    crew_employees = Employee.query.filter_by(crew=crew, is_supervisor=False).all()
+                    crew_employees = Employee.query.filter_by(
+                        crew=crew, 
+                        is_active=True
+                    ).all()
                     
                     # A & B work days, C & D work nights
                     shift_type = 'day' if crew in ['A', 'B'] else 'night'
-                    shift_start = config.get('day_shift_start', '06:00') if shift_type == 'day' else config.get('night_shift_start', '18:00')
                     
                     for emp in crew_employees:
-                        schedule = Schedule(
+                        schedule = self._create_schedule(
                             employee_id=emp.id,
                             date=current_date,
                             shift_type=shift_type,
-                            start_time=datetime.strptime(shift_start, '%H:%M').time(),
-                            hours=12,
                             position_id=emp.position_id,
-                            created_by_id=config.get('created_by_id')
+                            created_by_id=created_by_id
                         )
                         schedules.append(schedule)
             
@@ -404,6 +493,7 @@ class SchedulePatternEngine:
         Similar to Pitman but different rhythm
         """
         schedules = []
+        created_by_id = config.get('created_by_id')
         
         # Panama pattern - variation of 2-2-3
         base_pattern = [1,1,0,0,0,1,1,1,0,0,1,1,0,0]  # 14-day cycle
@@ -423,20 +513,20 @@ class SchedulePatternEngine:
             
             for crew in self.crews:
                 if crew_patterns[crew][cycle_day] == 1:
-                    crew_employees = Employee.query.filter_by(crew=crew, is_supervisor=False).all()
+                    crew_employees = Employee.query.filter_by(
+                        crew=crew, 
+                        is_active=True
+                    ).all()
                     
                     shift_type = 'day' if crew in ['A', 'B'] else 'night'
-                    shift_start = config.get('day_shift_start', '06:00') if shift_type == 'day' else config.get('night_shift_start', '18:00')
                     
                     for emp in crew_employees:
-                        schedule = Schedule(
+                        schedule = self._create_schedule(
                             employee_id=emp.id,
                             date=current_date,
                             shift_type=shift_type,
-                            start_time=datetime.strptime(shift_start, '%H:%M').time(),
-                            hours=12,
                             position_id=emp.position_id,
-                            created_by_id=config.get('created_by_id')
+                            created_by_id=created_by_id
                         )
                         schedules.append(schedule)
             
@@ -451,6 +541,7 @@ class SchedulePatternEngine:
         Pattern: 2D-2O-3D-2O-2D-3O-2N-2O-3N-2O-2N-3O
         """
         schedules = []
+        created_by_id = config.get('created_by_id')
         
         # Continental pattern (42-day cycle)
         pattern = [
@@ -471,20 +562,20 @@ class SchedulePatternEngine:
                 shift = pattern[crew_day]
                 
                 if shift != 'O':
-                    crew_employees = Employee.query.filter_by(crew=crew, is_supervisor=False).all()
+                    crew_employees = Employee.query.filter_by(
+                        crew=crew, 
+                        is_active=True
+                    ).all()
                     
                     shift_type = 'day' if shift == 'D' else 'night'
-                    shift_start = config.get('day_shift_start', '06:00') if shift == 'D' else config.get('night_shift_start', '18:00')
                     
                     for emp in crew_employees:
-                        schedule = Schedule(
+                        schedule = self._create_schedule(
                             employee_id=emp.id,
                             date=current_date,
                             shift_type=shift_type,
-                            start_time=datetime.strptime(shift_start, '%H:%M').time(),
-                            hours=12,
                             position_id=emp.position_id,
-                            created_by_id=config.get('created_by_id')
+                            created_by_id=created_by_id
                         )
                         schedules.append(schedule)
             
@@ -523,9 +614,42 @@ class SchedulePatternEngine:
         is_day_shift = ((crew_index + rotation_period) % 2) == 0
         
         shift_type = 'day' if is_day_shift else 'night'
-        shift_start = '06:00' if is_day_shift else '18:00'
+        shift_start = self.current_shift_times[shift_type]['start']
         
         return shift_type, shift_start
+    
+    def calculate_weekly_hours(self, schedules: List[Schedule], employee_id: int, 
+                              week_start: date) -> Dict[str, float]:
+        """
+        Calculate total hours for an employee in a given week
+        
+        Args:
+            schedules: List of Schedule objects
+            employee_id: Employee ID to calculate for
+            week_start: Start date of the week (Monday)
+            
+        Returns:
+            Dict with regular_hours, overtime_hours, total_hours
+        """
+        week_end = week_start + timedelta(days=6)
+        
+        # Filter schedules for this employee and week
+        employee_week_schedules = [
+            s for s in schedules 
+            if s.employee_id == employee_id 
+            and week_start <= s.date <= week_end
+        ]
+        
+        total_hours = sum(s.hours for s in employee_week_schedules)
+        regular_hours = min(total_hours, 40.0)
+        overtime_hours = max(0.0, total_hours - 40.0)
+        
+        return {
+            'regular_hours': regular_hours,
+            'overtime_hours': overtime_hours,
+            'total_hours': total_hours,
+            'shifts_worked': len(employee_week_schedules)
+        }
     
     def validate_schedule(self, schedules: List[Schedule]) -> Dict[str, any]:
         """
@@ -537,50 +661,169 @@ class SchedulePatternEngine:
             'coverage_gaps': [],
             'conflicts': [],
             'overtime_concerns': [],
-            'statistics': {}
+            'statistics': {},
+            'hours_analysis': {}
         }
         
-        # Group schedules by date
+        if not schedules:
+            validation_results['is_valid'] = False
+            validation_results['error'] = "No schedules generated"
+            return validation_results
+        
+        # Group schedules by date and employee
         schedules_by_date = {}
+        schedules_by_employee = {}
+        
         for schedule in schedules:
             date_key = schedule.date
+            emp_id = schedule.employee_id
+            
             if date_key not in schedules_by_date:
                 schedules_by_date[date_key] = []
             schedules_by_date[date_key].append(schedule)
+            
+            if emp_id not in schedules_by_employee:
+                schedules_by_employee[emp_id] = []
+            schedules_by_employee[emp_id].append(schedule)
+        
+        # Check for scheduling conflicts (employee scheduled multiple times per day)
+        for date_key, date_schedules in schedules_by_date.items():
+            employee_schedules_today = {}
+            for schedule in date_schedules:
+                emp_id = schedule.employee_id
+                if emp_id in employee_schedules_today:
+                    validation_results['conflicts'].append({
+                        'date': date_key,
+                        'employee_id': emp_id,
+                        'issue': 'Multiple schedules on same day'
+                    })
+                    validation_results['is_valid'] = False
+                else:
+                    employee_schedules_today[emp_id] = schedule
         
         # Check coverage for each date
         for date_key, date_schedules in schedules_by_date.items():
             # Check minimum coverage requirements
             day_count = sum(1 for s in date_schedules if s.shift_type == 'day')
             night_count = sum(1 for s in date_schedules if s.shift_type == 'night')
+            evening_count = sum(1 for s in date_schedules if s.shift_type == 'evening')
             
-            # You can adjust these minimums based on requirements
-            min_per_shift = 10  # Example minimum
+            # Configurable minimum coverage (adjust as needed)
+            min_per_shift = 8  # Minimum staff per shift
             
-            if day_count < min_per_shift:
+            if day_count > 0 and day_count < min_per_shift:
                 validation_results['coverage_gaps'].append({
                     'date': date_key,
                     'shift': 'day',
                     'scheduled': day_count,
                     'required': min_per_shift
                 })
-                validation_results['is_valid'] = False
             
-            if night_count < min_per_shift:
+            if night_count > 0 and night_count < min_per_shift:
                 validation_results['coverage_gaps'].append({
                     'date': date_key,
                     'shift': 'night',
                     'scheduled': night_count,
                     'required': min_per_shift
                 })
-                validation_results['is_valid'] = False
+        
+        # Analyze hours and overtime
+        start_date = min(s.date for s in schedules)
+        end_date = max(s.date for s in schedules)
+        
+        # Get first Monday on or before start date
+        days_to_monday = start_date.weekday()
+        week_start = start_date - timedelta(days=days_to_monday)
+        
+        total_overtime_hours = 0
+        employees_with_overtime = 0
+        
+        while week_start <= end_date:
+            for emp_id in schedules_by_employee:
+                weekly_hours = self.calculate_weekly_hours(schedules, emp_id, week_start)
+                
+                if weekly_hours['overtime_hours'] > 0:
+                    total_overtime_hours += weekly_hours['overtime_hours']
+                    
+                    if weekly_hours['overtime_hours'] > 16:  # High overtime threshold
+                        validation_results['overtime_concerns'].append({
+                            'employee_id': emp_id,
+                            'week_start': week_start,
+                            'total_hours': weekly_hours['total_hours'],
+                            'overtime_hours': weekly_hours['overtime_hours']
+                        })
+            
+            week_start += timedelta(days=7)
         
         # Calculate statistics
         validation_results['statistics'] = {
             'total_schedules': len(schedules),
             'unique_employees': len(set(s.employee_id for s in schedules)),
             'date_range': f"{min(s.date for s in schedules)} to {max(s.date for s in schedules)}",
-            'shifts_per_day': len(schedules) / len(schedules_by_date) if schedules_by_date else 0
+            'avg_shifts_per_day': len(schedules) / len(schedules_by_date) if schedules_by_date else 0,
+            'total_coverage_gaps': len(validation_results['coverage_gaps']),
+            'total_conflicts': len(validation_results['conflicts'])
+        }
+        
+        # Hours analysis
+        total_scheduled_hours = sum(s.hours for s in schedules)
+        avg_hours_per_employee = total_scheduled_hours / len(schedules_by_employee) if schedules_by_employee else 0
+        
+        validation_results['hours_analysis'] = {
+            'total_scheduled_hours': total_scheduled_hours,
+            'total_overtime_hours': total_overtime_hours,
+            'avg_hours_per_employee': avg_hours_per_employee,
+            'employees_with_overtime': employees_with_overtime,
+            'overtime_percentage': (total_overtime_hours / total_scheduled_hours * 100) if total_scheduled_hours > 0 else 0
         }
         
         return validation_results
+    
+    def generate_overtime_opportunities(self, schedules: List[Schedule], 
+                                      target_date: date) -> List[Dict]:
+        """
+        Identify overtime opportunities based on coverage gaps
+        
+        Args:
+            schedules: Current schedule list
+            target_date: Date to analyze for overtime needs
+            
+        Returns:
+            List of overtime opportunity dictionaries
+        """
+        opportunities = []
+        
+        # Get schedules for target date
+        date_schedules = [s for s in schedules if s.date == target_date]
+        
+        # Analyze coverage by shift
+        shift_coverage = {}
+        for schedule in date_schedules:
+            shift_type = schedule.shift_type
+            if shift_type not in shift_coverage:
+                shift_coverage[shift_type] = []
+            shift_coverage[shift_type].append(schedule)
+        
+        # Determine if additional coverage is needed
+        target_coverage = {'day': 12, 'night': 10, 'evening': 8}  # Configurable
+        
+        for shift_type, target_count in target_coverage.items():
+            current_count = len(shift_coverage.get(shift_type, []))
+            
+            if current_count < target_count:
+                gap = target_count - current_count
+                
+                # Create overtime opportunity
+                shift_info = self.current_shift_times.get(shift_type, self.current_shift_times['day'])
+                
+                opportunities.append({
+                    'date': target_date,
+                    'shift_type': shift_type,
+                    'positions_needed': gap,
+                    'hours': shift_info['hours'],
+                    'start_time': shift_info['start'],
+                    'priority': 'high' if gap > 3 else 'medium',
+                    'reason': f'Coverage gap: {current_count}/{target_count}'
+                })
+        
+        return opportunities
