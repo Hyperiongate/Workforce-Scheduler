@@ -1,0 +1,502 @@
+{% extends "base.html" %}
+
+{% block title %}Pitman Schedule Generator - Workforce Scheduler{% endblock %}
+
+{% block extra_css %}
+<style>
+    .crew-card {
+        border-left: 4px solid;
+        transition: transform 0.2s;
+    }
+    .crew-card:hover {
+        transform: translateY(-2px);
+    }
+    .crew-a { border-left-color: #007bff; }
+    .crew-b { border-left-color: #28a745; }
+    .crew-c { border-left-color: #ffc107; }
+    .crew-d { border-left-color: #dc3545; }
+    
+    .pattern-preview {
+        background: #f8f9fa;
+        font-family: 'Courier New', monospace;
+        font-size: 11px;
+        line-height: 1.4;
+        white-space: pre-wrap;
+        overflow-x: auto;
+    }
+    
+    .validation-issue {
+        border-left: 4px solid #dc3545;
+        background: #f8d7da;
+    }
+    
+    .validation-warning {
+        border-left: 4px solid #ffc107;
+        background: #fff3cd;
+    }
+    
+    .generation-form {
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    }
+    
+    .stats-card {
+        background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+        color: white;
+    }
+    
+    .loading {
+        display: none;
+    }
+    
+    .loading.active {
+        display: block;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2><i class="bi bi-calendar3"></i> Pitman Schedule Generator</h2>
+                <a href="{{ url_for('supervisor.dashboard') }}" class="btn btn-outline-secondary">
+                    <i class="bi bi-arrow-left"></i> Back to Dashboard
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Crew Status Section -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-people-fill"></i> Current Crew Status
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% if not validation.valid %}
+                        <div class="alert alert-danger validation-issue mb-4">
+                            <h6><i class="bi bi-exclamation-triangle-fill"></i> Issues Found:</h6>
+                            <ul class="mb-0">
+                                {% for issue in validation.issues %}
+                                <li>{{ issue }}</li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                    {% endif %}
+                    
+                    {% if validation.recommendations %}
+                        <div class="alert alert-warning validation-warning mb-4">
+                            <h6><i class="bi bi-info-circle-fill"></i> Recommendations:</h6>
+                            <ul class="mb-0">
+                                {% for rec in validation.recommendations %}
+                                <li>{{ rec }}</li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                    {% endif %}
+                    
+                    <div class="row">
+                        {% for crew, employees in crew_employees.items() %}
+                        <div class="col-lg-3 col-md-6 mb-3">
+                            <div class="card crew-card crew-{{ crew|lower }} h-100">
+                                <div class="card-body text-center">
+                                    <h3 class="card-title">Crew {{ crew }}</h3>
+                                    <div class="display-4 text-primary mb-2">{{ employees|length }}</div>
+                                    <p class="text-muted mb-2">employees</p>
+                                    {% if employees %}
+                                        <small class="text-muted">
+                                            {% set positions = employees|map(attribute='position_name')|unique|list %}
+                                            {{ positions|length }} position{{ 's' if positions|length != 1 else '' }}
+                                        </small>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    
+                    {% if validation.total_employees > 0 %}
+                    <div class="row mt-3">
+                        <div class="col-md-4">
+                            <div class="card stats-card">
+                                <div class="card-body text-center">
+                                    <h5>Total Employees</h5>
+                                    <h2>{{ validation.total_employees }}</h2>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card stats-card">
+                                <div class="card-body text-center">
+                                    <h5>Ideal Crew Size</h5>
+                                    <h2>{{ validation.ideal_crew_size }}</h2>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card stats-card">
+                                <div class="card-body text-center">
+                                    <h5>Coverage Status</h5>
+                                    <h2>{{ "Good" if validation.valid else "Issues" }}</h2>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pattern Preview Section -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-calendar2-week"></i> Pattern Preview (Next 4 Weeks)
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info">
+                        <strong>Pitman 2-2-3 Pattern:</strong>
+                        Work 2 days → Off 2 days → Work 3 days → Off 2 days → Work 2 days → Off 3 days (repeats every 14 days)
+                    </div>
+                    
+                    <div class="pattern-preview p-3 border rounded">{{ preview_text }}</div>
+                    
+                    <div class="row mt-3">
+                        <div class="col-md-6">
+                            <h6>Pattern Features:</h6>
+                            <ul>
+                                <li>14-day cycle ensures fair distribution</li>
+                                <li>Each crew works 7 days out of every 14</li>
+                                <li>Average 42 hours per week (alternates 36/48)</li>
+                                <li>Continuous 24/7 coverage</li>
+                            </ul>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>Fixed Pattern (default):</h6>
+                            <ul>
+                                <li><strong>Crews A & B:</strong> Always work day shifts</li>
+                                <li><strong>Crews C & D:</strong> Always work night shifts</li>
+                                <li>Day shift: 6:00 AM - 6:00 PM (12 hours)</li>
+                                <li>Night shift: 6:00 PM - 6:00 AM (12 hours)</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Generation Form Section -->
+    {% if validation.valid %}
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-gear-fill"></i> Generate Pitman Schedule
+                    </h5>
+                </div>
+                <div class="card-body generation-form">
+                    <form id="pitmanForm">
+                        <div class="row">
+                            <div class="col-lg-3 col-md-6 mb-3">
+                                <label class="form-label fw-bold">
+                                    <i class="bi bi-calendar-date"></i> Start Date:
+                                </label>
+                                <input type="date" name="start_date" class="form-control" 
+                                       value="{{ (datetime.now() + timedelta(days=7)).strftime('%Y-%m-%d') }}" 
+                                       min="{{ datetime.now().strftime('%Y-%m-%d') }}" required>
+                                <div class="form-text">Choose Monday for best results</div>
+                            </div>
+                            
+                            <div class="col-lg-3 col-md-6 mb-3">
+                                <label class="form-label fw-bold">
+                                    <i class="bi bi-calendar-range"></i> Duration:
+                                </label>
+                                <select name="weeks" class="form-select">
+                                    <option value="2">2 weeks (1 complete cycle)</option>
+                                    <option value="4" selected>4 weeks (2 complete cycles)</option>
+                                    <option value="6">6 weeks (3 complete cycles)</option>
+                                    <option value="8">8 weeks (4 complete cycles)</option>
+                                    <option value="12">12 weeks (6 complete cycles)</option>
+                                </select>
+                                <div class="form-text">Multiple cycles recommended</div>
+                            </div>
+                            
+                            <div class="col-lg-3 col-md-6 mb-3">
+                                <label class="form-label fw-bold">
+                                    <i class="bi bi-arrow-repeat"></i> Schedule Type:
+                                </label>
+                                <select name="variation" class="form-select">
+                                    <option value="fixed" selected>Fixed Shifts (A,B=Days / C,D=Nights)</option>
+                                    <option value="rotating">Rotating Shifts (Crews alternate)</option>
+                                </select>
+                                <div class="form-text">Fixed is most common</div>
+                            </div>
+                            
+                            <div class="col-lg-3 col-md-6 mb-3">
+                                <label class="form-label fw-bold">
+                                    <i class="bi bi-shield-check"></i> Options:
+                                </label>
+                                <div class="form-check">
+                                    <input type="checkbox" name="replace_existing" class="form-check-input" id="replace">
+                                    <label class="form-check-label" for="replace">
+                                        Replace existing schedules in date range
+                                    </label>
+                                </div>
+                                <div class="form-text">Check to overwrite existing data</div>
+                            </div>
+                        </div>
+                        
+                        <div class="row mt-4">
+                            <div class="col-12 text-center">
+                                <button type="submit" class="btn btn-success btn-lg px-5">
+                                    <i class="bi bi-play-fill"></i> Generate Pitman Schedule
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                    
+                    <!-- Loading indicator -->
+                    <div id="loadingIndicator" class="loading text-center mt-4">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Generating schedule...</span>
+                        </div>
+                        <p class="mt-2">Generating Pitman schedule... This may take a moment.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="alert alert-warning">
+                <h5><i class="bi bi-exclamation-triangle-fill"></i> Cannot Generate Schedule</h5>
+                <p>Please resolve the crew assignment issues above before generating a Pitman schedule.</p>
+                <p class="mb-0">
+                    <strong>Suggestions:</strong>
+                    <br>• Assign employees to crews A, B, C, and D
+                    <br>• Ensure each crew has at least 8-10 employees for adequate coverage
+                    <br>• Balance crew sizes as much as possible
+                </p>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Results Section (initially hidden) -->
+    <div id="resultsSection" style="display: none;">
+        <div class="row">
+            <div class="col-12">
+                <div class="card border-success">
+                    <div class="card-header bg-success text-white">
+                        <h5 class="mb-0">
+                            <i class="bi bi-check-circle-fill"></i> Schedule Generated Successfully
+                        </h5>
+                    </div>
+                    <div class="card-body" id="resultsContent">
+                        <!-- Results will be populated here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Employee List Section -->
+    {% if validation.total_employees > 0 %}
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="bi bi-person-lines-fill"></i> Employee Assignments
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        {% for crew, employees in crew_employees.items() %}
+                        {% if employees %}
+                        <div class="col-lg-3 col-md-6 mb-4">
+                            <h6 class="fw-bold crew-{{ crew|lower }}">Crew {{ crew }} ({{ employees|length }})</h6>
+                            <div class="list-group list-group-flush">
+                                {% for emp in employees %}
+                                <div class="list-group-item border-0 px-0 py-1">
+                                    <small>
+                                        <strong>{{ emp.name }}</strong>
+                                        <br><span class="text-muted">{{ emp.position_name }}</span>
+                                    </small>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endif %}
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('pitmanForm');
+    const loadingIndicator = document.getElementById('loadingIndicator');
+    const resultsSection = document.getElementById('resultsSection');
+    const resultsContent = document.getElementById('resultsContent');
+    
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        // Show loading
+        loadingIndicator.classList.add('active');
+        form.style.display = 'none';
+        resultsSection.style.display = 'none';
+        
+        // Get form data
+        const formData = new FormData(form);
+        
+        // Submit request
+        fetch('{{ url_for("generate_pitman") }}', {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            // Hide loading
+            loadingIndicator.classList.remove('active');
+            form.style.display = 'block';
+            
+            if (data.success) {
+                // Show success results
+                displaySuccessResults(data);
+                
+                // Scroll to results
+                resultsSection.scrollIntoView({ behavior: 'smooth' });
+                
+                // Show notification
+                showNotification('Schedule generated successfully!', 'success');
+                
+            } else {
+                // Show error
+                showError(data.error, data.issues || []);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            loadingIndicator.classList.remove('active');
+            form.style.display = 'block';
+            showError('An unexpected error occurred. Please try again.');
+        });
+    });
+    
+    function displaySuccessResults(data) {
+        const stats = data.statistics;
+        
+        let html = `
+            <div class="row">
+                <div class="col-md-3">
+                    <div class="text-center">
+                        <h3 class="text-success">${data.schedules_created}</h3>
+                        <small class="text-muted">Schedules Created</small>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="text-center">
+                        <h3 class="text-primary">${stats.basic_stats.unique_employees}</h3>
+                        <small class="text-muted">Employees Scheduled</small>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="text-center">
+                        <h3 class="text-info">${stats.basic_stats.total_hours}</h3>
+                        <small class="text-muted">Total Hours</small>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="text-center">
+                        <h3 class="text-warning">${stats.basic_stats.avg_hours_per_employee}</h3>
+                        <small class="text-muted">Avg Hours per Employee</small>
+                    </div>
+                </div>
+            </div>
+            
+            <hr>
+            
+            <div class="row">
+                <div class="col-12">
+                    <p><strong>Date Range:</strong> ${data.date_range}</p>
+                    <p><strong>Pattern:</strong> Pitman 2-2-3 Fixed Schedule</p>
+                    <p class="mb-0">
+                        <a href="/schedule/view" class="btn btn-primary">
+                            <i class="bi bi-calendar-check"></i> View Generated Schedule
+                        </a>
+                        <button class="btn btn-success" onclick="location.reload()">
+                            <i class="bi bi-arrow-clockwise"></i> Generate Another
+                        </button>
+                    </p>
+                </div>
+            </div>
+        `;
+        
+        resultsContent.innerHTML = html;
+        resultsSection.style.display = 'block';
+    }
+    
+    function showError(error, issues = []) {
+        let html = `
+            <div class="alert alert-danger">
+                <h6><i class="bi bi-exclamation-triangle-fill"></i> Generation Failed</h6>
+                <p>${error}</p>
+        `;
+        
+        if (issues.length > 0) {
+            html += '<ul class="mb-0">';
+            issues.forEach(issue => {
+                html += `<li>${issue}</li>`;
+            });
+            html += '</ul>';
+        }
+        
+        html += '</div>';
+        
+        resultsContent.innerHTML = html;
+        resultsSection.style.display = 'block';
+        resultsSection.scrollIntoView({ behavior: 'smooth' });
+    }
+    
+    function showNotification(message, type = 'info') {
+        // Create notification element
+        const notification = document.createElement('div');
+        notification.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+        notification.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+        notification.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        
+        document.body.appendChild(notification);
+        
+        // Auto-remove after 5 seconds
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.parentNode.removeChild(notification);
+            }
+        }, 5000);
+    }
+});
+</script>
+{% endblock %}
