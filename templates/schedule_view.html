@@ -245,4 +245,201 @@
                         <div class="col-md-6">
                             <h6>Shifts:</h6>
                             <div class="d-flex flex-wrap">
-                                <span class="badge me-2 mb-2 p-2 shift-
+                                <span class="badge me-2 mb-2 p-2 shift-day">Day Shift (06:00-18:00)</span>
+                                <span class="badge me-2 mb-2 p-2 shift-night">Night Shift (18:00-06:00)</span>
+                                <span class="badge me-2 mb-2 p-2 shift-evening">Evening Shift (15:00-23:00)</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row mt-3">
+                        <div class="col-12">
+                            <small class="text-muted">
+                                <strong>Pitman Pattern:</strong> Each crew works 7 days out of every 14 days. 
+                                Pattern: Work 2 → Off 2 → Work 3 → Off 2 → Work 2 → Off 3 (repeats)
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="mb-0"><i class="bi bi-lightning"></i> Quick Actions</h6>
+                </div>
+                <div class="card-body">
+                    <div class="btn-group" role="group">
+                        <a href="{{ url_for('view_schedule', start_date=(start_date - timedelta(days=14)).strftime('%Y-%m-%d'), end_date=(end_date - timedelta(days=14)).strftime('%Y-%m-%d')) }}" 
+                           class="btn btn-outline-primary">
+                            <i class="bi bi-arrow-left"></i> Previous 2 Weeks
+                        </a>
+                        <a href="{{ url_for('view_schedule', start_date=date.today().strftime('%Y-%m-%d'), end_date=(date.today() + timedelta(days=13)).strftime('%Y-%m-%d')) }}" 
+                           class="btn btn-outline-success">
+                            <i class="bi bi-calendar-today"></i> Current Period
+                        </a>
+                        <a href="{{ url_for('view_schedule', start_date=(start_date + timedelta(days=14)).strftime('%Y-%m-%d'), end_date=(end_date + timedelta(days=14)).strftime('%Y-%m-%d')) }}" 
+                           class="btn btn-outline-primary">
+                            <i class="bi bi-arrow-right"></i> Next 2 Weeks
+                        </a>
+                    </div>
+                    
+                    <div class="btn-group ms-3" role="group">
+                        <button class="btn btn-outline-info" onclick="exportSchedule()">
+                            <i class="bi bi-download"></i> Export
+                        </button>
+                        <button class="btn btn-outline-secondary" onclick="printSchedule()">
+                            <i class="bi bi-printer"></i> Print
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% else %}
+    <!-- No Schedule Data -->
+    <div class="row">
+        <div class="col-12">
+            <div class="alert alert-info text-center">
+                <i class="bi bi-calendar-x display-1 text-muted"></i>
+                <h4 class="mt-3">No Schedules Found</h4>
+                <p class="mb-4">There are no schedules for the selected date range.</p>
+                <a href="{{ url_for('pitman_preview') }}" class="btn btn-primary btn-lg">
+                    <i class="bi bi-plus-circle"></i> Generate Pitman Schedule
+                </a>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+function exportSchedule() {
+    // Simple CSV export functionality
+    const scheduleData = [];
+    
+    // Add headers
+    scheduleData.push(['Date', 'Employee', 'Crew', 'Shift Type', 'Start Time', 'End Time', 'Hours', 'Position']);
+    
+    // Extract data from table
+    const table = document.querySelector('.schedule-grid');
+    const rows = table.querySelectorAll('tbody tr');
+    
+    rows.forEach((row, crewIndex) => {
+        const crew = ['A', 'B', 'C', 'D'][crewIndex];
+        const cells = row.querySelectorAll('.schedule-cell');
+        
+        cells.forEach((cell, dateIndex) => {
+            const scheduleCards = cell.querySelectorAll('.schedule-card');
+            const dateStr = '{{ date_range[' + dateIndex + '] if date_range and ' + dateIndex + ' < date_range|length else "" }}';
+            
+            scheduleCards.forEach(card => {
+                const employeeName = card.querySelector('.employee-name')?.textContent || '';
+                const positionName = card.querySelector('.position-name')?.textContent || '';
+                const shiftTime = card.querySelector('.shift-time')?.textContent || '';
+                const hours = card.querySelector('.hours-badge')?.textContent || '';
+                const shiftType = card.classList.contains('shift-day') ? 'Day' : 
+                                 card.classList.contains('shift-night') ? 'Night' : 'Evening';
+                
+                const [startTime, endTime] = shiftTime.split(' - ');
+                
+                scheduleData.push([
+                    dateStr,
+                    employeeName,
+                    crew,
+                    shiftType,
+                    startTime || '',
+                    endTime || '',
+                    hours,
+                    positionName
+                ]);
+            });
+        });
+    });
+    
+    // Create CSV content
+    const csvContent = scheduleData.map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
+    
+    // Download CSV
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `pitman_schedule_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+}
+
+function printSchedule() {
+    // Create print-friendly version
+    const printContent = document.querySelector('.container-fluid').cloneNode(true);
+    
+    // Remove buttons and interactive elements
+    const buttonsToRemove = printContent.querySelectorAll('.btn, .filter-section, .card:last-child');
+    buttonsToRemove.forEach(btn => btn.remove());
+    
+    // Open print window
+    const printWindow = window.open('', '_blank');
+    printWindow.document.write(`
+        <html>
+        <head>
+            <title>Pitman Schedule</title>
+            <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+            <style>
+                body { font-size: 12px; }
+                .schedule-grid { font-size: 10px; }
+                .crew-a { background-color: #e3f2fd; border-left: 4px solid #2196f3; }
+                .crew-b { background-color: #e8f5e8; border-left: 4px solid #4caf50; }
+                .crew-c { background-color: #fff3e0; border-left: 4px solid #ff9800; }
+                .crew-d { background-color: #fce4ec; border-left: 4px solid #e91e63; }
+                .shift-day { background-color: #fff8e1; }
+                .shift-night { background-color: #e8eaf6; }
+                .schedule-card { margin-bottom: 2px; padding: 2px 4px; border-radius: 2px; }
+                @media print { 
+                    .container-fluid { max-width: none !important; }
+                    .schedule-grid { font-size: 8px; }
+                }
+            </style>
+        </head>
+        <body>
+            ${printContent.outerHTML}
+        </body>
+        </html>
+    `);
+    printWindow.document.close();
+    printWindow.print();
+}
+
+// Add date navigation with keyboard shortcuts
+document.addEventListener('keydown', function(e) {
+    if (e.ctrlKey || e.metaKey) {
+        if (e.key === 'ArrowLeft') {
+            e.preventDefault();
+            // Navigate to previous period
+            window.location.href = "{{ url_for('view_schedule', start_date=(start_date - timedelta(days=14)).strftime('%Y-%m-%d'), end_date=(end_date - timedelta(days=14)).strftime('%Y-%m-%d')) if start_date and end_date else '#' }}";
+        } else if (e.key === 'ArrowRight') {
+            e.preventDefault();
+            // Navigate to next period
+            window.location.href = "{{ url_for('view_schedule', start_date=(start_date + timedelta(days=14)).strftime('%Y-%m-%d'), end_date=(end_date + timedelta(days=14)).strftime('%Y-%m-%d')) if start_date and end_date else '#' }}";
+        }
+    }
+});
+
+// Add tooltips for schedule cards
+document.addEventListener('DOMContentLoaded', function() {
+    const scheduleCards = document.querySelectorAll('.schedule-card');
+    scheduleCards.forEach(card => {
+        const employee = card.querySelector('.employee-name')?.textContent;
+        const position = card.querySelector('.position-name')?.textContent;
+        const time = card.querySelector('.shift-time')?.textContent;
+        const hours = card.querySelector('.hours-badge')?.textContent;
+        
+        if (employee) {
+            card.title = `${employee}\n${position}\n${time}\n${hours}`;
+        }
+    });
+});
+</script>
+{% endblock %}
