@@ -1,7 +1,7 @@
 # models.py - Complete Database Models
 """
 Complete database models for Workforce Scheduler
-FIXED: check_password method was incomplete
+FIXED: Added hours field to Schedule model
 """
 
 from flask_sqlalchemy import SQLAlchemy
@@ -144,7 +144,7 @@ class EmployeeSkill(db.Model):
 # ==========================================
 
 class Schedule(db.Model):
-    """Daily schedule entries"""
+    """Daily schedule entries - UPDATED with hours field"""
     id = db.Column(db.Integer, primary_key=True)
     employee_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=False)
     date = db.Column(db.Date, nullable=False)
@@ -152,17 +152,46 @@ class Schedule(db.Model):
     start_time = db.Column(db.Time)
     end_time = db.Column(db.Time)
     
+    # NEW: Hours field for tracking scheduled hours
+    hours = db.Column(db.Float, default=8.0)
+    
+    # Additional fields that may be referenced
+    position_id = db.Column(db.Integer, db.ForeignKey('position.id'))
+    created_by_id = db.Column(db.Integer, db.ForeignKey('employee.id'))
+    
     # Status
     is_overtime = db.Column(db.Boolean, default=False)
     is_training = db.Column(db.Boolean, default=False)
     
+    # Timestamps
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
     # Relationships
-    employee = db.relationship('Employee', backref='schedules')
+    employee = db.relationship('Employee', foreign_keys=[employee_id], backref='schedules')
+    position = db.relationship('Position', foreign_keys=[position_id])
+    created_by = db.relationship('Employee', foreign_keys=[created_by_id])
     
     # Unique constraint
     __table_args__ = (
         db.UniqueConstraint('employee_id', 'date', name='_employee_date_uc'),
     )
+    
+    def __repr__(self):
+        return f'<Schedule {self.employee.name if self.employee else "Unknown"} on {self.date} ({self.shift_type.value} - {self.hours}h)>'
+    
+    @property
+    def is_overtime_hours(self):
+        """Check if this shift puts employee into overtime territory"""
+        return self.hours > 8.0 or self.is_overtime
+    
+    def calculate_end_time(self):
+        """Calculate end time based on start time and hours"""
+        if self.start_time and self.hours:
+            start_datetime = datetime.combine(self.date, self.start_time)
+            end_datetime = start_datetime + timedelta(hours=self.hours)
+            return end_datetime.time()
+        return self.end_time
 
 class TimeOffRequest(db.Model):
     """Employee time-off requests"""
