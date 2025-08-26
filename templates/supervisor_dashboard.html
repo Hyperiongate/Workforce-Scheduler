@@ -70,7 +70,7 @@
             </a>
         </div>
         <div class="col-md-3 mb-3">
-            <a href="{{ url_for('schedule.view') }}" class="action-card text-center">
+            <a href="{{ url_for('schedule.view_schedules') }}" class="action-card text-center">
                 <i class="bi bi-calendar3 action-icon"></i>
                 <h5>View Schedule</h5>
                 <p class="text-muted mb-0">Current schedules</p>
@@ -91,14 +91,14 @@
             <h2 class="h4 mb-3">Schedule Management</h2>
         </div>
         <div class="col-md-4 mb-3">
-            <a href="{{ url_for('schedule.view') }}" class="action-card">
+            <a href="{{ url_for('schedule.view_schedules') }}" class="action-card">
                 <i class="bi bi-calendar-week action-icon"></i>
                 <h5>View Schedule</h5>
                 <p class="text-muted mb-0">Current schedule</p>
             </a>
         </div>
         <div class="col-md-4 mb-3">
-            <a href="{{ url_for('schedule.select') }}" class="action-card">
+            <a href="{{ url_for('schedule.schedule_select') }}" class="action-card">
                 <i class="bi bi-calendar-plus action-icon"></i>
                 <h5>Create Schedule</h5>
                 <p class="text-muted mb-0">Pattern-based scheduler</p>
