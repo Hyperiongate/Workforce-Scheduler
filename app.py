@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Main application file for Workforce Scheduler
-COMPLETE FILE with ENUM status fix
+COMPLETE FILE with PITMAN SCHEDULE ROUTES
 """
 
 from flask import Flask, render_template, redirect, url_for, flash, jsonify, request
@@ -73,512 +73,27 @@ login_manager = LoginManager(app)
 login_manager.login_view = 'auth.login'
 
 # Import models after db initialization
-from models import Employee, TimeOffRequest, ShiftSwapRequest
+from models import Employee, Schedule, Position, TimeOffRequest, ShiftSwapRequest, OvertimeHistory
 
 @login_manager.user_loader
 def load_user(user_id):
     return Employee.query.get(int(user_id))
 
-# FIX ENUM STATUS ROUTE
-@app.route('/fix-enum-status')
-def fix_enum_status_route():
-    """Fix the ENUM status issue"""
-    try:
-        with db.engine.begin() as conn:
-            # Step 1: Convert time_off_request status from ENUM to VARCHAR
-            try:
-                conn.execute(text("""
-                    ALTER TABLE time_off_request 
-                    ALTER COLUMN status TYPE VARCHAR(20) 
-                    USING status::text
-                """))
-                logger.info("✅ Converted time_off_request.status to VARCHAR")
-            except Exception as e:
-                logger.warning(f"time_off_request.status might already be VARCHAR: {e}")
-            
-            # Step 2: Convert shift_swap_request status from ENUM to VARCHAR
-            try:
-                conn.execute(text("""
-                    ALTER TABLE shift_swap_request 
-                    ALTER COLUMN status TYPE VARCHAR(20) 
-                    USING status::text
-                """))
-                logger.info("✅ Converted shift_swap_request.status to VARCHAR")
-            except Exception as e:
-                logger.warning(f"shift_swap_request.status might already be VARCHAR: {e}")
-            
-            # Step 3: Update any existing enum values to lowercase strings
-            conn.execute(text("""
-                UPDATE time_off_request 
-                SET status = LOWER(status)
-                WHERE status IS NOT NULL
-            """))
-            
-            conn.execute(text("""
-                UPDATE shift_swap_request 
-                SET status = LOWER(status)
-                WHERE status IS NOT NULL
-            """))
-            
-            # Step 4: Update any uppercase 'PENDING' to 'pending'
-            conn.execute(text("""
-                UPDATE time_off_request 
-                SET status = 'pending'
-                WHERE UPPER(status) = 'PENDING'
-            """))
-            
-            conn.execute(text("""
-                UPDATE shift_swap_request 
-                SET status = 'pending'
-                WHERE UPPER(status) = 'PENDING'
-            """))
-            
-        return """
-        <html>
-        <head>
-            <style>
-                body { font-family: Arial; padding: 40px; background: #f5f5f5; }
-                .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-                h1 { color: #28a745; }
-                .btn { display: inline-block; padding: 10px 20px; background: #007bff; color: white; text-decoration: none; border-radius: 5px; margin-top: 20px; }
-                .btn:hover { background: #0056b3; }
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <h1>✅ ENUM Status Fixed!</h1>
-                <p>The status columns have been successfully converted from ENUM to VARCHAR.</p>
-                <p>You can now use 'pending', 'approved', 'denied' as status values without errors.</p>
-                <a href="/supervisor/dashboard" class="btn">Go to Dashboard</a>
-            </div>
-        </body>
-        </html>
-        """
-            
-    except Exception as e:
-        logger.error(f"Error fixing ENUM status: {e}")
-        return f"""
-        <html>
-        <head>
-            <style>
-                body {{ font-family: Arial; padding: 40px; background: #f5f5f5; }}
-                .container {{ max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
-                h1 {{ color: #dc3545; }}
-                pre {{ background: #f8f9fa; padding: 15px; border-radius: 5px; overflow-x: auto; }}
-                .btn {{ display: inline-block; padding: 10px 20px; background: #6c757d; color: white; text-decoration: none; border-radius: 5px; margin-top: 20px; }}
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <h1>❌ Fix Failed</h1>
-                <p>Could not fix the ENUM status issue:</p>
-                <pre>{str(e)}</pre>
-                <a href="/" class="btn">Go Home</a>
-            </div>
-        </body>
-        </html>
-        """
-
-# DATABASE FIX ROUTE
-@app.route('/fix-db-now')
-def fix_db_now():
-    """Complete database fix - final version after dry run"""
-    fixes_applied = []
-    errors = []
-    
-    try:
-        # Step 1: Clear any aborted transaction
-        db.session.rollback()
-        db.session.close()
-        logger.info("Cleared any existing transaction issues")
-        
-        # Step 2: Add ALL missing columns based on Employee model
-        with db.engine.begin() as conn:
-            # Get current columns
-            result = conn.execute(text("""
-                SELECT column_name 
-                FROM information_schema.columns 
-                WHERE table_name = 'employee'
-            """))
-            existing_columns = {row[0] for row in result}
-            logger.info(f"Existing columns: {existing_columns}")
-            
-            # Define all columns from the Employee model
-            required_columns = [
-                # Core fields
-                ('email', 'VARCHAR(120)', 'UNIQUE NOT NULL'),
-                ('password_hash', 'VARCHAR(255)', ''),
-                ('name', 'VARCHAR(100)', 'NOT NULL'),
-                ('employee_id', 'VARCHAR(50)', 'UNIQUE'),
-                ('phone', 'VARCHAR(20)', ''),
-                
-                # Work info
-                ('position_id', 'INTEGER', ''),
-                ('department', 'VARCHAR(50)', ''),
-                ('crew', 'VARCHAR(1)', ''),
-                ('is_supervisor', 'BOOLEAN', 'DEFAULT FALSE'),
-                ('is_admin', 'BOOLEAN', 'DEFAULT FALSE'),
-                ('hire_date', 'DATE', ''),
-                
-                # Availability
-                ('is_active', 'BOOLEAN', 'DEFAULT TRUE'),
-                ('max_hours_per_week', 'INTEGER', 'DEFAULT 48'),
-                
-                # Timestamps
-                ('created_at', 'TIMESTAMP', 'DEFAULT CURRENT_TIMESTAMP'),
-                ('updated_at', 'TIMESTAMP', 'DEFAULT CURRENT_TIMESTAMP')
-            ]
-            
-            # Add each missing column
-            for col_name, col_type, constraints in required_columns:
-                if col_name not in existing_columns:
-                    try:
-                        if constraints:
-                            sql = f"ALTER TABLE employee ADD COLUMN {col_name} {col_type} {constraints}"
-                        else:
-                            sql = f"ALTER TABLE employee ADD COLUMN {col_name} {col_type}"
-                        
-                        conn.execute(text(sql))
-                        fixes_applied.append(f"Added {col_name}")
-                        logger.info(f"Added column {col_name}")
-                    except Exception as e:
-                        error_msg = str(e).lower()
-                        if "already exists" not in error_msg and "duplicate column" not in error_msg:
-                            errors.append(f"{col_name}: {str(e)}")
-                            logger.error(f"Error adding {col_name}: {e}")
-        
-        # Step 3: Create or update admin user
-        with db.engine.begin() as conn:
-            try:
-                # Generate password hash
-                password_hash = generate_password_hash('admin123')
-                
-                # Check if admin exists
-                result = conn.execute(text("""
-                    SELECT id, email, name, is_admin, is_supervisor 
-                    FROM employee 
-                    WHERE email = 'admin@workforce.com'
-                """))
-                admin_row = result.fetchone()
-                
-                if admin_row:
-                    # Update existing admin
-                    conn.execute(text("""
-                        UPDATE employee 
-                        SET password_hash = :password_hash,
-                            name = :name,
-                            employee_id = :employee_id,
-                            is_supervisor = :is_supervisor,
-                            is_admin = :is_admin,
-                            is_active = :is_active,
-                            department = :department,
-                            crew = :crew
-                        WHERE email = :email
-                    """), {
-                        'password_hash': password_hash,
-                        'name': 'Admin User',
-                        'employee_id': 'ADMIN001',
-                        'is_supervisor': True,
-                        'is_admin': True,
-                        'is_active': True,
-                        'department': 'Administration',
-                        'crew': 'A',
-                        'email': 'admin@workforce.com'
-                    })
-                    fixes_applied.append("Updated admin user")
-                    logger.info("Updated existing admin user")
-                else:
-                    # Create new admin - only required fields are email and name
-                    conn.execute(text("""
-                        INSERT INTO employee (
-                            email, 
-                            password_hash, 
-                            name,
-                            employee_id,
-                            is_supervisor, 
-                            is_admin, 
-                            is_active,
-                            department,
-                            crew
-                        ) VALUES (
-                            :email,
-                            :password_hash,
-                            :name,
-                            :employee_id,
-                            :is_supervisor,
-                            :is_admin,
-                            :is_active,
-                            :department,
-                            :crew
-                        )
-                    """), {
-                        'email': 'admin@workforce.com',
-                        'password_hash': password_hash,
-                        'name': 'Admin User',
-                        'employee_id': 'ADMIN001',
-                        'is_supervisor': True,
-                        'is_admin': True,
-                        'is_active': True,
-                        'department': 'Administration',
-                        'crew': 'A'
-                    })
-                    fixes_applied.append("Created admin user")
-                    logger.info("Created new admin user")
-                    
-            except Exception as e:
-                errors.append(f"Admin user: {str(e)}")
-                logger.error(f"Error with admin user: {e}")
-        
-        # Build response
-        success = len(errors) == 0
-        
-        return f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Database Fix - {'Success' if success else 'Partial Success'}</title>
-            <style>
-                body {{ 
-                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                    margin: 0;
-                    padding: 0;
-                    background: #f5f7fa;
-                    display: flex;
-                    justify-content: center;
-                    align-items: center;
-                    min-height: 100vh;
-                }}
-                .container {{
-                    background: white;
-                    padding: 40px;
-                    border-radius: 12px;
-                    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-                    max-width: 600px;
-                    width: 90%;
-                }}
-                h1 {{ 
-                    color: {'#28a745' if success else '#ffc107'};
-                    margin: 0 0 24px 0;
-                    font-size: 28px;
-                }}
-                .status-icon {{
-                    font-size: 48px;
-                    margin-bottom: 16px;
-                }}
-                .info-box {{
-                    background: #e7f3ff;
-                    border-left: 4px solid #2196F3;
-                    padding: 20px;
-                    margin: 24px 0;
-                    border-radius: 4px;
-                }}
-                .info-box h3 {{
-                    margin: 0 0 12px 0;
-                    color: #1976D2;
-                }}
-                .success-list {{
-                    background: #d4edda;
-                    border: 1px solid #c3e6cb;
-                    color: #155724;
-                    padding: 16px;
-                    border-radius: 4px;
-                    margin: 16px 0;
-                }}
-                .error-list {{
-                    background: #f8d7da;
-                    border: 1px solid #f5c6cb;
-                    color: #721c24;
-                    padding: 16px;
-                    border-radius: 4px;
-                    margin: 16px 0;
-                }}
-                ul {{
-                    margin: 8px 0;
-                    padding-left: 24px;
-                }}
-                li {{
-                    margin: 4px 0;
-                }}
-                .btn {{
-                    display: inline-block;
-                    padding: 12px 32px;
-                    background: #007bff;
-                    color: white;
-                    text-decoration: none;
-                    border-radius: 6px;
-                    margin-top: 24px;
-                    font-weight: 500;
-                    transition: all 0.3s;
-                }}
-                .btn:hover {{
-                    background: #0056b3;
-                    transform: translateY(-1px);
-                    box-shadow: 0 4px 12px rgba(0,123,255,0.3);
-                }}
-                .note {{
-                    color: #6c757d;
-                    font-size: 14px;
-                    margin-top: 12px;
-                }}
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <div class="status-icon">{'✅' if success else '⚠️'}</div>
-                <h1>Database Fix {'Complete' if success else 'Completed with Warnings'}</h1>
-                
-                {f'''
-                <div class="success-list">
-                    <strong>Successfully Applied Fixes:</strong>
-                    <ul>
-                        {"".join(f"<li>{fix}</li>" for fix in fixes_applied) if fixes_applied else "<li>No fixes needed - database already up to date</li>"}
-                    </ul>
-                </div>
-                ''' if fixes_applied else ''}
-                
-                {f'''
-                <div class="error-list">
-                    <strong>Errors Encountered:</strong>
-                    <ul>
-                        {"".join(f"<li>{error}</li>" for error in errors)}
-                    </ul>
-                </div>
-                ''' if errors else ''}
-                
-                <div class="info-box">
-                    <h3>Admin Login Credentials:</h3>
-                    <p><strong>Email:</strong> admin@workforce.com<br>
-                    <strong>Password:</strong> admin123</p>
-                    <p class="note">Please change this password after your first login!</p>
-                </div>
-                
-                <div class="info-box" style="background: #fff3cd; border-color: #ffc107;">
-                    <h3>⚠️ Important: Fix ENUM Status Issue</h3>
-                    <p>Run this next: <a href="/fix-enum-status">/fix-enum-status</a></p>
-                </div>
-                
-                <a href="/login" class="btn">Go to Login Page →</a>
-            </div>
-        </body>
-        </html>
-        """
-            
-    except Exception as e:
-        # Critical error
-        db.session.rollback()
-        logger.error(f"Critical error in fix_db_now: {e}")
-        
-        return f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Database Fix - Error</title>
-            <style>
-                body {{ 
-                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                    margin: 0;
-                    padding: 0;
-                    background: #f5f7fa;
-                    display: flex;
-                    justify-content: center;
-                    align-items: center;
-                    min-height: 100vh;
-                }}
-                .container {{
-                    background: white;
-                    padding: 40px;
-                    border-radius: 12px;
-                    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-                    max-width: 600px;
-                    width: 90%;
-                }}
-                h1 {{ 
-                    color: #dc3545;
-                    margin: 0 0 24px 0;
-                }}
-                pre {{
-                    background: #f8f9fa;
-                    padding: 20px;
-                    border-radius: 6px;
-                    overflow-x: auto;
-                    border: 1px solid #dee2e6;
-                    font-size: 14px;
-                    white-space: pre-wrap;
-                    word-wrap: break-word;
-                }}
-                .btn {{
-                    display: inline-block;
-                    padding: 12px 32px;
-                    background: #6c757d;
-                    color: white;
-                    text-decoration: none;
-                    border-radius: 6px;
-                    margin-top: 24px;
-                    font-weight: 500;
-                }}
-                .btn:hover {{
-                    background: #5a6268;
-                }}
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <h1>❌ Critical Error</h1>
-                <p>A critical error occurred while attempting to fix the database:</p>
-                <pre>{str(e)}</pre>
-                <p>Please check the server logs for more details.</p>
-                <a href="/fix-db-now" class="btn">Try Again</a>
-            </div>
-        </body>
-        </html>
-        """
-
-# FORCE LOGIN ROUTE
-@app.route('/force-login')
-def force_login():
-    """Force login as admin - bypasses broken password check"""
-    try:
-        # Find admin user
-        admin = Employee.query.filter_by(email='admin@workforce.com').first()
-        
-        if not admin:
-            return """
-            <html>
-            <body style="font-family: Arial; padding: 40px;">
-                <h1 style="color: red;">❌ Admin User Not Found</h1>
-                <p>Run <a href="/fix-db-now">/fix-db-now</a> first to create admin user.</p>
-            </body>
-            </html>
-            """
-        
-        # Force login without password check
-        login_user(admin, remember=True)
-        
-        # Redirect based on role
-        if admin.is_supervisor:
-            return redirect(url_for('supervisor.dashboard'))
-        else:
-            return redirect(url_for('main.employee_dashboard'))
-            
-    except Exception as e:
-        return f"""
-        <html>
-        <body style="font-family: Arial; padding: 40px;">
-            <h1 style="color: red;">❌ Force Login Error</h1>
-            <pre style="background: #f8f9fa; padding: 20px; border-radius: 5px;">{str(e)}</pre>
-        </body>
-        </html>
-        """
-
 # Import blueprints
-from blueprints.auth import auth_bp
-from blueprints.main import main_bp
-from blueprints.employee import employee_bp
-from blueprints.supervisor import supervisor_bp
-from blueprints.schedule import schedule_bp
-from blueprints.employee_import import employee_import_bp
-from blueprints.reset_database import reset_db_bp
-
+try:
+    from blueprints.auth import auth_bp
+    from blueprints.main import main_bp
+    from blueprints.employee import employee_bp
+    from blueprints.supervisor import supervisor_bp
+    from blueprints.schedule import schedule_bp
+    from blueprints.employee_import import employee_import_bp
+    from blueprints.reset_database import reset_db_bp
+    
+    logger.info("All blueprints imported successfully")
+except ImportError as e:
+    logger.error(f"Error importing blueprints: {e}")
+    # Create minimal fallback routes if blueprints fail
+    
 # Register blueprints
 app.register_blueprint(auth_bp)
 app.register_blueprint(main_bp)
@@ -588,7 +103,277 @@ app.register_blueprint(schedule_bp)
 app.register_blueprint(employee_import_bp)
 app.register_blueprint(reset_db_bp)
 
-# Add 404 handler
+# Import Pitman schedule functionality
+try:
+    from utils.real_pitman_schedule import RealPitmanSchedule, generate_pitman_for_production
+    PITMAN_AVAILABLE = True
+    logger.info("Pitman schedule system loaded successfully")
+except ImportError as e:
+    PITMAN_AVAILABLE = False
+    logger.warning(f"Pitman schedule system not available: {e}")
+
+# ==========================================
+# PITMAN SCHEDULE ROUTES
+# ==========================================
+
+@app.route('/schedule/pitman/preview')
+@login_required
+def pitman_preview():
+    """Preview Pitman pattern before generating"""
+    try:
+        if not current_user.is_supervisor:
+            flash('Access denied. Supervisors only.', 'danger')
+            return redirect(url_for('main.employee_dashboard'))
+        
+        if not PITMAN_AVAILABLE:
+            flash('Pitman schedule system is not available', 'error')
+            return redirect(url_for('supervisor.dashboard'))
+        
+        pitman = RealPitmanSchedule()
+        
+        # Get current crew status
+        crew_employees = pitman._get_crew_employees()
+        validation = pitman._validate_crews(crew_employees)
+        
+        # Generate pattern preview
+        preview_text = pitman.preview_schedule_pattern(28)
+        
+        return render_template('pitman_preview.html', 
+                             crew_employees=crew_employees,
+                             validation=validation,
+                             preview_text=preview_text,
+                             datetime=datetime,
+                             timedelta=timedelta)
+                             
+    except Exception as e:
+        logger.error(f"Error loading Pitman preview: {e}")
+        flash('Error loading Pitman schedule preview', 'error')
+        return redirect(url_for('supervisor.dashboard'))
+
+@app.route('/schedule/pitman/generate', methods=['POST'])
+@login_required  
+def generate_pitman():
+    """Generate actual Pitman schedules"""
+    try:
+        if not current_user.is_supervisor:
+            return jsonify({'success': False, 'error': 'Unauthorized access'}), 403
+        
+        if not PITMAN_AVAILABLE:
+            return jsonify({'success': False, 'error': 'Pitman schedule system is not available'}), 503
+        
+        # Get parameters from form
+        start_date = request.form.get('start_date')
+        weeks = int(request.form.get('weeks', 4))
+        variation = request.form.get('variation', 'fixed')
+        replace_existing = request.form.get('replace_existing') == 'on'
+        
+        logger.info(f"Generating Pitman schedule: {start_date}, {weeks} weeks, {variation}, replace={replace_existing}")
+        
+        # Validate start date
+        if not start_date:
+            return jsonify({'success': False, 'error': 'Start date is required'})
+        
+        try:
+            start_date_obj = datetime.strptime(start_date, '%Y-%m-%d').date()
+        except ValueError:
+            return jsonify({'success': False, 'error': 'Invalid date format'})
+        
+        # Check if start date is in the past (allow today)
+        if start_date_obj < date.today():
+            return jsonify({'success': False, 'error': 'Start date cannot be in the past'})
+        
+        # Validate weeks
+        if weeks < 2 or weeks > 52:
+            return jsonify({'success': False, 'error': 'Number of weeks must be between 2 and 52'})
+        
+        # Generate schedules
+        results = generate_pitman_for_production(
+            start_date_str=start_date,
+            weeks=weeks,
+            variation=variation,
+            supervisor_id=current_user.id
+        )
+        
+        # Check validation
+        if not results['validation']['valid']:
+            return jsonify({
+                'success': False, 
+                'error': 'Schedule validation failed',
+                'issues': results['validation']['issues']
+            })
+        
+        # Check for warnings
+        if results['validation']['warnings']:
+            logger.warning(f"Schedule warnings: {results['validation']['warnings']}")
+        
+        # Save to database
+        pitman = RealPitmanSchedule()
+        save_results = pitman.commit_schedules_to_database(
+            results['schedules'], 
+            replace_existing=replace_existing
+        )
+        
+        if save_results['success']:
+            logger.info(f"Successfully generated {save_results['schedules_saved']} Pitman schedules")
+            
+            return jsonify({
+                'success': True,
+                'schedules_created': save_results['schedules_saved'],
+                'statistics': results['statistics'],
+                'date_range': save_results['date_range'],
+                'validation': results['validation'],
+                'pattern_info': results['pattern_info']
+            })
+        else:
+            logger.error(f"Failed to save schedules: {save_results['error']}")
+            return jsonify({'success': False, 'error': f"Failed to save schedules: {save_results['error']}"})
+            
+    except ValueError as e:
+        logger.error(f"Validation error in Pitman generation: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+    except Exception as e:
+        logger.error(f"Unexpected error generating Pitman schedule: {e}")
+        return jsonify({'success': False, 'error': f"Unexpected error: {str(e)}"})
+
+@app.route('/schedule/pitman/test')
+@login_required
+def test_pitman():
+    """Test route to check Pitman setup"""
+    if not current_user.is_supervisor:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    if not PITMAN_AVAILABLE:
+        return jsonify({'error': 'Pitman schedule system not available'}), 503
+    
+    try:
+        pitman = RealPitmanSchedule()
+        
+        # Get crew info
+        crew_employees = pitman._get_crew_employees()
+        validation = pitman._validate_crews(crew_employees)
+        
+        # Generate a small preview
+        test_start = date.today() + timedelta(days=7)
+        test_end = test_start + timedelta(days=13)  # 2 weeks
+        
+        test_results = pitman.generate_pitman_schedule(
+            start_date=test_start,
+            end_date=test_end,
+            variation='fixed',
+            created_by_id=current_user.id
+        )
+        
+        return jsonify({
+            'crew_employees': {k: len(v) for k, v in crew_employees.items()},
+            'validation': validation,
+            'test_schedules_count': len(test_results['schedules']),
+            'test_statistics': test_results['statistics'],
+            'pattern_preview': pitman.preview_schedule_pattern(14)
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in Pitman test: {e}")
+        return jsonify({'error': str(e)})
+
+@app.route('/schedule/view')
+@login_required
+def view_schedule():
+    """View generated schedules"""
+    try:
+        if not current_user.is_supervisor:
+            # Redirect regular employees to their personal schedule
+            return redirect(url_for('employee.my_schedule'))
+        
+        # Get date range from query params
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+        
+        if not start_date:
+            # Default to current week
+            today = date.today()
+            days_to_monday = today.weekday()
+            start_date = today - timedelta(days=days_to_monday)
+        else:
+            start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
+        
+        if not end_date:
+            end_date = start_date + timedelta(days=13)  # 2 weeks
+        else:
+            end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
+        
+        # Get schedules in date range
+        schedules = Schedule.query.filter(
+            Schedule.date >= start_date,
+            Schedule.date <= end_date
+        ).join(Employee).order_by(Schedule.date, Employee.crew, Employee.name).all()
+        
+        # Group by date and crew
+        schedule_grid = {}
+        for schedule in schedules:
+            date_key = schedule.date.strftime('%Y-%m-%d')
+            if date_key not in schedule_grid:
+                schedule_grid[date_key] = {'A': [], 'B': [], 'C': [], 'D': []}
+            
+            crew = schedule.employee.crew if schedule.employee.crew in ['A', 'B', 'C', 'D'] else 'Unassigned'
+            if crew in schedule_grid[date_key]:
+                schedule_grid[date_key][crew].append(schedule)
+        
+        # Sort date keys
+        date_range = sorted(schedule_grid.keys())
+        
+        return render_template('schedule_view.html',
+                             schedule_grid=schedule_grid,
+                             start_date=start_date,
+                             end_date=end_date,
+                             date_range=date_range,
+                             datetime=datetime,
+                             timedelta=timedelta,
+                             date=date)
+                             
+    except Exception as e:
+        logger.error(f"Error viewing schedule: {e}")
+        flash('Error loading schedule view', 'error')
+        return redirect(url_for('supervisor.dashboard'))
+
+@app.route('/api/crew-summary')
+@login_required
+def crew_summary():
+    """API endpoint to get crew summary data"""
+    try:
+        if not current_user.is_supervisor:
+            return jsonify({'error': 'Unauthorized'}), 403
+        
+        if not PITMAN_AVAILABLE:
+            return jsonify({'error': 'Pitman schedule system not available'}), 503
+        
+        pitman = RealPitmanSchedule()
+        crew_employees = pitman._get_crew_employees()
+        validation = pitman._validate_crews(crew_employees)
+        
+        return jsonify({
+            'crews': {k: len(v) for k, v in crew_employees.items()},
+            'validation': validation,
+            'total_employees': validation.get('total_employees', 0)
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting crew summary: {e}")
+        return jsonify({'error': str(e)})
+
+@app.route('/quick/pitman')
+@login_required
+def quick_pitman():
+    """Quick access to Pitman generator from dashboard"""
+    if not current_user.is_supervisor:
+        flash('Access denied. Supervisors only.', 'danger')
+        return redirect(url_for('main.employee_dashboard'))
+    
+    return redirect(url_for('pitman_preview'))
+
+# ==========================================
+# ERROR HANDLERS
+# ==========================================
+
 @app.errorhandler(404)
 def not_found_error(error):
     logger.warning(f"404 error: {request.url}")
@@ -596,7 +381,6 @@ def not_found_error(error):
         return jsonify({'error': 'Not found'}), 404
     return render_template('404.html'), 404
 
-# Add 500 handler
 @app.errorhandler(500)
 def internal_error(error):
     logger.error(f"500 error: {error}")
@@ -605,34 +389,24 @@ def internal_error(error):
         return jsonify({'error': 'Internal server error'}), 500
     return render_template('500.html'), 500
 
-# Health check endpoint
-@app.route('/health')
-def health_check():
-    """Health check endpoint"""
-    try:
-        with db.engine.connect() as conn:
-            result = conn.execute(text('SELECT 1'))
-            result.fetchone()
-        
-        return jsonify({
-            'status': 'healthy',
-            'database': 'connected',
-            'timestamp': datetime.utcnow().isoformat()
-        }), 200
-    except Exception as e:
-        return jsonify({
-            'status': 'unhealthy',
-            'database': 'disconnected',
-            'error': str(e),
-            'timestamp': datetime.utcnow().isoformat()
-        }), 503
+# ==========================================
+# UTILITY FUNCTIONS
+# ==========================================
 
-# Context processors
+def allowed_file(filename):
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
+
+# ==========================================
+# CONTEXT PROCESSORS
+# ==========================================
+
 @app.context_processor
 def inject_user_permissions():
     """Inject user permissions into all templates"""
     return dict(
-        is_supervisor=lambda: current_user.is_authenticated and current_user.is_supervisor
+        is_supervisor=lambda: current_user.is_authenticated and current_user.is_supervisor,
+        show_pitman_nav=current_user.is_authenticated and current_user.is_supervisor and PITMAN_AVAILABLE
     )
 
 @app.context_processor
@@ -657,13 +431,34 @@ def inject_pending_counts():
         pending_swaps=pending_swaps
     )
 
-# Utility functions
-def allowed_file(filename):
-    return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
+# ==========================================
+# HEALTH CHECK
+# ==========================================
+
+@app.route('/health')
+def health_check():
+    """Health check endpoint"""
+    try:
+        with db.engine.connect() as conn:
+            result = conn.execute(text('SELECT 1'))
+            result.fetchone()
+        
+        return jsonify({
+            'status': 'healthy',
+            'database': 'connected',
+            'pitman_available': PITMAN_AVAILABLE,
+            'timestamp': datetime.utcnow().isoformat()
+        }), 200
+    except Exception as e:
+        return jsonify({
+            'status': 'unhealthy',
+            'database': 'disconnected',
+            'error': str(e),
+            'timestamp': datetime.utcnow().isoformat()
+        }), 503
 
 # ==========================================
-# AUTO-FIX DATABASE ON STARTUP
+# DATABASE INITIALIZATION
 # ==========================================
 
 print("Starting database schema check...")
@@ -692,10 +487,9 @@ with app.app_context():
         print("The app will continue but some features may not work correctly")
 
 # ==========================================
-# END OF DATABASE FIX SECTION
+# RUN APPLICATION
 # ==========================================
 
-# Run the application
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('FLASK_ENV') == 'development'
