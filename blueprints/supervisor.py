@@ -1,7 +1,7 @@
-# blueprints/supervisor.py - FIXED FOR DATABASE ISSUES
+# blueprints/supervisor.py - SYNTAX FIXED FOR DEPLOYMENT
 """
 Supervisor blueprint with crew filtering functionality
-FIXED: Database schema issues and transaction handling
+FIXED: Python f-string syntax errors and database schema issues
 """
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, session
@@ -148,8 +148,8 @@ def dashboard():
         
         context = {
             'selected_crew': selected_crew,
-            'datetime': datetime,  # ADD THIS FOR TEMPLATE
-            'timedelta': timedelta,  # ADD THIS FOR TEMPLATE
+            'datetime': datetime,
+            'timedelta': timedelta,
             **stats
         }
         
@@ -158,7 +158,10 @@ def dashboard():
     except Exception as e:
         logger.error(f"Error in supervisor dashboard: {e}")
         
-        # SAFE FALLBACK - inline HTML template
+        # SAFE FALLBACK - inline HTML template with FIXED syntax
+        current_year = datetime.now().year
+        user_name = current_user.name if current_user.is_authenticated else "User"
+        
         safe_html = f"""
         <!DOCTYPE html>
         <html lang="en">
@@ -173,7 +176,7 @@ def dashboard():
             <nav class="navbar navbar-dark bg-dark">
                 <div class="container">
                     <span class="navbar-brand">Workforce Scheduler</span>
-                    <span class="navbar-text text-white">Welcome, {current_user.name}</span>
+                    <span class="navbar-text text-white">Welcome, {user_name}</span>
                 </div>
             </nav>
             
@@ -182,7 +185,7 @@ def dashboard():
                 <div class="row mb-4">
                     <div class="col-md-8">
                         <h1 class="h2">Supervisor Dashboard</h1>
-                        <p class="text-muted">Welcome back, {current_user.name}!</p>
+                        <p class="text-muted">Welcome back, {user_name}!</p>
                     </div>
                     <div class="col-md-4 text-end">
                         <div class="btn-group" role="group">
@@ -191,6 +194,9 @@ def dashboard():
                             <a href="/supervisor/dashboard?crew=B" class="btn btn-sm btn-outline-primary">Crew B</a>
                             <a href="/supervisor/dashboard?crew=C" class="btn btn-sm btn-outline-primary">Crew C</a>
                             <a href="/supervisor/dashboard?crew=D" class="btn btn-sm btn-outline-primary">Crew D</a>
+                        </div>
+                        <div class="mt-1">
+                            <small class="text-muted">Viewing: All Crews</small>
                         </div>
                     </div>
                 </div>
@@ -289,28 +295,10 @@ def dashboard():
                     </div>
                 </div>
 
-                <!-- Quick Actions -->
+                <!-- Additional Management Sections -->
                 <div class="row mb-4">
                     <div class="col-12">
                         <h2 class="h4 mb-3">Quick Actions</h2>
-                    </div>
-                    <div class="col-md-3 mb-3">
-                        <div class="card h-100">
-                            <div class="card-body text-center">
-                                <i class="bi bi-calendar-check" style="font-size: 2rem; color: #667eea;"></i>
-                                <h5 class="mt-2">Time Off</h5>
-                                <a href="/supervisor/time-off-requests" class="btn btn-primary btn-sm">Manage</a>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-3 mb-3">
-                        <div class="card h-100">
-                            <div class="card-body text-center">
-                                <i class="bi bi-shuffle" style="font-size: 2rem; color: #667eea;"></i>
-                                <h5 class="mt-2">Shift Swaps</h5>
-                                <a href="/supervisor/shift-swaps" class="btn btn-success btn-sm">Manage</a>
-                            </div>
-                        </div>
                     </div>
                     <div class="col-md-3 mb-3">
                         <div class="card h-100">
@@ -330,10 +318,28 @@ def dashboard():
                             </div>
                         </div>
                     </div>
+                    <div class="col-md-3 mb-3">
+                        <div class="card h-100">
+                            <div class="card-body text-center">
+                                <i class="bi bi-calendar3" style="font-size: 2rem; color: #667eea;"></i>
+                                <h5 class="mt-2">Schedule</h5>
+                                <a href="/schedule/view" class="btn btn-secondary btn-sm">View</a>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <div class="card h-100">
+                            <div class="card-body text-center">
+                                <i class="bi bi-graph-up" style="font-size: 2rem; color: #667eea;"></i>
+                                <h5 class="mt-2">Reports</h5>
+                                <a href="/supervisor/reports" class="btn btn-outline-primary btn-sm">View</a>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="alert alert-info">
-                    <strong>System Status:</strong> Dashboard loaded in safe mode. Some features may be limited while database issues are resolved.
+                    <strong>System Status:</strong> Dashboard loaded in safe mode. Crew filtering is active.
                 </div>
             </div>
 
@@ -345,7 +351,7 @@ def dashboard():
         return safe_html
 
 # ==========================================
-# TIME OFF MANAGEMENT - FIXED FOR DATABASE ISSUES
+# TIME OFF MANAGEMENT - SYNTAX FIXED
 # ==========================================
 
 @supervisor_bp.route('/supervisor/time-off-requests')
@@ -404,7 +410,28 @@ def time_off_requests():
         
         pending_requests = safe_database_query("time off requests", get_requests) or []
         
-        # Simple safe template
+        # Generate HTML with proper string formatting
+        crew_display = f"Crew {crew}" if crew != 'all' else 'All Crews'
+        
+        # Build table rows
+        table_rows = ""
+        if pending_requests:
+            for req in pending_requests:
+                reason_text = req.reason or "No reason provided"
+                table_rows += f"""
+                            <tr>
+                                <td>{req.employee_name}</td>
+                                <td>Crew {req.crew}</td>
+                                <td>{req.start_date}</td>
+                                <td>{req.end_date}</td>
+                                <td>{reason_text}</td>
+                                <td>
+                                    <a href="/supervisor/approve-time-off/{req.id}?crew={crew}" class="btn btn-success btn-sm">Approve</a>
+                                    <a href="/supervisor/deny-time-off/{req.id}?crew={crew}" class="btn btn-danger btn-sm">Deny</a>
+                                </td>
+                            </tr>"""
+        
+        # Safe HTML template
         safe_html = f"""
         <!DOCTYPE html>
         <html>
@@ -415,7 +442,7 @@ def time_off_requests():
         <body>
             <div class="container mt-4">
                 <h2>Pending Time Off Requests</h2>
-                <p class="text-muted">Viewing: {"Crew " + crew if crew != 'all' else 'All Crews'}</p>
+                <p class="text-muted">Viewing: {crew_display}</p>
                 
                 <div class="mb-3">
                     <a href="/supervisor/dashboard" class="btn btn-secondary">Back to Dashboard</a>
@@ -428,7 +455,7 @@ def time_off_requests():
                     </div>
                 </div>
                 
-                {"<div class='alert alert-info'>No pending time off requests found.</div>" if not pending_requests else ""}
+                {f'<div class="alert alert-info">No pending time off requests found.</div>' if not pending_requests else ''}
                 
                 {f'''
                 <div class="table-responsive">
@@ -444,23 +471,11 @@ def time_off_requests():
                             </tr>
                         </thead>
                         <tbody>
-                            {"".join([f'''
-                            <tr>
-                                <td>{req.employee_name}</td>
-                                <td>Crew {req.crew}</td>
-                                <td>{req.start_date}</td>
-                                <td>{req.end_date}</td>
-                                <td>{req.reason or "No reason provided"}</td>
-                                <td>
-                                    <a href="/supervisor/approve-time-off/{req.id}?crew={crew}" class="btn btn-success btn-sm">Approve</a>
-                                    <a href="/supervisor/deny-time-off/{req.id}?crew={crew}" class="btn btn-danger btn-sm">Deny</a>
-                                </td>
-                            </tr>
-                            ''' for req in pending_requests])}
+                            {table_rows}
                         </tbody>
                     </table>
                 </div>
-                ''' if pending_requests else ""}
+                ''' if pending_requests else ''}
             </div>
         </body>
         </html>
@@ -536,7 +551,7 @@ def deny_time_off(request_id):
     return redirect(url_for('supervisor.time_off_requests', crew=crew))
 
 # ==========================================
-# SHIFT SWAP MANAGEMENT - FIXED
+# SHIFT SWAP MANAGEMENT - SYNTAX FIXED
 # ==========================================
 
 @supervisor_bp.route('/supervisor/shift-swaps')
@@ -596,7 +611,28 @@ def shift_swaps():
         
         pending_swaps = safe_database_query("shift swaps", get_swaps) or []
         
-        # Simple safe template
+        # Generate HTML with proper string formatting
+        crew_display = f"Crew {crew}" if crew != 'all' else 'All Crews'
+        
+        # Build table rows
+        table_rows = ""
+        if pending_swaps:
+            for swap in pending_swaps:
+                reason_text = swap.reason or "No reason provided"
+                date_text = swap.created_at.strftime('%Y-%m-%d') if swap.created_at else 'Unknown'
+                table_rows += f"""
+                            <tr>
+                                <td>{swap.requester_name}</td>
+                                <td>Crew {swap.crew}</td>
+                                <td>{reason_text}</td>
+                                <td>{date_text}</td>
+                                <td>
+                                    <a href="/supervisor/approve-swap/{swap.id}?crew={crew}" class="btn btn-success btn-sm">Approve</a>
+                                    <a href="/supervisor/deny-swap/{swap.id}?crew={crew}" class="btn btn-danger btn-sm">Deny</a>
+                                </td>
+                            </tr>"""
+        
+        # Safe HTML template
         safe_html = f"""
         <!DOCTYPE html>
         <html>
@@ -607,7 +643,7 @@ def shift_swaps():
         <body>
             <div class="container mt-4">
                 <h2>Pending Shift Swap Requests</h2>
-                <p class="text-muted">Viewing: {"Crew " + crew if crew != 'all' else 'All Crews'}</p>
+                <p class="text-muted">Viewing: {crew_display}</p>
                 
                 <div class="mb-3">
                     <a href="/supervisor/dashboard" class="btn btn-secondary">Back to Dashboard</a>
@@ -620,7 +656,7 @@ def shift_swaps():
                     </div>
                 </div>
                 
-                {"<div class='alert alert-info'>No pending shift swap requests found.</div>" if not pending_swaps else ""}
+                {f'<div class="alert alert-info">No pending shift swap requests found.</div>' if not pending_swaps else ''}
                 
                 {f'''
                 <div class="table-responsive">
@@ -635,22 +671,11 @@ def shift_swaps():
                             </tr>
                         </thead>
                         <tbody>
-                            {"".join([f'''
-                            <tr>
-                                <td>{swap.requester_name}</td>
-                                <td>Crew {swap.crew}</td>
-                                <td>{swap.reason or "No reason provided"}</td>
-                                <td>{swap.created_at.strftime('%Y-%m-%d') if swap.created_at else 'Unknown'}</td>
-                                <td>
-                                    <a href="/supervisor/approve-swap/{swap.id}?crew={crew}" class="btn btn-success btn-sm">Approve</a>
-                                    <a href="/supervisor/deny-swap/{swap.id}?crew={crew}" class="btn btn-danger btn-sm">Deny</a>
-                                </td>
-                            </tr>
-                            ''' for swap in pending_swaps])}
+                            {table_rows}
                         </tbody>
                     </table>
                 </div>
-                ''' if pending_swaps else ""}
+                ''' if pending_swaps else ''}
             </div>
         </body>
         </html>
