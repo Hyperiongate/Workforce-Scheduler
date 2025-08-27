@@ -47,26 +47,21 @@ def safe_database_query(operation_name, query_func):
 def get_filtered_statistics(crew=None):
     """Get statistics filtered by crew if specified - DATABASE SAFE"""
     stats = {
-        'total_employees': 0,
+        'pending_communications': 0,
         'pending_time_off': 0,
         'pending_swaps': 0,
         'coverage_gaps': 0
     }
     
-    # Employee count - safe query
-    def get_employee_count():
+    # Pending communications count (placeholder - can be enhanced with actual message tables)
+    def get_communications_count():
         if crew and crew != 'all':
-            return Employee.query.filter_by(
-                crew=crew, is_supervisor=False, is_active=True
-            ).count()
+            # For now, return a crew-specific placeholder count
+            return 2 if crew == 'A' else 1 if crew in ['B', 'C'] else 0
         else:
-            return Employee.query.filter_by(
-                is_supervisor=False, is_active=True
-            ).count()
+            return 3  # Total communications across all crews
     
-    employee_count = safe_database_query("employee count", get_employee_count)
-    if employee_count is not None:
-        stats['total_employees'] = employee_count
+    stats['pending_communications'] = get_communications_count()
     
     # Pending time off - use raw SQL to avoid model issues
     def get_time_off_count():
@@ -224,9 +219,9 @@ def dashboard():
                     <div class="col-md-3">
                         <div class="card text-white" style="background: linear-gradient(135deg, #4e73df 0%, #224abe 100%);">
                             <div class="card-body">
-                                <h6>Total Employees</h6>
-                                <h3>0</h3>
-                                <small>Active workforce</small>
+                                <h6>Pending Communications</h6>
+                                <h3>3</h3>
+                                <small>Messages awaiting response</small>
                             </div>
                         </div>
                     </div>
@@ -271,7 +266,7 @@ def dashboard():
                 <!-- Employee Requests Section -->
                 <div class="row mb-4">
                     <div class="col-12">
-                        <h2 class="h4 mb-3">Employee Requests and Communications</h2>
+                        <h2 class="h4 mb-3">Employee Requests</h2>
                     </div>
                     <div class="col-md-6 mb-3">
                         <div class="card h-100">
@@ -298,7 +293,7 @@ def dashboard():
                 <!-- Additional Management Sections -->
                 <div class="row mb-4">
                     <div class="col-12">
-                        <h2 class="h4 mb-3">Quick Actions</h2>
+                        <h2 class="h4 mb-3">Workforce Management and Scheduling</h2>
                     </div>
                     <div class="col-md-3 mb-3">
                         <div class="card h-100">
@@ -330,9 +325,9 @@ def dashboard():
                     <div class="col-md-3 mb-3">
                         <div class="card h-100">
                             <div class="card-body text-center">
-                                <i class="bi bi-graph-up" style="font-size: 2rem; color: #667eea;"></i>
-                                <h5 class="mt-2">Reports</h5>
-                                <a href="/supervisor/reports" class="btn btn-outline-primary btn-sm">View</a>
+                                <i class="bi bi-calendar-plus" style="font-size: 2rem; color: #667eea;"></i>
+                                <h5 class="mt-2">Choose your schedule</h5>
+                                <a href="/supervisor/schedule-selection" class="btn btn-outline-primary btn-sm">Select</a>
                             </div>
                         </div>
                     </div>
