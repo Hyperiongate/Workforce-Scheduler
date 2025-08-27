@@ -50,6 +50,60 @@
         </div>
     </div>
 
+    <!-- Coverage Gaps - MOVED TO TOP -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2 class="h4 mb-3">Coverage Gaps</h2>
+        </div>
+        <div class="col-md-6 mb-3">
+            <a href="{{ url_for('supervisor.coverage_gaps') }}" class="action-card">
+                <i class="bi bi-exclamation-triangle action-icon"></i>
+                <h5>Coverage Gaps</h5>
+                <p class="text-muted mb-0">Identify gaps</p>
+            </a>
+        </div>
+        <div class="col-md-6 mb-3">
+            <a href="{{ url_for('supervisor.coverage_needs') }}" class="action-card">
+                <i class="bi bi-shield-check action-icon"></i>
+                <h5>Coverage Needs</h5>
+                <p class="text-muted mb-0">Requirements</p>
+            </a>
+        </div>
+    </div>
+
+    <!-- Employee Requests and Communications - MOVED TO TOP -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2 class="h4 mb-3">Employee Requests and Communications</h2>
+        </div>
+        <div class="col-md-6 mb-3">
+            <a href="{{ url_for('supervisor.time_off_requests') }}" class="action-card">
+                <i class="bi bi-calendar-x action-icon"></i>
+                <h5>Time Off Requests</h5>
+                <p class="text-muted mb-0">
+                    {% if pending_time_off %}
+                        <span class="badge bg-danger">{{ pending_time_off }} pending</span>
+                    {% else %}
+                        No pending
+                    {% endif %}
+                </p>
+            </a>
+        </div>
+        <div class="col-md-6 mb-3">
+            <a href="{{ url_for('supervisor.shift_swaps') }}" class="action-card">
+                <i class="bi bi-arrow-left-right action-icon"></i>
+                <h5>Shift Swaps</h5>
+                <p class="text-muted mb-0">
+                    {% if pending_swaps %}
+                        <span class="badge bg-warning">{{ pending_swaps }} pending</span>
+                    {% else %}
+                        No pending
+                    {% endif %}
+                </p>
+            </a>
+        </div>
+    </div>
+
     <!-- Quick Actions -->
     <div class="row mb-4">
         <div class="col-12">
@@ -172,53 +226,6 @@
                 <i class="bi bi-graph-up action-icon"></i>
                 <h5>Overtime</h5>
                 <p class="text-muted mb-0">Track overtime</p>
-            </a>
-        </div>
-    </div>
-
-    <!-- Requests & Coverage -->
-    <div class="row mb-4">
-        <div class="col-12">
-            <h2 class="h4 mb-3">Requests & Coverage</h2>
-        </div>
-        <div class="col-md-3 mb-3">
-            <a href="{{ url_for('supervisor.time_off_requests') }}" class="action-card">
-                <i class="bi bi-calendar-x action-icon"></i>
-                <h5>Time Off Requests</h5>
-                <p class="text-muted mb-0">
-                    {% if pending_time_off %}
-                        <span class="badge bg-danger">{{ pending_time_off }} pending</span>
-                    {% else %}
-                        No pending
-                    {% endif %}
-                </p>
-            </a>
-        </div>
-        <div class="col-md-3 mb-3">
-            <a href="{{ url_for('supervisor.shift_swaps') }}" class="action-card">
-                <i class="bi bi-arrow-left-right action-icon"></i>
-                <h5>Shift Swaps</h5>
-                <p class="text-muted mb-0">
-                    {% if pending_swaps %}
-                        <span class="badge bg-warning">{{ pending_swaps }} pending</span>
-                    {% else %}
-                        No pending
-                    {% endif %}
-                </p>
-            </a>
-        </div>
-        <div class="col-md-3 mb-3">
-            <a href="{{ url_for('supervisor.coverage_gaps') }}" class="action-card">
-                <i class="bi bi-exclamation-triangle action-icon"></i>
-                <h5>Coverage Gaps</h5>
-                <p class="text-muted mb-0">Identify gaps</p>
-            </a>
-        </div>
-        <div class="col-md-3 mb-3">
-            <a href="{{ url_for('supervisor.coverage_needs') }}" class="action-card">
-                <i class="bi bi-shield-check action-icon"></i>
-                <h5>Coverage Needs</h5>
-                <p class="text-muted mb-0">Requirements</p>
             </a>
         </div>
     </div>
