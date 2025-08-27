@@ -310,8 +310,9 @@
                                             <i class="bi bi-calendar-week"></i> Current Schedule
                                         </a>
                                     </li>
+                                    <!-- FIXED: Removed datetime calculation from template -->
                                     <li>
-                                        <a class="dropdown-item" href="{{ url_for('view_schedule', start_date=(datetime.now() + timedelta(days=7)).strftime('%Y-%m-%d'), end_date=(datetime.now() + timedelta(days=20)).strftime('%Y-%m-%d')) }}">
+                                        <a class="dropdown-item" href="{{ url_for('view_schedule') }}?weeks=2">
                                             <i class="bi bi-calendar-event"></i> Next 2 Weeks
                                         </a>
                                     </li>
@@ -515,7 +516,8 @@
             <div class="row">
                 <div class="col-12 text-center">
                     <p class="text-muted mb-0">
-                        &copy; {{ datetime.now().year }} Workforce Scheduler. 
+                        <!-- FIXED: Use JavaScript for current year instead of template calculation -->
+                        &copy; <span id="currentYear">2025</span> Workforce Scheduler. 
                         {% if current_user.is_authenticated and current_user.is_supervisor %}
                         <a href="{{ url_for('health_check') }}" class="text-muted">System Status</a>
                         {% endif %}
@@ -530,6 +532,9 @@
     
     <!-- Global JavaScript -->
     <script>
+        // Set current year in footer
+        document.getElementById('currentYear').textContent = new Date().getFullYear();
+        
         // Auto-dismiss alerts after 5 seconds
         document.addEventListener('DOMContentLoaded', function() {
             const alerts = document.querySelectorAll('.alert:not(.alert-danger)');
