@@ -1,683 +1,494 @@
+#!/usr/bin/env python3
 """
-News Analyzer API - Complete Fixed Version
-Delivers exactly 5 things: Trust Score, Article Summary, Source, Author, Findings Summary
-DRY RUN TESTED AND FIXED - All issues resolved
+Main application file for Workforce Scheduler
+COMPLETE FILE with PITMAN SCHEDULE ROUTES
 """
+
+from flask import Flask, render_template, redirect, url_for, flash, jsonify, request
+from flask_login import LoginManager, login_required, current_user, login_user
+from flask_migrate import Migrate
 import os
-import sys
 import logging
-import time
-import traceback
-from datetime import datetime
-from typing import Dict, Any, Optional, List
-import json
+from datetime import datetime, date, timedelta
+from sqlalchemy import text, inspect
+from sqlalchemy.pool import NullPool
+from sqlalchemy.exc import OperationalError, ProgrammingError
+from werkzeug.security import generate_password_hash, check_password_hash
 
-# Flask imports
-from flask import Flask, request, jsonify, render_template, send_from_directory
-from flask_cors import CORS
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
-
-# Application imports
-from config import Config
-from services.news_analyzer import NewsAnalyzer
-from services.service_registry import get_service_registry
-
-# Setup logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+# Set up logging
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Create Flask app
 app = Flask(__name__)
-app.config.from_object(Config)
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key-here')
 
-# Enable CORS
-CORS(app, origins=["*"])
+# Database configuration
+database_url = os.environ.get('DATABASE_URL')
+if database_url:
+    if database_url.startswith('postgres://'):
+        database_url = database_url.replace('postgres://', 'postgresql://', 1)
+    
+    app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+        'pool_pre_ping': True,
+        'pool_recycle': 300,
+        'poolclass': NullPool,
+        'connect_args': {
+            'sslmode': 'require',
+            'keepalives': 1,
+            'keepalives_idle': 30,
+            'keepalives_interval': 5,
+            'keepalives_count': 5
+        }
+    }
+else:
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///workforce.db'
 
-# Setup rate limiting
-limiter = Limiter(
-    app=app,
-    key_func=get_remote_address,
-    default_limits=["100 per hour", "20 per minute"],
-    storage_uri="memory://"
-)
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# Initialize services
+# Upload configuration
+app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'upload_files')
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
+app.config['ALLOWED_EXTENSIONS'] = {'xls', 'xlsx'}
+
+# Ensure upload folder exists
 try:
-    logger.info("=" * 80)
-    logger.info("INITIALIZING NEWS ANALYZER")
-    news_analyzer = NewsAnalyzer()
-    logger.info("NewsAnalyzer initialized successfully")
-    
-    # Check available services
-    available = news_analyzer.get_available_services()
-    logger.info(f"Available services: {available}")
-    
-    # Log ScraperAPI status
-    scraperapi_key = os.getenv('SCRAPERAPI_KEY')
-    if scraperapi_key:
-        logger.info(f"ScraperAPI: ENABLED (key ends with: ...{scraperapi_key[-4:]})")
+    if os.path.exists(app.config['UPLOAD_FOLDER']):
+        if not os.path.isdir(app.config['UPLOAD_FOLDER']):
+            os.remove(app.config['UPLOAD_FOLDER'])
+            os.makedirs(app.config['UPLOAD_FOLDER'])
     else:
-        logger.info("ScraperAPI: NOT CONFIGURED")
-    
-    logger.info("=" * 80)
+        os.makedirs(app.config['UPLOAD_FOLDER'])
 except Exception as e:
-    logger.error(f"CRITICAL: Failed to initialize NewsAnalyzer: {str(e)}", exc_info=True)
-    news_analyzer = None
+    logger.warning(f"Could not create upload folder: {e}")
+    import tempfile
+    app.config['UPLOAD_FOLDER'] = tempfile.gettempdir()
 
-def calculate_trust_score(pipeline_results: Dict[str, Any]) -> int:
-    """
-    Calculate a single trust score from all services
-    Returns a number from 0-100
-    """
-    scores = []
-    weights = {
-        'source_credibility': 2.0,
-        'author_analyzer': 1.5,
-        'fact_checker': 2.0,
-        'bias_detector': 1.5,  # Inverted - less bias = higher trust
-        'transparency_analyzer': 1.0,
-        'manipulation_detector': 1.5,  # Inverted - less manipulation = higher trust
-        'content_analyzer': 1.0,
-        'openai_enhancer': 0.5  # Lower weight for AI enhancement
-    }
+# Initialize extensions
+from models import db
+db.init_app(app)
+migrate = Migrate(app, db)
+login_manager = LoginManager(app)
+login_manager.login_view = 'auth.login'
+
+# Import models after db initialization
+from models import Employee, Schedule, Position, TimeOffRequest, ShiftSwapRequest, OvertimeHistory
+
+@login_manager.user_loader
+def load_user(user_id):
+    return Employee.query.get(int(user_id))
+
+# Import blueprints
+try:
+    from blueprints.auth import auth_bp
+    from blueprints.main import main_bp
+    from blueprints.employee import employee_bp
+    from blueprints.supervisor import supervisor_bp
+    from blueprints.schedule import schedule_bp
+    from blueprints.employee_import import employee_import_bp
+    from blueprints.reset_database import reset_db_bp
     
-    try:
-        # Check data.detailed_analysis first (from NewsAnalyzer)
-        if 'data' in pipeline_results and 'detailed_analysis' in pipeline_results['data']:
-            detailed = pipeline_results['data']['detailed_analysis']
-            
-            for service_name, service_data in detailed.items():
-                if service_name in weights and isinstance(service_data, dict):
-                    score = extract_score_from_service(service_data)
-                    
-                    if score is not None:
-                        # Invert scores for bias and manipulation (lower = better)
-                        if service_name in ['bias_detector', 'manipulation_detector']:
-                            score = 100 - score
-                        
-                        scores.append((score, weights[service_name]))
-        
-        # Also check direct service results (from pipeline)
-        for service_name in weights:
-            if service_name in pipeline_results and isinstance(pipeline_results[service_name], dict):
-                service_data = pipeline_results[service_name]
-                if service_data.get('success'):
-                    score = extract_score_from_service(service_data)
-                    if score is not None:
-                        if service_name in ['bias_detector', 'manipulation_detector']:
-                            score = 100 - score
-                        scores.append((score, weights[service_name]))
-        
-        if scores:
-            weighted_sum = sum(score * weight for score, weight in scores)
-            total_weight = sum(weight for _, weight in scores)
-            return max(0, min(100, int(weighted_sum / total_weight)))
-        
-        # Check if trust_score was already calculated by pipeline
-        if 'trust_score' in pipeline_results:
-            return int(pipeline_results['trust_score'])
-        
-        return 50  # Default middle score if no services available
-        
-    except Exception as e:
-        logger.error(f"Trust score calculation error: {e}")
-        return 0
-
-def extract_article_summary(pipeline_results: Dict[str, Any]) -> str:
-    """
-    Extract article summary from pipeline results
-    """
-    try:
-        # Try OpenAI enhancer first (best quality)
-        if 'openai_enhancer' in pipeline_results and pipeline_results['openai_enhancer'].get('success'):
-            ai_summary = pipeline_results['openai_enhancer'].get('ai_summary', '')
-            if ai_summary and len(ai_summary) > 50:
-                return ai_summary
-        
-        # Try from data.detailed_analysis
-        if ('data' in pipeline_results and 
-            'detailed_analysis' in pipeline_results['data'] and
-            'openai_enhancer' in pipeline_results['data']['detailed_analysis']):
-            
-            openai_data = pipeline_results['data']['detailed_analysis']['openai_enhancer']
-            if isinstance(openai_data, dict):
-                ai_summary = openai_data.get('ai_summary', openai_data.get('summary', ''))
-                if ai_summary and len(ai_summary) > 50:
-                    return ai_summary
-        
-        # Try article summary
-        if 'article' in pipeline_results and isinstance(pipeline_results['article'], dict):
-            article_text = pipeline_results['article'].get('text', '')
-            if article_text and len(article_text) > 200:
-                # Create summary from first part of article
-                sentences = article_text.split('. ')
-                if len(sentences) > 2:
-                    return '. '.join(sentences[:3]) + '.'
-                elif len(article_text) > 100:
-                    return article_text[:200] + '...'
-        
-        # Try from data.article
-        if 'data' in pipeline_results and 'article' in pipeline_results['data']:
-            article = pipeline_results['data']['article']
-            if isinstance(article, dict):
-                text = article.get('text', '')
-                if text and len(text) > 200:
-                    sentences = text.split('. ')
-                    if len(sentences) > 2:
-                        return '. '.join(sentences[:3]) + '.'
-        
-        # Try summary field
-        if 'summary' in pipeline_results:
-            return pipeline_results['summary']
-        
-        return "Article summary not available"
-        
-    except Exception as e:
-        logger.error(f"Summary extraction error: {e}")
-        return "Error extracting summary"
-
-def extract_article_info(pipeline_results: Dict[str, Any]) -> Dict[str, str]:
-    """
-    Extract article basic info (source, author) from pipeline results
-    """
-    article_info = {
-        'source': 'Unknown',
-        'author': 'Unknown',
-        'title': '',
-        'url': '',
-        'domain': ''
-    }
+    logger.info("All blueprints imported successfully")
+except ImportError as e:
+    logger.error(f"Error importing blueprints: {e}")
+    # Create minimal fallback routes if blueprints fail
     
+# Register blueprints
+app.register_blueprint(auth_bp)
+app.register_blueprint(main_bp)
+app.register_blueprint(employee_bp)
+app.register_blueprint(supervisor_bp)
+app.register_blueprint(schedule_bp)
+app.register_blueprint(employee_import_bp)
+app.register_blueprint(reset_db_bp)
+
+# Import Pitman schedule functionality
+try:
+    from utils.real_pitman_schedule import RealPitmanSchedule, generate_pitman_for_production
+    PITMAN_AVAILABLE = True
+    logger.info("Pitman schedule system loaded successfully")
+except ImportError as e:
+    PITMAN_AVAILABLE = False
+    logger.warning(f"Pitman schedule system not available: {e}")
+
+# ==========================================
+# PITMAN SCHEDULE ROUTES
+# ==========================================
+
+@app.route('/schedule/pitman/preview')
+@login_required
+def pitman_preview():
+    """Preview Pitman pattern before generating"""
     try:
-        # Try article field first (from pipeline)
-        if 'article' in pipeline_results and isinstance(pipeline_results['article'], dict):
-            article = pipeline_results['article']
-            article_info.update({
-                'source': article.get('domain', article.get('source', 'Unknown')),
-                'author': article.get('author', 'Unknown'),
-                'title': article.get('title', ''),
-                'url': article.get('url', ''),
-                'domain': article.get('domain', '')
+        if not current_user.is_supervisor:
+            flash('Access denied. Supervisors only.', 'danger')
+            return redirect(url_for('main.employee_dashboard'))
+        
+        if not PITMAN_AVAILABLE:
+            flash('Pitman schedule system is not available', 'error')
+            return redirect(url_for('supervisor.dashboard'))
+        
+        pitman = RealPitmanSchedule()
+        
+        # Get current crew status
+        crew_employees = pitman._get_crew_employees()
+        validation = pitman._validate_crews(crew_employees)
+        
+        # Generate pattern preview
+        preview_text = pitman.preview_schedule_pattern(28)
+        
+        return render_template('pitman_preview.html', 
+                             crew_employees=crew_employees,
+                             validation=validation,
+                             preview_text=preview_text,
+                             datetime=datetime,
+                             timedelta=timedelta)
+                             
+    except Exception as e:
+        logger.error(f"Error loading Pitman preview: {e}")
+        flash('Error loading Pitman schedule preview', 'error')
+        return redirect(url_for('supervisor.dashboard'))
+
+@app.route('/schedule/pitman/generate', methods=['POST'])
+@login_required  
+def generate_pitman():
+    """Generate actual Pitman schedules"""
+    try:
+        if not current_user.is_supervisor:
+            return jsonify({'success': False, 'error': 'Unauthorized access'}), 403
+        
+        if not PITMAN_AVAILABLE:
+            return jsonify({'success': False, 'error': 'Pitman schedule system is not available'}), 503
+        
+        # Get parameters from form
+        start_date = request.form.get('start_date')
+        weeks = int(request.form.get('weeks', 4))
+        variation = request.form.get('variation', 'fixed')
+        replace_existing = request.form.get('replace_existing') == 'on'
+        
+        logger.info(f"Generating Pitman schedule: {start_date}, {weeks} weeks, {variation}, replace={replace_existing}")
+        
+        # Validate start date
+        if not start_date:
+            return jsonify({'success': False, 'error': 'Start date is required'})
+        
+        try:
+            start_date_obj = datetime.strptime(start_date, '%Y-%m-%d').date()
+        except ValueError:
+            return jsonify({'success': False, 'error': 'Invalid date format'})
+        
+        # Check if start date is in the past (allow today)
+        if start_date_obj < date.today():
+            return jsonify({'success': False, 'error': 'Start date cannot be in the past'})
+        
+        # Validate weeks
+        if weeks < 2 or weeks > 52:
+            return jsonify({'success': False, 'error': 'Number of weeks must be between 2 and 52'})
+        
+        # Generate schedules
+        results = generate_pitman_for_production(
+            start_date_str=start_date,
+            weeks=weeks,
+            variation=variation,
+            supervisor_id=current_user.id
+        )
+        
+        # Check validation
+        if not results['validation']['valid']:
+            return jsonify({
+                'success': False, 
+                'error': 'Schedule validation failed',
+                'issues': results['validation']['issues']
             })
         
-        # Try article_extractor results
-        if 'article_extractor' in pipeline_results and isinstance(pipeline_results['article_extractor'], dict):
-            extractor = pipeline_results['article_extractor']
-            if extractor.get('success'):
-                article_info.update({
-                    'source': extractor.get('domain', article_info['source']),
-                    'author': extractor.get('author', article_info['author']),
-                    'title': extractor.get('title', article_info['title']),
-                    'url': extractor.get('url', article_info['url']),
-                    'domain': extractor.get('domain', article_info['domain'])
-                })
+        # Check for warnings
+        if results['validation']['warnings']:
+            logger.warning(f"Schedule warnings: {results['validation']['warnings']}")
         
-        # Try data.article_info (from NewsAnalyzer)
-        if ('data' in pipeline_results and 
-            'article_info' in pipeline_results['data']):
-            
-            info = pipeline_results['data']['article_info']
-            if article_info['source'] == 'Unknown':
-                article_info['source'] = info.get('source', info.get('domain', 'Unknown'))
-            if article_info['author'] == 'Unknown':
-                article_info['author'] = info.get('author', 'Unknown')
-            if not article_info['title']:
-                article_info['title'] = info.get('title', '')
-            if not article_info['url']:
-                article_info['url'] = info.get('url', '')
-            if not article_info['domain']:
-                article_info['domain'] = info.get('domain', '')
+        # Save to database
+        pitman = RealPitmanSchedule()
+        save_results = pitman.commit_schedules_to_database(
+            results['schedules'], 
+            replace_existing=replace_existing
+        )
         
-        # Try data.article (from NewsAnalyzer)
-        if ('data' in pipeline_results and 
-            'article' in pipeline_results['data'] and
-            isinstance(pipeline_results['data']['article'], dict)):
+        if save_results['success']:
+            logger.info(f"Successfully generated {save_results['schedules_saved']} Pitman schedules")
             
-            article = pipeline_results['data']['article']
-            if article_info['source'] == 'Unknown':
-                article_info['source'] = article.get('domain', article.get('source', 'Unknown'))
-            if article_info['author'] == 'Unknown':
-                article_info['author'] = article.get('author', 'Unknown')
-    
+            return jsonify({
+                'success': True,
+                'schedules_created': save_results['schedules_saved'],
+                'statistics': results['statistics'],
+                'date_range': save_results['date_range'],
+                'validation': results['validation'],
+                'pattern_info': results['pattern_info']
+            })
+        else:
+            logger.error(f"Failed to save schedules: {save_results['error']}")
+            return jsonify({'success': False, 'error': f"Failed to save schedules: {save_results['error']}"})
+            
+    except ValueError as e:
+        logger.error(f"Validation error in Pitman generation: {e}")
+        return jsonify({'success': False, 'error': str(e)})
     except Exception as e:
-        logger.error(f"Error extracting article info: {e}")
-    
-    # Clean up author if it's a list
-    if isinstance(article_info['author'], list):
-        article_info['author'] = ', '.join(article_info['author']) if article_info['author'] else 'Unknown'
-    
-    # Clean "By" prefix from author
-    if isinstance(article_info['author'], str) and article_info['author'].lower().startswith('by '):
-        article_info['author'] = article_info['author'][3:].strip()
-    
-    # Extract domain from URL if not set
-    if article_info['url'] and not article_info['domain']:
-        from urllib.parse import urlparse
-        parsed = urlparse(article_info['url'])
-        article_info['domain'] = parsed.netloc
-    
-    # Use domain as source if source is unknown
-    if article_info['source'] == 'Unknown' and article_info['domain']:
-        article_info['source'] = article_info['domain']
-    
-    return article_info
+        logger.error(f"Unexpected error generating Pitman schedule: {e}")
+        return jsonify({'success': False, 'error': f"Unexpected error: {str(e)}"})
 
-def extract_author_details(pipeline_results: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Extract comprehensive author details from pipeline results
-    """
-    author_details = {
-        'author': 'Unknown',
-        'author_bio': '',
-        'author_position': '',
-        'author_credibility': 0,
-        'author_score': 0,
-        'author_photo': None,
-        'author_articles': 0,
-        'author_expertise': [],
-        'author_awards': [],
-        'author_linkedin': None,
-        'author_twitter': None,
-        'author_link': None,
-        'author_recent_articles': []
-    }
+@app.route('/schedule/pitman/test')
+@login_required
+def test_pitman():
+    """Test route to check Pitman setup"""
+    if not current_user.is_supervisor:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    if not PITMAN_AVAILABLE:
+        return jsonify({'error': 'Pitman schedule system not available'}), 503
     
     try:
-        # First check direct author_analyzer results (from pipeline)
-        if 'author_analyzer' in pipeline_results and isinstance(pipeline_results['author_analyzer'], dict):
-            author_data = pipeline_results['author_analyzer']
-            
-            if author_data.get('success'):
-                # Extract all available author data
-                author_details['author'] = author_data.get('author_name') or author_data.get('author') or 'Unknown'
-                author_details['author_bio'] = author_data.get('bio', '')
-                author_details['author_position'] = author_data.get('position', '')
-                author_details['author_credibility'] = author_data.get('credibility_score', author_data.get('score', 0))
-                author_details['author_score'] = author_data.get('score', author_data.get('credibility_score', 0))
-                author_details['author_photo'] = author_data.get('author_photo')
-                author_details['author_articles'] = author_data.get('article_count', 0)
-                author_details['author_expertise'] = author_data.get('expertise_areas', [])
-                author_details['author_awards'] = author_data.get('awards', [])
-                author_details['author_linkedin'] = author_data.get('linkedin_profile')
-                author_details['author_twitter'] = author_data.get('twitter_profile')
-                author_details['author_link'] = author_data.get('author_link')
-                author_details['author_recent_articles'] = author_data.get('recent_articles', [])
+        pitman = RealPitmanSchedule()
         
-        # Check in data.detailed_analysis.author_analyzer
-        elif ('data' in pipeline_results and 
-            'detailed_analysis' in pipeline_results['data'] and
-            'author_analyzer' in pipeline_results['data']['detailed_analysis']):
-            
-            author_data = pipeline_results['data']['detailed_analysis']['author_analyzer']
-            
-            author_details['author'] = author_data.get('author_name', 'Unknown')
-            author_details['author_bio'] = author_data.get('bio', '')
-            author_details['author_position'] = author_data.get('position', '')
-            author_details['author_credibility'] = author_data.get('credibility_score', 0)
-            author_details['author_score'] = author_data.get('score', 0)
-            author_details['author_photo'] = author_data.get('author_photo')
-            author_details['author_articles'] = author_data.get('article_count', 0)
-            author_details['author_expertise'] = author_data.get('expertise_areas', [])
-            author_details['author_awards'] = author_data.get('awards', [])
-            author_details['author_linkedin'] = author_data.get('linkedin_profile')
-            author_details['author_twitter'] = author_data.get('twitter_profile')
-            author_details['author_link'] = author_data.get('author_link')
-            author_details['author_recent_articles'] = author_data.get('recent_articles', [])
+        # Get crew info
+        crew_employees = pitman._get_crew_employees()
+        validation = pitman._validate_crews(crew_employees)
         
-        # If author name is still unknown, try to extract from article_extractor
-        if author_details['author'] == 'Unknown' or author_details['author'] is None:
-            # Check article_extractor
-            if 'article_extractor' in pipeline_results and isinstance(pipeline_results['article_extractor'], dict):
-                extracted_author = pipeline_results['article_extractor'].get('author')
-                if extracted_author and extracted_author != 'Unknown':
-                    author_details['author'] = extracted_author
-            
-            # Check article field
-            if author_details['author'] == 'Unknown' and 'article' in pipeline_results:
-                article = pipeline_results['article']
-                if isinstance(article, dict):
-                    extracted_author = article.get('author')
-                    if extracted_author and extracted_author != 'Unknown':
-                        author_details['author'] = extracted_author
-            
-            # Check in data structures
-            if author_details['author'] == 'Unknown' and 'data' in pipeline_results:
-                if 'article' in pipeline_results['data']:
-                    extracted_author = pipeline_results['data']['article'].get('author')
-                    if extracted_author and extracted_author != 'Unknown':
-                        author_details['author'] = extracted_author
+        # Generate a small preview
+        test_start = date.today() + timedelta(days=7)
+        test_end = test_start + timedelta(days=13)  # 2 weeks
         
-        # Clean up None values to empty strings/defaults
-        if author_details['author'] is None:
-            author_details['author'] = 'Unknown'
+        test_results = pitman.generate_pitman_schedule(
+            start_date=test_start,
+            end_date=test_end,
+            variation='fixed',
+            created_by_id=current_user.id
+        )
         
-        logger.info(f"Extracted author details: name={author_details['author']}, "
-                   f"credibility={author_details['author_credibility']}, "
-                   f"bio_length={len(author_details.get('author_bio', ''))}")
-    
-    except Exception as e:
-        logger.error(f"Error extracting author details: {e}")
-    
-    return author_details
-
-def generate_findings_summary(pipeline_results: Dict[str, Any], trust_score: int) -> str:
-    """
-    Generate a conversational summary of what the analysis found
-    """
-    findings = []
-    
-    # Get all service results
-    services = {}
-    
-    # Collect services from pipeline results
-    for key in ['source_credibility', 'author_analyzer', 'bias_detector', 
-                'fact_checker', 'transparency_analyzer', 'manipulation_detector']:
-        if key in pipeline_results and isinstance(pipeline_results[key], dict):
-            if pipeline_results[key].get('success'):
-                services[key] = pipeline_results[key]
-    
-    # Also check in data.detailed_analysis
-    if 'data' in pipeline_results and 'detailed_analysis' in pipeline_results['data']:
-        for key, value in pipeline_results['data']['detailed_analysis'].items():
-            if key not in services and isinstance(value, dict) and value.get('success'):
-                services[key] = value
-    
-    # Process each service for findings
-    for service_name, service_data in services.items():
-        try:
-            if service_name == 'source_credibility':
-                score = extract_score_from_service(service_data)
-                if score is not None:
-                    if score >= 80:
-                        findings.append("Source has high credibility")
-                    elif score >= 60:
-                        findings.append("Source has moderate credibility")
-                    else:
-                        findings.append("Source has questionable credibility")
-            
-            elif service_name == 'bias_detector':
-                bias_score = service_data.get('bias_score', 0)
-                if bias_score < 30:
-                    findings.append("Minimal bias detected")
-                elif bias_score < 60:
-                    findings.append("Moderate bias detected")
-                else:
-                    findings.append("High bias detected")
-            
-            elif service_name == 'fact_checker':
-                verified = service_data.get('verified_claims', 0)
-                disputed = service_data.get('disputed_claims', 0)
-                if verified > 0 or disputed > 0:
-                    findings.append(f"Fact-checked {verified + disputed} claims")
-            
-            elif service_name == 'author_analyzer':
-                author_score = service_data.get('author_score', service_data.get('score', 0))
-                if author_score >= 70:
-                    findings.append("Author has strong credentials")
-                elif author_score >= 40:
-                    findings.append("Author has moderate credentials")
-                else:
-                    findings.append("Limited author information available")
-            
-            elif service_name == 'manipulation_detector':
-                manip_score = service_data.get('manipulation_score', 0)
-                if manip_score < 30:
-                    findings.append("No significant manipulation detected")
-                elif manip_score < 60:
-                    findings.append("Some manipulation tactics detected")
-                else:
-                    findings.append("Significant manipulation detected")
-        
-        except Exception as e:
-            logger.error(f"Error processing {service_name} for findings: {e}")
-            continue
-    
-    # Generate overall assessment based on trust score
-    if trust_score >= 80:
-        overall = "This article is highly trustworthy."
-    elif trust_score >= 60:
-        overall = "This article is generally trustworthy."
-    elif trust_score >= 40:
-        overall = "This article has moderate trustworthiness."
-    else:
-        overall = "This article has low trustworthiness."
-    
-    # Combine findings
-    if findings:
-        return f"{overall} {'. '.join(findings)}."
-    else:
-        return overall
-
-def extract_score_from_service(service_data: Any) -> Optional[float]:
-    """
-    Extract score from service data regardless of structure
-    """
-    if not isinstance(service_data, dict):
-        return None
-    
-    # Direct score fields
-    score_fields = ['score', 'credibility_score', 'bias_score', 'transparency_score', 
-                   'author_score', 'manipulation_score', 'overall_score', 'content_score',
-                   'quality_score', 'trust_score']
-    
-    for field in score_fields:
-        if field in service_data:
-            try:
-                return float(service_data[field])
-            except (ValueError, TypeError):
-                continue
-    
-    # Check in data wrapper
-    if 'data' in service_data and isinstance(service_data['data'], dict):
-        for field in score_fields:
-            if field in service_data['data']:
-                try:
-                    return float(service_data['data'][field])
-                except (ValueError, TypeError):
-                    continue
-    
-    return None
-
-# MAIN ROUTES
-
-@app.route('/')
-def index():
-    """Serve the main application page"""
-    return render_template('index.html')
-
-@app.route('/health')
-def health():
-    """Health check endpoint"""
-    return jsonify({
-        'status': 'healthy',
-        'timestamp': datetime.now().isoformat(),
-        'services': 'ready' if news_analyzer else 'initializing'
-    })
-
-@app.route('/api/analyze', methods=['POST'])
-def analyze():
-    """
-    Main analysis endpoint - Returns exactly 5 things:
-    1. Trust Score
-    2. Article Summary
-    3. Source
-    4. Author
-    5. Findings Summary
-    Plus comprehensive author details for the author card
-    """
-    if not news_analyzer:
-        logger.error("NewsAnalyzer not initialized")
         return jsonify({
-            'success': False,
-            'error': 'Analysis service not available',
-            'trust_score': 0,
-            'article_summary': 'Service initialization failed',
-            'source': 'Unknown',
-            'author': 'Unknown',
-            'findings_summary': 'Service initialization failed'
-        }), 503
-    
-    try:
-        # Get and validate input
-        data = request.get_json()
-        if not data:
-            return jsonify({'error': 'No data provided'}), 400
-        
-        url = data.get('url', '').strip()
-        text = data.get('text', '').strip()
-        
-        if not url and not text:
-            return jsonify({'error': 'Please provide either a URL or article text'}), 400
-        
-        content = url if url else text
-        content_type = 'url' if url else 'text'
-        
-        logger.info(f"Analyzing {content_type}: {content[:100]}...")
-        
-        # Run analysis with pro mode enabled
-        start_time = time.time()
-        pipeline_results = news_analyzer.analyze(content, content_type, pro_mode=True)
-        analysis_time = time.time() - start_time
-        
-        logger.info(f"Analysis completed in {analysis_time:.2f} seconds")
-        
-        # Extract the 5 required pieces of information
-        trust_score = calculate_trust_score(pipeline_results)
-        article_summary = extract_article_summary(pipeline_results)
-        article_info = extract_article_info(pipeline_results)
-        findings_summary = generate_findings_summary(pipeline_results, trust_score)
-        
-        # Extract comprehensive author details
-        author_details = extract_author_details(pipeline_results)
-        
-        # Create simplified response that frontend expects
-        response_data = {
-            'success': True,
-            'trust_score': trust_score,
-            'article_summary': article_summary,
-            'source': article_info['source'],
-            'author': author_details['author'],  # Use author from detailed extraction
-            'findings_summary': findings_summary,
-            'analysis_time': analysis_time,
-            'timestamp': datetime.now().isoformat(),
-            # Add all author details for the author card
-            **author_details  # This spreads all author fields into the response
-        }
-        
-        logger.info(f"Sending response with trust_score: {trust_score}, source: {article_info['source']}, author: {author_details['author']}")
-        logger.info(f"Author details: bio={bool(author_details.get('author_bio'))}, "
-                   f"linkedin={bool(author_details.get('author_linkedin'))}, "
-                   f"articles={author_details.get('author_articles', 0)}")
-        
-        return jsonify(response_data)
+            'crew_employees': {k: len(v) for k, v in crew_employees.items()},
+            'validation': validation,
+            'test_schedules_count': len(test_results['schedules']),
+            'test_statistics': test_results['statistics'],
+            'pattern_preview': pitman.preview_schedule_pattern(14)
+        })
         
     except Exception as e:
-        logger.error(f"Analysis failed: {str(e)}", exc_info=True)
+        logger.error(f"Error in Pitman test: {e}")
+        return jsonify({'error': str(e)})
+
+@app.route('/schedule/view')
+@login_required
+def view_schedule():
+    """View generated schedules"""
+    try:
+        if not current_user.is_supervisor:
+            # Redirect regular employees to their personal schedule
+            return redirect(url_for('employee.my_schedule'))
+        
+        # Get date range from query params
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+        
+        if not start_date:
+            # Default to current week
+            today = date.today()
+            days_to_monday = today.weekday()
+            start_date = today - timedelta(days=days_to_monday)
+        else:
+            start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
+        
+        if not end_date:
+            end_date = start_date + timedelta(days=13)  # 2 weeks
+        else:
+            end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
+        
+        # Get schedules in date range
+        schedules = Schedule.query.filter(
+            Schedule.date >= start_date,
+            Schedule.date <= end_date
+        ).join(Employee).order_by(Schedule.date, Employee.crew, Employee.name).all()
+        
+        # Group by date and crew
+        schedule_grid = {}
+        for schedule in schedules:
+            date_key = schedule.date.strftime('%Y-%m-%d')
+            if date_key not in schedule_grid:
+                schedule_grid[date_key] = {'A': [], 'B': [], 'C': [], 'D': []}
+            
+            crew = schedule.employee.crew if schedule.employee.crew in ['A', 'B', 'C', 'D'] else 'Unassigned'
+            if crew in schedule_grid[date_key]:
+                schedule_grid[date_key][crew].append(schedule)
+        
+        # Sort date keys
+        date_range = sorted(schedule_grid.keys())
+        
+        return render_template('schedule_view.html',
+                             schedule_grid=schedule_grid,
+                             start_date=start_date,
+                             end_date=end_date,
+                             date_range=date_range,
+                             datetime=datetime,
+                             timedelta=timedelta,
+                             date=date)
+                             
+    except Exception as e:
+        logger.error(f"Error viewing schedule: {e}")
+        flash('Error loading schedule view', 'error')
+        return redirect(url_for('supervisor.dashboard'))
+
+@app.route('/api/crew-summary')
+@login_required
+def crew_summary():
+    """API endpoint to get crew summary data"""
+    try:
+        if not current_user.is_supervisor:
+            return jsonify({'error': 'Unauthorized'}), 403
+        
+        if not PITMAN_AVAILABLE:
+            return jsonify({'error': 'Pitman schedule system not available'}), 503
+        
+        pitman = RealPitmanSchedule()
+        crew_employees = pitman._get_crew_employees()
+        validation = pitman._validate_crews(crew_employees)
+        
         return jsonify({
-            'success': False,
-            'error': f'Analysis failed: {str(e)}',
-            'trust_score': 0,
-            'article_summary': 'Error analyzing article',
-            'source': 'Unknown',
-            'author': 'Unknown',
-            'findings_summary': f'Analysis could not be completed: {str(e)}'
-        }), 200  # Return 200 so frontend can handle it
-
-@app.route('/api/test', methods=['GET', 'POST'])
-def test_endpoint():
-    """Test endpoint that returns simple data without analysis"""
-    logger.info("TEST ENDPOINT HIT")
-    
-    # Check if NewsAnalyzer exists
-    analyzer_status = "initialized" if news_analyzer else "failed"
-    
-    # Try to get service status
-    try:
-        registry = get_service_registry()
-        service_status = registry.get_service_status()
-        services = list(service_status.get('services', {}).keys())
+            'crews': {k: len(v) for k, v in crew_employees.items()},
+            'validation': validation,
+            'total_employees': validation.get('total_employees', 0)
+        })
+        
     except Exception as e:
-        services = f"Error: {str(e)}"
-    
-    # Check ScraperAPI status
-    scraperapi_status = "enabled" if os.getenv('SCRAPERAPI_KEY') else "not configured"
-    
-    return jsonify({
-        'success': True,
-        'message': 'Test endpoint working',
-        'news_analyzer': analyzer_status,
-        'services': services,
-        'scraperapi': scraperapi_status,
-        'timestamp': datetime.now().isoformat()
-    })
+        logger.error(f"Error getting crew summary: {e}")
+        return jsonify({'error': str(e)})
 
-@app.route('/api/status')
-def api_status():
-    """Simple status check"""
-    scraperapi_available = bool(os.getenv('SCRAPERAPI_KEY'))
+@app.route('/quick/pitman')
+@login_required
+def quick_pitman():
+    """Quick access to Pitman generator from dashboard"""
+    if not current_user.is_supervisor:
+        flash('Access denied. Supervisors only.', 'danger')
+        return redirect(url_for('main.employee_dashboard'))
     
-    return jsonify({
-        'status': 'online', 
-        'services': 'ready',
-        'scraperapi': 'enabled' if scraperapi_available else 'not configured',
-        'timestamp': datetime.now().isoformat()
-    })
+    return redirect(url_for('pitman_preview'))
 
-# Debug Routes (helpful for development)
-@app.route('/api/debug/services')
-def debug_services():
-    """Debug endpoint to check service status"""
-    if not news_analyzer:
-        return jsonify({'error': 'NewsAnalyzer not initialized'}), 500
-    
-    try:
-        registry = get_service_registry()
-        status = registry.get_service_status()
-        return jsonify(status)
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+# ==========================================
+# ERROR HANDLERS
+# ==========================================
 
-@app.route('/api/debug/config')
-def debug_config():
-    """Debug endpoint to check configuration (without exposing secrets)"""
-    config_info = {
-        'openai_configured': bool(Config.OPENAI_API_KEY),
-        'scraperapi_configured': bool(Config.SCRAPERAPI_KEY),
-        'scrapingbee_configured': bool(Config.SCRAPINGBEE_API_KEY),
-        'google_factcheck_configured': bool(Config.GOOGLE_FACT_CHECK_API_KEY or Config.GOOGLE_FACTCHECK_API_KEY),
-        'news_api_configured': bool(Config.NEWS_API_KEY or Config.NEWSAPI_KEY),
-        'environment': Config.ENV,
-        'debug': Config.DEBUG
-    }
-    
-    return jsonify(config_info)
-
-@app.route('/templates/<path:filename>')
-def serve_template(filename):
-    """Serve template files"""
-    try:
-        if '..' in filename or filename.startswith('/'):
-            return "Invalid path", 400
-        return send_from_directory('templates', filename)
-    except Exception as e:
-        return f"Error: {str(e)}", 500
-
-# Error Handlers
 @app.errorhandler(404)
-def not_found(error):
-    return jsonify({'error': 'Endpoint not found'}), 404
+def not_found_error(error):
+    logger.warning(f"404 error: {request.url}")
+    if request.endpoint and 'api' in request.endpoint:
+        return jsonify({'error': 'Not found'}), 404
+    return render_template('404.html'), 404
 
 @app.errorhandler(500)
 def internal_error(error):
-    return jsonify({'error': 'Internal server error'}), 500
+    logger.error(f"500 error: {error}")
+    db.session.rollback()
+    if request.endpoint and 'api' in request.endpoint:
+        return jsonify({'error': 'Internal server error'}), 500
+    return render_template('500.html'), 500
 
-@app.errorhandler(429)
-def ratelimit_handler(e):
-    return jsonify({'error': 'Rate limit exceeded', 'message': str(e.description)}), 429
+# ==========================================
+# UTILITY FUNCTIONS
+# ==========================================
+
+def allowed_file(filename):
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
+
+# ==========================================
+# CONTEXT PROCESSORS
+# ==========================================
+
+@app.context_processor
+def inject_user_permissions():
+    """Inject user permissions into all templates"""
+    return dict(
+        is_supervisor=lambda: current_user.is_authenticated and current_user.is_supervisor,
+        show_pitman_nav=current_user.is_authenticated and current_user.is_supervisor and PITMAN_AVAILABLE
+    )
+
+@app.context_processor
+def inject_pending_counts():
+    """Inject pending counts into all templates for navbar"""
+    pending_time_off = 0
+    pending_swaps = 0
+    
+    if current_user.is_authenticated and current_user.is_supervisor:
+        try:
+            pending_time_off = TimeOffRequest.query.filter_by(status='pending').count()
+        except Exception as e:
+            logger.warning(f"Could not get pending time off count: {e}")
+            
+        try:
+            pending_swaps = ShiftSwapRequest.query.filter_by(status='pending').count()
+        except Exception as e:
+            logger.warning(f"Could not get pending swaps count: {e}")
+    
+    return dict(
+        pending_time_off=pending_time_off,
+        pending_swaps=pending_swaps
+    )
+
+# ==========================================
+# HEALTH CHECK
+# ==========================================
+
+@app.route('/health')
+def health_check():
+    """Health check endpoint"""
+    try:
+        with db.engine.connect() as conn:
+            result = conn.execute(text('SELECT 1'))
+            result.fetchone()
+        
+        return jsonify({
+            'status': 'healthy',
+            'database': 'connected',
+            'pitman_available': PITMAN_AVAILABLE,
+            'timestamp': datetime.utcnow().isoformat()
+        }), 200
+    except Exception as e:
+        return jsonify({
+            'status': 'unhealthy',
+            'database': 'disconnected',
+            'error': str(e),
+            'timestamp': datetime.utcnow().isoformat()
+        }), 503
+
+# ==========================================
+# DATABASE INITIALIZATION
+# ==========================================
+
+print("Starting database schema check...")
+with app.app_context():
+    try:
+        # First ensure all tables exist
+        db.create_all()
+        print("✓ Database tables verified/created")
+        
+        # Then run the column fixes if available
+        try:
+            from fix_database_columns import fix_database_schema
+            print("Checking for missing columns...")
+            fixes = fix_database_schema()
+            if fixes > 0:
+                print(f"✅ Applied {fixes} database fixes successfully!")
+            else:
+                print("✅ Database schema is up to date")
+        except ImportError:
+            print("⚠️  fix_db_columns.py not found - skipping database fixes")
+        except Exception as e:
+            print(f"⚠️  Could not run database fixes: {e}")
+            
+    except Exception as e:
+        print(f"⚠️  Could not run database fixes: {e}")
+        print("The app will continue but some features may not work correctly")
+
+# ==========================================
+# RUN APPLICATION
+# ==========================================
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
