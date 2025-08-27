@@ -470,7 +470,7 @@ with app.app_context():
         
         # Then run the column fixes if available
         try:
-            from fix_db_columns import fix_database_schema
+            from fix_database_columns import fix_database_schema
             print("Checking for missing columns...")
             fixes = fix_database_schema()
             if fixes > 0:
