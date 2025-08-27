@@ -70,10 +70,10 @@
             </a>
         </div>
         <div class="col-md-3 mb-3">
-            <a href="{{ url_for('supervisor.coverage_needs') }}" class="action-card text-center">
-                <i class="bi bi-shield-check action-icon"></i>
-                <h5>Coverage Needs</h5>
-                <p class="text-muted mb-0">Staffing requirements</p>
+            <a href="{{ url_for('schedule.view_schedules') }}" class="action-card text-center">
+                <i class="bi bi-calendar3 action-icon"></i>
+                <h5>View Schedule</h5>
+                <p class="text-muted mb-0">Current schedules</p>
             </a>
         </div>
         <div class="col-md-3 mb-3">
@@ -81,6 +81,34 @@
                 <i class="bi bi-upload action-icon"></i>
                 <h5>Upload Data</h5>
                 <p class="text-muted mb-0">Import employees</p>
+            </a>
+        </div>
+    </div>
+
+    <!-- Schedule Management -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2 class="h4 mb-3">Schedule Management</h2>
+        </div>
+        <div class="col-md-4 mb-3">
+            <a href="{{ url_for('schedule.view_schedules') }}" class="action-card">
+                <i class="bi bi-calendar-week action-icon"></i>
+                <h5>View Schedule</h5>
+                <p class="text-muted mb-0">Current schedule</p>
+            </a>
+        </div>
+        <div class="col-md-4 mb-3">
+            <a href="{{ url_for('schedule.schedule_select') }}" class="action-card">
+                <i class="bi bi-calendar-plus action-icon"></i>
+                <h5>Create Schedule</h5>
+                <p class="text-muted mb-0">Pattern-based scheduler</p>
+            </a>
+        </div>
+        <div class="col-md-4 mb-3">
+            <a href="{{ url_for('supervisor.vacation_calendar') }}" class="action-card">
+                <i class="bi bi-calendar-heart action-icon"></i>
+                <h5>Vacation Calendar</h5>
+                <p class="text-muted mb-0">Time off overview</p>
             </a>
         </div>
     </div>
@@ -119,8 +147,15 @@
             <h2 class="h4 mb-3">Employee Management</h2>
         </div>
         <div class="col-md-3 mb-3">
-            <a href="{{ url_for('supervisor.crew_management') }}" class="action-card">
+            <a href="{{ url_for('main.view_crews') }}" class="action-card">
                 <i class="bi bi-people action-icon"></i>
+                <h5>View All Crews</h5>
+                <p class="text-muted mb-0">Crew assignments</p>
+            </a>
+        </div>
+        <div class="col-md-3 mb-3">
+            <a href="{{ url_for('supervisor.crew_management') }}" class="action-card">
+                <i class="bi bi-people-fill action-icon"></i>
                 <h5>Crew Management</h5>
                 <p class="text-muted mb-0">Manage assignments</p>
             </a>
@@ -133,17 +168,10 @@
             </a>
         </div>
         <div class="col-md-3 mb-3">
-            <a href="{{ url_for('supervisor.overtime_distribution') }}" class="action-card">
+            <a href="{{ url_for('main.overtime_management') }}" class="action-card">
                 <i class="bi bi-graph-up action-icon"></i>
-                <h5>Overtime Reports</h5>
+                <h5>Overtime</h5>
                 <p class="text-muted mb-0">Track overtime</p>
-            </a>
-        </div>
-        <div class="col-md-3 mb-3">
-            <a href="{{ url_for('supervisor.vacation_calendar') }}" class="action-card">
-                <i class="bi bi-calendar-heart action-icon"></i>
-                <h5>Vacation Calendar</h5>
-                <p class="text-muted mb-0">Time off overview</p>
             </a>
         </div>
     </div>
@@ -198,10 +226,16 @@
 
 <style>
 .stat-card {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #4e73df 0%, #224abe 100%);
     color: white;
     border: none;
     transition: transform 0.2s;
+}
+
+.stat-card .card-body h6,
+.stat-card .card-body h3,
+.stat-card .card-body small {
+    color: white !important;
 }
 
 .stat-card:hover {
