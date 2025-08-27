@@ -171,7 +171,7 @@ def upload_employees():
         if not template:
             # Create a simple fallback template inline
             logger.warning("No upload template found, using fallback")
-            template = 'upload_employees_enhanced.html'
+            template = 'upload_employees_clean.html'
         
         return render_template(template,
                              recent_uploads=recent_uploads,
