@@ -79,13 +79,13 @@
         <div class="col-md-3">
             <div class="card stat-card">
                 <div class="card-body">
-                    <h6 class="text-muted">Total Employees</h6>
-                    <h3>{{ total_employees or 0 }}</h3>
+                    <h6 class="text-muted">Pending Communications</h6>
+                    <h3>{{ pending_communications or 0 }}</h3>
                     <small class="text-muted">
                         {% if selected_crew != 'all' %}
-                            In Crew {{ selected_crew }}
+                            Crew {{ selected_crew }} messages
                         {% else %}
-                            Active workforce
+                            All messages
                         {% endif %}
                     </small>
                 </div>
@@ -141,10 +141,10 @@
         </div>
     </div>
 
-    <!-- Employee Requests and Communications - MOVED TO TOP -->
+    <!-- Employee Requests - MOVED TO TOP -->
     <div class="row mb-4">
         <div class="col-12">
-            <h2 class="h4 mb-3">Employee Requests and Communications</h2>
+            <h2 class="h4 mb-3">Employee Requests</h2>
         </div>
         <div class="col-md-6 mb-3">
             <a href="{{ url_for('supervisor.time_off_requests', crew=selected_crew) }}" class="action-card">
@@ -180,10 +180,10 @@
         </div>
     </div>
 
-    <!-- Quick Actions -->
+    <!-- Workforce Management and Scheduling -->
     <div class="row mb-4">
         <div class="col-12">
-            <h2 class="h4 mb-3">Quick Actions</h2>
+            <h2 class="h4 mb-3">Workforce Management and Scheduling</h2>
         </div>
         <div class="col-md-3 mb-3">
             <a href="{{ url_for('supervisor.time_off_requests', crew=selected_crew) }}" class="action-card text-center">
