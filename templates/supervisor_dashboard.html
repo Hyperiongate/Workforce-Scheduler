@@ -3,10 +3,44 @@
 
 {% block content %}
 <div class="container-fluid">
+    <!-- Header with Crew Filter Buttons -->
     <div class="row mb-4">
-        <div class="col-12">
+        <div class="col-md-8">
             <h1 class="h2">Supervisor Dashboard</h1>
             <p class="text-muted">Welcome back, {{ current_user.name }}!</p>
+        </div>
+        <div class="col-md-4 text-end">
+            <div class="btn-group" role="group" aria-label="Crew Filter">
+                <a href="{{ url_for('supervisor.dashboard', crew='all') }}" 
+                   class="btn btn-sm {% if selected_crew == 'all' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                    All Crews
+                </a>
+                <a href="{{ url_for('supervisor.dashboard', crew='A') }}" 
+                   class="btn btn-sm {% if selected_crew == 'A' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                    Crew A
+                </a>
+                <a href="{{ url_for('supervisor.dashboard', crew='B') }}" 
+                   class="btn btn-sm {% if selected_crew == 'B' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                    Crew B
+                </a>
+                <a href="{{ url_for('supervisor.dashboard', crew='C') }}" 
+                   class="btn btn-sm {% if selected_crew == 'C' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                    Crew C
+                </a>
+                <a href="{{ url_for('supervisor.dashboard', crew='D') }}" 
+                   class="btn btn-sm {% if selected_crew == 'D' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                    Crew D
+                </a>
+            </div>
+            <div class="mt-1">
+                <small class="text-muted">Viewing: 
+                    {% if selected_crew == 'all' %}
+                        All Crews
+                    {% else %}
+                        Crew {{ selected_crew }}
+                    {% endif %}
+                </small>
+            </div>
         </div>
     </div>
 
@@ -17,7 +51,13 @@
                 <div class="card-body">
                     <h6 class="text-muted">Pending Time Off</h6>
                     <h3>{{ pending_time_off or 0 }}</h3>
-                    <small class="text-muted">Requests awaiting approval</small>
+                    <small class="text-muted">
+                        {% if selected_crew != 'all' %}
+                            Crew {{ selected_crew }} requests
+                        {% else %}
+                            All crews
+                        {% endif %}
+                    </small>
                 </div>
             </div>
         </div>
@@ -26,7 +66,13 @@
                 <div class="card-body">
                     <h6 class="text-muted">Pending Swaps</h6>
                     <h3>{{ pending_swaps or 0 }}</h3>
-                    <small class="text-muted">Shift swap requests</small>
+                    <small class="text-muted">
+                        {% if selected_crew != 'all' %}
+                            Crew {{ selected_crew }} swaps
+                        {% else %}
+                            All crews
+                        {% endif %}
+                    </small>
                 </div>
             </div>
         </div>
@@ -35,7 +81,13 @@
                 <div class="card-body">
                     <h6 class="text-muted">Total Employees</h6>
                     <h3>{{ total_employees or 0 }}</h3>
-                    <small class="text-muted">Active workforce</small>
+                    <small class="text-muted">
+                        {% if selected_crew != 'all' %}
+                            In Crew {{ selected_crew }}
+                        {% else %}
+                            Active workforce
+                        {% endif %}
+                    </small>
                 </div>
             </div>
         </div>
@@ -44,7 +96,13 @@
                 <div class="card-body">
                     <h6 class="text-muted">Coverage Gaps</h6>
                     <h3>{{ coverage_gaps or 0 }}</h3>
-                    <small class="text-muted">Positions needing coverage</small>
+                    <small class="text-muted">
+                        {% if selected_crew != 'all' %}
+                            Crew {{ selected_crew }} gaps
+                        {% else %}
+                            All positions
+                        {% endif %}
+                    </small>
                 </div>
             </div>
         </div>
@@ -56,17 +114,29 @@
             <h2 class="h4 mb-3">Coverage Gaps</h2>
         </div>
         <div class="col-md-6 mb-3">
-            <a href="{{ url_for('supervisor.coverage_gaps') }}" class="action-card">
+            <a href="{{ url_for('supervisor.coverage_gaps', crew=selected_crew) }}" class="action-card">
                 <i class="bi bi-exclamation-triangle action-icon"></i>
                 <h5>Coverage Gaps</h5>
-                <p class="text-muted mb-0">Identify gaps</p>
+                <p class="text-muted mb-0">
+                    {% if selected_crew != 'all' %}
+                        Identify Crew {{ selected_crew }} gaps
+                    {% else %}
+                        Identify all gaps
+                    {% endif %}
+                </p>
             </a>
         </div>
         <div class="col-md-6 mb-3">
-            <a href="{{ url_for('supervisor.coverage_needs') }}" class="action-card">
+            <a href="{{ url_for('supervisor.coverage_needs', crew=selected_crew) }}" class="action-card">
                 <i class="bi bi-shield-check action-icon"></i>
                 <h5>Coverage Needs</h5>
-                <p class="text-muted mb-0">Requirements</p>
+                <p class="text-muted mb-0">
+                    {% if selected_crew != 'all' %}
+                        Crew {{ selected_crew }} requirements
+                    {% else %}
+                        All requirements
+                    {% endif %}
+                </p>
             </a>
         </div>
     </div>
@@ -77,27 +147,33 @@
             <h2 class="h4 mb-3">Employee Requests and Communications</h2>
         </div>
         <div class="col-md-6 mb-3">
-            <a href="{{ url_for('supervisor.time_off_requests') }}" class="action-card">
+            <a href="{{ url_for('supervisor.time_off_requests', crew=selected_crew) }}" class="action-card">
                 <i class="bi bi-calendar-x action-icon"></i>
                 <h5>Time Off Requests</h5>
                 <p class="text-muted mb-0">
                     {% if pending_time_off %}
                         <span class="badge bg-danger">{{ pending_time_off }} pending</span>
+                        {% if selected_crew != 'all' %}
+                            - Crew {{ selected_crew }}
+                        {% endif %}
                     {% else %}
-                        No pending
+                        No pending requests
                     {% endif %}
                 </p>
             </a>
         </div>
         <div class="col-md-6 mb-3">
-            <a href="{{ url_for('supervisor.shift_swaps') }}" class="action-card">
+            <a href="{{ url_for('supervisor.shift_swaps', crew=selected_crew) }}" class="action-card">
                 <i class="bi bi-arrow-left-right action-icon"></i>
                 <h5>Shift Swaps</h5>
                 <p class="text-muted mb-0">
                     {% if pending_swaps %}
                         <span class="badge bg-warning">{{ pending_swaps }} pending</span>
+                        {% if selected_crew != 'all' %}
+                            - Crew {{ selected_crew }}
+                        {% endif %}
                     {% else %}
-                        No pending
+                        No pending swaps
                     {% endif %}
                 </p>
             </a>
@@ -110,21 +186,21 @@
             <h2 class="h4 mb-3">Quick Actions</h2>
         </div>
         <div class="col-md-3 mb-3">
-            <a href="{{ url_for('supervisor.time_off_requests') }}" class="action-card text-center">
+            <a href="{{ url_for('supervisor.time_off_requests', crew=selected_crew) }}" class="action-card text-center">
                 <i class="bi bi-calendar-check action-icon"></i>
                 <h5>Time Off Requests</h5>
                 <p class="text-muted mb-0">Review and approve</p>
             </a>
         </div>
         <div class="col-md-3 mb-3">
-            <a href="{{ url_for('supervisor.shift_swaps') }}" class="action-card text-center">
+            <a href="{{ url_for('supervisor.shift_swaps', crew=selected_crew) }}" class="action-card text-center">
                 <i class="bi bi-shuffle action-icon"></i>
                 <h5>Shift Swaps</h5>
                 <p class="text-muted mb-0">Manage swap requests</p>
             </a>
         </div>
         <div class="col-md-3 mb-3">
-            <a href="{{ url_for('schedule.view_schedules') }}" class="action-card text-center">
+            <a href="{{ url_for('schedule.view_schedules', crew=selected_crew) }}" class="action-card text-center">
                 <i class="bi bi-calendar3 action-icon"></i>
                 <h5>View Schedule</h5>
                 <p class="text-muted mb-0">Current schedules</p>
@@ -145,10 +221,16 @@
             <h2 class="h4 mb-3">Schedule Management</h2>
         </div>
         <div class="col-md-4 mb-3">
-            <a href="{{ url_for('schedule.view_schedules') }}" class="action-card">
+            <a href="{{ url_for('schedule.view_schedules', crew=selected_crew) }}" class="action-card">
                 <i class="bi bi-calendar-week action-icon"></i>
                 <h5>View Schedule</h5>
-                <p class="text-muted mb-0">Current schedule</p>
+                <p class="text-muted mb-0">
+                    {% if selected_crew != 'all' %}
+                        Crew {{ selected_crew }} schedule
+                    {% else %}
+                        All schedules
+                    {% endif %}
+                </p>
             </a>
         </div>
         <div class="col-md-4 mb-3">
@@ -159,10 +241,16 @@
             </a>
         </div>
         <div class="col-md-4 mb-3">
-            <a href="{{ url_for('supervisor.vacation_calendar') }}" class="action-card">
+            <a href="{{ url_for('supervisor.vacation_calendar', crew=selected_crew) }}" class="action-card">
                 <i class="bi bi-calendar-heart action-icon"></i>
                 <h5>Vacation Calendar</h5>
-                <p class="text-muted mb-0">Time off overview</p>
+                <p class="text-muted mb-0">
+                    {% if selected_crew != 'all' %}
+                        Crew {{ selected_crew }} time off
+                    {% else %}
+                        All time off
+                    {% endif %}
+                </p>
             </a>
         </div>
     </div>
@@ -201,31 +289,55 @@
             <h2 class="h4 mb-3">Employee Management</h2>
         </div>
         <div class="col-md-3 mb-3">
-            <a href="{{ url_for('main.view_crews') }}" class="action-card">
+            <a href="{{ url_for('main.view_crews', crew=selected_crew) }}" class="action-card">
                 <i class="bi bi-people action-icon"></i>
                 <h5>View All Crews</h5>
-                <p class="text-muted mb-0">Crew assignments</p>
+                <p class="text-muted mb-0">
+                    {% if selected_crew != 'all' %}
+                        Focus on Crew {{ selected_crew }}
+                    {% else %}
+                        All crew assignments
+                    {% endif %}
+                </p>
             </a>
         </div>
         <div class="col-md-3 mb-3">
-            <a href="{{ url_for('supervisor.crew_management') }}" class="action-card">
+            <a href="{{ url_for('supervisor.crew_management', crew=selected_crew) }}" class="action-card">
                 <i class="bi bi-people-fill action-icon"></i>
                 <h5>Crew Management</h5>
-                <p class="text-muted mb-0">Manage assignments</p>
+                <p class="text-muted mb-0">
+                    {% if selected_crew != 'all' %}
+                        Manage Crew {{ selected_crew }}
+                    {% else %}
+                        Manage all assignments
+                    {% endif %}
+                </p>
             </a>
         </div>
         <div class="col-md-3 mb-3">
-            <a href="{{ url_for('supervisor.employee_management') }}" class="action-card">
+            <a href="{{ url_for('supervisor.employee_management', crew=selected_crew) }}" class="action-card">
                 <i class="bi bi-person-badge action-icon"></i>
                 <h5>Employee List</h5>
-                <p class="text-muted mb-0">All employees</p>
+                <p class="text-muted mb-0">
+                    {% if selected_crew != 'all' %}
+                        Crew {{ selected_crew }} employees
+                    {% else %}
+                        All employees
+                    {% endif %}
+                </p>
             </a>
         </div>
         <div class="col-md-3 mb-3">
-            <a href="{{ url_for('main.overtime_management') }}" class="action-card">
+            <a href="{{ url_for('main.overtime_management', crew=selected_crew) }}" class="action-card">
                 <i class="bi bi-graph-up action-icon"></i>
                 <h5>Overtime</h5>
-                <p class="text-muted mb-0">Track overtime</p>
+                <p class="text-muted mb-0">
+                    {% if selected_crew != 'all' %}
+                        Crew {{ selected_crew }} OT
+                    {% else %}
+                        Track all overtime
+                    {% endif %}
+                </p>
             </a>
         </div>
     </div>
@@ -288,6 +400,20 @@
 .action-card p {
     color: #6c757d;
     font-size: 0.9rem;
+}
+
+.btn-group .btn {
+    border-radius: 0;
+}
+
+.btn-group .btn:first-child {
+    border-top-left-radius: .375rem;
+    border-bottom-left-radius: .375rem;
+}
+
+.btn-group .btn:last-child {
+    border-top-right-radius: .375rem;
+    border-bottom-right-radius: .375rem;
 }
 </style>
 {% endblock %}
