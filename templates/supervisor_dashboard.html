@@ -70,10 +70,10 @@
             </a>
         </div>
         <div class="col-md-3 mb-3">
-            <a href="#" class="action-card text-center" onclick="alert('Schedule viewing feature coming soon'); return false;">
-                <i class="bi bi-calendar3 action-icon"></i>
-                <h5>View Schedule</h5>
-                <p class="text-muted mb-0">Current schedules</p>
+            <a href="{{ url_for('supervisor.coverage_needs') }}" class="action-card text-center">
+                <i class="bi bi-shield-check action-icon"></i>
+                <h5>Coverage Needs</h5>
+                <p class="text-muted mb-0">Staffing requirements</p>
             </a>
         </div>
         <div class="col-md-3 mb-3">
@@ -81,34 +81,6 @@
                 <i class="bi bi-upload action-icon"></i>
                 <h5>Upload Data</h5>
                 <p class="text-muted mb-0">Import employees</p>
-            </a>
-        </div>
-    </div>
-
-    <!-- Schedule Management -->
-    <div class="row mb-4">
-        <div class="col-12">
-            <h2 class="h4 mb-3">Schedule Management</h2>
-        </div>
-        <div class="col-md-4 mb-3">
-            <a href="#" class="action-card" onclick="alert('Schedule viewing feature coming soon'); return false;">
-                <i class="bi bi-calendar-week action-icon"></i>
-                <h5>View Schedule</h5>
-                <p class="text-muted mb-0">Current schedule</p>
-            </a>
-        </div>
-        <div class="col-md-4 mb-3">
-            <a href="#" class="action-card" onclick="alert('Schedule creation feature coming soon'); return false;">
-                <i class="bi bi-calendar-plus action-icon"></i>
-                <h5>Create Schedule</h5>
-                <p class="text-muted mb-0">Pattern-based scheduler</p>
-            </a>
-        </div>
-        <div class="col-md-4 mb-3">
-            <a href="{{ url_for('supervisor.vacation_calendar') }}" class="action-card">
-                <i class="bi bi-calendar-heart action-icon"></i>
-                <h5>Vacation Calendar</h5>
-                <p class="text-muted mb-0">Time off overview</p>
             </a>
         </div>
     </div>
@@ -149,13 +121,6 @@
         <div class="col-md-3 mb-3">
             <a href="{{ url_for('supervisor.crew_management') }}" class="action-card">
                 <i class="bi bi-people action-icon"></i>
-                <h5>View All Crews</h5>
-                <p class="text-muted mb-0">Crew assignments</p>
-            </a>
-        </div>
-        <div class="col-md-3 mb-3">
-            <a href="{{ url_for('supervisor.crew_management') }}" class="action-card">
-                <i class="bi bi-people-fill action-icon"></i>
                 <h5>Crew Management</h5>
                 <p class="text-muted mb-0">Manage assignments</p>
             </a>
@@ -170,8 +135,15 @@
         <div class="col-md-3 mb-3">
             <a href="{{ url_for('supervisor.overtime_distribution') }}" class="action-card">
                 <i class="bi bi-graph-up action-icon"></i>
-                <h5>Overtime</h5>
+                <h5>Overtime Reports</h5>
                 <p class="text-muted mb-0">Track overtime</p>
+            </a>
+        </div>
+        <div class="col-md-3 mb-3">
+            <a href="{{ url_for('supervisor.vacation_calendar') }}" class="action-card">
+                <i class="bi bi-calendar-heart action-icon"></i>
+                <h5>Vacation Calendar</h5>
+                <p class="text-muted mb-0">Time off overview</p>
             </a>
         </div>
     </div>
@@ -222,43 +194,14 @@
             </a>
         </div>
     </div>
-
-    <!-- System Status -->
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-header">
-                    <h5 class="mb-0">System Status</h5>
-                </div>
-                <div class="card-body">
-                    <div class="row">
-                        <div class="col-md-6">
-                            <p><strong>Today's Date:</strong> {{ moment().format('YYYY-MM-DD') }}</p>
-                            <p><strong>Active Employees:</strong> {{ total_employees or 0 }}</p>
-                        </div>
-                        <div class="col-md-6">
-                            <p><strong>Pending Approvals:</strong> {{ (pending_time_off or 0) + (pending_swaps or 0) }}</p>
-                            <p><strong>System Status:</strong> <span class="badge bg-success">Online</span></p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
 </div>
 
 <style>
 .stat-card {
-    background: linear-gradient(135deg, #4e73df 0%, #224abe 100%);
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
     border: none;
     transition: transform 0.2s;
-}
-
-.stat-card .card-body h6,
-.stat-card .card-body h3,
-.stat-card .card-body small {
-    color: white !important;
 }
 
 .stat-card:hover {
@@ -280,7 +223,6 @@
     transition: all 0.3s;
     box-shadow: 0 2px 4px rgba(0,0,0,0.05);
     height: 100%;
-    cursor: pointer;
 }
 
 .action-card:hover {
@@ -305,10 +247,6 @@
 .action-card p {
     color: #6c757d;
     font-size: 0.9rem;
-}
-
-.badge {
-    font-size: 0.75rem;
 }
 </style>
 {% endblock %}
