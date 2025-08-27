@@ -70,7 +70,7 @@
             </a>
         </div>
         <div class="col-md-3 mb-3">
-            <a href="{{ url_for('schedule.view_schedules') }}" class="action-card text-center">
+            <a href="#" class="action-card text-center" onclick="alert('Schedule viewing feature coming soon'); return false;">
                 <i class="bi bi-calendar3 action-icon"></i>
                 <h5>View Schedule</h5>
                 <p class="text-muted mb-0">Current schedules</p>
@@ -91,14 +91,14 @@
             <h2 class="h4 mb-3">Schedule Management</h2>
         </div>
         <div class="col-md-4 mb-3">
-            <a href="{{ url_for('schedule.view_schedules') }}" class="action-card">
+            <a href="#" class="action-card" onclick="alert('Schedule viewing feature coming soon'); return false;">
                 <i class="bi bi-calendar-week action-icon"></i>
                 <h5>View Schedule</h5>
                 <p class="text-muted mb-0">Current schedule</p>
             </a>
         </div>
         <div class="col-md-4 mb-3">
-            <a href="{{ url_for('schedule.schedule_select') }}" class="action-card">
+            <a href="#" class="action-card" onclick="alert('Schedule creation feature coming soon'); return false;">
                 <i class="bi bi-calendar-plus action-icon"></i>
                 <h5>Create Schedule</h5>
                 <p class="text-muted mb-0">Pattern-based scheduler</p>
@@ -147,7 +147,7 @@
             <h2 class="h4 mb-3">Employee Management</h2>
         </div>
         <div class="col-md-3 mb-3">
-            <a href="{{ url_for('main.view_crews') }}" class="action-card">
+            <a href="{{ url_for('supervisor.crew_management') }}" class="action-card">
                 <i class="bi bi-people action-icon"></i>
                 <h5>View All Crews</h5>
                 <p class="text-muted mb-0">Crew assignments</p>
@@ -168,7 +168,7 @@
             </a>
         </div>
         <div class="col-md-3 mb-3">
-            <a href="{{ url_for('main.overtime_management') }}" class="action-card">
+            <a href="{{ url_for('supervisor.overtime_distribution') }}" class="action-card">
                 <i class="bi bi-graph-up action-icon"></i>
                 <h5>Overtime</h5>
                 <p class="text-muted mb-0">Track overtime</p>
@@ -222,6 +222,29 @@
             </a>
         </div>
     </div>
+
+    <!-- System Status -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">System Status</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <p><strong>Today's Date:</strong> {{ moment().format('YYYY-MM-DD') }}</p>
+                            <p><strong>Active Employees:</strong> {{ total_employees or 0 }}</p>
+                        </div>
+                        <div class="col-md-6">
+                            <p><strong>Pending Approvals:</strong> {{ (pending_time_off or 0) + (pending_swaps or 0) }}</p>
+                            <p><strong>System Status:</strong> <span class="badge bg-success">Online</span></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <style>
@@ -257,6 +280,7 @@
     transition: all 0.3s;
     box-shadow: 0 2px 4px rgba(0,0,0,0.05);
     height: 100%;
+    cursor: pointer;
 }
 
 .action-card:hover {
@@ -281,6 +305,10 @@
 .action-card p {
     color: #6c757d;
     font-size: 0.9rem;
+}
+
+.badge {
+    font-size: 0.75rem;
 }
 </style>
 {% endblock %}
