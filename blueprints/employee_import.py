@@ -44,6 +44,17 @@ def supervisor_required(f):
     return decorated_function
 
 # ==========================================
+# SCHEDULE ROUTE (ADDED AS REQUESTED)
+# ==========================================
+
+@employee_import_bp.route('/supervisor/schedule-selection')
+@login_required
+@supervisor_required  
+def schedule_selection():
+    """Display schedule pattern selection page"""
+    return render_template('schedule_selection.html')
+
+# ==========================================
 # HELPER FUNCTIONS
 # ==========================================
 
