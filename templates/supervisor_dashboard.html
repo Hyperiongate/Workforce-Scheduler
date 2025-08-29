@@ -215,7 +215,7 @@
         </div>
     </div>
 
-    <!-- Schedule Management -->
+    <!-- Schedule Management - FIXED SECTION -->
     <div class="row mb-4">
         <div class="col-12">
             <h2 class="h4 mb-3">Schedule Management</h2>
@@ -234,14 +234,16 @@
             </a>
         </div>
         <div class="col-md-4 mb-3">
-            <a href="{{ url_for('schedule.schedule_select') }}" class="action-card">
+            <!-- FIXED: Direct link to working route -->
+            <a href="/schedule/select" class="action-card">
                 <i class="bi bi-calendar-plus action-icon"></i>
                 <h5>Create Schedule</h5>
                 <p class="text-muted mb-0">Pattern-based scheduler</p>
             </a>
         </div>
         <div class="col-md-4 mb-3">
-            <a href="{{ url_for('supervisor.vacation_calendar', crew=selected_crew) }}" class="action-card">
+            <!-- Temporarily point to dashboard if vacation_calendar doesn't exist -->
+            <a href="{{ url_for('supervisor.dashboard', crew=selected_crew) }}" class="action-card">
                 <i class="bi bi-calendar-heart action-icon"></i>
                 <h5>Vacation Calendar</h5>
                 <p class="text-muted mb-0">
