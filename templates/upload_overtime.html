@@ -1,0 +1,698 @@
+{% extends "base.html" %}
+
+{% block title %}Overtime Upload - Workforce Scheduler{% endblock %}
+
+{% block extra_css %}
+<style>
+    .overtime-stats {
+        background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+        color: white;
+        border-radius: 15px;
+    }
+    
+    .upload-zone {
+        border: 2px dashed #ff6b6b;
+        border-radius: 10px;
+        padding: 3rem;
+        text-align: center;
+        background: linear-gradient(135deg, #fff5f5 0%, #fed7d7 100%);
+        transition: all 0.3s ease;
+        cursor: pointer;
+    }
+    
+    .upload-zone:hover,
+    .upload-zone.dragover {
+        border-color: #e53e3e;
+        background: linear-gradient(135deg, #fed7d7 0%, #fc8181 100%);
+        transform: translateY(-2px);
+        box-shadow: 0 8px 16px rgba(0,0,0,0.1);
+    }
+    
+    .upload-zone.has-file {
+        border-color: #38a169;
+        background: linear-gradient(135deg, #f0fff4 0%, #c6f6d5 100%);
+    }
+    
+    .overtime-icon {
+        font-size: 4rem;
+        color: #ff6b6b;
+        margin-bottom: 1rem;
+    }
+    
+    .week-display {
+        background: #f7fafc;
+        border-left: 4px solid #4299e1;
+        padding: 1rem;
+        margin: 0.5rem 0;
+        border-radius: 0 8px 8px 0;
+    }
+    
+    .high-ot-warning {
+        background-color: #fed7d7;
+        border: 1px solid #fc8181;
+        color: #742a2a;
+        padding: 0.75rem;
+        border-radius: 8px;
+        margin: 0.5rem 0;
+    }
+    
+    .validation-preview {
+        max-height: 300px;
+        overflow-y: auto;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 1rem;
+        background: #f7fafc;
+    }
+    
+    .employee-ot-card {
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 1rem;
+        margin: 0.5rem 0;
+        background: white;
+        transition: all 0.3s ease;
+    }
+    
+    .employee-ot-card:hover {
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        border-color: #cbd5e0;
+    }
+    
+    .ot-hours-badge {
+        font-size: 1.1rem;
+        font-weight: bold;
+        padding: 0.5rem 1rem;
+        border-radius: 20px;
+    }
+    
+    .ot-low { background-color: #c6f6d5; color: #2d3748; }
+    .ot-medium { background-color: #fbb6ce; color: #2d3748; }
+    .ot-high { background-color: #fed7d7; color: #c53030; }
+    .ot-extreme { background-color: #fc8181; color: white; }
+    
+    .quick-stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 1rem;
+        margin: 1rem 0;
+    }
+    
+    .quick-stat {
+        background: white;
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        padding: 1.5rem;
+        text-align: center;
+    }
+    
+    .quick-stat h4 {
+        margin: 0;
+        font-size: 2rem;
+        font-weight: bold;
+    }
+    
+    .progress-ring {
+        width: 80px;
+        height: 80px;
+        margin: 0 auto 1rem;
+    }
+    
+    .progress-ring circle {
+        transition: stroke-dashoffset 0.35s;
+        transform: rotate(-90deg);
+        transform-origin: 50% 50%;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h1 class="h3 mb-0">
+                        <i class="bi bi-clock-history"></i> Overtime Data Upload
+                    </h1>
+                    <p class="text-muted">Import 13-week overtime history for employees</p>
+                </div>
+                <div>
+                    <a href="{{ url_for('employee_import.download_overtime_template') }}" class="btn btn-outline-primary">
+                        <i class="bi bi-download"></i> Download Template
+                    </a>
+                    <a href="{{ url_for('employee_import.upload_history') }}" class="btn btn-outline-info">
+                        <i class="bi bi-list-ul"></i> Upload History
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Main Upload Section -->
+        <div class="col-lg-8">
+            <!-- Upload Card -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-danger text-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-cloud-upload"></i> Upload Overtime Data
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <form id="overtimeUploadForm" method="POST" enctype="multipart/form-data">
+                        <input type="hidden" name="uploadType" value="overtime">
+                        
+                        <!-- Import Options -->
+                        <div class="row mb-4">
+                            <div class="col-md-6">
+                                <label class="form-label">Import Mode</label>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="importMode" id="replaceOT" value="replace" checked>
+                                    <label class="form-check-label" for="replaceOT">
+                                        <strong>Replace</strong> - Clear existing overtime data
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="importMode" id="appendOT" value="append">
+                                    <label class="form-check-label" for="appendOT">
+                                        <strong>Append/Update</strong> - Add to existing data
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Validation Level</label>
+                                <select class="form-select" name="validationLevel">
+                                    <option value="strict">Strict - Reject any errors</option>
+                                    <option value="standard" selected>Standard - Allow minor warnings</option>
+                                    <option value="relaxed">Relaxed - Import what's possible</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- File Upload Zone -->
+                        <div class="upload-zone" id="overtimeUploadZone">
+                            <i class="bi bi-clock-fill overtime-icon"></i>
+                            <h3>Drop Overtime Excel File Here</h3>
+                            <p class="text-muted mb-3">or click to select file</p>
+                            <input type="file" name="file" id="overtimeFileInput" class="d-none" accept=".xlsx,.xls" required>
+                            <button type="button" class="btn btn-danger btn-lg" onclick="document.getElementById('overtimeFileInput').click()">
+                                <i class="bi bi-folder-plus"></i> Choose Excel File
+                            </button>
+                            <div class="mt-3">
+                                <small class="text-muted">
+                                    Supported formats: .xlsx, .xls | Maximum size: 16MB
+                                </small>
+                            </div>
+                        </div>
+
+                        <!-- Selected File Info -->
+                        <div id="overtimeFileInfo" class="mt-4" style="display: none;">
+                            <div class="alert alert-info">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <i class="bi bi-file-earmark-excel fs-4 me-2"></i>
+                                        <strong id="overtimeFileName">filename.xlsx</strong>
+                                        <div class="mt-1">
+                                            <small class="text-muted">
+                                                Size: <span id="overtimeFileSize">0 KB</span> | 
+                                                Selected: <span id="overtimeFileTime">now</span>
+                                            </small>
+                                        </div>
+                                    </div>
+                                    <button type="button" class="btn btn-outline-secondary" onclick="clearOvertimeFile()">
+                                        <i class="bi bi-x-lg"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Validation Results -->
+                        <div id="overtimeValidationResults" style="display: none;" class="mt-4">
+                            <!-- Results will be populated by JavaScript -->
+                        </div>
+
+                        <!-- Action Buttons -->
+                        <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-4">
+                            <button type="button" class="btn btn-outline-primary" id="validateOvertimeBtn" 
+                                    disabled onclick="validateOvertimeFile()">
+                                <i class="bi bi-shield-check"></i> Validate Data
+                            </button>
+                            <button type="button" class="btn btn-success" id="importOvertimeBtn" 
+                                    disabled onclick="importOvertimeData()">
+                                <i class="bi bi-upload"></i> Import Overtime
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Instructions -->
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="bi bi-info-circle"></i> Overtime Import Instructions
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6 class="text-primary">Required Columns:</h6>
+                            <ul class="list-unstyled">
+                                <li><i class="bi bi-check-square text-success"></i> Employee ID</li>
+                                <li><i class="bi bi-check-square text-success"></i> Week Start Date</li>
+                                <li><i class="bi bi-check-square text-success"></i> Regular Hours</li>
+                                <li><i class="bi bi-check-square text-success"></i> Overtime Hours</li>
+                                <li><i class="bi bi-check-square text-success"></i> Total Hours</li>
+                            </ul>
+                        </div>
+                        <div class="col-md-6">
+                            <h6 class="text-info">Optional Columns:</h6>
+                            <ul class="list-unstyled">
+                                <li><i class="bi bi-plus-square text-info"></i> Notes</li>
+                                <li><i class="bi bi-plus-square text-info"></i> Project Code</li>
+                                <li><i class="bi bi-plus-square text-info"></i> Overtime Type</li>
+                                <li><i class="bi bi-plus-square text-info"></i> Approved By</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="alert alert-warning mt-3">
+                        <i class="bi bi-exclamation-triangle"></i> <strong>Important Notes:</strong>
+                        <ul class="mb-0 mt-2">
+                            <li><strong>Week Start Date</strong> should be Monday dates (YYYY-MM-DD format)</li>
+                            <li><strong>Total Hours</strong> must equal Regular Hours + Overtime Hours</li>
+                            <li><strong>Employee ID</strong> must match existing employees in the system</li>
+                            <li><strong>13-Week History</strong> is recommended for optimal schedule optimization</li>
+                            <li>Hours with values over 60 per week will trigger warnings</li>
+                        </ul>
+                    </div>
+
+                    <div class="alert alert-info">
+                        <i class="bi bi-lightbulb"></i> <strong>Pro Tips:</strong>
+                        <ul class="mb-0 mt-2">
+                            <li>Use "Replace" mode to start fresh with new data</li>
+                            <li>Use "Append/Update" mode to add recent weeks</li>
+                            <li>Download the template for exact format requirements</li>
+                            <li>Validate before importing to catch issues early</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sidebar -->
+        <div class="col-lg-4">
+            <!-- Current Overtime Stats -->
+            <div class="card overtime-stats mb-4">
+                <div class="card-body text-center">
+                    <i class="bi bi-clock-history display-4 mb-3"></i>
+                    <h4>Overtime Tracking</h4>
+                    <div class="row mt-3">
+                        <div class="col-6">
+                            <div class="border-end border-light">
+                                <h5 class="mb-0">{{ stats.total_employees or 0 }}</h5>
+                                <small class="opacity-75">Total Employees</small>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <h5 class="mb-0">{{ stats.with_overtime or 0 }}</h5>
+                            <small class="opacity-75">With OT Data</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Stats -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h6 class="mb-0">
+                        <i class="bi bi-graph-up"></i> Quick Stats
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div class="quick-stats">
+                        <div class="quick-stat">
+                            <h4 class="text-success">{{ stats.low_ot or 0 }}</h4>
+                            <small class="text-muted">Low OT<br>(&lt;10h/week)</small>
+                        </div>
+                        <div class="quick-stat">
+                            <h4 class="text-warning">{{ stats.medium_ot or 0 }}</h4>
+                            <small class="text-muted">Medium OT<br>(10-20h/week)</small>
+                        </div>
+                        <div class="quick-stat">
+                            <h4 class="text-danger">{{ stats.high_ot or 0 }}</h4>
+                            <small class="text-muted">High OT<br>(&gt;20h/week)</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Actions -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h6 class="mb-0">
+                        <i class="bi bi-lightning-fill"></i> Quick Actions
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div class="d-grid gap-2">
+                        <a href="{{ url_for('employee_import.download_overtime_template') }}" 
+                           class="btn btn-outline-primary btn-sm">
+                            <i class="bi bi-download"></i> Download OT Template
+                        </a>
+                        <a href="{{ url_for('supervisor.overtime_management') }}" 
+                           class="btn btn-outline-info btn-sm">
+                            <i class="bi bi-graph-up"></i> View OT Reports
+                        </a>
+                        <a href="{{ url_for('employee_import.export_overtime') }}" 
+                           class="btn btn-outline-secondary btn-sm">
+                            <i class="bi bi-box-arrow-up"></i> Export Current OT
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Uploads -->
+            {% if recent_uploads %}
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="mb-0">
+                        <i class="bi bi-clock-history"></i> Recent OT Uploads
+                    </h6>
+                </div>
+                <div class="card-body p-0">
+                    {% for upload in recent_uploads[:5] %}
+                    {% if upload.upload_type == 'overtime' %}
+                    <div class="d-flex align-items-center p-2 border-bottom">
+                        <i class="bi bi-file-earmark-excel text-success me-2"></i>
+                        <div class="flex-grow-1">
+                            <div class="fw-bold small">{{ upload.filename[:15] }}...</div>
+                            <small class="text-muted">{{ upload.created_at.strftime('%m/%d/%Y %I:%M %p') }}</small>
+                        </div>
+                        <div class="text-end">
+                            <span class="badge bg-{% if upload.status == 'completed' %}success{% elif upload.status == 'partial' %}warning{% else %}secondary{% endif %}">
+                                {{ upload.status|title }}
+                            </span>
+                            <div><small class="text-muted">{{ upload.records_processed or 0 }} records</small></div>
+                        </div>
+                    </div>
+                    {% endif %}
+                    {% endfor %}
+                </div>
+                <div class="card-footer text-center">
+                    <a href="{{ url_for('employee_import.upload_history') }}" class="btn btn-sm btn-outline-primary">
+                        View All History
+                    </a>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Overtime upload specific JavaScript
+let selectedOvertimeFile = null;
+let overtimeValidationPassed = false;
+
+// Initialize overtime upload
+document.addEventListener('DOMContentLoaded', function() {
+    initializeOvertimeUpload();
+});
+
+function initializeOvertimeUpload() {
+    const uploadZone = document.getElementById('overtimeUploadZone');
+    const fileInput = document.getElementById('overtimeFileInput');
+    
+    // Drag and drop handlers
+    uploadZone.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        uploadZone.classList.add('dragover');
+    });
+    
+    uploadZone.addEventListener('dragleave', function(e) {
+        e.preventDefault();
+        uploadZone.classList.remove('dragover');
+    });
+    
+    uploadZone.addEventListener('drop', function(e) {
+        e.preventDefault();
+        uploadZone.classList.remove('dragover');
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+            handleOvertimeFileSelect(files[0]);
+        }
+    });
+    
+    // File input change
+    fileInput.addEventListener('change', function(e) {
+        if (e.target.files.length > 0) {
+            handleOvertimeFileSelect(e.target.files[0]);
+        }
+    });
+    
+    // Click handler
+    uploadZone.addEventListener('click', function() {
+        fileInput.click();
+    });
+}
+
+function handleOvertimeFileSelect(file) {
+    // Validate file
+    if (!file.name.match(/\.(xlsx|xls)$/i)) {
+        showOvertimeAlert('Please select a valid Excel file (.xlsx or .xls)', 'error');
+        return;
+    }
+    
+    if (file.size > 16 * 1024 * 1024) {
+        showOvertimeAlert('File is too large. Maximum size is 16MB.', 'error');
+        return;
+    }
+    
+    selectedOvertimeFile = file;
+    
+    // Update UI
+    document.getElementById('overtimeFileName').textContent = file.name;
+    document.getElementById('overtimeFileSize').textContent = formatFileSize(file.size);
+    document.getElementById('overtimeFileTime').textContent = new Date().toLocaleTimeString();
+    document.getElementById('overtimeFileInfo').style.display = 'block';
+    document.getElementById('validateOvertimeBtn').disabled = false;
+    document.getElementById('overtimeUploadZone').classList.add('has-file');
+    
+    // Reset validation
+    overtimeValidationPassed = false;
+    document.getElementById('importOvertimeBtn').disabled = true;
+    document.getElementById('overtimeValidationResults').style.display = 'none';
+}
+
+function clearOvertimeFile() {
+    selectedOvertimeFile = null;
+    overtimeValidationPassed = false;
+    
+    document.getElementById('overtimeFileInput').value = '';
+    document.getElementById('overtimeFileInfo').style.display = 'none';
+    document.getElementById('validateOvertimeBtn').disabled = true;
+    document.getElementById('importOvertimeBtn').disabled = true;
+    document.getElementById('overtimeUploadZone').classList.remove('has-file');
+    document.getElementById('overtimeValidationResults').style.display = 'none';
+}
+
+async function validateOvertimeFile() {
+    if (!selectedOvertimeFile) {
+        showOvertimeAlert('Please select a file first', 'error');
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('file', selectedOvertimeFile);
+    formData.append('uploadType', 'overtime');
+    
+    const validateBtn = document.getElementById('validateOvertimeBtn');
+    const originalText = validateBtn.innerHTML;
+    validateBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Validating...';
+    validateBtn.disabled = true;
+    
+    try {
+        const response = await fetch('/validate-upload', {
+            method: 'POST',
+            body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showOvertimeValidationSuccess(result);
+            overtimeValidationPassed = true;
+            document.getElementById('importOvertimeBtn').disabled = false;
+        } else {
+            showOvertimeValidationError(result);
+            overtimeValidationPassed = false;
+        }
+        
+    } catch (error) {
+        console.error('Validation error:', error);
+        showOvertimeAlert('Error validating file. Please try again.', 'error');
+    } finally {
+        validateBtn.innerHTML = originalText;
+        validateBtn.disabled = false;
+    }
+}
+
+function showOvertimeValidationSuccess(result) {
+    const content = `
+        <div class="alert alert-success">
+            <div class="d-flex align-items-center mb-3">
+                <i class="bi bi-check-circle-fill fs-2 me-3"></i>
+                <div>
+                    <h5 class="mb-1">Overtime Validation Passed!</h5>
+                    <p class="mb-0">Ready to import ${result.employee_count || 0} employees' overtime data</p>
+                </div>
+            </div>
+            
+            <div class="row text-center">
+                <div class="col-md-3">
+                    <div class="border rounded p-2">
+                        <h4 class="text-primary mb-0">${result.employee_count || 0}</h4>
+                        <small class="text-muted">Employees</small>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="border rounded p-2">
+                        <h4 class="text-info mb-0">${result.total_rows || 0}</h4>
+                        <small class="text-muted">OT Records</small>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="border rounded p-2">
+                        <h4 class="text-success mb-0">${Math.round((result.avg_ot || 0) * 10) / 10}</h4>
+                        <small class="text-muted">Avg OT/Week</small>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="border rounded p-2">
+                        <h4 class="text-warning mb-0">${(result.warnings || []).length}</h4>
+                        <small class="text-muted">Warnings</small>
+                    </div>
+                </div>
+            </div>
+            
+            ${(result.warnings && result.warnings.length > 0) ? `
+                <div class="mt-3">
+                    <h6><i class="bi bi-exclamation-triangle text-warning"></i> Warnings:</h6>
+                    <div class="validation-preview">
+                        ${result.warnings.map(w => `<div class="small">⚠️ ${w}</div>`).join('')}
+                    </div>
+                </div>
+            ` : ''}
+        </div>
+    `;
+    
+    document.getElementById('overtimeValidationResults').innerHTML = content;
+    document.getElementById('overtimeValidationResults').style.display = 'block';
+}
+
+function showOvertimeValidationError(result) {
+    const content = `
+        <div class="alert alert-danger">
+            <div class="d-flex align-items-center mb-3">
+                <i class="bi bi-x-circle-fill fs-2 me-3"></i>
+                <div>
+                    <h5 class="mb-1">Overtime Validation Failed</h5>
+                    <p class="mb-0">${result.error || 'Please fix the errors below'}</p>
+                </div>
+            </div>
+            
+            ${(result.errors && result.errors.length > 0) ? `
+                <div class="mt-3">
+                    <h6><i class="bi bi-exclamation-octagon"></i> Errors Found:</h6>
+                    <div class="validation-preview">
+                        ${result.errors.slice(0, 10).map(e => `<div class="small text-danger">❌ ${e}</div>`).join('')}
+                    </div>
+                    ${result.errors.length > 10 ? `
+                        <div class="mt-2">
+                            <small class="text-muted">
+                                Showing first 10 of ${result.errors.length} errors. 
+                                Fix these issues and validate again.
+                            </small>
+                        </div>
+                    ` : ''}
+                </div>
+            ` : ''}
+        </div>
+    `;
+    
+    document.getElementById('overtimeValidationResults').innerHTML = content;
+    document.getElementById('overtimeValidationResults').style.display = 'block';
+}
+
+async function importOvertimeData() {
+    if (!overtimeValidationPassed) {
+        showOvertimeAlert('Please validate the file first', 'error');
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('file', selectedOvertimeFile);
+    formData.append('uploadType', 'overtime');
+    
+    const importMode = document.querySelector('input[name="importMode"]:checked').value;
+    formData.append('replaceAll', importMode === 'replace' ? 'true' : 'false');
+    
+    const importBtn = document.getElementById('importOvertimeBtn');
+    const originalText = importBtn.innerHTML;
+    importBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Importing...';
+    importBtn.disabled = true;
+    
+    try {
+        const response = await fetch(window.location.href, {
+            method: 'POST',
+            body: formData
+        });
+        
+        if (response.ok) {
+            showOvertimeAlert('Overtime data imported successfully!', 'success');
+            setTimeout(() => window.location.reload(), 2000);
+        } else {
+            throw new Error('Import failed');
+        }
+        
+    } catch (error) {
+        console.error('Import error:', error);
+        showOvertimeAlert('Error importing overtime data. Please try again.', 'error');
+    } finally {
+        importBtn.innerHTML = originalText;
+        importBtn.disabled = false;
+    }
+}
+
+function showOvertimeAlert(message, type) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type === 'error' ? 'danger' : type} alert-dismissible fade show`;
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    const form = document.getElementById('overtimeUploadForm');
+    form.insertBefore(alertDiv, form.firstChild);
+    
+    setTimeout(() => {
+        if (alertDiv.parentNode) {
+            alertDiv.remove();
+        }
+    }, 5000);
+}
+
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+</script>
+{% endblock %}
