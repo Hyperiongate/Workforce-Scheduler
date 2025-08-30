@@ -1,0 +1,854 @@
+{% extends "base.html" %}
+
+{% block title %}Enhanced Employee Upload - Workforce Scheduler{% endblock %}
+
+{% block extra_css %}
+<style>
+    .upload-area {
+        border: 2px dashed #28a745;
+        border-radius: 10px;
+        padding: 40px;
+        text-align: center;
+        background-color: #f8f9fa;
+        transition: all 0.3s ease;
+        cursor: pointer;
+        min-height: 200px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+    }
+    
+    .upload-area:hover,
+    .upload-area.dragover {
+        border-color: #20c997;
+        background-color: #e9f7ef;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    
+    .upload-area.has-file {
+        border-color: #007bff;
+        background-color: #e3f2fd;
+    }
+    
+    .file-icon {
+        font-size: 3rem;
+        color: #28a745;
+        margin-bottom: 1rem;
+    }
+    
+    .stats-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        border-radius: 15px;
+    }
+    
+    .crew-badge {
+        display: inline-block;
+        padding: 0.25rem 0.75rem;
+        margin: 0.125rem;
+        border-radius: 50px;
+        font-weight: bold;
+        font-size: 0.875rem;
+    }
+    
+    .crew-a { background-color: #28a745; color: white; }
+    .crew-b { background-color: #007bff; color: white; }
+    .crew-c { background-color: #ffc107; color: black; }
+    .crew-d { background-color: #dc3545; color: white; }
+    
+    .step-indicator {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 2rem;
+    }
+    
+    .step {
+        flex: 1;
+        text-align: center;
+        padding: 1rem;
+        position: relative;
+    }
+    
+    .step::after {
+        content: '';
+        position: absolute;
+        top: 50%;
+        right: -50%;
+        width: 100%;
+        height: 2px;
+        background-color: #dee2e6;
+        z-index: -1;
+    }
+    
+    .step:last-child::after {
+        display: none;
+    }
+    
+    .step.active {
+        color: #007bff;
+        font-weight: bold;
+    }
+    
+    .step.completed {
+        color: #28a745;
+    }
+    
+    .step.completed::after {
+        background-color: #28a745;
+    }
+    
+    .validation-result {
+        border-radius: 10px;
+        padding: 1.5rem;
+        margin: 1rem 0;
+        display: none;
+    }
+    
+    .validation-success {
+        background-color: #d4edda;
+        border: 1px solid #c3e6cb;
+        color: #155724;
+    }
+    
+    .validation-error {
+        background-color: #f8d7da;
+        border: 1px solid #f5c6cb;
+        color: #721c24;
+    }
+    
+    .upload-progress {
+        display: none;
+        margin-top: 1rem;
+    }
+    
+    .progress-bar {
+        background: linear-gradient(45deg, #007bff, #28a745);
+        animation: progress-animation 2s infinite;
+    }
+    
+    @keyframes progress-animation {
+        0% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
+    }
+    
+    .recent-uploads-table {
+        font-size: 0.9rem;
+    }
+    
+    .status-badge {
+        font-size: 0.75rem;
+        padding: 0.25rem 0.5rem;
+        border-radius: 10px;
+    }
+    
+    .btn-action {
+        padding: 0.75rem 1.5rem;
+        font-size: 1.1rem;
+        border-radius: 25px;
+        transition: all 0.3s ease;
+    }
+    
+    .btn-action:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    }
+    
+    .chart-container {
+        position: relative;
+        height: 200px;
+        margin: 1rem 0;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <!-- Page Header -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h1 class="h3 mb-0">
+                        <i class="bi bi-upload"></i> Enhanced Employee Upload
+                    </h1>
+                    <p class="text-muted">Import employee data with advanced validation and preview</p>
+                </div>
+                <div>
+                    <a href="{{ url_for('employee_import.download_employee_template') }}" class="btn btn-outline-success">
+                        <i class="bi bi-download"></i> Download Template
+                    </a>
+                    <a href="{{ url_for('employee_import.upload_history') }}" class="btn btn-outline-info">
+                        <i class="bi bi-clock-history"></i> Upload History
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Main Upload Column -->
+        <div class="col-lg-8">
+            <!-- Step Indicator -->
+            <div class="step-indicator">
+                <div class="step active" id="step1">
+                    <i class="bi bi-file-earmark-plus"></i>
+                    <div>1. Select File</div>
+                </div>
+                <div class="step" id="step2">
+                    <i class="bi bi-shield-check"></i>
+                    <div>2. Validate</div>
+                </div>
+                <div class="step" id="step3">
+                    <i class="bi bi-eye"></i>
+                    <div>3. Review</div>
+                </div>
+                <div class="step" id="step4">
+                    <i class="bi bi-upload"></i>
+                    <div>4. Import</div>
+                </div>
+            </div>
+
+            <!-- Upload Form -->
+            <div class="card shadow-sm">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-cloud-upload"></i> Upload Employee Data
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <form id="uploadForm" method="POST" enctype="multipart/form-data">
+                        
+                        <!-- Upload Type Selection -->
+                        <div class="row mb-4">
+                            <div class="col-md-6">
+                                <label class="form-label">Upload Type</label>
+                                <select class="form-select" id="uploadType" name="uploadType">
+                                    <option value="employee">Employee Data</option>
+                                    <option value="overtime">Overtime History</option>
+                                    <option value="bulk_update">Bulk Updates</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Import Mode</label>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="importMode" id="replace" value="replace" checked>
+                                    <label class="form-check-label" for="replace">
+                                        Replace all data
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="importMode" id="append" value="append">
+                                    <label class="form-check-label" for="append">
+                                        Append/Update existing
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- File Upload Area -->
+                        <div class="upload-area" id="uploadArea">
+                            <i class="bi bi-file-earmark-excel file-icon"></i>
+                            <h4 class="mt-3">Drag & Drop Excel File Here</h4>
+                            <p class="text-muted">or click to browse</p>
+                            <input type="file" name="file" id="fileInput" class="d-none" accept=".xlsx,.xls" required>
+                            <button type="button" class="btn btn-primary btn-action" onclick="document.getElementById('fileInput').click()">
+                                <i class="bi bi-folder-open"></i> Choose File
+                            </button>
+                        </div>
+                        
+                        <!-- File Info -->
+                        <div id="fileInfo" class="mt-3" style="display: none;">
+                            <div class="alert alert-info d-flex align-items-center">
+                                <i class="bi bi-file-earmark-check fs-4 me-3"></i>
+                                <div class="flex-grow-1">
+                                    <strong>Selected File:</strong> <span id="fileName"></span><br>
+                                    <small class="text-muted">Size: <span id="fileSize"></span></small>
+                                </div>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="clearFile()">
+                                    <i class="bi bi-x"></i> Clear
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Validation Results -->
+                        <div id="validationResults" class="validation-result">
+                            <div id="validationContent"></div>
+                        </div>
+
+                        <!-- Progress Bar -->
+                        <div class="upload-progress" id="uploadProgress">
+                            <div class="progress">
+                                <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                                     role="progressbar" style="width: 0%"></div>
+                            </div>
+                            <p class="mt-2 text-center">Processing your file...</p>
+                        </div>
+                        
+                        <!-- Action Buttons -->
+                        <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-4">
+                            <button type="button" class="btn btn-outline-primary btn-action" id="validateBtn" disabled onclick="validateFile()">
+                                <i class="bi bi-shield-check"></i> Validate File
+                            </button>
+                            <button type="button" class="btn btn-success btn-action" id="importBtn" disabled onclick="importData()">
+                                <i class="bi bi-upload"></i> Import Data
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Instructions -->
+            <div class="card mt-4">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="bi bi-info-circle"></i> Import Instructions
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>Required Columns (Employee Data):</h6>
+                            <ul class="list-unstyled">
+                                <li><i class="bi bi-check-circle text-success"></i> Employee ID</li>
+                                <li><i class="bi bi-check-circle text-success"></i> First Name</li>
+                                <li><i class="bi bi-check-circle text-success"></i> Last Name</li>
+                                <li><i class="bi bi-check-circle text-success"></i> Crew Assigned (A, B, C, or D)</li>
+                                <li><i class="bi bi-check-circle text-success"></i> Current Job Position</li>
+                            </ul>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>Optional Columns:</h6>
+                            <ul class="list-unstyled">
+                                <li><i class="bi bi-plus-circle text-info"></i> Email</li>
+                                <li><i class="bi bi-plus-circle text-info"></i> Phone</li>
+                                <li><i class="bi bi-plus-circle text-info"></i> Hire Date</li>
+                                <li><i class="bi bi-plus-circle text-info"></i> Department</li>
+                            </ul>
+                        </div>
+                    </div>
+                    
+                    <div class="alert alert-warning mt-3">
+                        <i class="bi bi-exclamation-triangle"></i> 
+                        <strong>Important:</strong>
+                        <ul class="mb-0 mt-2">
+                            <li>All imported employees will have default password: <code>password123</code></li>
+                            <li>Employees must change password on first login</li>
+                            <li>Email addresses must be unique across all employees</li>
+                            <li>Employee IDs must be unique and cannot be changed later</li>
+                            <li>Use "Replace all data" to deactivate existing employees not in the file</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sidebar -->
+        <div class="col-lg-4">
+            <!-- Current Statistics -->
+            <div class="card stats-card mb-4">
+                <div class="card-body text-center">
+                    <h3 class="display-4 mb-0">{{ total_employees or 0 }}</h3>
+                    <p class="mb-1">Total Active Employees</p>
+                    <small class="opacity-75">Last updated: {{ moment().format('MMM D, YYYY') if moment else 'Now' }}</small>
+                </div>
+            </div>
+
+            <!-- Crew Distribution -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h6 class="mb-0">
+                        <i class="bi bi-people"></i> Crew Distribution
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div class="chart-container">
+                        <canvas id="crewChart"></canvas>
+                    </div>
+                    <div class="mt-3">
+                        {% if crew_distribution %}
+                            {% for crew, count in crew_distribution.items() %}
+                            <span class="crew-badge crew-{{ crew.lower() }}">
+                                Crew {{ crew }}: {{ count }}
+                            </span>
+                            {% endfor %}
+                        {% else %}
+                            <p class="text-muted">No crew data available</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Actions -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h6 class="mb-0">
+                        <i class="bi bi-lightning"></i> Quick Actions
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div class="d-grid gap-2">
+                        <a href="{{ url_for('employee_import.download_employee_template') }}" class="btn btn-outline-success btn-sm">
+                            <i class="bi bi-download"></i> Employee Template
+                        </a>
+                        <a href="{{ url_for('employee_import.download_overtime_template') }}" class="btn btn-outline-info btn-sm">
+                            <i class="bi bi-clock"></i> Overtime Template
+                        </a>
+                        <a href="{{ url_for('employee_import.export_employees') }}" class="btn btn-outline-secondary btn-sm">
+                            <i class="bi bi-box-arrow-up"></i> Export Current Data
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Uploads -->
+            {% if recent_uploads %}
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="mb-0">
+                        <i class="bi bi-clock-history"></i> Recent Uploads
+                    </h6>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm recent-uploads-table mb-0">
+                            <tbody>
+                                {% for upload in recent_uploads %}
+                                <tr>
+                                    <td>
+                                        <div class="fw-bold">{{ upload.filename[:20] }}{% if upload.filename|length > 20 %}...{% endif %}</div>
+                                        <small class="text-muted">{{ upload.created_at.strftime('%m/%d %H:%M') if upload.created_at else 'Unknown' }}</small>
+                                    </td>
+                                    <td class="text-end">
+                                        <span class="status-badge 
+                                            {% if upload.status == 'completed' %}bg-success text-white
+                                            {% elif upload.status == 'partial' %}bg-warning text-dark
+                                            {% else %}bg-secondary text-white{% endif %}">
+                                            {{ upload.status|title if upload.status else 'Completed' }}
+                                        </span>
+                                        <div><small class="text-muted">{{ upload.records_processed or 0 }} records</small></div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="card-footer text-center">
+                    <a href="{{ url_for('employee_import.upload_history') }}" class="btn btn-sm btn-outline-primary">
+                        View All Uploads
+                    </a>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Chart.js for crew distribution -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Global variables
+let selectedFile = null;
+let validationPassed = false;
+
+// Initialize page
+document.addEventListener('DOMContentLoaded', function() {
+    initializeFileUpload();
+    initializeCrewChart();
+    updateStepIndicator(1);
+});
+
+// File upload initialization
+function initializeFileUpload() {
+    const uploadArea = document.getElementById('uploadArea');
+    const fileInput = document.getElementById('fileInput');
+    
+    // Drag and drop handlers
+    uploadArea.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        uploadArea.classList.add('dragover');
+    });
+    
+    uploadArea.addEventListener('dragleave', function(e) {
+        e.preventDefault();
+        uploadArea.classList.remove('dragover');
+    });
+    
+    uploadArea.addEventListener('drop', function(e) {
+        e.preventDefault();
+        uploadArea.classList.remove('dragover');
+        
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+            handleFileSelect(files[0]);
+        }
+    });
+    
+    // File input change handler
+    fileInput.addEventListener('change', function(e) {
+        if (e.target.files.length > 0) {
+            handleFileSelect(e.target.files[0]);
+        }
+    });
+    
+    // Click handler for upload area
+    uploadArea.addEventListener('click', function() {
+        fileInput.click();
+    });
+}
+
+// Handle file selection
+function handleFileSelect(file) {
+    // Validate file type
+    const allowedTypes = [
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/vnd.ms-excel'
+    ];
+    
+    if (!allowedTypes.includes(file.type) && !file.name.match(/\.(xlsx|xls)$/i)) {
+        showAlert('Please select a valid Excel file (.xlsx or .xls)', 'error');
+        return;
+    }
+    
+    // Validate file size (16MB limit)
+    const maxSize = 16 * 1024 * 1024; // 16MB
+    if (file.size > maxSize) {
+        showAlert('File is too large. Maximum size is 16MB.', 'error');
+        return;
+    }
+    
+    selectedFile = file;
+    
+    // Update UI
+    document.getElementById('fileName').textContent = file.name;
+    document.getElementById('fileSize').textContent = formatFileSize(file.size);
+    document.getElementById('fileInfo').style.display = 'block';
+    document.getElementById('validateBtn').disabled = false;
+    document.getElementById('uploadArea').classList.add('has-file');
+    
+    // Reset validation
+    validationPassed = false;
+    document.getElementById('importBtn').disabled = true;
+    document.getElementById('validationResults').style.display = 'none';
+    
+    updateStepIndicator(2);
+}
+
+// Clear file selection
+function clearFile() {
+    selectedFile = null;
+    validationPassed = false;
+    
+    document.getElementById('fileInput').value = '';
+    document.getElementById('fileInfo').style.display = 'none';
+    document.getElementById('validateBtn').disabled = true;
+    document.getElementById('importBtn').disabled = true;
+    document.getElementById('uploadArea').classList.remove('has-file');
+    document.getElementById('validationResults').style.display = 'none';
+    
+    updateStepIndicator(1);
+}
+
+// Validate file
+async function validateFile() {
+    if (!selectedFile) {
+        showAlert('Please select a file first', 'error');
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('file', selectedFile);
+    formData.append('uploadType', document.getElementById('uploadType').value);
+    
+    // Show loading state
+    const validateBtn = document.getElementById('validateBtn');
+    const originalText = validateBtn.innerHTML;
+    validateBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Validating...';
+    validateBtn.disabled = true;
+    
+    try {
+        const response = await fetch('/validate-upload', {
+            method: 'POST',
+            body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showValidationSuccess(result);
+            validationPassed = true;
+            document.getElementById('importBtn').disabled = false;
+            updateStepIndicator(3);
+        } else {
+            showValidationError(result);
+            validationPassed = false;
+            document.getElementById('importBtn').disabled = true;
+        }
+        
+    } catch (error) {
+        console.error('Validation error:', error);
+        showAlert('Error validating file. Please try again.', 'error');
+        validationPassed = false;
+    } finally {
+        validateBtn.innerHTML = originalText;
+        validateBtn.disabled = false;
+    }
+}
+
+// Show validation success
+function showValidationSuccess(result) {
+    const content = `
+        <div class="d-flex align-items-center mb-3">
+            <i class="bi bi-check-circle-fill fs-2 text-success me-3"></i>
+            <div>
+                <h5 class="mb-1 text-success">Validation Passed!</h5>
+                <p class="mb-0">Your file is ready for import</p>
+            </div>
+        </div>
+        
+        <div class="row text-center mb-3">
+            <div class="col-md-4">
+                <div class="border rounded p-2">
+                    <h4 class="text-primary mb-0">${result.employee_count || 0}</h4>
+                    <small class="text-muted">Employees</small>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="border rounded p-2">
+                    <h4 class="text-info mb-0">${result.total_rows || 0}</h4>
+                    <small class="text-muted">Total Rows</small>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="border rounded p-2">
+                    <h4 class="text-warning mb-0">${(result.warnings || []).length}</h4>
+                    <small class="text-muted">Warnings</small>
+                </div>
+            </div>
+        </div>
+        
+        ${(result.warnings && result.warnings.length > 0) ? `
+            <div class="alert alert-warning">
+                <h6><i class="bi bi-exclamation-triangle"></i> Warnings:</h6>
+                <ul class="mb-0">
+                    ${result.warnings.map(w => `<li>${w}</li>`).join('')}
+                </ul>
+            </div>
+        ` : ''}
+    `;
+    
+    const validationResults = document.getElementById('validationResults');
+    validationResults.className = 'validation-result validation-success';
+    validationResults.innerHTML = content;
+    validationResults.style.display = 'block';
+}
+
+// Show validation error
+function showValidationError(result) {
+    const content = `
+        <div class="d-flex align-items-center mb-3">
+            <i class="bi bi-x-circle-fill fs-2 text-danger me-3"></i>
+            <div>
+                <h5 class="mb-1 text-danger">Validation Failed</h5>
+                <p class="mb-0">${result.error || 'Please fix the errors below'}</p>
+            </div>
+        </div>
+        
+        ${(result.errors && result.errors.length > 0) ? `
+            <div class="alert alert-danger">
+                <h6><i class="bi bi-exclamation-octagon"></i> Errors Found:</h6>
+                <div style="max-height: 200px; overflow-y: auto;">
+                    <ul class="mb-0">
+                        ${result.errors.map(e => `<li>${e}</li>`).join('')}
+                    </ul>
+                </div>
+                ${result.total_errors > 10 ? `
+                    <div class="mt-2">
+                        <small class="text-muted">
+                            Showing first 10 of ${result.total_errors} errors. 
+                            Fix these issues and validate again.
+                        </small>
+                    </div>
+                ` : ''}
+            </div>
+        ` : ''}
+    `;
+    
+    const validationResults = document.getElementById('validationResults');
+    validationResults.className = 'validation-result validation-error';
+    validationResults.innerHTML = content;
+    validationResults.style.display = 'block';
+}
+
+// Import data
+async function importData() {
+    if (!validationPassed) {
+        showAlert('Please validate the file first', 'error');
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('file', selectedFile);
+    formData.append('uploadType', document.getElementById('uploadType').value);
+    
+    const importMode = document.querySelector('input[name="importMode"]:checked').value;
+    formData.append('replaceAll', importMode === 'replace' ? 'true' : 'false');
+    
+    // Show progress
+    const importBtn = document.getElementById('importBtn');
+    const originalText = importBtn.innerHTML;
+    importBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Importing...';
+    importBtn.disabled = true;
+    
+    document.getElementById('uploadProgress').style.display = 'block';
+    
+    // Simulate progress
+    let progress = 0;
+    const progressBar = document.querySelector('.progress-bar');
+    const progressInterval = setInterval(() => {
+        progress += Math.random() * 15;
+        if (progress > 90) progress = 90;
+        progressBar.style.width = progress + '%';
+    }, 200);
+    
+    try {
+        const response = await fetch(window.location.href, {
+            method: 'POST',
+            body: formData
+        });
+        
+        clearInterval(progressInterval);
+        progressBar.style.width = '100%';
+        
+        if (response.ok) {
+            setTimeout(() => {
+                updateStepIndicator(4);
+                showAlert('Import completed successfully!', 'success');
+                // Reload page to show updated stats
+                setTimeout(() => window.location.reload(), 2000);
+            }, 500);
+        } else {
+            throw new Error('Import failed');
+        }
+        
+    } catch (error) {
+        clearInterval(progressInterval);
+        console.error('Import error:', error);
+        showAlert('Error importing data. Please try again.', 'error');
+        
+        importBtn.innerHTML = originalText;
+        importBtn.disabled = false;
+        document.getElementById('uploadProgress').style.display = 'none';
+    }
+}
+
+// Update step indicator
+function updateStepIndicator(currentStep) {
+    for (let i = 1; i <= 4; i++) {
+        const step = document.getElementById(`step${i}`);
+        step.classList.remove('active', 'completed');
+        
+        if (i < currentStep) {
+            step.classList.add('completed');
+        } else if (i === currentStep) {
+            step.classList.add('active');
+        }
+    }
+}
+
+// Initialize crew distribution chart
+function initializeCrewChart() {
+    const ctx = document.getElementById('crewChart');
+    if (!ctx) return;
+    
+    const crewData = {
+        {% if crew_distribution %}
+        labels: ['Crew A', 'Crew B', 'Crew C', 'Crew D'],
+        datasets: [{
+            data: [
+                {{ crew_distribution.A or 0 }},
+                {{ crew_distribution.B or 0 }},
+                {{ crew_distribution.C or 0 }},
+                {{ crew_distribution.D or 0 }}
+            ],
+            backgroundColor: ['#28a745', '#007bff', '#ffc107', '#dc3545'],
+            borderWidth: 2,
+            borderColor: '#fff'
+        }]
+        {% else %}
+        labels: ['Crew A', 'Crew B', 'Crew C', 'Crew D'],
+        datasets: [{
+            data: [0, 0, 0, 0],
+            backgroundColor: ['#28a745', '#007bff', '#ffc107', '#dc3545'],
+            borderWidth: 2,
+            borderColor: '#fff'
+        }]
+        {% endif %}
+    };
+    
+    new Chart(ctx, {
+        type: 'doughnut',
+        data: crewData,
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                }
+            }
+        }
+    });
+}
+
+// Utility functions
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+function showAlert(message, type) {
+    // Create alert element
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type === 'error' ? 'danger' : type} alert-dismissible fade show`;
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    // Insert at top of form
+    const form = document.getElementById('uploadForm');
+    form.insertBefore(alertDiv, form.firstChild);
+    
+    // Auto dismiss after 5 seconds
+    setTimeout(() => {
+        if (alertDiv.parentNode) {
+            alertDiv.remove();
+        }
+    }, 5000);
+}
+
+// Handle upload type change
+document.getElementById('uploadType').addEventListener('change', function() {
+    const uploadType = this.value;
+    
+    // Clear current file if type changed
+    if (selectedFile) {
+        clearFile();
+    }
+    
+    // Update instructions based on type
+    // This could be expanded to show different instructions for different types
+});
+</script>
+{% endblock %}
