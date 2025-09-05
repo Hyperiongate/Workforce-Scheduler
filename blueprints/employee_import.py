@@ -1,13 +1,13 @@
 # blueprints/employee_import.py
 """
 Complete Excel upload system for employee data management
-USES YOUR SPECIFIC COLUMN FORMAT WITH QUALIFICATION COLUMNS
+WITH QUALIFICATION COLUMNS that create Skill and EmployeeSkill records
 Deploy this ENTIRE file to blueprints/employee_import.py
 """
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, current_app, send_file, make_response
 from flask_login import login_required, current_user
-from models import db, Employee, Position, OvertimeHistory, FileUpload
+from models import db, Employee, Position, OvertimeHistory, FileUpload, Skill, EmployeeSkill
 from datetime import datetime, timedelta, date
 from werkzeug.utils import secure_filename
 from sqlalchemy import func, and_, or_, text
@@ -87,14 +87,14 @@ def get_employee_stats():
             recent_ot = db.session.query(
                 func.sum(OvertimeHistory.hours)
             ).filter(
-                OvertimeHistory.week_start >= datetime.now() - timedelta(days=90)
+                OvertimeHistory.week_ending >= datetime.now() - timedelta(days=90)
             ).scalar() or 0
             
             high_ot_employees = db.session.query(
                 func.count(func.distinct(OvertimeHistory.employee_id))
             ).filter(
                 OvertimeHistory.hours > 10,
-                OvertimeHistory.week_start >= datetime.now() - timedelta(days=30)
+                OvertimeHistory.week_ending >= datetime.now() - timedelta(days=30)
             ).scalar() or 0
         except:
             recent_ot = 0
@@ -155,6 +155,54 @@ def get_employees_without_accounts():
     except Exception as e:
         logger.error(f"Error getting employees without accounts: {e}")
         return 0
+
+def create_or_get_skill(skill_name, category='General'):
+    """Create a skill if it doesn't exist, or return existing one"""
+    skill_name = skill_name.strip()
+    skill = Skill.query.filter_by(name=skill_name).first()
+    
+    if not skill:
+        # Determine category based on skill name
+        if any(cert in skill_name.upper() for cert in ['OSHA', 'CPR', 'FIRST AID', 'CERTIFIED', 'LICENSE']):
+            category = 'Certification'
+        elif any(equip in skill_name.lower() for equip in ['forklift', 'crane', 'machine', 'equipment']):
+            category = 'Equipment'
+        elif any(tech in skill_name.lower() for tech in ['welding', 'electrical', 'plumbing', 'hvac']):
+            category = 'Technical'
+        elif any(mgmt in skill_name.lower() for mgmt in ['leadership', 'supervisor', 'management', 'six sigma', 'pmp']):
+            category = 'Management'
+        
+        skill = Skill(
+            name=skill_name,
+            category=category,
+            requires_renewal='certified' in skill_name.lower() or 'license' in skill_name.lower()
+        )
+        db.session.add(skill)
+        db.session.flush()
+    
+    return skill
+
+def assign_skill_to_employee(employee, skill, certified_date=None):
+    """Assign a skill to an employee if not already assigned"""
+    existing = EmployeeSkill.query.filter_by(
+        employee_id=employee.id,
+        skill_id=skill.id
+    ).first()
+    
+    if not existing:
+        employee_skill = EmployeeSkill(
+            employee_id=employee.id,
+            skill_id=skill.id,
+            certified_date=certified_date or date.today()
+        )
+        
+        # Set expiry for renewable certifications (1 year default)
+        if skill.requires_renewal:
+            employee_skill.expiry_date = (certified_date or date.today()) + timedelta(days=365)
+        
+        db.session.add(employee_skill)
+        return True
+    return False
 
 # ==========================================
 # VALIDATION FUNCTIONS FOR YOUR FORMAT WITH QUALIFICATIONS
@@ -329,16 +377,16 @@ def validate_overtime_data_comprehensive(df):
     }
 
 # ==========================================
-# PROCESSING FUNCTIONS WITH QUALIFICATIONS
+# PROCESSING FUNCTIONS WITH SKILL INTEGRATION
 # ==========================================
 
 def process_employee_upload(df, upload_record, replace_all=False):
-    """Process validated employee data and import to database - WITH QUALIFICATIONS"""
+    """Process validated employee data and import to database - WITH SKILL INTEGRATION"""
     try:
         created_count = 0
         updated_count = 0
         skipped_count = 0
-        qualifications_added = 0
+        skills_added = 0
         
         # Identify qualification columns
         qualification_columns = []
@@ -390,7 +438,7 @@ def process_employee_upload(df, upload_record, replace_all=False):
                         employee_id=emp_id,
                         name=full_name,
                         crew=crew,
-                        email=email,
+                        email=email or f"{emp_id}@company.local",  # Default email if none provided
                         is_active=True
                     )
                     employee.set_password('password123')  # Default password
@@ -401,29 +449,25 @@ def process_employee_upload(df, upload_record, replace_all=False):
                 # Handle position
                 position = Position.query.filter_by(name=position_name).first()
                 if not position:
-                    position = Position(name=position_name)
+                    position = Position(name=position_name, department='Operations')
                     db.session.add(position)
                     logger.info(f"Created new position: {position_name}")
                 
                 employee.position = position
                 
-                # Store qualifications (if your model supports it)
+                # Process qualifications as skills
                 if qualifications:
-                    # Option 1: Store as JSON in a text field (if you have one)
-                    if hasattr(employee, 'qualifications'):
-                        employee.qualifications = ', '.join(qualifications)
-                        qualifications_added += len(qualifications)
-                    
-                    # Option 2: Store in a notes field (if you have one)
-                    elif hasattr(employee, 'notes'):
-                        qual_text = 'Qualifications: ' + ', '.join(qualifications)
-                        employee.notes = qual_text
-                        qualifications_added += len(qualifications)
-                    
-                    # Option 3: Just log them for now
-                    else:
-                        logger.info(f"Employee {emp_id} qualifications: {', '.join(qualifications)}")
-                        qualifications_added += len(qualifications)
+                    for qual_name in qualifications:
+                        try:
+                            # Create or get the skill
+                            skill = create_or_get_skill(qual_name)
+                            
+                            # Assign to employee
+                            if assign_skill_to_employee(employee, skill):
+                                skills_added += 1
+                                logger.info(f"Added skill '{qual_name}' to employee {emp_id}")
+                        except Exception as e:
+                            logger.error(f"Error adding skill '{qual_name}' to {emp_id}: {e}")
                 
                 # Commit after each employee to avoid losing all on error
                 db.session.commit()
@@ -442,9 +486,9 @@ def process_employee_upload(df, upload_record, replace_all=False):
             'created': created_count,
             'updated': updated_count,
             'skipped': skipped_count,
-            'qualifications_added': qualifications_added,
+            'skills_added': skills_added,
             'records_processed': len(df),
-            'message': f'Successfully processed {len(df)} records. Created: {created_count}, Updated: {updated_count}, Skipped: {skipped_count}, Qualifications: {qualifications_added}'
+            'message': f'Successfully processed {len(df)} records. Created: {created_count}, Updated: {updated_count}, Skipped: {skipped_count}, Skills Added: {skills_added}'
         }
         
     except Exception as e:
@@ -489,17 +533,20 @@ def process_overtime_upload(df, upload_record):
                         
                         # Check if OT record exists
                         ot_record = OvertimeHistory.query.filter_by(
-                            employee_id=emp_id,
-                            week_start=week_date
+                            employee_id=employee.id,  # Use employee.id not emp_id
+                            week_ending=week_date
                         ).first()
                         
                         if ot_record:
                             ot_record.hours = float(hours)
+                            ot_record.overtime_hours = float(hours)
                         else:
                             ot_record = OvertimeHistory(
-                                employee_id=emp_id,
-                                week_start=week_date,
-                                hours=float(hours)
+                                employee_id=employee.id,  # Use employee.id not emp_id
+                                week_ending=week_date,
+                                hours=float(hours),
+                                overtime_hours=float(hours),
+                                total_hours=40 + float(hours)  # Assume 40 regular hours
                             )
                             db.session.add(ot_record)
                 
@@ -644,7 +691,17 @@ def upload_employees_post():
                 upload_record.status = 'completed'
                 upload_record.records_processed = result.get('records_processed', 0)
                 upload_record.successful_records = result.get('created', 0) + result.get('updated', 0)
-                flash(f"Successfully processed {result.get('records_processed', 0)} records!", 'success')
+                
+                # Build success message
+                msg_parts = [f"Successfully processed {result.get('records_processed', 0)} records!"]
+                if result.get('created'):
+                    msg_parts.append(f"{result.get('created')} created")
+                if result.get('updated'):
+                    msg_parts.append(f"{result.get('updated')} updated")
+                if result.get('skills_added'):
+                    msg_parts.append(f"{result.get('skills_added')} skills added")
+                
+                flash(' - '.join(msg_parts), 'success')
             else:
                 upload_record.status = 'failed'
                 upload_record.error_details = {'error': result.get('error'), 'errors': result.get('errors', [])}
@@ -813,24 +870,31 @@ def download_employee_template():
             ['3. Employee ID - Unique identifier for each employee (REQUIRED)'],
             ['4. Crew Assigned - Must be A, B, C, or D (REQUIRED)'],
             ['5. Current Job Position - Job title/position (REQUIRED)'],
-            ['6. Email - Employee email address (OPTIONAL but recommended)'],
+            ['6. Email - Employee email address (OPTIONAL but recommended for login access)'],
             ['7-11. Add Additional Qualification - Any certifications, licenses, or special qualifications (OPTIONAL)'],
             [''],
             ['IMPORTANT NOTES:'],
             ['- Keep the header row exactly as shown'],
             ['- Employee ID must be unique for each employee'],
-            ['- Crew must be exactly A, B, C, or D (case sensitive)'],
+            ['- Crew must be exactly A, B, C, or D (case insensitive)'],
             ['- Default password for new employees: password123'],
             ['- Duplicate Employee IDs will update existing records'],
             ['- New job positions will be created automatically if they don\'t exist'],
             ['- Leave qualification columns blank if not applicable'],
-            ['- You can add multiple qualifications per employee (up to 5)'],
+            ['- Qualifications will be stored as employee skills/certifications'],
             [''],
-            ['EXAMPLE QUALIFICATIONS:'],
+            ['QUALIFICATION EXAMPLES:'],
             ['- Certifications: Forklift, Crane Operator, Welding, OSHA 10/30'],
             ['- Licenses: CDL, Electrical, Plumbing, HVAC'],
             ['- Training: First Aid/CPR, Six Sigma, PMP, Leadership'],
-            ['- Skills: Bilingual, CAD Software, Machine Specific Training'],
+            ['- Equipment: Specific machine operations'],
+            ['- Skills: Bilingual, CAD Software, specialized technical skills'],
+            [''],
+            ['HOW QUALIFICATIONS ARE STORED:'],
+            ['- Each qualification becomes a skill in the system'],
+            ['- Skills are automatically categorized (Certification, Equipment, Technical, etc.)'],
+            ['- Employees can be searched and filtered by skills'],
+            ['- Skills requiring renewal are tracked with expiry dates'],
             [''],
             ['TIPS FOR SUCCESS:'],
             ['- Review the sample data in the first 4 rows'],
@@ -847,7 +911,7 @@ def download_employee_template():
                 cell = ws2.cell(row=row_num, column=1, value=instruction[0])
                 if row_num == 1:
                     cell.font = Font(bold=True, size=14, color="366092")
-                elif row_num in [3, 12, 21, 26]:
+                elif row_num in [3, 12, 21, 27, 32]:
                     cell.font = Font(bold=True, size=12)
                 elif instruction[0].startswith(('- ', '1.', '2.', '3.', '4.', '5.', '6.', '7')):
                     cell.font = Font(size=10)
@@ -983,14 +1047,14 @@ def upload_history():
         return redirect(url_for('employee_import.upload_employees'))
 
 # ==========================================
-# EXPORT ROUTES
+# EXPORT ROUTES WITH SKILLS
 # ==========================================
 
 @employee_import_bp.route('/export-employees')
 @login_required
 @supervisor_required
 def export_employees():
-    """Export current employees to Excel"""
+    """Export current employees to Excel with skills"""
     try:
         employees = Employee.query.filter_by(is_active=True).all()
         
@@ -1036,17 +1100,11 @@ def export_employees():
             ws.cell(row=row_num, column=5, value=emp.position.name if emp.position else '')
             ws.cell(row=row_num, column=6, value=emp.email)
             
-            # Add qualifications if they exist
-            if hasattr(emp, 'qualifications') and emp.qualifications:
-                quals = emp.qualifications.split(',')
-                for i, qual in enumerate(quals[:5], 7):  # Max 5 qualifications
-                    ws.cell(row=row_num, column=i, value=qual.strip())
-            elif hasattr(emp, 'notes') and emp.notes and 'Qualifications:' in emp.notes:
-                # Extract from notes field
-                qual_text = emp.notes.split('Qualifications:')[1].strip()
-                quals = qual_text.split(',')
-                for i, qual in enumerate(quals[:5], 7):
-                    ws.cell(row=row_num, column=i, value=qual.strip())
+            # Add skills/qualifications from EmployeeSkill relationships
+            if hasattr(emp, 'employee_skills'):
+                skills = [es.skill.name for es in emp.employee_skills if es.skill]
+                for i, skill_name in enumerate(skills[:5], 7):  # Max 5 qualifications
+                    ws.cell(row=row_num, column=i, value=skill_name)
         
         # Save to BytesIO
         output = io.BytesIO()
@@ -1092,7 +1150,8 @@ def test_upload_route():
                 'Email',
                 'Add Additional Qualification (x5)'
             ],
-            'default_password': 'password123'
+            'default_password': 'password123',
+            'skill_integration': 'Qualifications are stored as Skills in the database'
         },
         'authenticated': current_user.is_authenticated,
         'is_supervisor': current_user.is_supervisor if current_user.is_authenticated else False,
@@ -1144,7 +1203,7 @@ def render_simple_upload_page(stats, recent_uploads):
                                 <div class="mb-3">
                                     <label for="file" class="form-label">Select Excel File</label>
                                     <input type="file" class="form-control" id="file" name="file" accept=".xlsx,.xls" required>
-                                    <div class="form-text">Format: Last Name, First Name, Employee ID, Crew Assigned, Current Job Position, Email, + 5 Qualification columns</div>
+                                    <div class="form-text">Format: Last Name, First Name, Employee ID, Crew, Position, Email, + 5 Qualification columns</div>
                                 </div>
                                 
                                 <div class="mb-3">
@@ -1175,6 +1234,7 @@ def render_simple_upload_page(stats, recent_uploads):
                         <div class="card-body">
                             <p>Total Employees: <strong>{stats.get('total_employees', 0)}</strong></p>
                             <p>Crews: {', '.join([f'{k}:{v}' for k, v in stats.get('crews', {}).items()])}</p>
+                            <p class="text-muted">Qualifications are stored as Skills</p>
                         </div>
                     </div>
                 </div>
@@ -1186,4 +1246,4 @@ def render_simple_upload_page(stats, recent_uploads):
     return make_response(html)
 
 # Log successful blueprint loading
-logger.info("Employee import blueprint loaded successfully with YOUR format including qualifications")
+logger.info("Employee import blueprint loaded successfully with Skill integration for qualifications")
