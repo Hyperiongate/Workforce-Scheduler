@@ -1,12 +1,17 @@
+#!/usr/bin/env python3
+"""
+Complete Test Data Generator for Excel Upload System
+Creates various test Excel files for thorough testing
+"""
+
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 import random
-
-# Script to create test Excel files for the upload system
+import os
 
 def create_valid_employees():
-    """Create a valid employee test file"""
+    """Create a valid employee test file with 5 employees"""
     data = {
         'Employee ID': ['EMP001', 'EMP002', 'EMP003', 'EMP004', 'EMP005'],
         'First Name': ['John', 'Jane', 'Bob', 'Alice', 'Charlie'],
@@ -27,20 +32,22 @@ def create_valid_employees():
     
     df = pd.DataFrame(data)
     
-    with pd.ExcelWriter('test_valid_employees.xlsx', engine='xlsxwriter') as writer:
+    with pd.ExcelWriter('test_valid_employees.xlsx', engine='openpyxl') as writer:
         df.to_excel(writer, sheet_name='Employee Data', index=False)
         
-        # Add instructions
+        # Add instructions sheet
         instructions = pd.DataFrame({
             'Instructions': [
                 'This is a valid test file with 5 employees',
                 'All required fields are filled correctly',
-                'Use this to test successful imports'
+                'Use this to test successful imports',
+                'Expected Result: All 5 employees should import successfully'
             ]
         })
         instructions.to_excel(writer, sheet_name='Instructions', index=False)
     
-    print("Created: test_valid_employees.xlsx")
+    print("✅ Created: test_valid_employees.xlsx")
+    return 'test_valid_employees.xlsx'
 
 def create_invalid_employees():
     """Create test file with various validation errors"""
@@ -63,10 +70,10 @@ def create_invalid_employees():
     
     df = pd.DataFrame(data)
     
-    with pd.ExcelWriter('test_invalid_employees.xlsx', engine='xlsxwriter') as writer:
+    with pd.ExcelWriter('test_invalid_employees.xlsx', engine='openpyxl') as writer:
         df.to_excel(writer, sheet_name='Employee Data', index=False)
         
-        # Add notes about errors
+        # Add expected errors sheet
         errors = pd.DataFrame({
             'Expected Errors': [
                 'Row 2: Missing Employee ID',
@@ -77,12 +84,15 @@ def create_invalid_employees():
                 'Row 5: Missing Email',
                 'Row 6: Invalid crew "5"',
                 'Row 6: Invalid phone format',
-                'Row 7: Duplicate Employee ID (EMP001)'
+                'Row 7: Duplicate Employee ID (EMP001)',
+                'Various: Invalid date formats',
+                'Various: Invalid supervisor values'
             ]
         })
         errors.to_excel(writer, sheet_name='Expected Errors', index=False)
     
-    print("Created: test_invalid_employees.xlsx")
+    print("✅ Created: test_invalid_employees.xlsx")
+    return 'test_invalid_employees.xlsx'
 
 def create_large_dataset():
     """Create a large dataset for performance testing"""
@@ -114,22 +124,24 @@ def create_large_dataset():
     
     df = pd.DataFrame(data)
     
-    with pd.ExcelWriter('test_large_dataset.xlsx', engine='xlsxwriter') as writer:
+    with pd.ExcelWriter('test_large_dataset.xlsx', engine='openpyxl') as writer:
         df.to_excel(writer, sheet_name='Employee Data', index=False)
         
-        # Add summary
+        # Add summary sheet
         summary = pd.DataFrame({
             'Summary': [
                 f'Total Employees: {num_employees}',
                 f'Crews: {", ".join(crews)}',
                 f'Positions: {len(positions)}',
                 f'Departments: {len(departments)}',
-                'Use this for performance testing'
+                'Use this for performance testing',
+                'Expected Result: Should process within 30 seconds'
             ]
         })
         summary.to_excel(writer, sheet_name='Summary', index=False)
     
-    print(f"Created: test_large_dataset.xlsx ({num_employees} employees)")
+    print(f"✅ Created: test_large_dataset.xlsx ({num_employees} employees)")
+    return 'test_large_dataset.xlsx'
 
 def create_overtime_history():
     """Create overtime history test file"""
@@ -148,18 +160,17 @@ def create_overtime_history():
             week_data.append(total)
         data[f'Week {week}'] = week_data
     
-    df = pd.DataFrame(data)
-    
-    # Add some employees with high overtime
+    # Add high overtime employee
     high_ot_employee = {
         'Employee ID': 'EMP006'
     }
     for week in range(1, 14):
         high_ot_employee[f'Week {week}'] = random.randint(48, 60)  # Consistently high OT
     
+    df = pd.DataFrame(data)
     df = pd.concat([df, pd.DataFrame([high_ot_employee])], ignore_index=True)
     
-    with pd.ExcelWriter('test_overtime_history.xlsx', engine='xlsxwriter') as writer:
+    with pd.ExcelWriter('test_overtime_history.xlsx', engine='openpyxl') as writer:
         df.to_excel(writer, sheet_name='Overtime Data', index=False)
         
         # Add summary sheet
@@ -178,7 +189,8 @@ def create_overtime_history():
         summary_df = pd.DataFrame(summary_data)
         summary_df.to_excel(writer, sheet_name='Summary', index=False)
     
-    print("Created: test_overtime_history.xlsx")
+    print("✅ Created: test_overtime_history.xlsx")
+    return 'test_overtime_history.xlsx'
 
 def create_bulk_update():
     """Create bulk update test file"""
@@ -192,7 +204,7 @@ def create_bulk_update():
     
     df = pd.DataFrame(data)
     
-    with pd.ExcelWriter('test_bulk_update.xlsx', engine='xlsxwriter') as writer:
+    with pd.ExcelWriter('test_bulk_update.xlsx', engine='openpyxl') as writer:
         df.to_excel(writer, sheet_name='Bulk Update', index=False)
         
         # Add instructions
@@ -213,27 +225,78 @@ def create_bulk_update():
         })
         instructions.to_excel(writer, sheet_name='Instructions', index=False)
     
-    print("Created: test_bulk_update.xlsx")
+    print("✅ Created: test_bulk_update.xlsx")
+    return 'test_bulk_update.xlsx'
+
+def create_empty_file():
+    """Create an empty Excel file for testing"""
+    df = pd.DataFrame()
+    
+    with pd.ExcelWriter('test_empty.xlsx', engine='openpyxl') as writer:
+        df.to_excel(writer, sheet_name='Employee Data', index=False)
+    
+    print("✅ Created: test_empty.xlsx")
+    return 'test_empty.xlsx'
+
+def create_wrong_sheet_name():
+    """Create file with wrong sheet name"""
+    data = {
+        'Employee ID': ['EMP001'],
+        'First Name': ['John'],
+        'Last Name': ['Doe'],
+        'Email': ['john.doe@company.com'],
+        'Crew': ['A']
+    }
+    
+    df = pd.DataFrame(data)
+    
+    with pd.ExcelWriter('test_wrong_sheet.xlsx', engine='openpyxl') as writer:
+        df.to_excel(writer, sheet_name='Wrong Sheet Name', index=False)  # Wrong sheet name
+    
+    print("✅ Created: test_wrong_sheet.xlsx")
+    return 'test_wrong_sheet.xlsx'
 
 def create_all_test_files():
     """Create all test files"""
-    print("Creating test Excel files...")
-    print("-" * 40)
+    print("\n" + "="*50)
+    print("Creating Test Excel Files for Upload System")
+    print("="*50 + "\n")
     
-    create_valid_employees()
-    create_invalid_employees()
-    create_large_dataset()
-    create_overtime_history()
-    create_bulk_update()
+    files_created = []
     
-    print("-" * 40)
-    print("All test files created successfully!")
-    print("\nTest files created:")
-    print("1. test_valid_employees.xlsx - Valid data for successful import")
-    print("2. test_invalid_employees.xlsx - Various validation errors")
-    print("3. test_large_dataset.xlsx - 500 employees for performance testing")
-    print("4. test_overtime_history.xlsx - 13 weeks of overtime data")
-    print("5. test_bulk_update.xlsx - Bulk update various fields")
+    # Create each test file
+    files_created.append(create_valid_employees())
+    files_created.append(create_invalid_employees())
+    files_created.append(create_large_dataset())
+    files_created.append(create_overtime_history())
+    files_created.append(create_bulk_update())
+    files_created.append(create_empty_file())
+    files_created.append(create_wrong_sheet_name())
+    
+    print("\n" + "="*50)
+    print("✅ All test files created successfully!")
+    print("="*50 + "\n")
+    
+    print("Test Files Created:")
+    print("-" * 30)
+    for i, filename in enumerate(files_created, 1):
+        print(f"{i}. {filename}")
+    
+    print("\n📋 Testing Instructions:")
+    print("-" * 30)
+    print("1. Start with 'test_valid_employees.xlsx' - should import successfully")
+    print("2. Then try 'test_invalid_employees.xlsx' - should show validation errors")
+    print("3. Test performance with 'test_large_dataset.xlsx'")
+    print("4. Test overtime upload with 'test_overtime_history.xlsx'")
+    print("5. Test bulk updates with 'test_bulk_update.xlsx'")
+    print("6. Test edge cases with 'test_empty.xlsx' and 'test_wrong_sheet.xlsx'")
+    print("\n⚠️  Make sure you're logged in as a supervisor to access upload features!")
+    
+    # Check if files were created in current directory
+    current_dir = os.getcwd()
+    print(f"\n📁 Files created in: {current_dir}")
+    
+    return files_created
 
 if __name__ == "__main__":
     create_all_test_files()
