@@ -1,292 +1,399 @@
-# Add this complete route to your blueprints/main.py file
+# blueprints/main.py
+"""
+Main blueprint for general routes
+COMPLETE FIXED VERSION - Deploy this entire file
+"""
+
+from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify
+from flask_login import login_required, current_user
+from models import db, Employee, Schedule, Position, TimeOffRequest, ShiftSwapRequest, OvertimeHistory
+from datetime import datetime, date, timedelta
+from sqlalchemy import func, and_, or_
+import logging
+
+# Set up logging
+logger = logging.getLogger(__name__)
+
+# Create the blueprint FIRST before using it
+main_bp = Blueprint('main', __name__)
+
+# ==========================================
+# DASHBOARD ROUTES
+# ==========================================
+
+@main_bp.route('/')
+def index():
+    """Landing page - redirects based on login status"""
+    if current_user.is_authenticated:
+        if current_user.is_supervisor:
+            return redirect(url_for('supervisor.dashboard'))
+        else:
+            return redirect(url_for('main.employee_dashboard'))
+    return redirect(url_for('auth.login'))
+
+@main_bp.route('/dashboard')
+@login_required
+def dashboard():
+    """Main dashboard - redirects based on user role"""
+    if current_user.is_supervisor:
+        return redirect(url_for('supervisor.dashboard'))
+    else:
+        return redirect(url_for('main.employee_dashboard'))
+
+@main_bp.route('/employee-dashboard')
+@login_required
+def employee_dashboard():
+    """Employee dashboard with schedule and requests"""
+    try:
+        # Get current week schedules
+        today = date.today()
+        week_start = today - timedelta(days=today.weekday())
+        week_end = week_start + timedelta(days=6)
+        
+        schedules = Schedule.query.filter(
+            Schedule.employee_id == current_user.id,
+            Schedule.date >= week_start,
+            Schedule.date <= week_end
+        ).order_by(Schedule.date).all()
+        
+        # Get pending requests
+        time_off_requests = TimeOffRequest.query.filter_by(
+            employee_id=current_user.id
+        ).order_by(TimeOffRequest.created_at.desc()).limit(5).all()
+        
+        swap_requests = ShiftSwapRequest.query.filter(
+            or_(
+                ShiftSwapRequest.requester_id == current_user.id,
+                ShiftSwapRequest.target_employee_id == current_user.id
+            )
+        ).order_by(ShiftSwapRequest.created_at.desc()).limit(5).all()
+        
+        # Calculate stats
+        total_hours_week = sum(
+            (s.end_time.hour - s.start_time.hour) + 
+            (s.end_time.minute - s.start_time.minute) / 60
+            for s in schedules if s.start_time and s.end_time
+        )
+        
+        # Get overtime hours
+        overtime = OvertimeHistory.query.filter_by(
+            employee_id=current_user.id
+        ).order_by(OvertimeHistory.week_ending.desc()).first()
+        
+        overtime_hours = overtime.total_ot_hours if overtime else 0
+        
+        return render_template('employee_dashboard.html',
+                             schedules=schedules,
+                             time_off_requests=time_off_requests,
+                             swap_requests=swap_requests,
+                             total_hours_week=total_hours_week,
+                             overtime_hours=overtime_hours,
+                             week_start=week_start,
+                             week_end=week_end)
+                             
+    except Exception as e:
+        logger.error(f"Error loading employee dashboard: {e}")
+        flash('Error loading dashboard. Please try again.', 'error')
+        return render_template('employee_dashboard.html',
+                             schedules=[],
+                             time_off_requests=[],
+                             swap_requests=[],
+                             total_hours_week=0,
+                             overtime_hours=0,
+                             week_start=date.today(),
+                             week_end=date.today())
+
+# ==========================================
+# CREW MANAGEMENT ROUTES
+# ==========================================
 
 @main_bp.route('/crew-management')
 @login_required
-@supervisor_required
 def crew_management():
-    """Interactive crew management with drag-and-drop interface"""
+    """Crew management page"""
+    if not current_user.is_supervisor:
+        flash('Access denied. Supervisors only.', 'danger')
+        return redirect(url_for('main.employee_dashboard'))
+    
     try:
-        # Get all active employees with their related data
-        employees = Employee.query.filter_by(is_active=True).options(
-            db.joinedload(Employee.position),
-            db.joinedload(Employee.skills)
-        ).all()
+        # Get all active employees grouped by crew
+        crews = {}
+        for crew in ['A', 'B', 'C', 'D']:
+            crews[crew] = Employee.query.filter_by(
+                crew=crew,
+                is_active=True
+            ).order_by(Employee.name).all()
         
-        # Organize employees by crew
-        employees_by_crew = {
-            'A': [],
-            'B': [],
-            'C': [],
-            'D': [],
-            'Unassigned': []
+        # Get unassigned employees
+        unassigned = Employee.query.filter(
+            or_(Employee.crew.is_(None), ~Employee.crew.in_(['A', 'B', 'C', 'D'])),
+            Employee.is_active == True
+        ).order_by(Employee.name).all()
+        
+        # Calculate crew statistics
+        stats = {
+            'total_employees': Employee.query.filter_by(is_active=True).count(),
+            'crew_counts': {crew: len(employees) for crew, employees in crews.items()},
+            'unassigned_count': len(unassigned),
+            'positions': db.session.query(Position.name, func.count(Employee.id))\
+                          .join(Employee)\
+                          .filter(Employee.is_active == True)\
+                          .group_by(Position.name)\
+                          .all()
         }
         
-        crew_counts = {
-            'A': 0,
-            'B': 0,
-            'C': 0,
-            'D': 0,
-            'Unassigned': 0
-        }
-        
-        total_employees = 0
-        
-        # Calculate overtime for each employee (last 13 weeks)
-        end_date = date.today()
-        start_date = end_date - timedelta(weeks=13)
-        
-        for employee in employees:
-            # Calculate years employed
-            years_employed = 0
-            if hasattr(employee, 'hire_date') and employee.hire_date:
-                years_employed = (date.today() - employee.hire_date).days // 365
-            
-            # Get overtime hours
-            overtime_records = OvertimeHistory.query.filter(
-                OvertimeHistory.employee_id == employee.id,
-                OvertimeHistory.week_ending >= start_date,
-                OvertimeHistory.week_ending <= end_date
-            ).all()
-            
-            overtime_hours = sum(record.overtime_hours or 0 for record in overtime_records)
-            
-            # Create enhanced employee data
-            employee_data = {
-                'id': employee.id,
-                'employee_id': employee.employee_id,
-                'name': employee.name,
-                'first_name': employee.first_name,
-                'last_name': employee.last_name,
-                'crew': employee.crew,
-                'position': employee.position,
-                'skills': getattr(employee, 'skills', []),
-                'years_employed': years_employed,
-                'overtime_hours': overtime_hours,
-                'performance_score': getattr(employee, 'performance_score', 85),  # Default score
-                'hire_date': getattr(employee, 'hire_date', None)
-            }
-            
-            # Assign to crew
-            crew = employee.crew if employee.crew in ['A', 'B', 'C', 'D'] else 'Unassigned'
-            employees_by_crew[crew].append(employee_data)
-            crew_counts[crew] += 1
-            total_employees += 1
-        
-        # Calculate balance score
-        crew_sizes = [crew_counts[crew] for crew in ['A', 'B', 'C', 'D']]
-        if sum(crew_sizes) > 0:
-            average_size = sum(crew_sizes) / 4
-            variance = sum((size - average_size) ** 2 for size in crew_sizes) / 4
-            balance_score = max(0, 100 - (variance / max(average_size, 1) * 100))
-        else:
-            balance_score = 100
-        
-        # Get skills distribution
-        skills_distribution = calculate_skills_distribution(employees_by_crew)
-        
-        # Calculate skills coverage
-        skills_coverage = calculate_skills_coverage(skills_distribution)
-        
-        # Calculate workload variance
-        workload_variance = calculate_workload_variance(employees_by_crew)
-        
-        return render_template(
-            'crew_management.html',
-            employees_by_crew=employees_by_crew,
-            crew_counts=crew_counts,
-            total_employees=total_employees,
-            balance_score=int(balance_score),
-            skills_distribution=skills_distribution,
-            skills_coverage=int(skills_coverage),
-            workload_variance=workload_variance
-        )
-        
+        return render_template('crew_management.html',
+                             crews=crews,
+                             unassigned=unassigned,
+                             stats=stats)
+                             
     except Exception as e:
-        logger.error(f"Error in crew management: {str(e)}")
-        flash('Error loading crew management page. Please try again.', 'error')
-        return redirect(url_for('main.dashboard'))
+        logger.error(f"Error in crew management: {e}")
+        flash('Error loading crew management page.', 'error')
+        return redirect(url_for('supervisor.dashboard'))
 
-@main_bp.route('/crew-management/save', methods=['POST'])
+@main_bp.route('/api/update-crew', methods=['POST'])
 @login_required
-@supervisor_required
-def save_crew_assignments():
-    """Save crew assignment changes"""
+def update_crew():
+    """API endpoint to update employee crew assignment"""
+    if not current_user.is_supervisor:
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    
     try:
         data = request.get_json()
-        assignments = data.get('assignments', {})
-        changes = data.get('changes', [])
+        employee_id = data.get('employee_id')
+        new_crew = data.get('crew')
         
-        if not assignments:
-            return jsonify({'success': False, 'error': 'No assignments provided'})
+        # Validate crew
+        if new_crew not in ['A', 'B', 'C', 'D', None]:
+            return jsonify({'success': False, 'error': 'Invalid crew assignment'})
         
-        # Track changes for logging
-        updated_count = 0
-        errors = []
+        # Update employee
+        employee = Employee.query.get(employee_id)
+        if not employee:
+            return jsonify({'success': False, 'error': 'Employee not found'})
         
-        # Process each crew's assignments
-        for crew, employee_ids in assignments.items():
-            crew_value = crew if crew in ['A', 'B', 'C', 'D'] else None
-            
-            for employee_id in employee_ids:
-                try:
-                    employee = Employee.query.filter_by(employee_id=employee_id).first()
-                    if employee:
-                        old_crew = employee.crew
-                        employee.crew = crew_value
-                        
-                        if old_crew != crew_value:
-                            updated_count += 1
-                            logger.info(f"Updated {employee_id} crew: {old_crew} -> {crew_value}")
-                    else:
-                        errors.append(f"Employee {employee_id} not found")
-                        
-                except Exception as e:
-                    errors.append(f"Error updating {employee_id}: {str(e)}")
-        
-        # Commit changes
+        old_crew = employee.crew
+        employee.crew = new_crew
         db.session.commit()
         
-        # Log the crew management action
-        try:
-            from models import AuditLog
-            audit_log = AuditLog(
-                user_id=current_user.id,
-                action='crew_management_update',
-                details=f"Updated {updated_count} employee crew assignments",
-                timestamp=datetime.utcnow()
-            )
-            db.session.add(audit_log)
-            db.session.commit()
-        except:
-            pass  # Audit log is optional
+        logger.info(f"Updated {employee.name} from crew {old_crew} to {new_crew}")
         
         return jsonify({
             'success': True,
-            'updated_count': updated_count,
-            'errors': errors
+            'message': f'Updated {employee.name} to crew {new_crew}',
+            'employee': {
+                'id': employee.id,
+                'name': employee.name,
+                'old_crew': old_crew,
+                'new_crew': new_crew
+            }
         })
         
     except Exception as e:
+        logger.error(f"Error updating crew: {e}")
         db.session.rollback()
-        logger.error(f"Error saving crew assignments: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)})
+        return jsonify({'success': False, 'error': str(e)}), 500
 
-def calculate_skills_distribution(employees_by_crew):
-    """Calculate how skills are distributed across crews"""
-    skills_data = {}
-    
-    # Get all unique skills
-    all_skills = set()
-    for crew_employees in employees_by_crew.values():
-        for employee in crew_employees:
-            for skill in employee.get('skills', []):
-                all_skills.add(skill.name if hasattr(skill, 'name') else str(skill))
-    
-    # Count skills per crew
-    for skill_name in all_skills:
-        crew_counts = {'A': 0, 'B': 0, 'C': 0, 'D': 0}
-        
-        for crew, employees in employees_by_crew.items():
-            if crew in ['A', 'B', 'C', 'D']:
-                for employee in employees:
-                    employee_skills = [s.name if hasattr(s, 'name') else str(s) 
-                                     for s in employee.get('skills', [])]
-                    if skill_name in employee_skills:
-                        crew_counts[crew] += 1
-        
-        # Calculate balance rating
-        total_with_skill = sum(crew_counts.values())
-        if total_with_skill == 0:
-            balance_percentage = 0
-            balance_rating = 'poor'
-        else:
-            # Calculate distribution balance (how evenly distributed)
-            counts = list(crew_counts.values())
-            max_count = max(counts)
-            min_count = min(counts)
-            
-            if max_count == 0:
-                balance_percentage = 0
-                balance_rating = 'poor'
-            else:
-                balance_percentage = int((min_count / max_count) * 100)
-                if balance_percentage >= 80:
-                    balance_rating = 'excellent'
-                elif balance_percentage >= 60:
-                    balance_rating = 'good'
-                else:
-                    balance_rating = 'poor'
-        
-        skills_data[skill_name] = {
-            'name': skill_name,
-            'crew_counts': crew_counts,
-            'total': total_with_skill,
-            'balance_percentage': balance_percentage,
-            'balance_rating': balance_rating
-        }
-    
-    # Convert to list format for template
-    skills_list = []
-    for skill_name, skill_data in skills_data.items():
-        skills_list.append(skill_data)
-    
-    return skills_list
+# ==========================================
+# PROFILE ROUTES
+# ==========================================
 
-def calculate_skills_coverage(skills_distribution):
-    """Calculate overall skills coverage percentage"""
-    if not skills_distribution:
-        return 100
-    
-    total_balance = sum(skill['balance_percentage'] for skill in skills_distribution)
-    return total_balance / len(skills_distribution) if skills_distribution else 100
-
-def calculate_workload_variance(employees_by_crew):
-    """Calculate workload variance across crews"""
-    crew_workloads = []
-    
-    for crew in ['A', 'B', 'C', 'D']:
-        employees = employees_by_crew.get(crew, [])
-        total_overtime = sum(emp.get('overtime_hours', 0) for emp in employees)
-        avg_overtime = total_overtime / len(employees) if employees else 0
-        crew_workloads.append(avg_overtime)
-    
-    if not crew_workloads:
-        return 0.0
-    
-    mean_workload = sum(crew_workloads) / len(crew_workloads)
-    variance = sum((workload - mean_workload) ** 2 for workload in crew_workloads) / len(crew_workloads)
-    
-    return round(variance, 2)
-
-# Additional helper function for auto-balancing
-@main_bp.route('/crew-management/auto-balance', methods=['POST'])
+@main_bp.route('/profile')
 @login_required
-@supervisor_required
-def auto_balance_crews():
-    """Automatically balance crews based on skills and workload"""
+def profile():
+    """User profile page"""
     try:
-        # Get all active employees
-        employees = Employee.query.filter_by(is_active=True).options(
-            db.joinedload(Employee.position),
-            db.joinedload(Employee.skills)
-        ).all()
+        # Get employee details
+        employee = Employee.query.get(current_user.id)
         
-        # Simple auto-balance algorithm
-        # In practice, this would be much more sophisticated
-        employees_list = list(employees)
-        crew_assignments = {'A': [], 'B': [], 'C': [], 'D': []}
+        # Get position info
+        position = Position.query.get(employee.position_id) if employee.position_id else None
         
-        # Distribute employees evenly
-        for i, employee in enumerate(employees_list):
-            crew = ['A', 'B', 'C', 'D'][i % 4]
-            crew_assignments[crew].append(employee.employee_id)
+        # Get recent schedules
+        recent_schedules = Schedule.query.filter_by(
+            employee_id=current_user.id
+        ).order_by(Schedule.date.desc()).limit(10).all()
+        
+        # Calculate statistics
+        stats = {
+            'total_scheduled_days': Schedule.query.filter_by(employee_id=current_user.id).count(),
+            'total_time_off_requests': TimeOffRequest.query.filter_by(employee_id=current_user.id).count(),
+            'approved_time_off': TimeOffRequest.query.filter_by(
+                employee_id=current_user.id,
+                status='approved'
+            ).count(),
+            'total_swap_requests': ShiftSwapRequest.query.filter(
+                or_(
+                    ShiftSwapRequest.requester_id == current_user.id,
+                    ShiftSwapRequest.target_employee_id == current_user.id
+                )
+            ).count()
+        }
+        
+        return render_template('profile.html',
+                             employee=employee,
+                             position=position,
+                             recent_schedules=recent_schedules,
+                             stats=stats)
+                             
+    except Exception as e:
+        logger.error(f"Error loading profile: {e}")
+        flash('Error loading profile page.', 'error')
+        return redirect(url_for('main.dashboard'))
+
+@main_bp.route('/profile/update', methods=['POST'])
+@login_required
+def update_profile():
+    """Update user profile information"""
+    try:
+        employee = Employee.query.get(current_user.id)
+        
+        # Update allowed fields
+        phone = request.form.get('phone')
+        emergency_contact = request.form.get('emergency_contact')
+        emergency_phone = request.form.get('emergency_phone')
+        
+        if phone:
+            employee.phone = phone
+        if emergency_contact:
+            employee.emergency_contact = emergency_contact
+        if emergency_phone:
+            employee.emergency_phone = emergency_phone
+        
+        db.session.commit()
+        flash('Profile updated successfully!', 'success')
+        
+        logger.info(f"Profile updated for {employee.name}")
+        
+    except Exception as e:
+        logger.error(f"Error updating profile: {e}")
+        db.session.rollback()
+        flash('Error updating profile. Please try again.', 'error')
+    
+    return redirect(url_for('main.profile'))
+
+# ==========================================
+# HELP & SUPPORT ROUTES
+# ==========================================
+
+@main_bp.route('/help')
+@login_required
+def help_page():
+    """Help and documentation page"""
+    return render_template('help.html')
+
+@main_bp.route('/contact')
+@login_required
+def contact():
+    """Contact support page"""
+    return render_template('contact.html')
+
+# ==========================================
+# API ENDPOINTS
+# ==========================================
+
+@main_bp.route('/api/employee-stats')
+@login_required
+def employee_stats():
+    """Get employee statistics"""
+    if not current_user.is_supervisor:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    try:
+        stats = {
+            'total_employees': Employee.query.filter_by(is_active=True).count(),
+            'crews': {
+                'A': Employee.query.filter_by(crew='A', is_active=True).count(),
+                'B': Employee.query.filter_by(crew='B', is_active=True).count(),
+                'C': Employee.query.filter_by(crew='C', is_active=True).count(),
+                'D': Employee.query.filter_by(crew='D', is_active=True).count()
+            },
+            'supervisors': Employee.query.filter_by(is_supervisor=True, is_active=True).count(),
+            'positions': {}
+        }
+        
+        # Get position counts
+        positions = db.session.query(
+            Position.name,
+            func.count(Employee.id)
+        ).join(Employee).filter(
+            Employee.is_active == True
+        ).group_by(Position.name).all()
+        
+        for pos_name, count in positions:
+            stats['positions'][pos_name] = count
+        
+        return jsonify(stats)
+        
+    except Exception as e:
+        logger.error(f"Error getting employee stats: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@main_bp.route('/api/schedule-summary')
+@login_required
+def schedule_summary():
+    """Get schedule summary for current week"""
+    try:
+        today = date.today()
+        week_start = today - timedelta(days=today.weekday())
+        week_end = week_start + timedelta(days=6)
+        
+        if current_user.is_supervisor:
+            # Get all schedules for the week
+            schedules = Schedule.query.filter(
+                Schedule.date >= week_start,
+                Schedule.date <= week_end
+            ).all()
+        else:
+            # Get only user's schedules
+            schedules = Schedule.query.filter(
+                Schedule.employee_id == current_user.id,
+                Schedule.date >= week_start,
+                Schedule.date <= week_end
+            ).all()
+        
+        # Group by date
+        schedule_data = {}
+        for schedule in schedules:
+            date_str = schedule.date.strftime('%Y-%m-%d')
+            if date_str not in schedule_data:
+                schedule_data[date_str] = []
+            
+            schedule_data[date_str].append({
+                'id': schedule.id,
+                'employee': schedule.employee.name if schedule.employee else 'Unknown',
+                'shift_type': schedule.shift_type,
+                'start_time': schedule.start_time.strftime('%H:%M') if schedule.start_time else None,
+                'end_time': schedule.end_time.strftime('%H:%M') if schedule.end_time else None,
+                'position': schedule.position
+            })
         
         return jsonify({
-            'success': True,
-            'assignments': crew_assignments,
-            'message': f'Auto-balanced {len(employees_list)} employees across 4 crews'
+            'week_start': week_start.strftime('%Y-%m-%d'),
+            'week_end': week_end.strftime('%Y-%m-%d'),
+            'schedules': schedule_data
         })
         
     except Exception as e:
-        logger.error(f"Error in auto-balance: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)})
+        logger.error(f"Error getting schedule summary: {e}")
+        return jsonify({'error': str(e)}), 500
+
+# ==========================================
+# ERROR HANDLERS (Blueprint specific)
+# ==========================================
+
+@main_bp.errorhandler(404)
+def not_found_error(error):
+    """Handle 404 errors within this blueprint"""
+    if request.path.startswith('/api/'):
+        return jsonify({'error': 'Not found'}), 404
+    return render_template('404.html'), 404
+
+@main_bp.errorhandler(500)
+def internal_error(error):
+    """Handle 500 errors within this blueprint"""
+    db.session.rollback()
+    if request.path.startswith('/api/'):
+        return jsonify({'error': 'Internal server error'}), 500
+    return render_template('500.html'), 500
