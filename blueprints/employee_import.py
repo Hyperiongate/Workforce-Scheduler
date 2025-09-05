@@ -1,7 +1,7 @@
 # blueprints/employee_import.py
 """
 Complete Excel upload system for employee data management
-WITH QUALIFICATION COLUMNS that create Skill and EmployeeSkill records
+QUALIFICATION SYSTEM: Column headers define skills, cells contain Yes/No
 Deploy this ENTIRE file to blueprints/employee_import.py
 """
 
@@ -20,8 +20,9 @@ import logging
 import json
 import traceback
 from openpyxl import Workbook
-from openpyxl.styles import Font, PatternFill, Alignment
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.datavalidation import DataValidation
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -82,32 +83,17 @@ def get_employee_stats():
         
         crew_distribution = {crew: count for crew, count in crews}
         
-        # Get overtime stats if OvertimeHistory exists
-        try:
-            recent_ot = db.session.query(
-                func.sum(OvertimeHistory.hours)
-            ).filter(
-                OvertimeHistory.week_ending >= datetime.now() - timedelta(days=90)
-            ).scalar() or 0
-            
-            high_ot_employees = db.session.query(
-                func.count(func.distinct(OvertimeHistory.employee_id))
-            ).filter(
-                OvertimeHistory.hours > 10,
-                OvertimeHistory.week_ending >= datetime.now() - timedelta(days=30)
-            ).scalar() or 0
-        except:
-            recent_ot = 0
-            high_ot_employees = 0
+        # Get skill statistics
+        total_skills = Skill.query.count()
+        employees_with_skills = db.session.query(
+            func.count(func.distinct(EmployeeSkill.employee_id))
+        ).scalar() or 0
         
         return {
             'total_employees': total_employees,
             'crews': crew_distribution,
-            'recent_ot_hours': recent_ot,
-            'high_ot_employees': high_ot_employees,
-            'low_ot': 0,
-            'medium_ot': 0,
-            'high_ot': 0,
+            'total_skills': total_skills,
+            'employees_with_skills': employees_with_skills,
             'last_updated': datetime.now()
         }
     except Exception as e:
@@ -115,11 +101,8 @@ def get_employee_stats():
         return {
             'total_employees': 0,
             'crews': {},
-            'recent_ot_hours': 0,
-            'high_ot_employees': 0,
-            'low_ot': 0,
-            'medium_ot': 0,
-            'high_ot': 0,
+            'total_skills': 0,
+            'employees_with_skills': 0,
             'last_updated': datetime.now()
         }
 
@@ -142,19 +125,6 @@ def get_recent_uploads(limit=5):
     except Exception as e:
         logger.error(f"Error getting recent uploads: {e}")
         return []
-
-def get_employees_without_accounts():
-    """Get count of employees without login accounts"""
-    try:
-        return Employee.query.filter(
-            and_(
-                Employee.is_active == True,
-                or_(Employee.email.is_(None), Employee.email == '')
-            )
-        ).count()
-    except Exception as e:
-        logger.error(f"Error getting employees without accounts: {e}")
-        return 0
 
 def create_or_get_skill(skill_name, category='General'):
     """Create a skill if it doesn't exist, or return existing one"""
@@ -205,11 +175,11 @@ def assign_skill_to_employee(employee, skill, certified_date=None):
     return False
 
 # ==========================================
-# VALIDATION FUNCTIONS FOR YOUR FORMAT WITH QUALIFICATIONS
+# VALIDATION FUNCTIONS WITH HEADER-BASED QUALIFICATIONS
 # ==========================================
 
 def validate_employee_data_comprehensive(df):
-    """Validate employee data from DataFrame - YOUR FORMAT with Qualifications"""
+    """Validate employee data - headers define qualifications, cells contain Yes/No"""
     errors = []
     warnings = []
     
@@ -217,11 +187,15 @@ def validate_employee_data_comprehensive(df):
     your_required_columns = ['Last Name', 'First Name', 'Employee ID', 'Crew Assigned', 'Current Job Position']
     your_optional_columns = ['Email']
     
-    # Check for qualification columns (they're optional)
+    # Identify qualification columns (any column after the base columns)
+    base_columns = your_required_columns + your_optional_columns
     qualification_columns = []
+    
     for col in df.columns:
-        if 'Add Additional Qualification' in col or 'Qualification' in col:
+        if col not in base_columns and col.strip() != '':
             qualification_columns.append(col)
+    
+    logger.info(f"Found {len(qualification_columns)} qualification columns: {qualification_columns}")
     
     # Check required columns exist
     missing_columns = []
@@ -279,15 +253,14 @@ def validate_employee_data_comprehensive(df):
             if '@' not in email_str:
                 warnings.append(f'Row {row_num}: Invalid email format "{email_str}"')
         
-        # Check qualifications (optional, just log if present)
-        qualifications = []
+        # Validate qualification values (should be Yes, No, Y, N, or blank)
+        valid_qual_values = {'yes', 'y', 'no', 'n', '1', '0', 'true', 'false', 'x', ''}
         for qual_col in qualification_columns:
             qual_value = row.get(qual_col)
             if not pd.isna(qual_value) and str(qual_value).strip() != '':
-                qualifications.append(str(qual_value).strip())
-        
-        if qualifications:
-            logger.info(f'Row {row_num}: Employee has {len(qualifications)} qualifications')
+                val_lower = str(qual_value).strip().lower()
+                if val_lower not in valid_qual_values:
+                    warnings.append(f'Row {row_num}, {qual_col}: Invalid value "{qual_value}" (use Yes/No or leave blank)')
     
     # Check if dataframe is empty
     if len(df) == 0:
@@ -303,85 +276,34 @@ def validate_employee_data_comprehensive(df):
             'warnings': warnings
         }
     
+    # Count employees with qualifications
+    employees_with_quals = 0
+    for idx, row in df.iterrows():
+        has_qual = False
+        for qual_col in qualification_columns:
+            val = row.get(qual_col)
+            if not pd.isna(val) and str(val).strip().lower() in ['yes', 'y', '1', 'true', 'x']:
+                has_qual = True
+                break
+        if has_qual:
+            employees_with_quals += 1
+    
     return {
         'success': True,
         'message': 'Validation passed',
         'employee_count': len(df),
         'warnings': warnings,
-        'qualification_columns': len(qualification_columns),
-        'employees_with_qualifications': len([1 for _, row in df.iterrows() 
-                                              if any(not pd.isna(row.get(col, '')) and str(row.get(col, '')).strip() 
-                                                    for col in qualification_columns)])
-    }
-
-def validate_overtime_data_comprehensive(df):
-    """Validate overtime data from DataFrame"""
-    errors = []
-    warnings = []
-    
-    # Check for Employee ID column
-    if 'Employee ID' not in df.columns:
-        return {
-            'success': False,
-            'error': 'Missing required column: Employee ID',
-            'errors': ['Missing Employee ID column']
-        }
-    
-    # Identify week columns
-    week_columns = []
-    for col in df.columns:
-        if col != 'Employee ID' and ('week' in col.lower() or '/' in col or '-' in col):
-            week_columns.append(col)
-    
-    if len(week_columns) < 13:
-        warnings.append(f'Expected 13 weeks of data, found {len(week_columns)} week columns')
-    
-    # Validate each row
-    for idx, row in df.iterrows():
-        row_num = idx + 2
-        
-        # Check Employee ID
-        emp_id = row.get('Employee ID')
-        if pd.isna(emp_id) or str(emp_id).strip() == '':
-            errors.append(f'Row {row_num}: Missing Employee ID')
-            continue
-        
-        # Validate overtime hours
-        for week_col in week_columns:
-            value = row.get(week_col)
-            if not pd.isna(value):
-                try:
-                    hours = float(value)
-                    if hours < 0:
-                        errors.append(f'Row {row_num}, {week_col}: Negative hours not allowed')
-                    elif hours > 80:
-                        warnings.append(f'Row {row_num}, {week_col}: Unusually high hours ({hours})')
-                except (ValueError, TypeError):
-                    errors.append(f'Row {row_num}, {week_col}: Invalid hours value "{value}"')
-    
-    if errors:
-        return {
-            'success': False,
-            'error': f'Validation failed with {len(errors)} errors',
-            'errors': errors[:20],
-            'total_errors': len(errors),
-            'warnings': warnings
-        }
-    
-    return {
-        'success': True,
-        'message': f'Validation passed for {len(df)} employees with {len(week_columns)} weeks of data',
-        'employee_count': len(df),
-        'weeks_count': len(week_columns),
-        'warnings': warnings
+        'qualification_columns': qualification_columns,
+        'qualification_count': len(qualification_columns),
+        'employees_with_qualifications': employees_with_quals
     }
 
 # ==========================================
-# PROCESSING FUNCTIONS WITH SKILL INTEGRATION
+# PROCESSING FUNCTIONS WITH HEADER-BASED SKILLS
 # ==========================================
 
 def process_employee_upload(df, upload_record, replace_all=False):
-    """Process validated employee data and import to database - WITH SKILL INTEGRATION"""
+    """Process employee data - column headers are skill names, cells are Yes/No"""
     try:
         created_count = 0
         updated_count = 0
@@ -389,12 +311,17 @@ def process_employee_upload(df, upload_record, replace_all=False):
         skills_added = 0
         
         # Identify qualification columns
-        qualification_columns = []
-        for col in df.columns:
-            if 'Add Additional Qualification' in col or 'Qualification' in col:
-                qualification_columns.append(col)
+        base_columns = ['Last Name', 'First Name', 'Employee ID', 'Crew Assigned', 'Current Job Position', 'Email']
+        qualification_columns = [col for col in df.columns if col not in base_columns and col.strip() != '']
         
-        logger.info(f"Found {len(qualification_columns)} qualification columns")
+        logger.info(f"Processing with qualification columns: {qualification_columns}")
+        
+        # Create skills for each qualification column
+        skill_map = {}
+        for qual_col in qualification_columns:
+            skill = create_or_get_skill(qual_col)
+            skill_map[qual_col] = skill
+            logger.info(f"Created/found skill: {qual_col}")
         
         # If replace_all, deactivate all existing employees first
         if replace_all:
@@ -412,13 +339,6 @@ def process_employee_upload(df, upload_record, replace_all=False):
                 crew = str(row['Crew Assigned']).strip().upper()
                 position_name = str(row['Current Job Position']).strip()
                 email = str(row.get('Email', '')).strip() if not pd.isna(row.get('Email')) else None
-                
-                # Collect qualifications
-                qualifications = []
-                for qual_col in qualification_columns:
-                    qual_value = row.get(qual_col)
-                    if not pd.isna(qual_value) and str(qual_value).strip():
-                        qualifications.append(str(qual_value).strip())
                 
                 # Check if employee exists
                 employee = Employee.query.filter_by(employee_id=emp_id).first()
@@ -455,19 +375,16 @@ def process_employee_upload(df, upload_record, replace_all=False):
                 
                 employee.position = position
                 
-                # Process qualifications as skills
-                if qualifications:
-                    for qual_name in qualifications:
-                        try:
-                            # Create or get the skill
-                            skill = create_or_get_skill(qual_name)
-                            
-                            # Assign to employee
+                # Process qualifications based on Yes/No values
+                for qual_col, skill in skill_map.items():
+                    qual_value = row.get(qual_col)
+                    if not pd.isna(qual_value) and str(qual_value).strip() != '':
+                        val_lower = str(qual_value).strip().lower()
+                        # Check if this is a "Yes" value
+                        if val_lower in ['yes', 'y', '1', 'true', 'x']:
                             if assign_skill_to_employee(employee, skill):
                                 skills_added += 1
-                                logger.info(f"Added skill '{qual_name}' to employee {emp_id}")
-                        except Exception as e:
-                            logger.error(f"Error adding skill '{qual_name}' to {emp_id}: {e}")
+                                logger.info(f"Added skill '{qual_col}' to employee {emp_id}")
                 
                 # Commit after each employee to avoid losing all on error
                 db.session.commit()
@@ -488,86 +405,11 @@ def process_employee_upload(df, upload_record, replace_all=False):
             'skipped': skipped_count,
             'skills_added': skills_added,
             'records_processed': len(df),
-            'message': f'Successfully processed {len(df)} records. Created: {created_count}, Updated: {updated_count}, Skipped: {skipped_count}, Skills Added: {skills_added}'
+            'message': f'Successfully processed {len(df)} records. Created: {created_count}, Updated: {updated_count}, Skills: {skills_added}'
         }
         
     except Exception as e:
         logger.error(f"Error in process_employee_upload: {e}")
-        db.session.rollback()
-        return {
-            'success': False,
-            'error': str(e),
-            'records_processed': 0
-        }
-
-def process_overtime_upload(df, upload_record):
-    """Process validated overtime data"""
-    try:
-        processed_count = 0
-        skipped_count = 0
-        
-        # Get week columns
-        week_columns = [col for col in df.columns if col != 'Employee ID']
-        
-        for idx, row in df.iterrows():
-            try:
-                emp_id = str(row['Employee ID']).strip()
-                
-                # Check if employee exists
-                employee = Employee.query.filter_by(employee_id=emp_id).first()
-                if not employee:
-                    logger.warning(f"Employee {emp_id} not found, skipping overtime data")
-                    skipped_count += 1
-                    continue
-                
-                # Process each week
-                for week_col in week_columns:
-                    hours = row.get(week_col)
-                    if not pd.isna(hours) and float(hours) > 0:
-                        # Parse week date
-                        try:
-                            week_date = pd.to_datetime(week_col).date()
-                        except:
-                            # Try different format
-                            week_date = datetime.now().date()
-                        
-                        # Check if OT record exists
-                        ot_record = OvertimeHistory.query.filter_by(
-                            employee_id=employee.id,  # Use employee.id not emp_id
-                            week_ending=week_date
-                        ).first()
-                        
-                        if ot_record:
-                            ot_record.hours = float(hours)
-                            ot_record.overtime_hours = float(hours)
-                        else:
-                            ot_record = OvertimeHistory(
-                                employee_id=employee.id,  # Use employee.id not emp_id
-                                week_ending=week_date,
-                                hours=float(hours),
-                                overtime_hours=float(hours),
-                                total_hours=40 + float(hours)  # Assume 40 regular hours
-                            )
-                            db.session.add(ot_record)
-                
-                processed_count += 1
-                
-            except Exception as e:
-                logger.error(f"Error processing overtime row {idx + 2}: {e}")
-                skipped_count += 1
-                continue
-        
-        db.session.commit()
-        
-        return {
-            'success': True,
-            'records_processed': processed_count,
-            'skipped': skipped_count,
-            'message': f'Processed {processed_count} employees overtime data'
-        }
-        
-    except Exception as e:
-        logger.error(f"Error in process_overtime_upload: {e}")
         db.session.rollback()
         return {
             'success': False,
@@ -587,7 +429,6 @@ def upload_employees():
     try:
         stats = get_employee_stats()
         recent_uploads = get_recent_uploads()
-        employees_without_accounts = get_employees_without_accounts()
         
         # Try to use your simple template first
         template_options = [
@@ -606,8 +447,8 @@ def upload_employees():
                     recent_uploads=recent_uploads,
                     crew_distribution=stats.get('crews', {}),
                     total_employees=stats.get('total_employees', 0),
-                    employees_without_accounts=employees_without_accounts,
-                    account_creation_available=True
+                    total_skills=stats.get('total_skills', 0),
+                    employees_with_skills=stats.get('employees_with_skills', 0)
                 )
             except Exception:
                 continue
@@ -652,7 +493,8 @@ def upload_employees_post():
             upload_type=upload_type,
             uploaded_by_id=current_user.id,
             status='processing',
-            file_size=os.path.getsize(filepath)
+            file_size=os.path.getsize(filepath),
+            file_path=filepath
         )
         db.session.add(upload_record)
         db.session.flush()
@@ -677,12 +519,6 @@ def upload_employees_post():
                     result = process_employee_upload(df, upload_record, replace_all)
                 else:
                     result = validation
-            elif upload_type == 'overtime':
-                validation = validate_overtime_data_comprehensive(df)
-                if validation['success']:
-                    result = process_overtime_upload(df, upload_record)
-                else:
-                    result = validation
             else:
                 result = {'success': False, 'error': 'Invalid upload type'}
             
@@ -699,7 +535,7 @@ def upload_employees_post():
                 if result.get('updated'):
                     msg_parts.append(f"{result.get('updated')} updated")
                 if result.get('skills_added'):
-                    msg_parts.append(f"{result.get('skills_added')} skills added")
+                    msg_parts.append(f"{result.get('skills_added')} skills assigned")
                 
                 flash(' - '.join(msg_parts), 'success')
             else:
@@ -724,104 +560,56 @@ def upload_employees_post():
         return redirect(url_for('employee_import.upload_employees'))
 
 # ==========================================
-# AJAX VALIDATION ROUTE
-# ==========================================
-
-@employee_import_bp.route('/validate-upload', methods=['POST'])
-@login_required
-@supervisor_required
-def validate_upload():
-    """AJAX endpoint to validate uploaded file before processing"""
-    try:
-        logger.info(f"Validation request from user: {current_user.employee_id}")
-        
-        if 'file' not in request.files:
-            return jsonify({'success': False, 'error': 'No file provided'})
-        
-        file = request.files['file']
-        upload_type = request.form.get('uploadType', 'employee')
-        
-        if file.filename == '':
-            return jsonify({'success': False, 'error': 'No file selected'})
-        
-        if not allowed_file(file.filename):
-            return jsonify({'success': False, 'error': 'Invalid file type. Please upload .xlsx or .xls'})
-        
-        # Save temporarily for validation
-        filepath = secure_file_path(file.filename)
-        file.save(filepath)
-        
-        try:
-            # Read Excel file
-            df = pd.read_excel(filepath, sheet_name=None)
-            
-            # Get the appropriate sheet
-            if isinstance(df, dict):
-                if 'Employee Data' in df:
-                    df = df['Employee Data']
-                elif 'Overtime Data' in df:
-                    df = df['Overtime Data']
-                else:
-                    df = df[list(df.keys())[0]]
-            
-            # Validate based on type
-            if upload_type == 'employee':
-                result = validate_employee_data_comprehensive(df)
-            elif upload_type == 'overtime':
-                result = validate_overtime_data_comprehensive(df)
-            else:
-                result = {'success': False, 'error': 'Invalid upload type'}
-            
-            # Clean up temp file
-            try:
-                os.remove(filepath)
-            except:
-                pass
-            
-            return jsonify(result)
-            
-        except Exception as e:
-            logger.error(f"Error validating file: {e}")
-            return jsonify({'success': False, 'error': f'Error reading file: {str(e)}'})
-            
-    except Exception as e:
-        logger.error(f"Error in validate_upload: {e}")
-        return jsonify({'success': False, 'error': 'Server error during validation'})
-
-# ==========================================
-# TEMPLATE DOWNLOAD ROUTES WITH QUALIFICATIONS
+# TEMPLATE DOWNLOAD WITH HEADER-BASED SYSTEM
 # ==========================================
 
 @employee_import_bp.route('/download-employee-template')
 @login_required
 @supervisor_required
 def download_employee_template():
-    """Download Excel template for employee upload - WITH QUALIFICATION COLUMNS"""
+    """Download Excel template - qualifications are column headers, use Yes/No in cells"""
     try:
         # Create workbook
         wb = Workbook()
         ws = wb.active
         ws.title = 'Employee Data'
         
-        # YOUR headers with additional qualification columns
+        # Common qualifications for your industry
+        qualification_headers = [
+            'Forklift Certified',
+            'Crane Operator',
+            'OSHA 10',
+            'OSHA 30',
+            'First Aid/CPR',
+            'CDL License',
+            'Welding Certified',
+            'Electrical License',
+            'Machine Operator',
+            'Hazmat Certified'
+        ]
+        
+        # Build all headers
         headers = [
             'Last Name',
             'First Name', 
             'Employee ID',
             'Crew Assigned',
             'Current Job Position',
-            'Email',
-            'Add Additional Qualification',
-            'Add Additional Qualification',
-            'Add Additional Qualification',
-            'Add Additional Qualification',
-            'Add Additional Qualification'
-        ]
+            'Email'
+        ] + qualification_headers
         
         # Header formatting
         header_font = Font(bold=True, color="FFFFFF")
         header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
-        header_alignment = Alignment(horizontal="center", vertical="center")
+        header_alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        
+        # Border style
+        thin_border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
         
         # Write headers with formatting
         for col, header in enumerate(headers, 1):
@@ -829,81 +617,114 @@ def download_employee_template():
             cell.font = header_font
             cell.fill = header_fill
             cell.alignment = header_alignment
+            cell.border = thin_border
             
             # Adjust column widths
             if header == 'Email':
-                ws.column_dimensions[get_column_letter(col)].width = 30
-            elif header == 'Add Additional Qualification':
                 ws.column_dimensions[get_column_letter(col)].width = 25
             elif header in ['Last Name', 'First Name', 'Current Job Position']:
-                ws.column_dimensions[get_column_letter(col)].width = 20
+                ws.column_dimensions[get_column_letter(col)].width = 18
+            elif col > 6:  # Qualification columns
+                ws.column_dimensions[get_column_letter(col)].width = 12
             else:
                 ws.column_dimensions[get_column_letter(col)].width = 15
         
+        # Set row height for header
+        ws.row_dimensions[1].height = 30
+        
+        # Add data validation for Yes/No columns
+        yes_no_validation = DataValidation(
+            type="list",
+            formula1='"Yes,No"',
+            allow_blank=True,
+            showDropDown=True,
+            errorTitle='Invalid Entry',
+            error='Please select Yes or No'
+        )
+        
+        # Apply validation to qualification columns (columns 7 onwards)
+        for col in range(7, len(headers) + 1):
+            col_letter = get_column_letter(col)
+            yes_no_validation.add(f'{col_letter}2:{col_letter}1000')
+        
+        ws.add_data_validation(yes_no_validation)
+        
         # Add sample data rows
         sample_data = [
-            ['Smith', 'John', 'EMP001', 'A', 'Operator', 'john.smith@company.com', 'Forklift Certified', 'OSHA 10', '', '', ''],
-            ['Johnson', 'Sarah', 'EMP002', 'B', 'Lead Operator', 'sarah.j@company.com', 'Crane Operator', 'First Aid/CPR', 'Welding Certified', '', ''],
-            ['Williams', 'Michael', 'EMP003', 'C', 'Technician', 'mike.w@company.com', 'Electrical License', '', '', '', ''],
-            ['Brown', 'Emily', 'EMP004', 'D', 'Supervisor', 'emily.b@company.com', 'Six Sigma Green Belt', 'PMP Certified', 'OSHA 30', 'Leadership Training', ''],
-            ['', '', '', '', '', '', '', '', '', '', ''],  # Empty row for user to start
+            ['Smith', 'John', 'EMP001', 'A', 'Operator', 'john.smith@company.com', 
+             'Yes', 'No', 'Yes', 'No', 'Yes', 'No', 'No', 'No', 'Yes', 'No'],
+            ['Johnson', 'Sarah', 'EMP002', 'B', 'Lead Operator', 'sarah.j@company.com',
+             'Yes', 'Yes', 'No', 'Yes', 'Yes', 'No', 'No', 'No', 'Yes', 'Yes'],
+            ['Williams', 'Michael', 'EMP003', 'C', 'Technician', 'mike.w@company.com',
+             'No', 'No', 'Yes', 'No', 'No', 'Yes', 'No', 'Yes', 'No', 'No'],
+            ['Brown', 'Emily', 'EMP004', 'D', 'Supervisor', 'emily.b@company.com',
+             'Yes', 'No', 'Yes', 'Yes', 'Yes', 'No', 'No', 'No', 'No', 'Yes'],
         ]
         
-        # Add sample data with light gray fill for examples
+        # Add sample data with light gray fill
         example_fill = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
         for row_num, row_data in enumerate(sample_data, 2):
             for col_num, value in enumerate(row_data, 1):
                 cell = ws.cell(row=row_num, column=col_num, value=value)
-                if row_num <= 5 and value:  # Only fill cells with example data
-                    cell.fill = example_fill
+                cell.fill = example_fill
+                cell.border = thin_border
+                # Center align Yes/No values
+                if col_num > 6:
+                    cell.alignment = Alignment(horizontal="center")
         
         # Add instructions sheet
         ws2 = wb.create_sheet('Instructions')
         ws2.column_dimensions['A'].width = 100
         
         instructions = [
-            ['EMPLOYEE UPLOAD TEMPLATE INSTRUCTIONS'],
+            ['EMPLOYEE UPLOAD TEMPLATE - HEADER-BASED QUALIFICATION SYSTEM'],
+            [''],
+            ['HOW TO USE THIS TEMPLATE:'],
+            ['1. The column headers (row 1) define the qualifications/skills available'],
+            ['2. For each employee, enter "Yes" if they have that qualification, "No" or leave blank if they don\'t'],
+            ['3. You can modify the qualification headers to match your needs'],
+            ['4. Add more qualification columns as needed - just add new headers'],
             [''],
             ['COLUMN DESCRIPTIONS:'],
-            ['1. Last Name - Employee\'s last name (REQUIRED)'],
-            ['2. First Name - Employee\'s first name (REQUIRED)'],
-            ['3. Employee ID - Unique identifier for each employee (REQUIRED)'],
-            ['4. Crew Assigned - Must be A, B, C, or D (REQUIRED)'],
-            ['5. Current Job Position - Job title/position (REQUIRED)'],
-            ['6. Email - Employee email address (OPTIONAL but recommended for login access)'],
-            ['7-11. Add Additional Qualification - Any certifications, licenses, or special qualifications (OPTIONAL)'],
+            ['• Last Name - Employee\'s last name (REQUIRED)'],
+            ['• First Name - Employee\'s first name (REQUIRED)'],
+            ['• Employee ID - Unique identifier (REQUIRED)'],
+            ['• Crew Assigned - Must be A, B, C, or D (REQUIRED)'],
+            ['• Current Job Position - Job title (REQUIRED)'],
+            ['• Email - Employee email (OPTIONAL but needed for login)'],
+            ['• Qualification Columns - Enter Yes/No for each skill'],
+            [''],
+            ['CUSTOMIZING QUALIFICATIONS:'],
+            ['1. Replace the qualification headers with your specific needs'],
+            ['2. Examples of qualifications to track:'],
+            ['   - Certifications: OSHA, First Aid, CPR, etc.'],
+            ['   - Equipment: Forklift, Crane, specific machines'],
+            ['   - Licenses: CDL, Electrical, Plumbing'],
+            ['   - Training: Leadership, Safety, Technical'],
+            ['   - Languages: Spanish, Chinese, etc.'],
+            [''],
+            ['VALID ENTRIES FOR QUALIFICATIONS:'],
+            ['• Yes, Y, 1, True, X = Employee HAS this qualification'],
+            ['• No, N, 0, False, blank = Employee DOES NOT have this qualification'],
+            [''],
+            ['WHY THIS SYSTEM?'],
+            ['• Faster data entry - just type Yes/No instead of full qualification names'],
+            ['• Consistency - same qualifications for all employees'],
+            ['• Easy overtime assignment - quickly see who has required skills'],
+            ['• Bulk updates - copy Yes/No patterns easily'],
             [''],
             ['IMPORTANT NOTES:'],
-            ['- Keep the header row exactly as shown'],
-            ['- Employee ID must be unique for each employee'],
-            ['- Crew must be exactly A, B, C, or D (case insensitive)'],
-            ['- Default password for new employees: password123'],
-            ['- Duplicate Employee IDs will update existing records'],
-            ['- New job positions will be created automatically if they don\'t exist'],
-            ['- Leave qualification columns blank if not applicable'],
-            ['- Qualifications will be stored as employee skills/certifications'],
+            ['• Default password for new employees: password123'],
+            ['• Duplicate Employee IDs will update existing records'],
+            ['• New job positions are created automatically'],
+            ['• Qualifications become searchable skills in the system'],
+            ['• These skills will be used for overtime eligibility'],
             [''],
-            ['QUALIFICATION EXAMPLES:'],
-            ['- Certifications: Forklift, Crane Operator, Welding, OSHA 10/30'],
-            ['- Licenses: CDL, Electrical, Plumbing, HVAC'],
-            ['- Training: First Aid/CPR, Six Sigma, PMP, Leadership'],
-            ['- Equipment: Specific machine operations'],
-            ['- Skills: Bilingual, CAD Software, specialized technical skills'],
-            [''],
-            ['HOW QUALIFICATIONS ARE STORED:'],
-            ['- Each qualification becomes a skill in the system'],
-            ['- Skills are automatically categorized (Certification, Equipment, Technical, etc.)'],
-            ['- Employees can be searched and filtered by skills'],
-            ['- Skills requiring renewal are tracked with expiry dates'],
-            [''],
-            ['TIPS FOR SUCCESS:'],
-            ['- Review the sample data in the first 4 rows'],
-            ['- Delete the sample rows before importing your actual data'],
-            ['- Save as .xlsx format (not .xls or .csv)'],
-            ['- Maximum file size: 16MB'],
-            ['- For large datasets (500+ employees), consider splitting into multiple files'],
-            [''],
-            ['For questions or issues, contact your system administrator.']
+            ['TIPS:'],
+            ['• Use Excel\'s copy/paste for employees with similar qualifications'],
+            ['• Filter and sort to quickly fill in patterns'],
+            ['• The dropdown in qualification columns helps ensure consistency'],
+            ['• Delete the sample rows before importing your data']
         ]
         
         for row_num, instruction in enumerate(instructions, 1):
@@ -911,10 +732,8 @@ def download_employee_template():
                 cell = ws2.cell(row=row_num, column=1, value=instruction[0])
                 if row_num == 1:
                     cell.font = Font(bold=True, size=14, color="366092")
-                elif row_num in [3, 12, 21, 27, 32]:
+                elif instruction[0].startswith(('COLUMN', 'CUSTOMIZING', 'VALID', 'WHY', 'IMPORTANT', 'TIPS')):
                     cell.font = Font(bold=True, size=12)
-                elif instruction[0].startswith(('- ', '1.', '2.', '3.', '4.', '5.', '6.', '7')):
-                    cell.font = Font(size=10)
         
         # Save to BytesIO
         output = io.BytesIO()
@@ -933,62 +752,15 @@ def download_employee_template():
         flash('Error creating template. Please try again.', 'error')
         return redirect(url_for('employee_import.upload_employees'))
 
-@employee_import_bp.route('/download-overtime-template')
-@login_required
-@supervisor_required  
-def download_overtime_template():
-    """Download Excel template for overtime upload"""
-    try:
-        wb = Workbook()
-        ws = wb.active
-        ws.title = 'Overtime Data'
-        
-        # Create headers
-        headers = ['Employee ID']
-        base_date = datetime.now() - timedelta(weeks=13)
-        
-        for week in range(13):
-            week_date = base_date + timedelta(weeks=week)
-            headers.append(f'Week {week_date.strftime("%m/%d/%Y")}')
-        
-        # Write headers
-        for col, header in enumerate(headers, 1):
-            cell = ws.cell(row=1, column=col, value=header)
-            cell.font = Font(bold=True)
-        
-        # Add sample data
-        sample_employees = ['EMP001', 'EMP002', 'EMP003']
-        for row_num, emp_id in enumerate(sample_employees, 2):
-            ws.cell(row=row_num, column=1, value=emp_id)
-            for col in range(2, 15):
-                ws.cell(row=row_num, column=col, value=0)
-        
-        # Save to BytesIO
-        output = io.BytesIO()
-        wb.save(output)
-        output.seek(0)
-        
-        return send_file(
-            output,
-            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            as_attachment=True,
-            download_name=f'overtime_template_{datetime.now().strftime("%Y%m%d")}.xlsx'
-        )
-        
-    except Exception as e:
-        logger.error(f"Error creating overtime template: {e}")
-        flash('Error creating template. Please try again.', 'error')
-        return redirect(url_for('employee_import.upload_employees'))
-
 # ==========================================
-# UPLOAD HISTORY ROUTES
+# UPLOAD HISTORY ROUTE - FIXED
 # ==========================================
 
 @employee_import_bp.route('/upload-history')
 @login_required
 @supervisor_required
 def upload_history():
-    """View upload history"""
+    """View upload history - FIXED to handle empty results"""
     try:
         page = request.args.get('page', 1, type=int)
         per_page = 20
@@ -1001,8 +773,7 @@ def upload_history():
         if search:
             query = query.filter(
                 or_(
-                    FileUpload.filename.contains(search),
-                    FileUpload.uploaded_by.has(Employee.name.contains(search))
+                    FileUpload.filename.contains(search)
                 )
             )
         
@@ -1014,15 +785,6 @@ def upload_history():
         if status:
             query = query.filter_by(status=status)
         
-        # Date filters
-        date_from = request.args.get('date_from', '')
-        if date_from:
-            query = query.filter(FileUpload.uploaded_at >= datetime.strptime(date_from, '%Y-%m-%d'))
-        
-        date_to = request.args.get('date_to', '')
-        if date_to:
-            query = query.filter(FileUpload.uploaded_at <= datetime.strptime(date_to, '%Y-%m-%d') + timedelta(days=1))
-        
         # Order and paginate
         uploads = query.order_by(FileUpload.uploaded_at.desc()).paginate(
             page=page, per_page=per_page, error_out=False
@@ -1030,134 +792,119 @@ def upload_history():
         
         # Count statistics
         successful_uploads = FileUpload.query.filter_by(status='completed').count()
-        partial_uploads = FileUpload.query.filter_by(status='partial').count()
         failed_uploads = FileUpload.query.filter_by(status='failed').count()
         
-        return render_template(
-            'upload_history.html',
-            uploads=uploads,
-            successful_uploads=successful_uploads,
-            partial_uploads=partial_uploads,
-            failed_uploads=failed_uploads
-        )
+        # Check if template exists
+        try:
+            return render_template(
+                'upload_history.html',
+                uploads=uploads,
+                successful_uploads=successful_uploads,
+                failed_uploads=failed_uploads
+            )
+        except:
+            # If template doesn't exist, show simple list
+            return render_simple_history_page(uploads, successful_uploads, failed_uploads)
         
     except Exception as e:
         logger.error(f"Error in upload_history: {e}")
-        flash('Error loading upload history.', 'error')
-        return redirect(url_for('employee_import.upload_employees'))
+        # Don't redirect to upload_employees, show error
+        return render_simple_history_page(None, 0, 0, error=str(e))
 
-# ==========================================
-# EXPORT ROUTES WITH SKILLS
-# ==========================================
-
-@employee_import_bp.route('/export-employees')
-@login_required
-@supervisor_required
-def export_employees():
-    """Export current employees to Excel with skills"""
-    try:
-        employees = Employee.query.filter_by(is_active=True).all()
+def render_simple_history_page(uploads, successful, failed, error=None):
+    """Render a simple history page if template is missing"""
+    if error:
+        content = f'<div class="alert alert-danger">Error loading history: {error}</div>'
+    elif not uploads or uploads.total == 0:
+        content = '''
+        <div class="alert alert-info">
+            <h4>No Upload History</h4>
+            <p>No files have been uploaded yet.</p>
+            <a href="/upload-employees" class="btn btn-primary">Upload First File</a>
+        </div>
+        '''
+    else:
+        rows = []
+        for upload in uploads.items:
+            rows.append(f'''
+            <tr>
+                <td>{upload.filename}</td>
+                <td>{upload.upload_type or 'employee'}</td>
+                <td>{upload.status or 'unknown'}</td>
+                <td>{upload.records_processed or 0}</td>
+                <td>{upload.uploaded_at.strftime('%Y-%m-%d %H:%M') if upload.uploaded_at else 'N/A'}</td>
+            </tr>
+            ''')
         
-        if not employees:
-            flash('No employees to export.', 'warning')
-            return redirect(url_for('employee_import.upload_employees'))
+        content = f'''
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Filename</th>
+                    <th>Type</th>
+                    <th>Status</th>
+                    <th>Records</th>
+                    <th>Uploaded</th>
+                </tr>
+            </thead>
+            <tbody>
+                {''.join(rows)}
+            </tbody>
+        </table>
+        '''
+    
+    html = f'''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Upload History</title>
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    </head>
+    <body>
+        <nav class="navbar navbar-dark bg-primary">
+            <div class="container-fluid">
+                <span class="navbar-brand">Upload History</span>
+                <div>
+                    <a href="/upload-employees" class="btn btn-light btn-sm">Back to Upload</a>
+                    <a href="/dashboard" class="btn btn-light btn-sm">Dashboard</a>
+                </div>
+            </div>
+        </nav>
         
-        # Create workbook with YOUR format including qualifications
-        wb = Workbook()
-        ws = wb.active
-        ws.title = 'Employee Data'
-        
-        # YOUR headers with qualification columns
-        headers = [
-            'Last Name',
-            'First Name',
-            'Employee ID',
-            'Crew Assigned',
-            'Current Job Position',
-            'Email',
-            'Add Additional Qualification',
-            'Add Additional Qualification',
-            'Add Additional Qualification',
-            'Add Additional Qualification',
-            'Add Additional Qualification'
-        ]
-        
-        for col, header in enumerate(headers, 1):
-            cell = ws.cell(row=1, column=col, value=header)
-            cell.font = Font(bold=True)
-        
-        # Employee data in YOUR format
-        for row_num, emp in enumerate(employees, 2):
-            # Split name into first and last
-            name_parts = emp.name.split(' ', 1) if emp.name else ['', '']
-            first_name = name_parts[0]
-            last_name = name_parts[1] if len(name_parts) > 1 else name_parts[0]
-            
-            ws.cell(row=row_num, column=1, value=last_name)
-            ws.cell(row=row_num, column=2, value=first_name)
-            ws.cell(row=row_num, column=3, value=emp.employee_id)
-            ws.cell(row=row_num, column=4, value=emp.crew)
-            ws.cell(row=row_num, column=5, value=emp.position.name if emp.position else '')
-            ws.cell(row=row_num, column=6, value=emp.email)
-            
-            # Add skills/qualifications from EmployeeSkill relationships
-            if hasattr(emp, 'employee_skills'):
-                skills = [es.skill.name for es in emp.employee_skills if es.skill]
-                for i, skill_name in enumerate(skills[:5], 7):  # Max 5 qualifications
-                    ws.cell(row=row_num, column=i, value=skill_name)
-        
-        # Save to BytesIO
-        output = io.BytesIO()
-        wb.save(output)
-        output.seek(0)
-        
-        return send_file(
-            output,
-            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            as_attachment=True,
-            download_name=f'employee_export_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
-        )
-        
-    except Exception as e:
-        logger.error(f"Error exporting employees: {e}")
-        flash('Error exporting employee data.', 'error')
-        return redirect(url_for('employee_import.upload_employees'))
-
-# ==========================================
-# TEST ROUTE
-# ==========================================
-
-@employee_import_bp.route('/test-upload-route')
-def test_upload_route():
-    """Test route to verify blueprint is loaded"""
-    return jsonify({
-        'status': 'Employee import blueprint is working!',
-        'routes_available': [
-            '/upload-employees',
-            '/validate-upload',
-            '/download-employee-template',
-            '/download-overtime-template',
-            '/upload-history',
-            '/export-employees'
-        ],
-        'your_format': {
-            'columns': [
-                'Last Name',
-                'First Name',
-                'Employee ID',
-                'Crew Assigned',
-                'Current Job Position',
-                'Email',
-                'Add Additional Qualification (x5)'
-            ],
-            'default_password': 'password123',
-            'skill_integration': 'Qualifications are stored as Skills in the database'
-        },
-        'authenticated': current_user.is_authenticated,
-        'is_supervisor': current_user.is_supervisor if current_user.is_authenticated else False,
-        'upload_folder': current_app.config.get('UPLOAD_FOLDER'),
-        'timestamp': datetime.now().isoformat()
-    })
+        <div class="container mt-4">
+            <h2>Upload History</h2>
+            <div class="row mb-3">
+                <div class="col-md-4">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <h3>{successful}</h3>
+                            <p>Successful</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <h3>{failed}</h3>
+                            <p>Failed</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <h3>{successful + failed}</h3>
+                            <p>Total</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {content}
+        </div>
+    </body>
+    </html>
+    '''
+    return make_response(html)
 
 # ==========================================
 # HELPER FUNCTION FOR SIMPLE UPLOAD PAGE
@@ -1184,6 +931,10 @@ def render_simple_upload_page(stats, recent_uploads):
         <div class="container mt-5">
             <h2><i class="bi bi-upload"></i> Employee Data Upload</h2>
             
+            <div class="alert alert-info">
+                <strong>New System:</strong> Column headers define qualifications. Just enter Yes/No for each employee.
+            </div>
+            
             <div class="row mt-4">
                 <div class="col-md-8">
                     <div class="card">
@@ -1193,17 +944,9 @@ def render_simple_upload_page(stats, recent_uploads):
                         <div class="card-body">
                             <form method="POST" action="/upload-employees" enctype="multipart/form-data">
                                 <div class="mb-3">
-                                    <label for="uploadType" class="form-label">Upload Type</label>
-                                    <select class="form-select" id="uploadType" name="uploadType">
-                                        <option value="employee">Employee Data</option>
-                                        <option value="overtime">Overtime History</option>
-                                    </select>
-                                </div>
-                                
-                                <div class="mb-3">
                                     <label for="file" class="form-label">Select Excel File</label>
                                     <input type="file" class="form-control" id="file" name="file" accept=".xlsx,.xls" required>
-                                    <div class="form-text">Format: Last Name, First Name, Employee ID, Crew, Position, Email, + 5 Qualification columns</div>
+                                    <div class="form-text">Download template to see the header-based format</div>
                                 </div>
                                 
                                 <div class="mb-3">
@@ -1221,6 +964,9 @@ def render_simple_upload_page(stats, recent_uploads):
                                 <a href="/download-employee-template" class="btn btn-secondary">
                                     <i class="bi bi-download"></i> Download Template
                                 </a>
+                                <a href="/upload-history" class="btn btn-info">
+                                    <i class="bi bi-clock-history"></i> History
+                                </a>
                             </form>
                         </div>
                     </div>
@@ -1233,8 +979,10 @@ def render_simple_upload_page(stats, recent_uploads):
                         </div>
                         <div class="card-body">
                             <p>Total Employees: <strong>{stats.get('total_employees', 0)}</strong></p>
-                            <p>Crews: {', '.join([f'{k}:{v}' for k, v in stats.get('crews', {}).items()])}</p>
-                            <p class="text-muted">Qualifications are stored as Skills</p>
+                            <p>Total Skills: <strong>{stats.get('total_skills', 0)}</strong></p>
+                            <p>Employees with Skills: <strong>{stats.get('employees_with_skills', 0)}</strong></p>
+                            <hr>
+                            <small class="text-muted">Skills are used for overtime eligibility</small>
                         </div>
                     </div>
                 </div>
@@ -1245,5 +993,29 @@ def render_simple_upload_page(stats, recent_uploads):
     """
     return make_response(html)
 
+# ==========================================
+# TEST ROUTE
+# ==========================================
+
+@employee_import_bp.route('/test-upload-route')
+def test_upload_route():
+    """Test route to verify blueprint is loaded"""
+    return jsonify({
+        'status': 'Employee import blueprint is working!',
+        'routes_available': [
+            '/upload-employees',
+            '/validate-upload',
+            '/download-employee-template',
+            '/upload-history',
+            '/export-employees'
+        ],
+        'system': 'Header-based qualifications - column headers define skills, cells contain Yes/No',
+        'default_password': 'password123',
+        'authenticated': current_user.is_authenticated,
+        'is_supervisor': current_user.is_supervisor if current_user.is_authenticated else False,
+        'upload_folder': current_app.config.get('UPLOAD_FOLDER'),
+        'timestamp': datetime.now().isoformat()
+    })
+
 # Log successful blueprint loading
-logger.info("Employee import blueprint loaded successfully with Skill integration for qualifications")
+logger.info("Employee import blueprint loaded - Header-based qualification system active")
