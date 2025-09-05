@@ -1,0 +1,260 @@
+{% extends "base.html" %}
+{% block title %}Employee Schedule Preferences Report{% endblock %}
+
+{% block content %}
+<style>
+    .report-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 2rem;
+        border-radius: 10px;
+        margin-bottom: 2rem;
+    }
+    
+    .stat-card {
+        background: white;
+        border-radius: 10px;
+        padding: 1.5rem;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        margin-bottom: 1.5rem;
+    }
+    
+    .stat-value {
+        font-size: 2.5rem;
+        font-weight: bold;
+        color: #667eea;
+    }
+    
+    .stat-label {
+        color: #718096;
+        font-size: 0.9rem;
+        margin-top: 0.5rem;
+    }
+    
+    .preference-bar {
+        background: #e2e8f0;
+        height: 30px;
+        border-radius: 15px;
+        position: relative;
+        margin: 1rem 0;
+    }
+    
+    .preference-fill {
+        background: linear-gradient(90deg, #667eea, #764ba2);
+        height: 100%;
+        border-radius: 15px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-weight: bold;
+    }
+    
+    .schedule-rank {
+        background: #f7fafc;
+        border-left: 4px solid #667eea;
+        padding: 1rem;
+        margin-bottom: 1rem;
+        border-radius: 5px;
+    }
+    
+    .crew-stat {
+        background: #f7fafc;
+        padding: 1rem;
+        border-radius: 8px;
+        margin-bottom: 1rem;
+    }
+    
+    .export-buttons {
+        display: flex;
+        gap: 1rem;
+        margin-top: 2rem;
+    }
+</style>
+
+<div class="container-fluid">
+    <div class="report-header">
+        <h1><i class="bi bi-graph-up"></i> Employee Schedule Preferences Report</h1>
+        <p class="mb-0">Aggregated analysis of employee scheduling preferences</p>
+    </div>
+    
+    <!-- Summary Statistics -->
+    <div class="row">
+        <div class="col-md-3">
+            <div class="stat-card">
+                <div class="stat-value">{{ total_responses }}</div>
+                <div class="stat-label">Total Responses</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card">
+                <div class="stat-value">{{ "%.0f"|format(shift_length_avg) }}%</div>
+                <div class="stat-label">Avg. Preference for 12-Hour Shifts</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card">
+                <div class="stat-value">{{ "%.0f"|format(rotation_avg) }}%</div>
+                <div class="stat-label">Avg. Preference for Rotation</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card">
+                <div class="stat-value">{{ top_schedules[0][0] if top_schedules else 'N/A' }}</div>
+                <div class="stat-label">Most Popular Schedule</div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="row mt-4">
+        <!-- Preference Distribution -->
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5>Preference Distribution</h5>
+                </div>
+                <div class="card-body">
+                    <h6>Shift Length Preference</h6>
+                    <div class="preference-bar">
+                        <div class="preference-fill" style="width: {{ shift_length_avg }}%">
+                            {{ "%.0f"|format(shift_length_avg) }}% toward 12-hour
+                        </div>
+                    </div>
+                    <div class="d-flex justify-content-between text-muted small">
+                        <span>8-Hour Shifts</span>
+                        <span>12-Hour Shifts</span>
+                    </div>
+                    
+                    <h6 class="mt-4">Rotation Preference</h6>
+                    <div class="preference-bar">
+                        <div class="preference-fill" style="width: {{ rotation_avg }}%">
+                            {{ "%.0f"|format(rotation_avg) }}% toward rotation
+                        </div>
+                    </div>
+                    <div class="d-flex justify-content-between text-muted small">
+                        <span>Fixed Shifts</span>
+                        <span>Rotating Shifts</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Top Schedule Choices -->
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5>Top Schedule Patterns</h5>
+                </div>
+                <div class="card-body">
+                    {% for schedule, count in top_schedules[:5] %}
+                    <div class="schedule-rank">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <strong>#{{ loop.index }}</strong> {{ schedule }}
+                            </div>
+                            <div>
+                                <span class="badge bg-primary">{{ count }} votes</span>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Individual Responses Table -->
+    <div class="card mt-4">
+        <div class="card-header">
+            <h5>Individual Responses</h5>
+        </div>
+        <div class="card-body">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Employee</th>
+                        <th>Crew</th>
+                        <th>Position</th>
+                        <th>Shift Length</th>
+                        <th>Rotation</th>
+                        <th>Selected Schedule</th>
+                        <th>Submitted</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for pref in preferences %}
+                    <tr>
+                        <td>{{ pref.employee.name }}</td>
+                        <td>{{ pref.employee.crew or 'N/A' }}</td>
+                        <td>{{ pref.employee.position.name if pref.employee.position else 'N/A' }}</td>
+                        <td>
+                            <div class="progress" style="height: 20px;">
+                                <div class="progress-bar" role="progressbar" 
+                                     style="width: {{ pref.shift_length_pref }}%"
+                                     aria-valuenow="{{ pref.shift_length_pref }}"
+                                     aria-valuemin="0" aria-valuemax="100">
+                                    {{ pref.shift_length_pref }}%
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="progress" style="height: 20px;">
+                                <div class="progress-bar bg-info" role="progressbar" 
+                                     style="width: {{ pref.schedule_type_pref }}%"
+                                     aria-valuenow="{{ pref.schedule_type_pref }}"
+                                     aria-valuemin="0" aria-valuemax="100">
+                                    {{ pref.schedule_type_pref }}%
+                                </div>
+                            </div>
+                        </td>
+                        <td>{{ pref.selected_schedule }}</td>
+                        <td>{{ pref.submitted_at.strftime('%Y-%m-%d') }}</td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-primary" 
+                                    onclick="viewDetails({{ pref.id }})">
+                                <i class="bi bi-eye"></i>
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+    <!-- Export Options -->
+    <div class="export-buttons">
+        <a href="{{ url_for('schedule_preferences.export_preferences') }}" 
+           class="btn btn-success">
+            <i class="bi bi-file-earmark-excel"></i> Export to Excel
+        </a>
+        <button class="btn btn-primary" onclick="window.print()">
+            <i class="bi bi-printer"></i> Print Report
+        </button>
+        <a href="{{ url_for('schedule_preferences.preferences') }}" 
+           class="btn btn-outline-primary">
+            <i class="bi bi-sliders"></i> Explore Preferences Tool
+        </a>
+    </div>
+</div>
+
+<script>
+function viewDetails(prefId) {
+    // Fetch and display preference details
+    fetch(`/api/preferences/employee/${prefId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // You could show a modal with details here
+                alert('Preference details: ' + JSON.stringify(data.data, null, 2));
+            }
+        });
+}
+
+// Chart.js visualization (optional)
+document.addEventListener('DOMContentLoaded', function() {
+    // You could add Chart.js charts here for better visualization
+});
+</script>
+{% endblock %}
