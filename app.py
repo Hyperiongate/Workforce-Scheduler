@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 Main application file for Workforce Scheduler
-COMPLETE FILE with PITMAN SCHEDULE ROUTES
+COMPLETE FILE with PITMAN SCHEDULE ROUTES and SCHEDULE PREFERENCES
+UPDATED: 2025-09-05 - Added Schedule Preferences blueprint integration
 """
 
 from flask import Flask, render_template, redirect, url_for, flash, jsonify, request
@@ -73,7 +74,7 @@ login_manager = LoginManager(app)
 login_manager.login_view = 'auth.login'
 
 # Import models after db initialization
-from models import Employee, Schedule, Position, TimeOffRequest, ShiftSwapRequest, OvertimeHistory
+from models import Employee, Schedule, Position, TimeOffRequest, ShiftSwapRequest, OvertimeHistory, ShiftPreference
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -88,6 +89,8 @@ try:
     from blueprints.schedule import schedule_bp
     from blueprints.employee_import import employee_import_bp
     from blueprints.reset_database import reset_db_bp
+    # ADDED: 2025-09-05 - Schedule Preferences blueprint
+    from blueprints.schedule_preferences import schedule_preferences_bp
     
     logger.info("All blueprints imported successfully")
 except ImportError as e:
@@ -102,6 +105,8 @@ app.register_blueprint(supervisor_bp)
 app.register_blueprint(schedule_bp)
 app.register_blueprint(employee_import_bp)
 app.register_blueprint(reset_db_bp)
+# ADDED: 2025-09-05 - Register Schedule Preferences blueprint
+app.register_blueprint(schedule_preferences_bp)
 
 # Import Pitman schedule functionality
 try:
