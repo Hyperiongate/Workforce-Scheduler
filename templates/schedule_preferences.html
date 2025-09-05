@@ -1,0 +1,789 @@
+{% extends "base.html" %}
+{% block title %}Shift Schedule Preferences{% endblock %}
+
+{% block content %}
+<style>
+    .preferences-container {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: calc(100vh - 56px);
+        padding: 20px;
+    }
+    
+    .header-card {
+        background: white;
+        border-radius: 20px;
+        padding: 30px;
+        margin-bottom: 30px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+    }
+    
+    .main-content {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 30px;
+    }
+    
+    .preferences-panel, .results-panel {
+        background: white;
+        border-radius: 20px;
+        padding: 30px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+    }
+    
+    .section-title {
+        color: #2d3748;
+        font-size: 1.5rem;
+        margin-bottom: 20px;
+        padding-bottom: 10px;
+        border-bottom: 2px solid #e2e8f0;
+    }
+    
+    .preference-item {
+        margin-bottom: 30px;
+    }
+    
+    .preference-label {
+        display: block;
+        color: #4a5568;
+        font-weight: 600;
+        margin-bottom: 10px;
+        font-size: 1.1rem;
+    }
+    
+    .slider-container {
+        position: relative;
+        margin: 20px 0;
+    }
+    
+    .slider {
+        width: 100%;
+        height: 8px;
+        border-radius: 10px;
+        background: #e2e8f0;
+        outline: none;
+        -webkit-appearance: none;
+    }
+    
+    .slider::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: #667eea;
+        cursor: pointer;
+        box-shadow: 0 2px 10px rgba(102, 126, 234, 0.3);
+    }
+    
+    .slider::-moz-range-thumb {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: #667eea;
+        cursor: pointer;
+        box-shadow: 0 2px 10px rgba(102, 126, 234, 0.3);
+    }
+    
+    .slider-labels {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 10px;
+        font-size: 0.9rem;
+        color: #718096;
+    }
+    
+    .current-value {
+        text-align: center;
+        margin-top: 10px;
+        font-weight: 600;
+        color: #667eea;
+        font-size: 1rem;
+    }
+    
+    .schedule-option {
+        background: #f7fafc;
+        border: 2px solid #e2e8f0;
+        border-radius: 15px;
+        padding: 20px;
+        margin-bottom: 20px;
+        cursor: pointer;
+        transition: all 0.3s;
+    }
+    
+    .schedule-option:hover {
+        border-color: #667eea;
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(102, 126, 234, 0.2);
+    }
+    
+    .schedule-option.selected {
+        border-color: #667eea;
+        background: #ebf4ff;
+    }
+    
+    .schedule-name {
+        font-size: 1.2rem;
+        font-weight: 700;
+        color: #2d3748;
+        margin-bottom: 15px;
+    }
+    
+    .schedule-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 15px;
+        margin: 15px 0;
+    }
+    
+    .metric {
+        padding: 10px;
+        background: white;
+        border-radius: 10px;
+    }
+    
+    .metric-value {
+        font-size: 1.5rem;
+        font-weight: bold;
+        color: #667eea;
+    }
+    
+    .metric-label {
+        font-size: 0.85rem;
+        color: #718096;
+        margin-top: 3px;
+    }
+    
+    .pros-cons {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 15px;
+        margin-top: 15px;
+    }
+    
+    .pros, .cons {
+        padding: 10px;
+        border-radius: 8px;
+        font-size: 0.9rem;
+    }
+    
+    .pros {
+        background: #c6f6d5;
+        color: #22543d;
+    }
+    
+    .cons {
+        background: #fed7d7;
+        color: #742a2a;
+    }
+    
+    .pros h4, .cons h4 {
+        margin-bottom: 5px;
+        font-size: 0.95rem;
+    }
+    
+    .btn-generate {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        padding: 15px 30px;
+        border-radius: 10px;
+        font-size: 1.1rem;
+        font-weight: 600;
+        cursor: pointer;
+        width: 100%;
+        margin-top: 20px;
+        transition: all 0.3s;
+    }
+    
+    .btn-generate:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+    }
+    
+    .warning-box {
+        background: #fef5e7;
+        border: 1px solid #f9e79f;
+        border-radius: 10px;
+        padding: 15px;
+        margin: 15px 0;
+        color: #7d6608;
+    }
+    
+    .comparison-table {
+        width: 100%;
+        margin-top: 20px;
+        border-collapse: collapse;
+    }
+    
+    .comparison-table th,
+    .comparison-table td {
+        padding: 12px;
+        text-align: left;
+        border-bottom: 1px solid #e2e8f0;
+    }
+    
+    .comparison-table th {
+        background: #f7fafc;
+        font-weight: 600;
+        color: #4a5568;
+    }
+    
+    .highlight {
+        background: #fef5e7;
+        font-weight: 600;
+    }
+    
+    @media (max-width: 900px) {
+        .main-content {
+            grid-template-columns: 1fr;
+        }
+        
+        .schedule-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+
+<div class="preferences-container">
+    <div class="container-fluid">
+        <div class="header-card">
+            <h1>🗓️ Design Your Ideal Shift Schedule</h1>
+            <p class="subtitle">Tell us what's important to you, and we'll show you the best options with complete transparency about the tradeoffs.</p>
+            {% if current_user.is_supervisor %}
+            <div class="alert alert-info mt-3">
+                <i class="bi bi-info-circle"></i> <strong>Supervisor View:</strong> Use this tool to understand employee preferences and make informed scheduling decisions.
+            </div>
+            {% endif %}
+        </div>
+        
+        <div class="main-content">
+            <div class="preferences-panel">
+                <h2 class="section-title">Your Preferences</h2>
+                
+                <div class="preference-item">
+                    <label class="preference-label">Shift Length Preference</label>
+                    <div class="slider-container">
+                        <input type="range" class="slider" id="shiftLength" min="0" max="100" value="50">
+                        <div class="slider-labels">
+                            <span>8-Hour Shifts</span>
+                            <span>12-Hour Shifts</span>
+                        </div>
+                        <div class="current-value" id="shiftLengthValue">Balanced</div>
+                    </div>
+                </div>
+                
+                <div class="preference-item">
+                    <label class="preference-label">Work Pattern Preference</label>
+                    <div class="slider-container">
+                        <input type="range" class="slider" id="workPattern" min="0" max="100" value="50">
+                        <div class="slider-labels">
+                            <span>Fewer Days in a Row</span>
+                            <span>More Days Off Together</span>
+                        </div>
+                        <div class="current-value" id="workPatternValue">Balanced</div>
+                    </div>
+                </div>
+                
+                <div class="preference-item">
+                    <label class="preference-label">Weekend Preference</label>
+                    <div class="slider-container">
+                        <input type="range" class="slider" id="weekendPref" min="0" max="100" value="30">
+                        <div class="slider-labels">
+                            <span>Every Other Weekend Off</span>
+                            <span>Some Full Weekends Off</span>
+                        </div>
+                        <div class="current-value" id="weekendPrefValue">Every Other Weekend</div>
+                    </div>
+                </div>
+                
+                <div class="preference-item">
+                    <label class="preference-label">Schedule Type</label>
+                    <div class="slider-container">
+                        <input type="range" class="slider" id="scheduleType" min="0" max="100" value="60">
+                        <div class="slider-labels">
+                            <span>Fixed (Same Shift)</span>
+                            <span>Rotating (Variety)</span>
+                        </div>
+                        <div class="current-value" id="scheduleTypeValue">Slight Rotation</div>
+                    </div>
+                </div>
+                
+                <div class="preference-item">
+                    <label class="preference-label">Shift Handover Time</label>
+                    <select id="handoverTime" class="form-select">
+                        <option value="0">No overlap (0 minutes)</option>
+                        <option value="15">15 minutes overlap</option>
+                        <option value="30">30 minutes overlap</option>
+                    </select>
+                </div>
+                
+                <button class="btn btn-generate" onclick="generateSchedules()">Generate My Schedule Options</button>
+                
+                {% if current_user.is_supervisor %}
+                <button class="btn btn-outline-primary mt-2 w-100" onclick="saveAsTemplate()">
+                    <i class="bi bi-save"></i> Save as Template
+                </button>
+                {% endif %}
+            </div>
+            
+            <div class="results-panel">
+                <h2 class="section-title">Your Schedule Options</h2>
+                
+                <div id="resultsContainer">
+                    <div style="padding: 40px; text-align: center; color: #718096;">
+                        <p style="font-size: 1.1rem; margin-bottom: 20px;">👈 Adjust your preferences on the left</p>
+                        <p>We'll show you schedules that match what's important to you, with clear information about:</p>
+                        <ul style="text-align: left; display: inline-block; margin-top: 20px; list-style: none;">
+                            <li>✅ Days you work per year</li>
+                            <li>✅ Days off per year</li>
+                            <li>✅ Average weekly work hours</li>
+                            <li>✅ Average weekly pay hours</li>
+                            <li>✅ Specific pros and cons</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <div id="actionButtons" style="display: none; margin-top: 20px;">
+                    {% if current_user.is_supervisor %}
+                    <button class="btn btn-success w-100" onclick="implementSchedule()">
+                        <i class="bi bi-check-circle"></i> Implement Selected Schedule
+                    </button>
+                    {% else %}
+                    <button class="btn btn-primary w-100" onclick="submitPreference()">
+                        <i class="bi bi-send"></i> Submit My Preference
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Schedule database with all patterns
+const scheduleDatabase = {
+    'pitman_12': {
+        name: 'Pitman (2-2-3) - 12 Hour',
+        shiftLength: 12,
+        daysOn: 182,
+        daysOff: 183,
+        avgWorkHours: 42,
+        avgPayHours: 44,
+        maxConsecutive: 3,
+        weekendsOff: 'Every other weekend',
+        pattern: '2 on, 2 off, 3 on, 2 off, 2 on, 3 off',
+        pros: ['Every other weekend off', 'Never more than 3 days in a row', 'Lots of days off'],
+        cons: ['12-hour shifts can be tiring', 'Rotating days off'],
+        scoreFactors: {
+            shiftLength: 100,
+            workPattern: 30,
+            weekend: 100,
+            rotation: 70
+        }
+    },
+    'fixed_223_12': {
+        name: '2-2-3 Fixed 12-Hour (Every Other Weekend Off)',
+        shiftLength: 12,
+        daysOn: 182,
+        daysOff: 183,
+        avgWorkHours: 42,
+        avgPayHours: 44,
+        maxConsecutive: 3,
+        weekendsOff: 'Every other weekend (26 per year)',
+        pattern: '2 on, 2 off, 3 on, 2 off, 2 on, 3 off (14-day cycle, Sunday start)',
+        pros: ['Every other weekend off', 'Never more than 3 days in a row', 'Fixed shift (no rotation)', 'Predictable 2-week pattern', 'Balanced work/life'],
+        cons: ['12-hour shifts', 'Weekend crews opposite each other', 'Must maintain coverage with opposing crew'],
+        scoreFactors: {
+            shiftLength: 100,
+            workPattern: 30,
+            weekend: 100,
+            rotation: 0
+        }
+    },
+    'southern_swing_8': {
+        name: 'Southern Swing (8-hour shifts)',
+        shiftLength: 8,
+        daysOn: 273,
+        daysOff: 92,
+        avgWorkHours: 42,
+        avgPayHours: 43,
+        maxConsecutive: 7,
+        weekendsOff: '13 per year (1 full 4-day weekend per month)',
+        pattern: '7 days, 4 off, 7 evenings, 2 off, 7 nights, 2 off (28-day cycle)',
+        pros: ['4-day weekend after day shift', 'Full week on each shift', 'Predictable rotation', 'Consistent rotation pattern'],
+        cons: ['Work 7 days in a row', 'Only 92 days off per year', 'Work 3 out of 4 weekends'],
+        scoreFactors: {
+            shiftLength: 0,
+            workPattern: 80,
+            weekend: 30,
+            rotation: 100
+        }
+    },
+    'dupont_12': {
+        name: 'DuPont - 12 Hour (7-day break monthly)',
+        shiftLength: 12,
+        daysOn: 182,
+        daysOff: 183,
+        avgWorkHours: 42,
+        avgPayHours: 44,
+        maxConsecutive: 4,
+        weekendsOff: '13 per year (some full weekends)',
+        pattern: '4 days, 3 off, 3 nights, 1 off, 3 days, 3 off, 4 nights, 7 off (28-day cycle)',
+        pros: ['7-day break every month', 'Good recovery time', 'Predictable 28-day cycle', 'Full week off for vacation/recovery'],
+        cons: ['Complex pattern to remember', '4 consecutive 12-hour shifts', 'Shift changes within cycle'],
+        scoreFactors: {
+            shiftLength: 100,
+            workPattern: 60,
+            weekend: 60,
+            rotation: 80
+        }
+    },
+    'fixed_43_12': {
+        name: 'Fixed 4/3 - 12 Hour',
+        shiftLength: 12,
+        daysOn: 208,
+        daysOff: 157,
+        avgWorkHours: 48,
+        avgPayHours: 52,
+        maxConsecutive: 4,
+        weekendsOff: 'Rotating - different each week',
+        pattern: '4 on, 3 off (repeating weekly)',
+        pros: ['Simple pattern to remember', 'Fixed shift (no rotation)', '3 days off every week', 'Consistent schedule'],
+        cons: ['Works 208 days per year (most of any 12-hour)', 'No consistent weekends off', 'Higher overtime costs', '4 consecutive 12-hour shifts weekly'],
+        scoreFactors: {
+            shiftLength: 100,
+            workPattern: 50,
+            weekend: 20,
+            rotation: 0
+        }
+    },
+    'basic_44_12': {
+        name: 'Basic 4-on-4-off - 12 Hour',
+        shiftLength: 12,
+        daysOn: 182.5,
+        daysOff: 182.5,
+        avgWorkHours: 42,
+        avgPayHours: 44,
+        maxConsecutive: 4,
+        weekendsOff: 'Varies - 13 full weekends off per year',
+        pattern: '4 on, 4 off (8-day cycle)',
+        pros: ['Equal work and time off', 'Simple 8-day pattern', 'Predictable schedule', '4-day breaks regularly'],
+        cons: ['Pattern drifts through week', 'Weekend coverage varies', 'Not synchronized with calendar week'],
+        scoreFactors: {
+            shiftLength: 100,
+            workPattern: 50,
+            weekend: 50,
+            rotation: 0
+        }
+    },
+    'continental_8': {
+        name: 'Continental - 8 Hour',
+        shiftLength: 8,
+        daysOn: 273,
+        daysOff: 92,
+        avgWorkHours: 42,
+        avgPayHours: 43,
+        maxConsecutive: 6,
+        weekendsOff: '13 per year',
+        pattern: '2 early, 2 late, 2 night, 2 off (repeating)',
+        pros: ['Variety of shifts', 'Regular pattern', 'Shorter work stretches'],
+        cons: ['Frequent shift changes', 'Only 92 days off', 'Quick turnarounds'],
+        scoreFactors: {
+            shiftLength: 0,
+            workPattern: 40,
+            weekend: 40,
+            rotation: 100
+        }
+    },
+    'panama_12': {
+        name: 'Panama (2-3-2) - 12 Hour',
+        shiftLength: 12,
+        daysOn: 182,
+        daysOff: 183,
+        avgWorkHours: 42,
+        avgPayHours: 44,
+        maxConsecutive: 3,
+        weekendsOff: 'Every other weekend',
+        pattern: '2 on, 3 off, 2 on, 2 off (repeating)',
+        pros: ['Never more than 2-3 days working', 'Simple pattern', 'Every other weekend off'],
+        cons: ['12-hour shifts', 'Days off vary'],
+        scoreFactors: {
+            shiftLength: 100,
+            workPattern: 20,
+            weekend: 100,
+            rotation: 60
+        }
+    }
+};
+
+let selectedSchedule = null;
+
+// Update slider value displays
+document.getElementById('shiftLength').addEventListener('input', function() {
+    updateSliderValue('shiftLength', this.value);
+});
+
+document.getElementById('workPattern').addEventListener('input', function() {
+    updateSliderValue('workPattern', this.value);
+});
+
+document.getElementById('weekendPref').addEventListener('input', function() {
+    updateSliderValue('weekendPref', this.value);
+});
+
+document.getElementById('scheduleType').addEventListener('input', function() {
+    updateSliderValue('scheduleType', this.value);
+});
+
+function updateSliderValue(sliderId, value) {
+    const valueElement = document.getElementById(sliderId + 'Value');
+    const val = parseInt(value);
+    
+    switch(sliderId) {
+        case 'shiftLength':
+            if (val < 30) valueElement.textContent = 'Strongly Prefer 8-Hour';
+            else if (val < 45) valueElement.textContent = 'Prefer 8-Hour';
+            else if (val < 55) valueElement.textContent = 'Balanced';
+            else if (val < 70) valueElement.textContent = 'Prefer 12-Hour';
+            else valueElement.textContent = 'Strongly Prefer 12-Hour';
+            break;
+        case 'workPattern':
+            if (val < 30) valueElement.textContent = 'Shorter Work Stretches';
+            else if (val < 70) valueElement.textContent = 'Balanced';
+            else valueElement.textContent = 'Longer Breaks';
+            break;
+        case 'weekendPref':
+            if (val < 50) valueElement.textContent = 'Every Other Weekend';
+            else valueElement.textContent = 'Some Full Weekends';
+            break;
+        case 'scheduleType':
+            if (val < 30) valueElement.textContent = 'Fixed Schedule';
+            else if (val < 70) valueElement.textContent = 'Some Rotation';
+            else valueElement.textContent = 'Full Rotation';
+            break;
+    }
+}
+
+function generateSchedules() {
+    const shiftLengthPref = parseInt(document.getElementById('shiftLength').value);
+    const workPatternPref = parseInt(document.getElementById('workPattern').value);
+    const weekendPref = parseInt(document.getElementById('weekendPref').value);
+    const scheduleTypePref = parseInt(document.getElementById('scheduleType').value);
+    const handoverTime = parseInt(document.getElementById('handoverTime').value);
+    
+    // Score each schedule based on preferences
+    let scores = [];
+    for (let key in scheduleDatabase) {
+        const schedule = scheduleDatabase[key];
+        let score = 0;
+        
+        // Score based on shift length preference
+        if (schedule.shiftLength === 12) {
+            score += shiftLengthPref;
+        } else {
+            score += (100 - shiftLengthPref);
+        }
+        
+        // Score based on work pattern
+        score += Math.abs(schedule.scoreFactors.workPattern - workPatternPref) < 30 ? 50 : 0;
+        
+        // Score based on weekend preference  
+        score += Math.abs(schedule.scoreFactors.weekend - weekendPref) < 30 ? 30 : 0;
+        
+        // Score based on rotation preference
+        score += Math.abs(schedule.scoreFactors.rotation - scheduleTypePref) < 30 ? 20 : 0;
+        
+        scores.push({
+            key: key,
+            schedule: schedule,
+            score: score
+        });
+    }
+    
+    // Sort by score
+    scores.sort((a, b) => b.score - a.score);
+    
+    // Display top 3 options
+    displayResults(scores.slice(0, 3), handoverTime);
+}
+
+function displayResults(topSchedules, handoverTime) {
+    const container = document.getElementById('resultsContainer');
+    let html = '';
+    
+    // Add warning if applicable
+    if (handoverTime > 0) {
+        html += '<div class="warning-box"><strong>Note:</strong> ' + handoverTime + '-minute handover adds ' + (handoverTime * 365 / 60).toFixed(1) + ' hours per year to work time. This affects pay but not days off.</div>';
+    }
+    
+    html += '<h3 style="margin-bottom: 20px; color: #2d3748;">Your Top 3 Matches:</h3>';
+    
+    topSchedules.forEach((item, index) => {
+        const schedule = item.schedule;
+        const adjustedWorkHours = schedule.avgWorkHours + (handoverTime > 0 ? handoverTime * 7 / 60 : 0);
+        const adjustedPayHours = schedule.avgPayHours + (handoverTime > 0 ? handoverTime * 7 / 60 * 1.05 : 0);
+        
+        html += '<div class="schedule-option ' + (index === 0 ? 'selected' : '') + '" onclick="selectSchedule(\'' + item.key + '\')">';
+        html += '<div class="schedule-name">' + (index === 0 ? '⭐ ' : '') + schedule.name + (index === 0 ? ' (Best Match)' : '') + '</div>';
+        html += '<div class="schedule-grid">';
+        html += '<div class="metric"><div class="metric-value">' + schedule.daysOn + '</div><div class="metric-label">Days Working/Year</div></div>';
+        html += '<div class="metric"><div class="metric-value">' + schedule.daysOff + '</div><div class="metric-label">Days Off/Year</div></div>';
+        html += '<div class="metric"><div class="metric-value">' + adjustedWorkHours.toFixed(1) + '</div><div class="metric-label">Avg Work Hours/Week</div></div>';
+        html += '<div class="metric"><div class="metric-value">' + adjustedPayHours.toFixed(1) + '</div><div class="metric-label">Avg Pay Hours/Week</div></div>';
+        html += '</div>';
+        html += '<div style="margin: 15px 0; padding: 10px; background: #f7fafc; border-radius: 8px;"><strong>Pattern:</strong> ' + schedule.pattern + '</div>';
+        html += '<div class="pros-cons">';
+        html += '<div class="pros"><h4>✅ Pros:</h4>' + schedule.pros.map(p => '• ' + p).join('<br>') + '</div>';
+        html += '<div class="cons"><h4>⚠️ Cons:</h4>' + schedule.cons.map(c => '• ' + c).join('<br>') + '</div>';
+        html += '</div></div>';
+    });
+    
+    // Add comparison table
+    html += '<h3 style="margin-top: 30px; margin-bottom: 20px; color: #2d3748;">Quick Comparison:</h3>';
+    html += '<table class="comparison-table"><thead><tr><th>Schedule</th><th>Shift Length</th><th>Days On/Year</th><th>Max Consecutive</th><th>Weekends Off</th></tr></thead><tbody>';
+    
+    topSchedules.forEach((item, index) => {
+        const schedule = item.schedule;
+        html += '<tr ' + (index === 0 ? 'class="highlight"' : '') + '>';
+        html += '<td>' + schedule.name + '</td>';
+        html += '<td>' + schedule.shiftLength + ' hours</td>';
+        html += '<td>' + schedule.daysOn + '</td>';
+        html += '<td>' + schedule.maxConsecutive + ' days</td>';
+        html += '<td>' + schedule.weekendsOff + '</td>';
+        html += '</tr>';
+    });
+    
+    html += '</tbody></table>';
+    
+    html += '<div style="margin-top: 30px; padding: 20px; background: #ebf4ff; border-radius: 10px;">';
+    html += '<h4 style="color: #2d3748; margin-bottom: 10px;">💡 Did You Know?</h4>';
+    html += '<p style="color: #4a5568; line-height: 1.6;">' + getInsight(topSchedules[0].schedule) + '</p>';
+    html += '</div>';
+    
+    container.innerHTML = html;
+    
+    // Show action buttons
+    document.getElementById('actionButtons').style.display = 'block';
+    
+    // Auto-select the first schedule
+    selectSchedule(topSchedules[0].key);
+}
+
+function selectSchedule(scheduleKey) {
+    selectedSchedule = scheduleKey;
+    
+    // Update visual selection
+    document.querySelectorAll('.schedule-option').forEach(el => {
+        el.classList.remove('selected');
+    });
+    
+    // Find and select the clicked schedule
+    document.querySelectorAll('.schedule-option').forEach((el, index) => {
+        if (el.innerHTML.includes(scheduleDatabase[scheduleKey].name)) {
+            el.classList.add('selected');
+        }
+    });
+}
+
+function getInsight(schedule) {
+    if (schedule.shiftLength === 12) {
+        return 'With 12-hour shifts, you work ' + schedule.daysOn + ' days per year. That\'s ' + (273 - schedule.daysOn) + ' fewer commutes than 8-hour shifts! However, 12-hour days can be more tiring, especially for physical jobs.';
+    } else {
+        return 'With 8-hour shifts, you work ' + schedule.daysOn + ' days per year. While that\'s more days than 12-hour shifts, each day is shorter and many people find 8-hour shifts less fatiguing and easier to maintain work-life balance on work days.';
+    }
+}
+
+{% if current_user.is_supervisor %}
+function implementSchedule() {
+    if (!selectedSchedule) {
+        alert('Please select a schedule pattern first.');
+        return;
+    }
+    
+    // Navigate to the schedule wizard with the selected pattern
+    const patternMap = {
+        'pitman_12': 'pitman',
+        'fixed_223_12': 'pitman',
+        'dupont_12': 'dupont',
+        'southern_swing_8': 'southern_swing',
+        'basic_44_12': 'four_on_four_off',
+        'panama_12': 'panama'
+    };
+    
+    const pattern = patternMap[selectedSchedule] || 'pitman';
+    window.location.href = '/schedule/wizard/' + pattern;
+}
+
+function saveAsTemplate() {
+    const preferences = {
+        shiftLength: document.getElementById('shiftLength').value,
+        workPattern: document.getElementById('workPattern').value,
+        weekendPref: document.getElementById('weekendPref').value,
+        scheduleType: document.getElementById('scheduleType').value,
+        handoverTime: document.getElementById('handoverTime').value
+    };
+    
+    const templateName = prompt('Enter a name for this template:');
+    if (templateName) {
+        // Save to server
+        fetch('/schedule/save-preference-template', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                name: templateName,
+                preferences: preferences
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('Template saved successfully!');
+            } else {
+                alert('Error saving template: ' + data.error);
+            }
+        });
+    }
+}
+{% else %}
+function submitPreference() {
+    if (!selectedSchedule) {
+        alert('Please select a schedule pattern first.');
+        return;
+    }
+    
+    const preferences = {
+        shiftLength: document.getElementById('shiftLength').value,
+        workPattern: document.getElementById('workPattern').value,
+        weekendPref: document.getElementById('weekendPref').value,
+        scheduleType: document.getElementById('scheduleType').value,
+        handoverTime: document.getElementById('handoverTime').value,
+        selectedSchedule: selectedSchedule
+    };
+    
+    // Submit to supervisor
+    fetch('/schedule/submit-preference', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(preferences)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Your preference has been submitted to your supervisor!');
+        } else {
+            alert('Error submitting preference: ' + data.error);
+        }
+    });
+}
+{% endif %}
+
+// Initialize on page load
+window.addEventListener('DOMContentLoaded', function() {
+    generateSchedules();
+});
+</script>
+{% endblock %}
