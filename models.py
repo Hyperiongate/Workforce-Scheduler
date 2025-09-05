@@ -2,6 +2,7 @@
 """
 Complete database models for Workforce Scheduler
 FIXED: Added hours field to Schedule model
+UPDATED: 2024-12-19 - Added ShiftPreference model for schedule preferences tool
 """
 
 from flask_sqlalchemy import SQLAlchemy
@@ -328,6 +329,67 @@ class CoverageGap(db.Model):
     # Relationships
     position = db.relationship('Position', backref='coverage_gaps')
     filled_by = db.relationship('Employee')
+
+# ==========================================
+# SCHEDULE PREFERENCES MODEL
+# ADDED: 2024-12-19 - Employee schedule preference tracking
+# ==========================================
+
+class ShiftPreference(db.Model):
+    """Store employee shift schedule preferences from the preferences tool"""
+    __tablename__ = 'shift_preferences'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    employee_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=False)
+    
+    # Preference values (0-100 scale)
+    shift_length_pref = db.Column(db.Integer, default=50)  # 0=8hr, 100=12hr
+    work_pattern_pref = db.Column(db.Integer, default=50)  # 0=short stretches, 100=long breaks
+    weekend_pref = db.Column(db.Integer, default=50)       # 0=every other, 100=full weekends
+    schedule_type_pref = db.Column(db.Integer, default=50) # 0=fixed, 100=rotating
+    handover_time = db.Column(db.Integer, default=0)       # Minutes of overlap
+    
+    # Selected schedule pattern
+    selected_schedule = db.Column(db.String(50))
+    
+    # Metadata
+    submitted_at = db.Column(db.DateTime, default=datetime.utcnow)
+    is_active = db.Column(db.Boolean, default=True)
+    
+    # Additional preferences (JSON field for flexibility)
+    additional_preferences = db.Column(db.JSON)
+    
+    # Comments or notes from employee
+    comments = db.Column(db.Text)
+    
+    # Supervisor review
+    reviewed_by_id = db.Column(db.Integer, db.ForeignKey('employee.id'))
+    reviewed_at = db.Column(db.DateTime)
+    review_notes = db.Column(db.Text)
+    
+    # Relationships
+    employee = db.relationship('Employee', foreign_keys=[employee_id], backref='shift_preferences')
+    reviewed_by = db.relationship('Employee', foreign_keys=[reviewed_by_id])
+    
+    def __repr__(self):
+        return f'<ShiftPreference {self.employee.name if self.employee else "Unknown"}: {self.selected_schedule}>'
+    
+    def to_dict(self):
+        """Convert to dictionary for JSON serialization"""
+        return {
+            'id': self.id,
+            'employee_id': self.employee_id,
+            'employee_name': self.employee.name if self.employee else None,
+            'shift_length_pref': self.shift_length_pref,
+            'work_pattern_pref': self.work_pattern_pref,
+            'weekend_pref': self.weekend_pref,
+            'schedule_type_pref': self.schedule_type_pref,
+            'handover_time': self.handover_time,
+            'selected_schedule': self.selected_schedule,
+            'submitted_at': self.submitted_at.isoformat() if self.submitted_at else None,
+            'comments': self.comments,
+            'is_active': self.is_active
+        }
 
 # ==========================================
 # MESSAGING & COMMUNICATION MODELS
