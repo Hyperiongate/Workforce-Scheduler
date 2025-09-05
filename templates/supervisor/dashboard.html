@@ -1,0 +1,273 @@
+<!-- templates/supervisor/dashboard.html -->
+{% extends "base.html" %}
+
+{% block title %}Supervisor Dashboard - Workforce Scheduler{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <h1 class="h3 mb-0">
+                <i class="bi bi-speedometer2"></i> Supervisor Dashboard
+            </h1>
+            <p class="text-muted">Welcome back, {{ current_user.name }}!</p>
+        </div>
+    </div>
+
+    <!-- Quick Stats Row -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card text-white bg-primary">
+                <div class="card-body">
+                    <h5 class="card-title">Total Employees</h5>
+                    <h2 class="mb-0">{{ total_employees|default(0) }}</h2>
+                    <small>Active workforce</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white bg-success">
+                <div class="card-body">
+                    <h5 class="card-title">On Shift Today</h5>
+                    <h2 class="mb-0">{{ on_shift_today|default(0) }}</h2>
+                    <small>Currently working</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white bg-warning">
+                <div class="card-body">
+                    <h5 class="card-title">Pending Requests</h5>
+                    <h2 class="mb-0">{{ pending_requests|default(0) }}</h2>
+                    <small>Awaiting approval</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white bg-info">
+                <div class="card-body">
+                    <h5 class="card-title">Coverage Gaps</h5>
+                    <h2 class="mb-0">{{ coverage_gaps|default(0) }}</h2>
+                    <small>This week</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0">
+                        <i class="bi bi-lightning"></i> Quick Actions
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="btn-group-vertical btn-group-lg d-block d-md-none" role="group">
+                        <!-- Mobile view - vertical buttons -->
+                        <a href="/schedule/select" class="btn btn-outline-primary mb-2">
+                            <i class="bi bi-calendar-plus"></i> Create Schedule
+                        </a>
+                        <a href="/upload-employees" class="btn btn-outline-success mb-2">
+                            <i class="bi bi-upload"></i> Upload Employees
+                        </a>
+                        <a href="/crew-management" class="btn btn-outline-info mb-2">
+                            <i class="bi bi-people"></i> Manage Crews
+                        </a>
+                        <a href="/overtime/manage" class="btn btn-outline-warning mb-2">
+                            <i class="bi bi-clock"></i> Manage Overtime
+                        </a>
+                        <a href="/time-off/requests" class="btn btn-outline-danger mb-2">
+                            <i class="bi bi-calendar-x"></i> Time Off Requests
+                        </a>
+                    </div>
+                    
+                    <div class="d-none d-md-block">
+                        <!-- Desktop view - horizontal buttons -->
+                        <div class="row">
+                            <div class="col-md-2 mb-3">
+                                <a href="/schedule/select" class="btn btn-outline-primary btn-block h-100 d-flex flex-column align-items-center justify-content-center p-3">
+                                    <i class="bi bi-calendar-plus fs-1 mb-2"></i>
+                                    <span>Create Schedule</span>
+                                </a>
+                            </div>
+                            <div class="col-md-2 mb-3">
+                                <a href="/upload-employees" class="btn btn-outline-success btn-block h-100 d-flex flex-column align-items-center justify-content-center p-3">
+                                    <i class="bi bi-upload fs-1 mb-2"></i>
+                                    <span>Upload Employees</span>
+                                </a>
+                            </div>
+                            <div class="col-md-2 mb-3">
+                                <a href="/crew-management" class="btn btn-outline-info btn-block h-100 d-flex flex-column align-items-center justify-content-center p-3">
+                                    <i class="bi bi-people fs-1 mb-2"></i>
+                                    <span>Manage Crews</span>
+                                </a>
+                            </div>
+                            <div class="col-md-2 mb-3">
+                                <a href="/overtime/manage" class="btn btn-outline-warning btn-block h-100 d-flex flex-column align-items-center justify-content-center p-3">
+                                    <i class="bi bi-clock fs-1 mb-2"></i>
+                                    <span>Manage Overtime</span>
+                                </a>
+                            </div>
+                            <div class="col-md-2 mb-3">
+                                <a href="/time-off/requests" class="btn btn-outline-danger btn-block h-100 d-flex flex-column align-items-center justify-content-center p-3">
+                                    <i class="bi bi-calendar-x fs-1 mb-2"></i>
+                                    <span>Time Off Requests</span>
+                                </a>
+                            </div>
+                            <div class="col-md-2 mb-3">
+                                <a href="/reports" class="btn btn-outline-secondary btn-block h-100 d-flex flex-column align-items-center justify-content-center p-3">
+                                    <i class="bi bi-graph-up fs-1 mb-2"></i>
+                                    <span>Reports</span>
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Data Management Section -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0">
+                        <i class="bi bi-database"></i> Data Management Center
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <h6 class="text-muted mb-3">Import Tools</h6>
+                    <div class="list-group mb-3">
+                        <a href="/upload-employees" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                            <span><i class="bi bi-person-plus"></i> Upload Employee Data</span>
+                            <span class="badge bg-primary rounded-pill">Excel</span>
+                        </a>
+                        <a href="/upload-overtime" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                            <span><i class="bi bi-clock-history"></i> Upload Overtime History</span>
+                            <span class="badge bg-info rounded-pill">13 Weeks</span>
+                        </a>
+                        <a href="/upload-history" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                            <span><i class="bi bi-file-earmark-text"></i> View Upload History</span>
+                            <span class="badge bg-secondary rounded-pill">Audit</span>
+                        </a>
+                    </div>
+                    
+                    <h6 class="text-muted mb-3">Export Tools</h6>
+                    <div class="btn-group btn-group-sm w-100" role="group">
+                        <a href="/export-employees" class="btn btn-outline-success">
+                            <i class="bi bi-download"></i> Export Employees
+                        </a>
+                        <a href="/download-employee-template" class="btn btn-outline-primary">
+                            <i class="bi bi-file-earmark-excel"></i> Download Template
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0">
+                        <i class="bi bi-calendar-week"></i> Schedule Management
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="list-group">
+                        <a href="/schedule/select" class="list-group-item list-group-item-action">
+                            <i class="bi bi-plus-circle"></i> Create New Schedule
+                        </a>
+                        <a href="/schedule/view" class="list-group-item list-group-item-action">
+                            <i class="bi bi-calendar3"></i> View Current Schedule
+                        </a>
+                        <a href="/schedule/pitman/preview" class="list-group-item list-group-item-action">
+                            <i class="bi bi-grid-3x3-gap"></i> Pitman Schedule Generator
+                        </a>
+                        <a href="/schedule/edit" class="list-group-item list-group-item-action">
+                            <i class="bi bi-pencil-square"></i> Edit Existing Schedule
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Activity -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0">
+                        <i class="bi bi-activity"></i> Recent Activity
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Type</th>
+                                    <th>Description</th>
+                                    <th>Status</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% if recent_uploads %}
+                                {% for upload in recent_uploads[:5] %}
+                                <tr>
+                                    <td>{{ upload.created_at.strftime('%m/%d %H:%M') if upload.created_at else 'Unknown' }}</td>
+                                    <td><span class="badge bg-info">Upload</span></td>
+                                    <td>{{ upload.filename }}</td>
+                                    <td>
+                                        {% if upload.status == 'completed' %}
+                                        <span class="badge bg-success">Completed</span>
+                                        {% elif upload.status == 'failed' %}
+                                        <span class="badge bg-danger">Failed</span>
+                                        {% else %}
+                                        <span class="badge bg-warning">{{ upload.status|title }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <a href="/upload-history" class="btn btn-sm btn-outline-primary">View</a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                                {% else %}
+                                <tr>
+                                    <td colspan="5" class="text-center text-muted">No recent activity</td>
+                                </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .card {
+        transition: transform 0.2s;
+        border-radius: 10px;
+    }
+    .card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    .list-group-item-action:hover {
+        background-color: #f8f9fa;
+        transform: translateX(5px);
+        transition: all 0.2s;
+    }
+    .btn-block {
+        width: 100%;
+    }
+</style>
+{% endblock %}
