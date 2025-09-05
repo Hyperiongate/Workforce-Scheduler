@@ -1,18 +1,10 @@
 # blueprints/employee_import.py
 """
 Complete Excel upload system for employee data management
-PRODUCTION-READY VERSION - Deploy this entire file
-
-This file includes:
-- All missing routes including /validate-upload
-- Complete error handling and logging
-- Security validations
-- File upload processing
-- Database integration
-- Comprehensive validation logic
+FULL UNTRUNCATED VERSION - Deploy this entire file
 """
 
-from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, current_app, send_file
+from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, current_app, send_file, make_response
 from flask_login import login_required, current_user
 from models import db, Employee, Position, OvertimeHistory, FileUpload
 from datetime import datetime, timedelta, date
@@ -25,6 +17,7 @@ import io
 import re
 import logging
 import json
+import traceback
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.utils import get_column_letter
@@ -32,10 +25,11 @@ from openpyxl.utils import get_column_letter
 # Set up logging
 logger = logging.getLogger(__name__)
 
+# Create blueprint - NO url_prefix so routes are at root level
 employee_import_bp = Blueprint('employee_import', __name__)
 
 # ==========================================
-# DECORATORS AND SECURITY
+# DECORATORS AND HELPERS
 # ==========================================
 
 def supervisor_required(f):
@@ -53,49 +47,40 @@ def supervisor_required(f):
 
 def allowed_file(filename):
     """Check if uploaded file has allowed extension"""
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in {'xlsx', 'xls'}
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ['xlsx', 'xls']
 
 def secure_file_path(filename):
-    """Create secure file path for uploads"""
-    upload_folder = current_app.config.get('UPLOAD_FOLDER', 'upload_files')
-    os.makedirs(upload_folder, exist_ok=True)
-    
+    """Generate secure file path for uploads"""
+    filename = secure_filename(filename)
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    safe_filename = secure_filename(filename)
-    unique_filename = f"{timestamp}_{safe_filename}"
-    
-    return os.path.join(upload_folder, unique_filename)
+    name, ext = os.path.splitext(filename)
+    unique_filename = f"{name}_{timestamp}{ext}"
+    return os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename)
 
 # ==========================================
-# UTILITY FUNCTIONS
+# STATISTICS AND DATA FUNCTIONS
 # ==========================================
 
 def get_employee_stats():
-    """Get current employee statistics"""
+    """Get employee statistics for dashboard"""
     try:
-        total_employees = Employee.query.filter_by(is_active=True).count()
+        total = Employee.query.filter_by(is_active=True).count()
         
-        crew_stats = db.session.query(
-            Employee.crew, 
-            func.count(Employee.id).label('count')
-        ).filter_by(is_active=True).group_by(Employee.crew).all()
-        
-        crews = {crew: count for crew, count in crew_stats}
-        
-        # Ensure all crews are represented
+        crews = {}
         for crew in ['A', 'B', 'C', 'D']:
-            if crew not in crews:
-                crews[crew] = 0
+            crews[crew] = Employee.query.filter_by(crew=crew, is_active=True).count()
         
-        # Get overtime stats if OvertimeHistory exists
+        # Count employees with overtime
         with_overtime = 0
         try:
-            with_overtime = db.session.query(Employee.id).join(OvertimeHistory).distinct().count()
+            with_overtime = OvertimeHistory.query.filter(
+                OvertimeHistory.total_hours > 40
+            ).distinct(OvertimeHistory.employee_id).count()
         except:
             pass
-                
+        
         return {
-            'total_employees': total_employees,
+            'total_employees': total,
             'crews': crews,
             'with_overtime': with_overtime,
             'low_ot': 0,
@@ -119,7 +104,7 @@ def get_recent_uploads(limit=5):
     """Get recent upload history"""
     try:
         uploads = FileUpload.query.order_by(
-            FileUpload.created_at.desc()
+            FileUpload.uploaded_at.desc()
         ).limit(limit).all()
         
         return [{
@@ -128,7 +113,7 @@ def get_recent_uploads(limit=5):
             'upload_type': upload.upload_type or 'employee',
             'status': upload.status or 'completed',
             'records_processed': upload.records_processed or 0,
-            'created_at': upload.created_at,
+            'created_at': upload.uploaded_at,
             'uploaded_by': upload.uploaded_by
         } for upload in uploads]
     except Exception as e:
@@ -136,22 +121,394 @@ def get_recent_uploads(limit=5):
         return []
 
 def get_employees_without_accounts():
-    """Get employees who don't have login accounts"""
+    """Get count of employees without login accounts"""
     try:
-        employees = Employee.query.filter(
+        return Employee.query.filter(
             and_(
                 Employee.is_active == True,
                 or_(Employee.email.is_(None), Employee.email == '')
             )
-        ).all()
-        
-        return len(employees)
+        ).count()
     except Exception as e:
         logger.error(f"Error getting employees without accounts: {e}")
         return 0
 
 # ==========================================
-# CRITICAL MISSING ROUTE - VALIDATE UPLOAD
+# VALIDATION FUNCTIONS
+# ==========================================
+
+def validate_employee_data_comprehensive(df):
+    """Comprehensive validation of employee data"""
+    errors = []
+    warnings = []
+    
+    # Check required columns
+    required_columns = ['Employee ID', 'First Name', 'Last Name', 'Crew']
+    missing_columns = [col for col in required_columns if col not in df.columns]
+    
+    if missing_columns:
+        return {
+            'success': False,
+            'error': f'Missing required columns: {", ".join(missing_columns)}'
+        }
+    
+    # Track Employee IDs for duplicate check
+    seen_ids = set()
+    
+    # Validate each row
+    for idx, row in df.iterrows():
+        row_num = idx + 2  # Excel row number (1-indexed + header)
+        
+        # Check Employee ID
+        emp_id = str(row.get('Employee ID', '')).strip() if pd.notna(row.get('Employee ID')) else ''
+        if not emp_id:
+            errors.append(f'Row {row_num}: Missing Employee ID')
+        elif emp_id in seen_ids:
+            errors.append(f'Row {row_num}: Duplicate Employee ID "{emp_id}"')
+        else:
+            seen_ids.add(emp_id)
+        
+        # Check Names
+        first_name = str(row.get('First Name', '')).strip() if pd.notna(row.get('First Name')) else ''
+        last_name = str(row.get('Last Name', '')).strip() if pd.notna(row.get('Last Name')) else ''
+        
+        if not first_name:
+            errors.append(f'Row {row_num}: Missing First Name')
+        if not last_name:
+            errors.append(f'Row {row_num}: Missing Last Name')
+        
+        # Check Crew
+        crew = str(row.get('Crew', '')).strip().upper() if pd.notna(row.get('Crew')) else ''
+        if crew not in ['A', 'B', 'C', 'D']:
+            errors.append(f'Row {row_num}: Invalid crew "{crew}". Must be A, B, C, or D')
+        
+        # Check email format if provided
+        email = row.get('Email')
+        if email and pd.notna(email):
+            email_str = str(email).strip()
+            if email_str and not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email_str):
+                warnings.append(f'Row {row_num}: Invalid email format "{email_str}"')
+        
+        # Check date format if hire date provided
+        hire_date = row.get('Hire Date')
+        if hire_date and pd.notna(hire_date):
+            try:
+                if isinstance(hire_date, str):
+                    datetime.strptime(hire_date, '%Y-%m-%d')
+            except:
+                warnings.append(f'Row {row_num}: Invalid date format for Hire Date')
+        
+        # Stop if too many errors
+        if len(errors) > 50:
+            errors.append('... and more errors. Please fix the above issues first.')
+            break
+    
+    if errors:
+        return {
+            'success': False,
+            'error': f'Validation failed with {len(errors)} errors',
+            'errors': errors[:20],  # Return first 20 errors
+            'total_errors': len(errors),
+            'warnings': warnings
+        }
+    
+    return {
+        'success': True,
+        'message': f'Validation passed for {len(df)} employees',
+        'employee_count': len(df),
+        'warnings': warnings
+    }
+
+def validate_overtime_data_comprehensive(df):
+    """Comprehensive validation of overtime data"""
+    errors = []
+    warnings = []
+    
+    # Check for Employee ID column
+    if 'Employee ID' not in df.columns:
+        return {
+            'success': False,
+            'error': 'Missing required column: Employee ID'
+        }
+    
+    # Check for week columns
+    week_columns = [col for col in df.columns if 'Week' in str(col)]
+    if len(week_columns) < 1:
+        return {
+            'success': False,
+            'error': 'No week columns found. Expected columns like "Week 1", "Week 2", etc.'
+        }
+    
+    # Validate each row
+    for idx, row in df.iterrows():
+        row_num = idx + 2
+        
+        emp_id = str(row.get('Employee ID', '')).strip() if pd.notna(row.get('Employee ID')) else ''
+        if not emp_id:
+            errors.append(f'Row {row_num}: Missing Employee ID')
+        
+        # Check if employee exists
+        employee = Employee.query.filter_by(employee_id=emp_id).first()
+        if emp_id and not employee:
+            warnings.append(f'Row {row_num}: Employee ID "{emp_id}" not found in system')
+        
+        # Validate week values
+        for week_col in week_columns:
+            value = row.get(week_col)
+            if pd.notna(value):
+                try:
+                    hours = float(value)
+                    if hours < 0:
+                        errors.append(f'Row {row_num}, {week_col}: Negative hours not allowed')
+                    elif hours > 168:  # Max hours in a week
+                        errors.append(f'Row {row_num}, {week_col}: Hours exceed maximum (168)')
+                except:
+                    errors.append(f'Row {row_num}, {week_col}: Invalid hours value "{value}"')
+    
+    if errors:
+        return {
+            'success': False,
+            'error': f'Validation failed with {len(errors)} errors',
+            'errors': errors[:20],
+            'total_errors': len(errors),
+            'warnings': warnings
+        }
+    
+    return {
+        'success': True,
+        'message': f'Validation passed for {len(df)} employees with {len(week_columns)} weeks of data',
+        'employee_count': len(df),
+        'weeks_count': len(week_columns),
+        'warnings': warnings
+    }
+
+# ==========================================
+# MAIN ROUTES
+# ==========================================
+
+@employee_import_bp.route('/upload-employees')
+@login_required
+@supervisor_required
+def upload_employees():
+    """Main upload page for employees"""
+    try:
+        stats = get_employee_stats()
+        recent_uploads = get_recent_uploads()
+        employees_without_accounts = get_employees_without_accounts()
+        
+        # Check which template exists
+        template_options = [
+            'upload_employees_enhanced.html',
+            'upload_employees_simple.html',
+            'upload_employees.html',
+            'employee_upload.html'
+        ]
+        
+        for template_name in template_options:
+            try:
+                return render_template(
+                    template_name,
+                    stats=stats,
+                    recent_uploads=recent_uploads,
+                    crew_distribution=stats.get('crews', {}),
+                    total_employees=stats.get('total_employees', 0),
+                    employees_without_accounts=employees_without_accounts,
+                    account_creation_available=True
+                )
+            except Exception as e:
+                continue
+        
+        # If no template works, render inline HTML
+        return render_simple_upload_page(stats, recent_uploads)
+        
+    except Exception as e:
+        logger.error(f"Error in upload_employees: {e}")
+        flash('Error loading upload page. Please try again.', 'error')
+        return redirect(url_for('supervisor.dashboard'))
+
+def render_simple_upload_page(stats, recent_uploads):
+    """Render a simple upload page inline if templates are missing"""
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Upload Employees</title>
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.8.1/font/bootstrap-icons.css">
+    </head>
+    <body>
+        <nav class="navbar navbar-dark bg-primary">
+            <div class="container-fluid">
+                <span class="navbar-brand mb-0 h1">Workforce Scheduler</span>
+                <a href="/dashboard" class="btn btn-light btn-sm">Back to Dashboard</a>
+            </div>
+        </nav>
+        
+        <div class="container mt-5">
+            <h2><i class="bi bi-upload"></i> Employee Data Upload</h2>
+            
+            <div class="row mt-4">
+                <div class="col-md-8">
+                    <div class="card">
+                        <div class="card-header bg-primary text-white">
+                            <h5 class="mb-0">Upload Excel File</h5>
+                        </div>
+                        <div class="card-body">
+                            <form method="POST" action="/upload-employees" enctype="multipart/form-data">
+                                <div class="mb-3">
+                                    <label for="uploadType" class="form-label">Upload Type</label>
+                                    <select class="form-select" id="uploadType" name="uploadType">
+                                        <option value="employee">Employee Data</option>
+                                        <option value="overtime">Overtime History</option>
+                                    </select>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label for="file" class="form-label">Select Excel File</label>
+                                    <input type="file" class="form-control" id="file" name="file" accept=".xlsx,.xls" required>
+                                    <div class="form-text">Supported formats: .xlsx, .xls</div>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="replaceAll" name="replaceAll">
+                                        <label class="form-check-label" for="replaceAll">
+                                            Replace all existing data (use with caution)
+                                        </label>
+                                    </div>
+                                </div>
+                                
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="bi bi-upload"></i> Upload File
+                                </button>
+                                <a href="/download-employee-template" class="btn btn-secondary">
+                                    <i class="bi bi-download"></i> Download Template
+                                </a>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-md-4">
+                    <div class="card bg-info text-white">
+                        <div class="card-body">
+                            <h5>Statistics</h5>
+                            <p>Total Employees: <strong>{stats.get('total_employees', 0)}</strong></p>
+                            <hr>
+                            <h6>Crew Distribution:</h6>
+                            <ul class="list-unstyled">
+                                <li>Crew A: {stats.get('crews', {}).get('A', 0)}</li>
+                                <li>Crew B: {stats.get('crews', {}).get('B', 0)}</li>
+                                <li>Crew C: {stats.get('crews', {}).get('C', 0)}</li>
+                                <li>Crew D: {stats.get('crews', {}).get('D', 0)}</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    return make_response(html)
+
+@employee_import_bp.route('/upload-employees', methods=['POST'])
+@login_required
+@supervisor_required
+def upload_employees_post():
+    """Handle file upload and processing"""
+    try:
+        logger.info(f"Upload POST received from user: {current_user.employee_id}")
+        
+        if 'file' not in request.files:
+            flash('No file selected', 'error')
+            return redirect(url_for('employee_import.upload_employees'))
+        
+        file = request.files['file']
+        upload_type = request.form.get('uploadType', 'employee')
+        replace_all = request.form.get('replaceAll') == 'on'
+        
+        if file.filename == '':
+            flash('No file selected', 'error')
+            return redirect(url_for('employee_import.upload_employees'))
+        
+        if not allowed_file(file.filename):
+            flash('Invalid file type. Please upload an Excel file (.xlsx or .xls)', 'error')
+            return redirect(url_for('employee_import.upload_employees'))
+        
+        # Save file
+        filepath = secure_file_path(file.filename)
+        file.save(filepath)
+        
+        # Create upload record
+        upload_record = FileUpload(
+            filename=file.filename,
+            upload_type=upload_type,
+            uploaded_by_id=current_user.id,
+            status='processing',
+            file_size=os.path.getsize(filepath)
+        )
+        db.session.add(upload_record)
+        db.session.flush()
+        
+        try:
+            # Read Excel file
+            df = pd.read_excel(filepath, sheet_name=None)
+            
+            # Get the appropriate sheet
+            if isinstance(df, dict):
+                if 'Employee Data' in df:
+                    df = df['Employee Data']
+                elif 'Overtime Data' in df:
+                    df = df['Overtime Data']
+                else:
+                    df = df[list(df.keys())[0]]
+            
+            # Validate data
+            if upload_type == 'employee':
+                validation = validate_employee_data_comprehensive(df)
+                if validation['success']:
+                    result = process_employee_upload(df, upload_record, replace_all)
+                else:
+                    result = validation
+            elif upload_type == 'overtime':
+                validation = validate_overtime_data_comprehensive(df)
+                if validation['success']:
+                    result = process_overtime_upload(df, upload_record)
+                else:
+                    result = validation
+            else:
+                result = {'success': False, 'error': 'Invalid upload type'}
+            
+            # Update upload record
+            if result.get('success'):
+                upload_record.status = 'completed'
+                upload_record.records_processed = result.get('records_processed', 0)
+                upload_record.successful_records = result.get('created', 0) + result.get('updated', 0)
+                flash(f"Successfully processed {result.get('records_processed', 0)} records!", 'success')
+            else:
+                upload_record.status = 'failed'
+                upload_record.error_details = {'error': result.get('error'), 'errors': result.get('errors', [])}
+                flash(f"Upload failed: {result.get('error')}", 'error')
+            
+            db.session.commit()
+            
+        except Exception as e:
+            logger.error(f"Error processing upload: {e}\n{traceback.format_exc()}")
+            upload_record.status = 'failed'
+            upload_record.error_details = {'error': str(e)}
+            db.session.commit()
+            flash('Error processing file. Please check the format and try again.', 'error')
+        
+        return redirect(url_for('employee_import.upload_employees'))
+        
+    except Exception as e:
+        logger.error(f"Error in upload POST: {e}")
+        flash('Server error during upload. Please try again.', 'error')
+        return redirect(url_for('employee_import.upload_employees'))
+
+# ==========================================
+# AJAX VALIDATION ROUTE
 # ==========================================
 
 @employee_import_bp.route('/validate-upload', methods=['POST'])
@@ -172,504 +529,109 @@ def validate_upload():
             return jsonify({'success': False, 'error': 'No file selected'})
         
         if not allowed_file(file.filename):
-            return jsonify({'success': False, 'error': 'Invalid file type. Please upload an Excel file (.xlsx or .xls)'})
+            return jsonify({'success': False, 'error': 'Invalid file type. Please upload .xlsx or .xls files only'})
         
-        # Check file size (16MB limit)
-        file.seek(0, os.SEEK_END)
-        file_size = file.tell()
-        file.seek(0)  # Reset file pointer
-        
-        if file_size > 16 * 1024 * 1024:  # 16MB
-            return jsonify({'success': False, 'error': 'File too large. Maximum size is 16MB'})
-        
-        # Save file temporarily for validation
+        # Save file temporarily
         filepath = secure_file_path(file.filename)
         file.save(filepath)
         
         try:
-            # Read the Excel file
-            df = pd.read_excel(filepath)
+            # Read Excel file
+            df = pd.read_excel(filepath, sheet_name=None)
+            
+            # Get the appropriate sheet
+            if isinstance(df, dict):
+                if 'Employee Data' in df:
+                    df = df['Employee Data']
+                elif 'Overtime Data' in df:
+                    df = df['Overtime Data']
+                else:
+                    df = df[list(df.keys())[0]]
+            
+            # Check if empty
+            if df.empty:
+                os.remove(filepath)
+                return jsonify({'success': False, 'error': 'File is empty or contains no data'})
             
             # Validate based on upload type
             if upload_type == 'employee':
-                validation_result = validate_employee_data_comprehensive(df)
+                result = validate_employee_data_comprehensive(df)
             elif upload_type == 'overtime':
-                validation_result = validate_overtime_data_comprehensive(df)
-            elif upload_type == 'bulk_update':
-                validation_result = validate_bulk_update_data(df)
+                result = validate_overtime_data_comprehensive(df)
             else:
-                validation_result = {'success': False, 'error': 'Invalid upload type specified'}
+                result = {'success': False, 'error': 'Invalid upload type'}
             
-            # Clean up temp file
-            if os.path.exists(filepath):
+            # Clean up temp file if validation failed
+            if not result.get('success'):
                 os.remove(filepath)
-            
-            if validation_result.get('success'):
-                logger.info(f"Validation successful: {validation_result.get('employee_count', 0)} records")
-                return jsonify({
-                    'success': True,
-                    'message': validation_result.get('message', 'Validation successful'),
-                    'employee_count': validation_result.get('employee_count', 0),
-                    'total_rows': validation_result.get('total_rows', len(df)),
-                    'warnings': validation_result.get('warnings', [])
-                })
             else:
-                logger.warning(f"Validation failed: {validation_result.get('error', 'Unknown error')}")
-                return jsonify({
-                    'success': False,
-                    'error': validation_result.get('error'),
-                    'errors': validation_result.get('errors', [])[:10],  # Limit to 10 errors
-                    'total_errors': len(validation_result.get('errors', []))
-                })
-                
+                # Store filepath for later use
+                result['filepath'] = filepath
+            
+            return jsonify(result)
+            
         except Exception as e:
-            logger.error(f"Error processing Excel file: {e}")
+            logger.error(f"Error validating file: {e}")
             if os.path.exists(filepath):
                 os.remove(filepath)
-            return jsonify({'success': False, 'error': f'Error reading Excel file: {str(e)}'})
+            return jsonify({'success': False, 'error': f'Error reading file: {str(e)}'})
             
     except Exception as e:
         logger.error(f"Error in validate_upload: {e}")
-        return jsonify({'success': False, 'error': 'Server error during validation'})
-
-# ==========================================
-# COMPREHENSIVE VALIDATION FUNCTIONS
-# ==========================================
-
-def validate_employee_data_comprehensive(df):
-    """Comprehensive validation for employee data"""
-    errors = []
-    warnings = []
-    
-    logger.info(f"Validating employee data: {len(df)} rows")
-    
-    # Check for empty dataframe
-    if df.empty:
-        return {'success': False, 'error': 'The uploaded file contains no data'}
-    
-    # Check for required columns - adapt to YOUR format
-    required_columns = ['Last Name', 'First Name', 'Employee ID', 'Crew Assigned', 'Current Job Position']
-    optional_columns = ['Email', 'Phone', 'Hire Date', 'Department']
-    
-    missing_required = [col for col in required_columns if col not in df.columns]
-    if missing_required:
-        return {
-            'success': False,
-            'error': f"Missing required columns: {', '.join(missing_required)}. Available columns: {', '.join(df.columns)}"
-        }
-    
-    # Track duplicate checking
-    employee_ids = set()
-    emails = set()
-    valid_crews = {'A', 'B', 'C', 'D'}
-    
-    # Validate each row
-    for idx, row in df.iterrows():
-        row_num = idx + 2  # Excel row number (1-indexed + header)
-        
-        # Employee ID validation
-        emp_id = str(row.get('Employee ID', '')).strip()
-        if not emp_id or emp_id.lower() == 'nan':
-            errors.append(f"Row {row_num}: Missing Employee ID")
-        elif emp_id in employee_ids:
-            errors.append(f"Row {row_num}: Duplicate Employee ID '{emp_id}'")
-        else:
-            employee_ids.add(emp_id)
-        
-        # Name validation
-        first_name = str(row.get('First Name', '')).strip()
-        if not first_name or first_name.lower() == 'nan':
-            errors.append(f"Row {row_num}: Missing First Name")
-        
-        last_name = str(row.get('Last Name', '')).strip()
-        if not last_name or last_name.lower() == 'nan':
-            errors.append(f"Row {row_num}: Missing Last Name")
-        
-        # Crew validation
-        crew = str(row.get('Crew Assigned', '')).strip().upper()
-        if crew and crew != 'NAN':
-            if crew not in valid_crews:
-                errors.append(f"Row {row_num}: Invalid crew '{crew}'. Must be A, B, C, or D")
-        
-        # Position validation
-        position = str(row.get('Current Job Position', '')).strip()
-        if not position or position.lower() == 'nan':
-            errors.append(f"Row {row_num}: Missing Current Job Position")
-        
-        # Email validation (if provided)
-        if 'Email' in df.columns:
-            email = str(row.get('Email', '')).strip()
-            if email and email.lower() != 'nan':
-                if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email):
-                    errors.append(f"Row {row_num}: Invalid email format '{email}'")
-                elif email in emails:
-                    errors.append(f"Row {row_num}: Duplicate email '{email}'")
-                else:
-                    emails.add(email)
-        
-        # Stop if too many errors
-        if len(errors) > 50:
-            errors.append("Too many errors found. Please fix the issues above and try again.")
-            break
-    
-    # Crew balance warnings
-    if not errors:
-        crew_counts = df['Crew Assigned'].value_counts()
-        total_employees = len(df)
-        
-        for crew in valid_crews:
-            count = crew_counts.get(crew, 0)
-            percentage = (count / total_employees * 100) if total_employees > 0 else 0
-            
-            if percentage < 15:
-                warnings.append(f"Crew {crew} appears understaffed ({count} employees, {percentage:.1f}%)")
-            elif percentage > 35:
-                warnings.append(f"Crew {crew} appears overstaffed ({count} employees, {percentage:.1f}%)")
-    
-    if errors:
-        return {
-            'success': False,
-            'error': f"Found {len(errors)} validation errors",
-            'errors': errors
-        }
-    
-    return {
-        'success': True,
-        'message': f'Validation passed for {len(df)} employees',
-        'employee_count': len(df),
-        'total_rows': len(df),
-        'warnings': warnings
-    }
-
-def validate_overtime_data_comprehensive(df):
-    """Comprehensive validation for overtime data"""
-    errors = []
-    warnings = []
-    
-    logger.info(f"Validating overtime data: {len(df)} rows")
-    
-    if df.empty:
-        return {'success': False, 'error': 'The uploaded file contains no overtime data'}
-    
-    # Required columns for overtime
-    required_columns = ['Employee ID', 'Week Start Date', 'Regular Hours', 'Overtime Hours', 'Total Hours']
-    missing_required = [col for col in required_columns if col not in df.columns]
-    
-    if missing_required:
-        return {
-            'success': False,
-            'error': f"Missing required columns: {', '.join(missing_required)}"
-        }
-    
-    # Validate each row
-    for idx, row in df.iterrows():
-        row_num = idx + 2
-        
-        # Employee ID
-        emp_id = str(row.get('Employee ID', '')).strip()
-        if not emp_id or emp_id.lower() == 'nan':
-            errors.append(f"Row {row_num}: Missing Employee ID")
-        
-        # Hours validation
-        try:
-            regular_hours = float(row.get('Regular Hours', 0))
-            overtime_hours = float(row.get('Overtime Hours', 0))
-            total_hours = float(row.get('Total Hours', 0))
-            
-            if regular_hours < 0:
-                errors.append(f"Row {row_num}: Regular hours cannot be negative")
-            if overtime_hours < 0:
-                errors.append(f"Row {row_num}: Overtime hours cannot be negative")
-            if abs(regular_hours + overtime_hours - total_hours) > 0.01:
-                errors.append(f"Row {row_num}: Total hours ({total_hours}) doesn't match Regular + Overtime ({regular_hours + overtime_hours})")
-            
-            # Reasonable limits
-            if total_hours > 80:
-                warnings.append(f"Row {row_num}: Very high total hours ({total_hours}) for employee {emp_id}")
-            if overtime_hours > 40:
-                warnings.append(f"Row {row_num}: Very high overtime hours ({overtime_hours}) for employee {emp_id}")
-                
-        except (ValueError, TypeError):
-            errors.append(f"Row {row_num}: Invalid hour values")
-        
-        # Week Start Date
-        try:
-            week_start = pd.to_datetime(row.get('Week Start Date'))
-            if week_start.weekday() != 0:  # Monday = 0
-                warnings.append(f"Row {row_num}: Week start date is not a Monday")
-        except:
-            errors.append(f"Row {row_num}: Invalid week start date")
-        
-        if len(errors) > 50:
-            errors.append("Too many errors found. Please fix the issues above and try again.")
-            break
-    
-    if errors:
-        return {
-            'success': False,
-            'error': f"Found {len(errors)} validation errors",
-            'errors': errors
-        }
-    
-    return {
-        'success': True,
-        'message': f'Validation passed for {len(df)} overtime records',
-        'employee_count': df['Employee ID'].nunique(),
-        'total_rows': len(df),
-        'warnings': warnings
-    }
-
-def validate_bulk_update_data(df):
-    """Validate bulk update operations"""
-    errors = []
-    warnings = []
-    
-    if df.empty:
-        return {'success': False, 'error': 'No bulk update data found'}
-    
-    required_columns = ['Employee ID', 'Action', 'Field', 'New Value']
-    missing_required = [col for col in required_columns if col not in df.columns]
-    
-    if missing_required:
-        return {
-            'success': False,
-            'error': f"Missing required columns: {', '.join(missing_required)}"
-        }
-    
-    valid_actions = {'UPDATE', 'DELETE', 'ADD'}
-    valid_fields = {'crew', 'position', 'department', 'email', 'phone', 'status'}
-    
-    for idx, row in df.iterrows():
-        row_num = idx + 2
-        
-        action = str(row.get('Action', '')).strip().upper()
-        if action not in valid_actions:
-            errors.append(f"Row {row_num}: Invalid action '{action}'. Must be UPDATE, DELETE, or ADD")
-        
-        field = str(row.get('Field', '')).strip().lower()
-        if field not in valid_fields:
-            errors.append(f"Row {row_num}: Invalid field '{field}'. Must be one of: {', '.join(valid_fields)}")
-        
-        emp_id = str(row.get('Employee ID', '')).strip()
-        if not emp_id:
-            errors.append(f"Row {row_num}: Missing Employee ID")
-        
-        if len(errors) > 50:
-            break
-    
-    if errors:
-        return {'success': False, 'error': f"Found {len(errors)} validation errors", 'errors': errors}
-    
-    return {
-        'success': True,
-        'message': f'Validation passed for {len(df)} bulk update operations',
-        'employee_count': df['Employee ID'].nunique(),
-        'total_rows': len(df),
-        'warnings': warnings
-    }
-
-# ==========================================
-# MAIN UPLOAD ROUTES
-# ==========================================
-
-@employee_import_bp.route('/upload-employees')
-@login_required
-@supervisor_required
-def upload_employees():
-    """Upload employees page - enhanced version"""
-    try:
-        stats = get_employee_stats()
-        recent_uploads = get_recent_uploads()
-        employees_without_accounts = get_employees_without_accounts()
-        
-        # Check which template exists and use it
-        template_options = [
-            'upload_employees_enhanced.html',
-            'upload_employees_simple_direct.html',
-            'upload_employees.html',
-            'import_employees.html'
-        ]
-        
-        template = None
-        for option in template_options:
-            try:
-                # Try to render template to see if it exists
-                render_template(option, stats=stats)
-                template = option
-                logger.info(f"Using template: {template}")
-                break
-            except:
-                continue
-        
-        if not template:
-            logger.warning("No upload template found, using fallback")
-            flash('Upload interface is being updated. Please try again shortly.', 'info')
-            return redirect(url_for('supervisor.dashboard'))
-        
-        return render_template(template,
-                             recent_uploads=recent_uploads,
-                             stats=stats,
-                             crew_distribution=stats['crews'],
-                             total_employees=stats['total_employees'],
-                             employees_without_accounts=employees_without_accounts,
-                             account_creation_available=True)
-    
-    except Exception as e:
-        logger.error(f"Error in upload_employees route: {e}")
-        flash('An error occurred while loading the page. Please try again.', 'danger')
-        return redirect(url_for('supervisor.dashboard'))
-
-@employee_import_bp.route('/upload-employees', methods=['POST'])
-@login_required
-@supervisor_required
-def upload_employees_post():
-    """Handle the file upload and processing"""
-    try:
-        logger.info(f"Upload POST received from user: {current_user.employee_id}")
-        
-        if 'file' not in request.files:
-            flash('No file selected', 'error')
-            return redirect(request.url)
-        
-        file = request.files['file']
-        if file.filename == '':
-            flash('No file selected', 'error')
-            return redirect(request.url)
-        
-        if not allowed_file(file.filename):
-            flash('Invalid file type. Please upload an Excel file (.xlsx or .xls)', 'error')
-            return redirect(request.url)
-        
-        # Get form data
-        upload_type = request.form.get('uploadType', 'employee')
-        replace_all = request.form.get('replaceAll') == 'true'
-        validation_only = request.form.get('validationOnly') == 'true'
-        
-        # Save file
-        filepath = secure_file_path(file.filename)
-        file.save(filepath)
-        
-        try:
-            # Read and validate file
-            df = pd.read_excel(filepath)
-            
-            if upload_type == 'employee':
-                validation_result = validate_employee_data_comprehensive(df)
-            elif upload_type == 'overtime':
-                validation_result = validate_overtime_data_comprehensive(df)
-            else:
-                validation_result = {'success': False, 'error': 'Invalid upload type'}
-            
-            if not validation_result.get('success'):
-                flash(f"Validation failed: {validation_result.get('error')}", 'error')
-                return redirect(request.url)
-            
-            if validation_only:
-                flash(f"Validation successful! Ready to import {validation_result.get('employee_count', 0)} records.", 'success')
-                return redirect(request.url)
-            
-            # Process the upload
-            if upload_type == 'employee':
-                result = process_employee_upload(df, file.filename, replace_all)
-            elif upload_type == 'overtime':
-                result = process_overtime_upload(df, file.filename)
-            
-            if result.get('success'):
-                flash(f"Successfully imported {result.get('records_processed', 0)} records!", 'success')
-            else:
-                flash(f"Import failed: {result.get('error', 'Unknown error')}", 'error')
-            
-            return redirect(request.url)
-            
-        except Exception as e:
-            logger.error(f"Error processing upload: {e}")
-            flash(f'Error processing file: {str(e)}', 'error')
-            return redirect(request.url)
-        
-        finally:
-            # Clean up temp file
-            if os.path.exists(filepath):
-                os.remove(filepath)
-                
-    except Exception as e:
-        logger.error(f"Error in upload_employees_post: {e}")
-        flash('An error occurred during upload. Please try again.', 'error')
-        return redirect(request.url)
+        return jsonify({'success': False, 'error': 'Server error during validation'}), 500
 
 # ==========================================
 # PROCESSING FUNCTIONS
 # ==========================================
 
-def process_employee_upload(df, filename, replace_all=True):
-    """Process validated employee data"""
+def process_employee_upload(df, upload_record, replace_all=False):
+    """Process employee data upload"""
     try:
-        records_processed = 0
+        created_count = 0
+        updated_count = 0
+        skipped_count = 0
         errors = []
         
-        # Create file upload record
-        file_upload = FileUpload(
-            filename=filename,
-            upload_type='employee',
-            uploaded_by=current_user.employee_id,
-            status='processing',
-            records_processed=0
-        )
-        db.session.add(file_upload)
-        db.session.flush()
-        
-        # If replace_all, deactivate existing employees
+        # If replace all, delete existing non-admin employees
         if replace_all:
-            Employee.query.update({'is_active': False})
-            db.session.flush()
+            deleted = Employee.query.filter(
+                and_(
+                    Employee.email != 'admin@workforce.com',
+                    Employee.is_admin == False
+                )
+            ).delete()
+            logger.info(f"Deleted {deleted} existing employees")
         
         # Process each row
         for idx, row in df.iterrows():
             try:
-                emp_id = str(row.get('Employee ID', '')).strip()
+                employee_id = str(row.get('Employee ID', '')).strip()
+                if not employee_id:
+                    skipped_count += 1
+                    continue
                 
                 # Check if employee exists
-                employee = Employee.query.filter_by(employee_id=emp_id).first()
+                employee = Employee.query.filter_by(employee_id=employee_id).first()
                 
-                if employee:
-                    # Update existing
-                    employee.name = f"{row.get('First Name', '')} {row.get('Last Name', '')}"
-                    employee.first_name = str(row.get('First Name', '')).strip()
-                    employee.last_name = str(row.get('Last Name', '')).strip()
-                    employee.crew = str(row.get('Crew Assigned', '')).strip().upper()
-                    employee.is_active = True
-                    
-                    if 'Email' in row and str(row['Email']).strip().lower() != 'nan':
-                        employee.email = str(row['Email']).strip()
-                    
-                    # Handle position
-                    position_name = str(row.get('Current Job Position', '')).strip()
-                    if position_name:
-                        position = Position.query.filter_by(name=position_name).first()
-                        if not position:
-                            position = Position(name=position_name)
-                            db.session.add(position)
-                            db.session.flush()
-                        employee.position_id = position.id
-                        
-                else:
+                if not employee:
                     # Create new employee
+                    first_name = str(row.get('First Name', '')).strip()
+                    last_name = str(row.get('Last Name', '')).strip()
+                    
                     employee = Employee(
-                        employee_id=emp_id,
-                        name=f"{row.get('First Name', '')} {row.get('Last Name', '')}",
-                        first_name=str(row.get('First Name', '')).strip(),
-                        last_name=str(row.get('Last Name', '')).strip(),
-                        crew=str(row.get('Crew Assigned', '')).strip().upper(),
+                        employee_id=employee_id,
+                        name=f"{first_name} {last_name}".strip(),
+                        email=str(row.get('Email', '')).strip() if pd.notna(row.get('Email')) else f"{employee_id}@company.com",
+                        crew=str(row.get('Crew', '')).strip().upper(),
+                        department=str(row.get('Department', '')).strip() if pd.notna(row.get('Department')) else None,
+                        phone=str(row.get('Phone', '')).strip() if pd.notna(row.get('Phone')) else None,
                         is_active=True,
-                        password_hash='$2b$12$default.hash.to.be.changed',  # Set default password
-                        must_change_password=True
+                        is_supervisor=str(row.get('Is Supervisor', 'No')).lower() == 'yes'
                     )
                     
-                    if 'Email' in row and str(row['Email']).strip().lower() != 'nan':
-                        employee.email = str(row['Email']).strip()
-                    
-                    # Handle position
-                    position_name = str(row.get('Current Job Position', '')).strip()
-                    if position_name:
+                    # Set position if provided
+                    if pd.notna(row.get('Position')):
+                        position_name = str(row.get('Position')).strip()
                         position = Position.query.filter_by(name=position_name).first()
                         if not position:
                             position = Position(name=position_name)
@@ -677,170 +639,218 @@ def process_employee_upload(df, filename, replace_all=True):
                             db.session.flush()
                         employee.position_id = position.id
                     
+                    # Set hire date if provided
+                    if pd.notna(row.get('Hire Date')):
+                        try:
+                            if isinstance(row.get('Hire Date'), str):
+                                employee.hire_date = datetime.strptime(row.get('Hire Date'), '%Y-%m-%d').date()
+                            else:
+                                employee.hire_date = row.get('Hire Date')
+                        except:
+                            pass
+                    
+                    # Set default password
+                    employee.set_password('changeme123')
+                    
                     db.session.add(employee)
-                
-                records_processed += 1
+                    created_count += 1
+                else:
+                    # Update existing employee
+                    first_name = str(row.get('First Name', '')).strip()
+                    last_name = str(row.get('Last Name', '')).strip()
+                    employee.name = f"{first_name} {last_name}".strip()
+                    employee.crew = str(row.get('Crew', '')).strip().upper()
+                    
+                    if pd.notna(row.get('Email')):
+                        employee.email = str(row.get('Email')).strip()
+                    if pd.notna(row.get('Department')):
+                        employee.department = str(row.get('Department')).strip()
+                    if pd.notna(row.get('Phone')):
+                        employee.phone = str(row.get('Phone')).strip()
+                    if pd.notna(row.get('Is Supervisor')):
+                        employee.is_supervisor = str(row.get('Is Supervisor')).lower() == 'yes'
+                    
+                    updated_count += 1
                 
             except Exception as e:
-                logger.error(f"Error processing row {idx}: {e}")
                 errors.append(f"Row {idx + 2}: {str(e)}")
-        
-        # Update file upload record
-        file_upload.records_processed = records_processed
-        file_upload.status = 'completed' if not errors else 'partial'
-        file_upload.error_log = json.dumps(errors) if errors else None
+                logger.error(f"Error processing row {idx + 2}: {e}")
         
         db.session.commit()
         
         return {
             'success': True,
-            'records_processed': records_processed,
+            'records_processed': created_count + updated_count,
+            'created': created_count,
+            'updated': updated_count,
+            'skipped': skipped_count,
             'errors': errors
         }
         
     except Exception as e:
+        logger.error(f"Error processing employee upload: {e}")
         db.session.rollback()
-        logger.error(f"Error in process_employee_upload: {e}")
-        return {
-            'success': False,
-            'error': str(e),
-            'records_processed': 0
-        }
+        return {'success': False, 'error': str(e)}
 
-def process_overtime_upload(df, filename):
+def process_overtime_upload(df, upload_record):
     """Process overtime data upload"""
     try:
-        records_processed = 0
+        processed_count = 0
+        skipped_count = 0
+        errors = []
         
-        # Create file upload record
-        file_upload = FileUpload(
-            filename=filename,
-            upload_type='overtime',
-            uploaded_by=current_user.employee_id,
-            status='processing',
-            records_processed=0
-        )
-        db.session.add(file_upload)
-        db.session.flush()
+        # Get week columns
+        week_columns = [col for col in df.columns if 'Week' in str(col)]
         
         for idx, row in df.iterrows():
             try:
-                emp_id = str(row.get('Employee ID', '')).strip()
-                employee = Employee.query.filter_by(employee_id=emp_id).first()
-                
-                if not employee:
-                    logger.warning(f"Employee {emp_id} not found, skipping overtime record")
+                employee_id = str(row.get('Employee ID', '')).strip()
+                if not employee_id:
+                    skipped_count += 1
                     continue
                 
-                week_start = pd.to_datetime(row.get('Week Start Date'))
+                employee = Employee.query.filter_by(employee_id=employee_id).first()
+                if not employee:
+                    errors.append(f"Row {idx + 2}: Employee ID '{employee_id}' not found")
+                    continue
                 
-                # Check if record already exists
-                existing = OvertimeHistory.query.filter_by(
-                    employee_id=employee.id,
-                    week_start_date=week_start.date()
-                ).first()
-                
-                if existing:
-                    # Update existing record
-                    existing.regular_hours = float(row.get('Regular Hours', 0))
-                    existing.overtime_hours = float(row.get('Overtime Hours', 0))
-                    existing.total_hours = float(row.get('Total Hours', 0))
-                else:
-                    # Create new record
-                    ot_record = OvertimeHistory(
-                        employee_id=employee.id,
-                        week_start_date=week_start.date(),
-                        regular_hours=float(row.get('Regular Hours', 0)),
-                        overtime_hours=float(row.get('Overtime Hours', 0)),
-                        total_hours=float(row.get('Total Hours', 0))
-                    )
-                    db.session.add(ot_record)
-                
-                records_processed += 1
+                # Process each week
+                for week_num, week_col in enumerate(week_columns, 1):
+                    hours = row.get(week_col)
+                    if pd.notna(hours):
+                        try:
+                            hours_float = float(hours)
+                            
+                            # Calculate week ending date (example logic)
+                            week_ending = date.today() - timedelta(weeks=13-week_num)
+                            
+                            # Check if record exists
+                            ot_record = OvertimeHistory.query.filter_by(
+                                employee_id=employee.id,
+                                week_ending=week_ending
+                            ).first()
+                            
+                            if not ot_record:
+                                ot_record = OvertimeHistory(
+                                    employee_id=employee.id,
+                                    week_ending=week_ending,
+                                    total_hours=hours_float,
+                                    overtime_hours=max(0, hours_float - 40),
+                                    regular_hours=min(40, hours_float)
+                                )
+                                db.session.add(ot_record)
+                            else:
+                                ot_record.total_hours = hours_float
+                                ot_record.overtime_hours = max(0, hours_float - 40)
+                                ot_record.regular_hours = min(40, hours_float)
+                            
+                            processed_count += 1
+                        except ValueError:
+                            errors.append(f"Row {idx + 2}, {week_col}: Invalid hours value")
                 
             except Exception as e:
-                logger.error(f"Error processing overtime row {idx}: {e}")
-        
-        # Update file upload record
-        file_upload.records_processed = records_processed
-        file_upload.status = 'completed'
+                errors.append(f"Row {idx + 2}: {str(e)}")
+                logger.error(f"Error processing overtime row {idx + 2}: {e}")
         
         db.session.commit()
         
         return {
             'success': True,
-            'records_processed': records_processed
+            'records_processed': processed_count,
+            'skipped': skipped_count,
+            'errors': errors
         }
         
     except Exception as e:
+        logger.error(f"Error processing overtime upload: {e}")
         db.session.rollback()
-        logger.error(f"Error in process_overtime_upload: {e}")
-        return {
-            'success': False,
-            'error': str(e),
-            'records_processed': 0
-        }
+        return {'success': False, 'error': str(e)}
 
 # ==========================================
-# TEMPLATE AND EXPORT ROUTES
+# TEMPLATE DOWNLOAD ROUTES
 # ==========================================
 
 @employee_import_bp.route('/download-employee-template')
 @login_required
 @supervisor_required
 def download_employee_template():
-    """Download employee import template"""
+    """Download Excel template for employee upload"""
     try:
-        # Create template with your specific format
-        template_data = {
-            'Employee ID': ['EMP001', 'EMP002', 'EMP003'],
-            'First Name': ['John', 'Jane', 'Bob'],
-            'Last Name': ['Smith', 'Johnson', 'Wilson'],
-            'Crew Assigned': ['A', 'B', 'C'],
-            'Current Job Position': ['Operator', 'Maintenance Tech', 'Supervisor'],
-            'Email': ['john.smith@company.com', 'jane.johnson@company.com', 'bob.wilson@company.com'],
-            'Phone': ['555-0001', '555-0002', '555-0003'],
-            'Hire Date': ['2023-01-15', '2023-02-20', '2023-03-10']
-        }
+        # Create workbook
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Employee Data'
         
-        df = pd.DataFrame(template_data)
+        # Define headers
+        headers = [
+            'Employee ID', 'First Name', 'Last Name', 'Email', 'Crew',
+            'Position', 'Department', 'Hire Date', 'Phone',
+            'Emergency Contact', 'Skills', 'Is Supervisor'
+        ]
         
+        # Style headers
+        header_font = Font(bold=True, color='FFFFFF')
+        header_fill = PatternFill(start_color='366092', end_color='366092', fill_type='solid')
+        header_alignment = Alignment(horizontal='center')
+        
+        for col, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = header_alignment
+            ws.column_dimensions[get_column_letter(col)].width = 15
+        
+        # Add sample data
+        sample_data = [
+            ['EMP001', 'John', 'Doe', 'john.doe@company.com', 'A', 
+             'Operator', 'Production', '2020-01-15', '555-0001',
+             'Jane Doe (555-0002)', 'Forklift, Safety', 'No'],
+            ['EMP002', 'Jane', 'Smith', 'jane.smith@company.com', 'B',
+             'Technician', 'Maintenance', '2019-06-01', '555-0003',
+             'John Smith (555-0004)', 'Electrical, HVAC', 'No']
+        ]
+        
+        for row_num, data in enumerate(sample_data, 2):
+            for col_num, value in enumerate(data, 1):
+                ws.cell(row=row_num, column=col_num, value=value)
+        
+        # Add instructions sheet
+        ws2 = wb.create_sheet('Instructions')
+        instructions = [
+            ['Instructions for Employee Upload'],
+            [''],
+            ['1. Fill in employee information in the Employee Data sheet'],
+            ['2. Required fields: Employee ID, First Name, Last Name, Crew'],
+            ['3. Employee ID must be unique for each employee'],
+            ['4. Crew must be one of: A, B, C, or D'],
+            ['5. Email is optional but recommended for login access'],
+            ['6. Hire Date format: YYYY-MM-DD'],
+            ['7. Skills should be comma-separated (e.g., "Forklift, Safety")'],
+            ['8. Is Supervisor should be "Yes" or "No"'],
+            [''],
+            ['Default password for new employees: changeme123'],
+            [''],
+            ['Save the file and upload it to the system']
+        ]
+        
+        for row_num, instruction in enumerate(instructions, 1):
+            if instruction:
+                ws2.cell(row=row_num, column=1, value=instruction[0])
+                if row_num == 1:
+                    ws2.cell(row=row_num, column=1).font = Font(bold=True, size=14)
+        
+        ws2.column_dimensions['A'].width = 80
+        
+        # Save to BytesIO
         output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            df.to_excel(writer, sheet_name='Employee Data', index=False)
-            
-            # Add instructions sheet
-            instructions = [
-                "EMPLOYEE IMPORT TEMPLATE",
-                "",
-                "REQUIRED COLUMNS:",
-                "- Employee ID: Unique identifier for each employee",
-                "- First Name: Employee's first name",
-                "- Last Name: Employee's last name", 
-                "- Crew Assigned: Must be A, B, C, or D",
-                "- Current Job Position: Employee's job title",
-                "",
-                "OPTIONAL COLUMNS:",
-                "- Email: Must be valid email format",
-                "- Phone: Contact number",
-                "- Hire Date: Format YYYY-MM-DD",
-                "",
-                "NOTES:",
-                "- All employees will be set to active status",
-                "- Default password will be 'password123'",
-                "- Employees must change password on first login"
-            ]
-            
-            instructions_df = pd.DataFrame(instructions, columns=['Instructions'])
-            instructions_df.to_excel(writer, sheet_name='Instructions', index=False)
-        
+        wb.save(output)
         output.seek(0)
         
         return send_file(
             output,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             as_attachment=True,
-            download_name=f'employee_import_template_{datetime.now().strftime("%Y%m%d")}.xlsx',
-            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            download_name=f'employee_upload_template_{datetime.now().strftime("%Y%m%d")}.xlsx'
         )
         
     except Exception as e:
@@ -852,55 +862,65 @@ def download_employee_template():
 @login_required
 @supervisor_required
 def download_overtime_template():
-    """Download overtime import template"""
+    """Download Excel template for overtime upload"""
     try:
-        # Create template for overtime data
-        template_data = {
-            'Employee ID': ['EMP001', 'EMP001', 'EMP002'],
-            'Week Start Date': ['2024-01-08', '2024-01-15', '2024-01-08'],
-            'Regular Hours': [40.0, 40.0, 35.0],
-            'Overtime Hours': [8.0, 12.0, 5.0],
-            'Total Hours': [48.0, 52.0, 40.0],
-            'Notes': ['Standard week', 'Extra coverage needed', 'Partial week']
-        }
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Overtime Data'
         
-        df = pd.DataFrame(template_data)
+        # Create headers
+        headers = ['Employee ID'] + [f'Week {i}' for i in range(1, 14)]
         
+        # Style headers
+        header_font = Font(bold=True, color='FFFFFF')
+        header_fill = PatternFill(start_color='366092', end_color='366092', fill_type='solid')
+        
+        for col, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            ws.column_dimensions[get_column_letter(col)].width = 12
+        
+        # Add sample data
+        sample_employees = ['EMP001', 'EMP002', 'EMP003']
+        for row_num, emp_id in enumerate(sample_employees, 2):
+            ws.cell(row=row_num, column=1, value=emp_id)
+            for week_col in range(2, 15):
+                ws.cell(row=row_num, column=week_col, value=40)
+        
+        # Add instructions sheet
+        ws2 = wb.create_sheet('Instructions')
+        instructions = [
+            ['Overtime History Upload Instructions'],
+            [''],
+            ['1. Enter Employee IDs in the first column'],
+            ['2. Enter total hours worked for each of the past 13 weeks'],
+            ['3. Week 1 is the most recent week, Week 13 is the oldest'],
+            ['4. Enter total hours (regular + overtime)'],
+            ['5. System will calculate overtime as hours over 40'],
+            [''],
+            ['Example: If an employee worked 45 hours, enter 45'],
+            ['The system will record 40 regular hours and 5 overtime hours']
+        ]
+        
+        for row_num, instruction in enumerate(instructions, 1):
+            if instruction:
+                ws2.cell(row=row_num, column=1, value=instruction[0])
+                if row_num == 1:
+                    ws2.cell(row=row_num, column=1).font = Font(bold=True, size=14)
+        
+        ws2.column_dimensions['A'].width = 70
+        
+        # Save to BytesIO
         output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            df.to_excel(writer, sheet_name='Overtime Data', index=False)
-            
-            # Add instructions
-            instructions = [
-                "OVERTIME IMPORT TEMPLATE",
-                "",
-                "REQUIRED COLUMNS:",
-                "- Employee ID: Must match existing employee",
-                "- Week Start Date: Monday of the work week (YYYY-MM-DD)",
-                "- Regular Hours: Standard work hours for the week",
-                "- Overtime Hours: Overtime hours worked",
-                "- Total Hours: Must equal Regular + Overtime hours",
-                "",
-                "OPTIONAL COLUMNS:",
-                "- Notes: Additional comments about the week",
-                "",
-                "VALIDATION RULES:",
-                "- Week Start Date must be a Monday",
-                "- Hours must be non-negative numbers",
-                "- Total Hours = Regular Hours + Overtime Hours",
-                "- Employee must exist in the system"
-            ]
-            
-            instructions_df = pd.DataFrame(instructions, columns=['Instructions'])
-            instructions_df.to_excel(writer, sheet_name='Instructions', index=False)
-        
+        wb.save(output)
         output.seek(0)
         
         return send_file(
             output,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             as_attachment=True,
-            download_name=f'overtime_import_template_{datetime.now().strftime("%Y%m%d")}.xlsx',
-            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            download_name=f'overtime_upload_template_{datetime.now().strftime("%Y%m%d")}.xlsx'
         )
         
     except Exception as e:
@@ -909,227 +929,88 @@ def download_overtime_template():
         return redirect(url_for('employee_import.upload_employees'))
 
 # ==========================================
-# UPLOAD HISTORY AND MANAGEMENT ROUTES
+# ADDITIONAL ROUTES
 # ==========================================
-
-@employee_import_bp.route('/upload-overtime')
-@login_required
-@supervisor_required
-def upload_overtime():
-    """Overtime upload page"""
-    try:
-        stats = get_employee_stats()
-        recent_uploads = get_recent_uploads()
-        
-        # Try to render overtime template
-        try:
-            return render_template('upload_overtime.html',
-                                 stats=stats,
-                                 recent_uploads=recent_uploads)
-        except:
-            # Fallback to main upload page with overtime mode
-            flash('Overtime upload interface is being updated. Please use the main upload page and select "Overtime" type.', 'info')
-            return redirect(url_for('employee_import.upload_employees'))
-            
-    except Exception as e:
-        logger.error(f"Error in upload_overtime route: {e}")
-        flash('Error loading overtime upload page.', 'error')
-        return redirect(url_for('supervisor.dashboard'))
 
 @employee_import_bp.route('/upload-history')
 @login_required
 @supervisor_required
 def upload_history():
-    """Upload history page"""
+    """View upload history"""
     try:
-        # Get all uploads with pagination
         page = request.args.get('page', 1, type=int)
-        per_page = 20
-        
         uploads = FileUpload.query.order_by(
-            FileUpload.created_at.desc()
-        ).paginate(
-            page=page, per_page=per_page, error_out=False
-        )
+            FileUpload.uploaded_at.desc()
+        ).paginate(page=page, per_page=20, error_out=False)
         
+        # Try to render template, fall back to simple list
         try:
-            return render_template('upload_history.html',
-                                 uploads=uploads)
+            return render_template('upload_history.html', uploads=uploads)
         except:
-            # Fallback - show simple list
-            upload_list = [{
-                'id': upload.id,
-                'filename': upload.filename,
-                'upload_type': upload.upload_type or 'employee',
-                'status': upload.status or 'completed',
-                'records_processed': upload.records_processed or 0,
-                'created_at': upload.created_at,
-                'uploaded_by': upload.uploaded_by
-            } for upload in uploads.items]
+            # Simple fallback
+            html = """
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Upload History</title>
+                <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+            </head>
+            <body>
+                <div class="container mt-5">
+                    <h2>Upload History</h2>
+                    <a href="/upload-employees" class="btn btn-primary mb-3">Back to Upload</a>
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Filename</th>
+                                <th>Type</th>
+                                <th>Status</th>
+                                <th>Processed</th>
+                                <th>Date</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            """
             
-            flash('Upload history loaded successfully.', 'info')
-            return render_template('supervisor/dashboard.html',
-                                 recent_uploads=upload_list[:10])
+            for upload in uploads.items:
+                status_class = 'success' if upload.status == 'completed' else 'danger'
+                date_str = upload.uploaded_at.strftime('%Y-%m-%d %H:%M') if upload.uploaded_at else 'Unknown'
+                html += f"""
+                    <tr>
+                        <td>{upload.filename}</td>
+                        <td>{upload.upload_type or 'Unknown'}</td>
+                        <td><span class="badge bg-{status_class}">{upload.status or 'Unknown'}</span></td>
+                        <td>{upload.records_processed or 0}</td>
+                        <td>{date_str}</td>
+                    </tr>
+                """
+            
+            html += """
+                        </tbody>
+                    </table>
+                </div>
+            </body>
+            </html>
+            """
+            return make_response(html)
             
     except Exception as e:
-        logger.error(f"Error in upload_history route: {e}")
+        logger.error(f"Error in upload_history: {e}")
         flash('Error loading upload history.', 'error')
-        return redirect(url_for('supervisor.dashboard'))
+        return redirect(url_for('employee_import.upload_employees'))
 
-# ==========================================
-# ADDITIONAL MISSING ROUTES
-# ==========================================
-
-@employee_import_bp.route('/upload-details/<int:upload_id>')
+@employee_import_bp.route('/upload-overtime')
 @login_required
 @supervisor_required
-def upload_details(upload_id):
-    """Get detailed information about a specific upload"""
-    try:
-        upload = FileUpload.query.get_or_404(upload_id)
-        
-        # Calculate additional statistics
-        processing_time = None
-        if upload.completed_at and upload.created_at:
-            processing_time = str(upload.completed_at - upload.created_at)
-        
-        upload_data = {
-            'id': upload.id,
-            'filename': upload.filename,
-            'upload_type': upload.upload_type or 'employee',
-            'status': upload.status or 'completed',
-            'records_processed': upload.records_processed or 0,
-            'created_at': upload.created_at.isoformat() if upload.created_at else None,
-            'completed_at': upload.completed_at.isoformat() if upload.completed_at else None,
-            'uploaded_by': upload.uploaded_by,
-            'file_size': upload.file_size,
-            'file_hash': upload.file_hash,
-            'processing_time': processing_time,
-            'error_log': upload.error_log,
-            'notes': getattr(upload, 'notes', None)
-        }
-        
-        return jsonify(upload_data)
-        
-    except Exception as e:
-        logger.error(f"Error getting upload details for {upload_id}: {e}")
-        return jsonify({'error': 'Failed to load upload details'}), 500
-
-@employee_import_bp.route('/upload-errors/<int:upload_id>')
-@login_required
-@supervisor_required
-def upload_errors(upload_id):
-    """Get error details for a specific upload"""
-    try:
-        upload = FileUpload.query.get_or_404(upload_id)
-        
-        errors = []
-        error_count = 0
-        warning_count = 0
-        
-        if upload.error_log:
-            try:
-                error_data = json.loads(upload.error_log)
-                if isinstance(error_data, list):
-                    for error in error_data:
-                        if isinstance(error, str):
-                            errors.append({
-                                'type': 'Error',
-                                'message': error,
-                                'row': None,
-                                'field': None,
-                                'value': None
-                            })
-                            error_count += 1
-                        elif isinstance(error, dict):
-                            errors.append(error)
-                            if error.get('type', '').lower() == 'warning':
-                                warning_count += 1
-                            else:
-                                error_count += 1
-            except json.JSONDecodeError:
-                errors.append({
-                    'type': 'System Error',
-                    'message': 'Error log format is invalid',
-                    'row': None,
-                    'field': None,
-                    'value': None
-                })
-                error_count += 1
-        
-        recommendations = []
-        if error_count > 0:
-            recommendations.append("Review and fix the errors listed above")
-            recommendations.append("Check that all required columns are present")
-            recommendations.append("Verify data format matches the template")
-            recommendations.append("Ensure Employee IDs are unique")
-        
-        return jsonify({
-            'errors': errors,
-            'error_count': error_count,
-            'warning_count': warning_count,
-            'skipped_rows': getattr(upload, 'skipped_rows', 0),
-            'recommendations': recommendations
-        })
-        
-    except Exception as e:
-        logger.error(f"Error getting upload errors for {upload_id}: {e}")
-        return jsonify({'error': 'Failed to load error details'}), 500
-
-@employee_import_bp.route('/download-upload/<int:upload_id>')
-@login_required
-@supervisor_required
-def download_upload(upload_id):
-    """Download the original uploaded file"""
-    try:
-        upload = FileUpload.query.get_or_404(upload_id)
-        
-        # Check if original file still exists
-        upload_folder = current_app.config.get('UPLOAD_FOLDER', 'upload_files')
-        file_path = os.path.join(upload_folder, upload.filename)
-        
-        if os.path.exists(file_path):
-            return send_file(
-                file_path,
-                as_attachment=True,
-                download_name=upload.filename
-            )
-        else:
-            flash('Original file no longer available for download.', 'warning')
-            return redirect(url_for('employee_import.upload_history'))
-            
-    except Exception as e:
-        logger.error(f"Error downloading upload {upload_id}: {e}")
-        flash('Error downloading file.', 'error')
-        return redirect(url_for('employee_import.upload_history'))
-
-@employee_import_bp.route('/delete-upload/<int:upload_id>', methods=['DELETE'])
-@login_required
-@supervisor_required
-def delete_upload(upload_id):
-    """Delete an upload record"""
-    try:
-        upload = FileUpload.query.get_or_404(upload_id)
-        
-        # Delete the database record
-        db.session.delete(upload)
-        db.session.commit()
-        
-        return jsonify({'success': True})
-        
-    except Exception as e:
-        logger.error(f"Error deleting upload {upload_id}: {e}")
-        return jsonify({'error': 'Failed to delete upload'}), 500
-
-# ==========================================
-# EXPORT ROUTES
-# ==========================================
+def upload_overtime():
+    """Dedicated overtime upload page"""
+    return redirect(url_for('employee_import.upload_employees'))
 
 @employee_import_bp.route('/export-employees')
 @login_required
 @supervisor_required
 def export_employees():
-    """Export current employee data"""
+    """Export current employee data to Excel"""
     try:
         employees = Employee.query.filter_by(is_active=True).all()
         
@@ -1137,58 +1018,74 @@ def export_employees():
             flash('No employees found to export.', 'warning')
             return redirect(url_for('employee_import.upload_employees'))
         
-        # Prepare export data
-        export_data = []
-        for emp in employees:
-            export_data.append({
-                'Employee ID': emp.employee_id,
-                'First Name': emp.first_name or '',
-                'Last Name': emp.last_name or '',
-                'Full Name': emp.name or '',
-                'Crew Assigned': emp.crew or '',
-                'Current Job Position': emp.position.name if emp.position else '',
-                'Email': emp.email or '',
-                'Phone': getattr(emp, 'phone', '') or '',
-                'Hire Date': emp.hire_date.strftime('%Y-%m-%d') if getattr(emp, 'hire_date', None) else '',
-                'Is Active': 'Yes' if emp.is_active else 'No',
-                'Created Date': emp.created_at.strftime('%Y-%m-%d') if emp.created_at else ''
-            })
+        # Create workbook
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Employee Data'
         
-        df = pd.DataFrame(export_data)
+        # Headers
+        headers = [
+            'Employee ID', 'First Name', 'Last Name', 'Email', 'Crew',
+            'Position', 'Department', 'Hire Date', 'Phone', 'Is Supervisor'
+        ]
         
+        for col, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col, value=header)
+            cell.font = Font(bold=True)
+        
+        # Employee data
+        for row_num, emp in enumerate(employees, 2):
+            # Split name into first and last
+            name_parts = emp.name.split(' ', 1) if emp.name else ['', '']
+            first_name = name_parts[0]
+            last_name = name_parts[1] if len(name_parts) > 1 else ''
+            
+            ws.cell(row=row_num, column=1, value=emp.employee_id)
+            ws.cell(row=row_num, column=2, value=first_name)
+            ws.cell(row=row_num, column=3, value=last_name)
+            ws.cell(row=row_num, column=4, value=emp.email)
+            ws.cell(row=row_num, column=5, value=emp.crew)
+            ws.cell(row=row_num, column=6, value=emp.position.name if emp.position else '')
+            ws.cell(row=row_num, column=7, value=emp.department)
+            ws.cell(row=row_num, column=8, value=emp.hire_date.strftime('%Y-%m-%d') if emp.hire_date else '')
+            ws.cell(row=row_num, column=9, value=emp.phone)
+            ws.cell(row=row_num, column=10, value='Yes' if emp.is_supervisor else 'No')
+        
+        # Save to BytesIO
         output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            df.to_excel(writer, sheet_name='Employee Export', index=False)
-        
+        wb.save(output)
         output.seek(0)
         
         return send_file(
             output,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             as_attachment=True,
-            download_name=f'employee_export_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx',
-            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            download_name=f'employee_export_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
         )
         
     except Exception as e:
         logger.error(f"Error exporting employees: {e}")
-        flash('Error exporting employee data. Please try again.', 'error')
+        flash('Error exporting employee data.', 'error')
         return redirect(url_for('employee_import.upload_employees'))
 
-# ==========================================
-# ERROR HANDLERS
-# ==========================================
+@employee_import_bp.route('/test-upload-route')
+def test_upload_route():
+    """Test route to verify blueprint is loaded"""
+    return jsonify({
+        'status': 'Employee import blueprint is working!',
+        'routes_available': [
+            '/upload-employees',
+            '/validate-upload',
+            '/download-employee-template',
+            '/download-overtime-template',
+            '/upload-history',
+            '/export-employees'
+        ],
+        'authenticated': current_user.is_authenticated,
+        'is_supervisor': current_user.is_supervisor if current_user.is_authenticated else False,
+        'upload_folder': current_app.config.get('UPLOAD_FOLDER'),
+        'timestamp': datetime.now().isoformat()
+    })
 
-@employee_import_bp.errorhandler(413)
-def too_large(e):
-    flash("File is too large. Maximum size is 16MB.", "error")
-    return redirect(url_for('employee_import.upload_employees'))
-
-@employee_import_bp.errorhandler(404)
-def not_found(e):
-    flash("Page not found. Redirecting to upload page.", "warning")
-    return redirect(url_for('employee_import.upload_employees'))
-
-@employee_import_bp.errorhandler(500)
-def internal_error(e):
-    flash("An internal error occurred. Please try again.", "error")
-    return redirect(url_for('employee_import.upload_employees'))
+# Log successful blueprint loading
+logger.info("Employee import blueprint loaded successfully with all routes")
