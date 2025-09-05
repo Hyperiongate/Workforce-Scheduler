@@ -742,6 +742,82 @@
                     rotation: 90
                 }
             },
+            'basic_33_12': {
+                name: 'Basic 3-on-3-off - 12 Hour',
+                shiftLength: 12,
+                daysOn: 182.5,
+                daysOff: 182.5,
+                avgWorkHours: 42,
+                avgPayHours: 44,
+                maxConsecutive: 3,
+                weekendsOff: 'Rotating - varies each week',
+                pattern: '3 on, 3 off (6-day cycle)',
+                pros: ['Never more than 3 consecutive days', 'Equal work and time off', 'Simple 6-day pattern', 'Frequent breaks'],
+                cons: ['Pattern drifts through week', 'Weekend coverage unpredictable', 'Not aligned with 7-day week', '6-day cycle can be confusing'],
+                scoreFactors: {
+                    shiftLength: 100,
+                    workPattern: 20,
+                    weekend: 40,
+                    rotation: 0
+                }
+            },
+            'fixed_33_complex_12': {
+                name: 'Fixed 3-on-3-off Complex - 12 Hour',
+                shiftLength: 12,
+                daysOn: 182.5,
+                daysOff: 182.5,
+                avgWorkHours: 42,
+                avgPayHours: 44,
+                maxConsecutive: 3,
+                weekendsOff: 'Complex pattern - varies throughout cycle',
+                pattern: 'Complex 6-week fixed shift pattern',
+                pros: ['Never more than 3 consecutive days', 'Fixed shift (no rotation)', 'Equal work and time off', 'Some full weekends off'],
+                cons: ['Complex 6-week pattern to memorize', 'Weekend coverage complicated', 'Difficult to coordinate between crews'],
+                scoreFactors: {
+                    shiftLength: 100,
+                    workPattern: 20,
+                    weekend: 45,
+                    rotation: 0
+                }
+            },
+            'weekly_rotation_33_12': {
+                name: '3-on-3-off Weekly Rotation - 12 Hour',
+                shiftLength: 12,
+                daysOn: 182.5,
+                daysOff: 182.5,
+                avgWorkHours: 42,
+                avgPayHours: 44,
+                maxConsecutive: 3,
+                weekendsOff: 'Varies throughout 12-week cycle',
+                pattern: '3 on, 3 off with weekly shift rotation (12-week cycle)',
+                pros: ['Never more than 3 consecutive days', 'Experience all shifts', 'Equal work and time off', 'Good fatigue management'],
+                cons: ['12-week cycle to complete', 'Weekly shift changes', 'Complex pattern', 'Constant adaptation required'],
+                scoreFactors: {
+                    shiftLength: 100,
+                    workPattern: 20,
+                    weekend: 40,
+                    rotation: 85
+                }
+            },
+            'six_week_rotation_33_12': {
+                name: '3-on-3-off 6-Week Rotation - 12 Hour',
+                shiftLength: 12,
+                daysOn: 182.5,
+                daysOff: 182.5,
+                avgWorkHours: 42,
+                avgPayHours: 44,
+                maxConsecutive: 3,
+                weekendsOff: 'Varies throughout cycle',
+                pattern: '3 on, 3 off with shift rotation every 6 weeks',
+                pros: ['Never more than 3 consecutive days', '6 weeks to adapt to each shift', 'Equal work and time off', 'Better than weekly rotation'],
+                cons: ['12-week full cycle', 'Still requires rotation', 'Pattern complexity over 12 weeks'],
+                scoreFactors: {
+                    shiftLength: 100,
+                    workPattern: 20,
+                    weekend: 40,
+                    rotation: 60
+                }
+            },
             'continental_8': {
                 name: 'Continental - 8 Hour',
                 shiftLength: 8,
