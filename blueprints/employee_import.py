@@ -1,7 +1,8 @@
 # blueprints/employee_import.py
 """
 Complete Excel upload system for employee data management
-FULL UNTRUNCATED VERSION - Deploy this entire file
+USES YOUR SPECIFIC COLUMN FORMAT
+Deploy this ENTIRE file to blueprints/employee_import.py
 """
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, current_app, send_file, make_response
@@ -134,17 +135,17 @@ def get_employees_without_accounts():
         return 0
 
 # ==========================================
-# VALIDATION FUNCTIONS
+# VALIDATION FUNCTIONS FOR YOUR FORMAT
 # ==========================================
 
 def validate_employee_data_comprehensive(df):
-    """Comprehensive validation of employee data"""
+    """Validate employee data from DataFrame - YOUR FORMAT"""
     errors = []
     warnings = []
     
-    # Check required columns
-    required_columns = ['Employee ID', 'First Name', 'Last Name', 'Crew']
-    missing_columns = [col for col in required_columns if col not in df.columns]
+    # YOUR required columns
+    your_required_columns = ['Last Name', 'First Name', 'Employee ID', 'Crew Assigned']
+    missing_columns = [col for col in your_required_columns if col not in df.columns]
     
     if missing_columns:
         return {
@@ -155,9 +156,19 @@ def validate_employee_data_comprehensive(df):
     # Track Employee IDs for duplicate check
     seen_ids = set()
     
-    # Validate each row
+    # Validate each row using YOUR column names
     for idx, row in df.iterrows():
         row_num = idx + 2  # Excel row number (1-indexed + header)
+        
+        # Check Last Name
+        last_name = str(row.get('Last Name', '')).strip() if pd.notna(row.get('Last Name')) else ''
+        if not last_name:
+            errors.append(f'Row {row_num}: Missing Last Name')
+        
+        # Check First Name
+        first_name = str(row.get('First Name', '')).strip() if pd.notna(row.get('First Name')) else ''
+        if not first_name:
+            errors.append(f'Row {row_num}: Missing First Name')
         
         # Check Employee ID
         emp_id = str(row.get('Employee ID', '')).strip() if pd.notna(row.get('Employee ID')) else ''
@@ -168,35 +179,17 @@ def validate_employee_data_comprehensive(df):
         else:
             seen_ids.add(emp_id)
         
-        # Check Names
-        first_name = str(row.get('First Name', '')).strip() if pd.notna(row.get('First Name')) else ''
-        last_name = str(row.get('Last Name', '')).strip() if pd.notna(row.get('Last Name')) else ''
-        
-        if not first_name:
-            errors.append(f'Row {row_num}: Missing First Name')
-        if not last_name:
-            errors.append(f'Row {row_num}: Missing Last Name')
-        
-        # Check Crew
-        crew = str(row.get('Crew', '')).strip().upper() if pd.notna(row.get('Crew')) else ''
+        # Check Crew Assigned
+        crew = str(row.get('Crew Assigned', '')).strip().upper() if pd.notna(row.get('Crew Assigned')) else ''
         if crew not in ['A', 'B', 'C', 'D']:
             errors.append(f'Row {row_num}: Invalid crew "{crew}". Must be A, B, C, or D')
         
-        # Check email format if provided
+        # Check email format if provided (optional field)
         email = row.get('Email')
         if email and pd.notna(email):
             email_str = str(email).strip()
-            if email_str and not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email_str):
+            if email_str and '@' not in email_str:
                 warnings.append(f'Row {row_num}: Invalid email format "{email_str}"')
-        
-        # Check date format if hire date provided
-        hire_date = row.get('Hire Date')
-        if hire_date and pd.notna(hire_date):
-            try:
-                if isinstance(hire_date, str):
-                    datetime.strptime(hire_date, '%Y-%m-%d')
-            except:
-                warnings.append(f'Row {row_num}: Invalid date format for Hire Date')
         
         # Stop if too many errors
         if len(errors) > 50:
@@ -207,7 +200,7 @@ def validate_employee_data_comprehensive(df):
         return {
             'success': False,
             'error': f'Validation failed with {len(errors)} errors',
-            'errors': errors[:20],  # Return first 20 errors
+            'errors': errors[:20],
             'total_errors': len(errors),
             'warnings': warnings
         }
@@ -220,7 +213,7 @@ def validate_employee_data_comprehensive(df):
     }
 
 def validate_overtime_data_comprehensive(df):
-    """Comprehensive validation of overtime data"""
+    """Validate overtime data from DataFrame"""
     errors = []
     warnings = []
     
@@ -296,10 +289,11 @@ def upload_employees():
         recent_uploads = get_recent_uploads()
         employees_without_accounts = get_employees_without_accounts()
         
-        # Check which template exists
+        # Try to use your simple template first
         template_options = [
-            'upload_employees_enhanced.html',
             'upload_employees_simple.html',
+            'upload_employees_simple_direct.html',
+            'upload_employees_enhanced.html',
             'upload_employees.html',
             'employee_upload.html'
         ]
@@ -315,7 +309,7 @@ def upload_employees():
                     employees_without_accounts=employees_without_accounts,
                     account_creation_available=True
                 )
-            except Exception as e:
+            except Exception:
                 continue
         
         # If no template works, render inline HTML
@@ -366,7 +360,7 @@ def render_simple_upload_page(stats, recent_uploads):
                                 <div class="mb-3">
                                     <label for="file" class="form-label">Select Excel File</label>
                                     <input type="file" class="form-control" id="file" name="file" accept=".xlsx,.xls" required>
-                                    <div class="form-text">Supported formats: .xlsx, .xls</div>
+                                    <div class="form-text">Format: Last Name, First Name, Employee ID, Crew Assigned, Current Job Position, Email</div>
                                 </div>
                                 
                                 <div class="mb-3">
@@ -581,11 +575,11 @@ def validate_upload():
         return jsonify({'success': False, 'error': 'Server error during validation'}), 500
 
 # ==========================================
-# PROCESSING FUNCTIONS
+# PROCESSING FUNCTIONS FOR YOUR FORMAT
 # ==========================================
 
 def process_employee_upload(df, upload_record, replace_all=False):
-    """Process employee data upload"""
+    """Process employee data upload - YOUR FORMAT"""
     try:
         created_count = 0
         updated_count = 0
@@ -602,9 +596,10 @@ def process_employee_upload(df, upload_record, replace_all=False):
             ).delete()
             logger.info(f"Deleted {deleted} existing employees")
         
-        # Process each row
+        # Process each row with YOUR column names
         for idx, row in df.iterrows():
             try:
+                # Get data from YOUR columns
                 employee_id = str(row.get('Employee ID', '')).strip()
                 if not employee_id:
                     skipped_count += 1
@@ -613,62 +608,56 @@ def process_employee_upload(df, upload_record, replace_all=False):
                 # Check if employee exists
                 employee = Employee.query.filter_by(employee_id=employee_id).first()
                 
+                # Get name from YOUR format
+                first_name = str(row.get('First Name', '')).strip()
+                last_name = str(row.get('Last Name', '')).strip()
+                full_name = f"{first_name} {last_name}".strip()
+                
                 if not employee:
                     # Create new employee
-                    first_name = str(row.get('First Name', '')).strip()
-                    last_name = str(row.get('Last Name', '')).strip()
-                    
                     employee = Employee(
                         employee_id=employee_id,
-                        name=f"{first_name} {last_name}".strip(),
+                        name=full_name,
                         email=str(row.get('Email', '')).strip() if pd.notna(row.get('Email')) else f"{employee_id}@company.com",
-                        crew=str(row.get('Crew', '')).strip().upper(),
-                        department=str(row.get('Department', '')).strip() if pd.notna(row.get('Department')) else None,
-                        phone=str(row.get('Phone', '')).strip() if pd.notna(row.get('Phone')) else None,
+                        crew=str(row.get('Crew Assigned', '')).strip().upper(),
                         is_active=True,
-                        is_supervisor=str(row.get('Is Supervisor', 'No')).lower() == 'yes'
+                        is_supervisor=False  # Default to false, can be updated later
                     )
                     
-                    # Set position if provided
-                    if pd.notna(row.get('Position')):
-                        position_name = str(row.get('Position')).strip()
+                    # Set position from "Current Job Position" column
+                    if pd.notna(row.get('Current Job Position')):
+                        position_name = str(row.get('Current Job Position')).strip()
+                        position = Position.query.filter_by(name=position_name).first()
+                        if not position:
+                            # Create new position if it doesn't exist
+                            position = Position(name=position_name)
+                            db.session.add(position)
+                            db.session.flush()
+                        employee.position_id = position.id
+                    
+                    # Set default password
+                    employee.set_password('password123')  # YOUR default password
+                    
+                    db.session.add(employee)
+                    created_count += 1
+                else:
+                    # Update existing employee
+                    employee.name = full_name
+                    employee.crew = str(row.get('Crew Assigned', '')).strip().upper()
+                    
+                    # Update email if provided
+                    if pd.notna(row.get('Email')):
+                        employee.email = str(row.get('Email')).strip()
+                    
+                    # Update position if provided
+                    if pd.notna(row.get('Current Job Position')):
+                        position_name = str(row.get('Current Job Position')).strip()
                         position = Position.query.filter_by(name=position_name).first()
                         if not position:
                             position = Position(name=position_name)
                             db.session.add(position)
                             db.session.flush()
                         employee.position_id = position.id
-                    
-                    # Set hire date if provided
-                    if pd.notna(row.get('Hire Date')):
-                        try:
-                            if isinstance(row.get('Hire Date'), str):
-                                employee.hire_date = datetime.strptime(row.get('Hire Date'), '%Y-%m-%d').date()
-                            else:
-                                employee.hire_date = row.get('Hire Date')
-                        except:
-                            pass
-                    
-                    # Set default password
-                    employee.set_password('changeme123')
-                    
-                    db.session.add(employee)
-                    created_count += 1
-                else:
-                    # Update existing employee
-                    first_name = str(row.get('First Name', '')).strip()
-                    last_name = str(row.get('Last Name', '')).strip()
-                    employee.name = f"{first_name} {last_name}".strip()
-                    employee.crew = str(row.get('Crew', '')).strip().upper()
-                    
-                    if pd.notna(row.get('Email')):
-                        employee.email = str(row.get('Email')).strip()
-                    if pd.notna(row.get('Department')):
-                        employee.department = str(row.get('Department')).strip()
-                    if pd.notna(row.get('Phone')):
-                        employee.phone = str(row.get('Phone')).strip()
-                    if pd.notna(row.get('Is Supervisor')):
-                        employee.is_supervisor = str(row.get('Is Supervisor')).lower() == 'yes'
                     
                     updated_count += 1
                 
@@ -767,25 +756,28 @@ def process_overtime_upload(df, upload_record):
         return {'success': False, 'error': str(e)}
 
 # ==========================================
-# TEMPLATE DOWNLOAD ROUTES
+# TEMPLATE DOWNLOAD ROUTE - YOUR FORMAT
 # ==========================================
 
 @employee_import_bp.route('/download-employee-template')
 @login_required
 @supervisor_required
 def download_employee_template():
-    """Download Excel template for employee upload"""
+    """Download Excel template for employee upload - YOUR SPECIFIC FORMAT"""
     try:
-        # Create workbook
+        # Create workbook with YOUR column format
         wb = Workbook()
         ws = wb.active
         ws.title = 'Employee Data'
         
-        # Define headers
+        # YOUR EXACT COLUMNS
         headers = [
-            'Employee ID', 'First Name', 'Last Name', 'Email', 'Crew',
-            'Position', 'Department', 'Hire Date', 'Phone',
-            'Emergency Contact', 'Skills', 'Is Supervisor'
+            'Last Name',
+            'First Name', 
+            'Employee ID',
+            'Crew Assigned',
+            'Current Job Position',
+            'Email'
         ]
         
         # Style headers
@@ -798,16 +790,22 @@ def download_employee_template():
             cell.font = header_font
             cell.fill = header_fill
             cell.alignment = header_alignment
-            ws.column_dimensions[get_column_letter(col)].width = 15
+            
+            # Set column widths
+            if header == 'Email':
+                ws.column_dimensions[get_column_letter(col)].width = 30
+            elif header == 'Current Job Position':
+                ws.column_dimensions[get_column_letter(col)].width = 20
+            else:
+                ws.column_dimensions[get_column_letter(col)].width = 15
         
-        # Add sample data
+        # Add sample data in YOUR format
         sample_data = [
-            ['EMP001', 'John', 'Doe', 'john.doe@company.com', 'A', 
-             'Operator', 'Production', '2020-01-15', '555-0001',
-             'Jane Doe (555-0002)', 'Forklift, Safety', 'No'],
-            ['EMP002', 'Jane', 'Smith', 'jane.smith@company.com', 'B',
-             'Technician', 'Maintenance', '2019-06-01', '555-0003',
-             'John Smith (555-0004)', 'Electrical, HVAC', 'No']
+            ['Smith', 'John', 'EMP001', 'A', 'Operator', 'john.smith@company.com'],
+            ['Johnson', 'Jane', 'EMP002', 'B', 'Technician', 'jane.johnson@company.com'],
+            ['Williams', 'Bob', 'EMP003', 'C', 'Supervisor', 'bob.williams@company.com'],
+            ['Brown', 'Alice', 'EMP004', 'D', 'Lead Operator', 'alice.brown@company.com'],
+            ['Davis', 'Charlie', 'EMP005', 'A', 'Maintenance Tech', 'charlie.davis@company.com']
         ]
         
         for row_num, data in enumerate(sample_data, 2):
@@ -819,25 +817,32 @@ def download_employee_template():
         instructions = [
             ['Instructions for Employee Upload'],
             [''],
-            ['1. Fill in employee information in the Employee Data sheet'],
-            ['2. Required fields: Employee ID, First Name, Last Name, Crew'],
-            ['3. Employee ID must be unique for each employee'],
-            ['4. Crew must be one of: A, B, C, or D'],
-            ['5. Email is optional but recommended for login access'],
-            ['6. Hire Date format: YYYY-MM-DD'],
-            ['7. Skills should be comma-separated (e.g., "Forklift, Safety")'],
-            ['8. Is Supervisor should be "Yes" or "No"'],
+            ['COLUMN FORMAT (must be exact):'],
+            ['1. Last Name - Employee\'s last name'],
+            ['2. First Name - Employee\'s first name'],
+            ['3. Employee ID - Unique identifier for each employee'],
+            ['4. Crew Assigned - Must be A, B, C, or D'],
+            ['5. Current Job Position - Job title/position'],
+            ['6. Email - Employee email address (optional but recommended)'],
             [''],
-            ['Default password for new employees: changeme123'],
+            ['IMPORTANT NOTES:'],
+            ['- Keep the header row exactly as shown'],
+            ['- Employee ID must be unique'],
+            ['- Crew must be A, B, C, or D only'],
+            ['- Default password for new employees: password123'],
+            ['- Duplicate Employee IDs will update existing records'],
+            ['- New job positions will be created automatically'],
             [''],
-            ['Save the file and upload it to the system']
+            ['Save as .xlsx or .xls format and upload']
         ]
         
         for row_num, instruction in enumerate(instructions, 1):
             if instruction:
-                ws2.cell(row=row_num, column=1, value=instruction[0])
+                cell = ws2.cell(row=row_num, column=1, value=instruction[0])
                 if row_num == 1:
-                    ws2.cell(row=row_num, column=1).font = Font(bold=True, size=14)
+                    cell.font = Font(bold=True, size=14)
+                elif row_num == 3 or row_num == 11:
+                    cell.font = Font(bold=True, size=12)
         
         ws2.column_dimensions['A'].width = 80
         
@@ -944,55 +949,20 @@ def upload_history():
         ).paginate(page=page, per_page=20, error_out=False)
         
         # Try to render template, fall back to simple list
-        try:
-            return render_template('upload_history.html', uploads=uploads)
-        except:
-            # Simple fallback
-            html = """
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Upload History</title>
-                <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-            </head>
-            <body>
-                <div class="container mt-5">
-                    <h2>Upload History</h2>
-                    <a href="/upload-employees" class="btn btn-primary mb-3">Back to Upload</a>
-                    <table class="table">
-                        <thead>
-                            <tr>
-                                <th>Filename</th>
-                                <th>Type</th>
-                                <th>Status</th>
-                                <th>Processed</th>
-                                <th>Date</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-            """
-            
-            for upload in uploads.items:
-                status_class = 'success' if upload.status == 'completed' else 'danger'
-                date_str = upload.uploaded_at.strftime('%Y-%m-%d %H:%M') if upload.uploaded_at else 'Unknown'
-                html += f"""
-                    <tr>
-                        <td>{upload.filename}</td>
-                        <td>{upload.upload_type or 'Unknown'}</td>
-                        <td><span class="badge bg-{status_class}">{upload.status or 'Unknown'}</span></td>
-                        <td>{upload.records_processed or 0}</td>
-                        <td>{date_str}</td>
-                    </tr>
-                """
-            
-            html += """
-                        </tbody>
-                    </table>
-                </div>
-            </body>
-            </html>
-            """
-            return make_response(html)
+        template_options = [
+            'upload_history.html',
+            'upload_history_simple.html'
+        ]
+        
+        for template_name in template_options:
+            try:
+                return render_template(template_name, uploads=uploads)
+            except:
+                continue
+        
+        # Simple fallback
+        flash('Upload history view is being updated.', 'info')
+        return redirect(url_for('employee_import.upload_employees'))
             
     except Exception as e:
         logger.error(f"Error in upload_history: {e}")
@@ -1010,7 +980,7 @@ def upload_overtime():
 @login_required
 @supervisor_required
 def export_employees():
-    """Export current employee data to Excel"""
+    """Export current employee data to Excel - YOUR FORMAT"""
     try:
         employees = Employee.query.filter_by(is_active=True).all()
         
@@ -1018,38 +988,38 @@ def export_employees():
             flash('No employees found to export.', 'warning')
             return redirect(url_for('employee_import.upload_employees'))
         
-        # Create workbook
+        # Create workbook with YOUR format
         wb = Workbook()
         ws = wb.active
         ws.title = 'Employee Data'
         
-        # Headers
+        # YOUR headers
         headers = [
-            'Employee ID', 'First Name', 'Last Name', 'Email', 'Crew',
-            'Position', 'Department', 'Hire Date', 'Phone', 'Is Supervisor'
+            'Last Name',
+            'First Name',
+            'Employee ID',
+            'Crew Assigned',
+            'Current Job Position',
+            'Email'
         ]
         
         for col, header in enumerate(headers, 1):
             cell = ws.cell(row=1, column=col, value=header)
             cell.font = Font(bold=True)
         
-        # Employee data
+        # Employee data in YOUR format
         for row_num, emp in enumerate(employees, 2):
             # Split name into first and last
             name_parts = emp.name.split(' ', 1) if emp.name else ['', '']
             first_name = name_parts[0]
-            last_name = name_parts[1] if len(name_parts) > 1 else ''
+            last_name = name_parts[1] if len(name_parts) > 1 else name_parts[0]
             
-            ws.cell(row=row_num, column=1, value=emp.employee_id)
+            ws.cell(row=row_num, column=1, value=last_name)
             ws.cell(row=row_num, column=2, value=first_name)
-            ws.cell(row=row_num, column=3, value=last_name)
-            ws.cell(row=row_num, column=4, value=emp.email)
-            ws.cell(row=row_num, column=5, value=emp.crew)
-            ws.cell(row=row_num, column=6, value=emp.position.name if emp.position else '')
-            ws.cell(row=row_num, column=7, value=emp.department)
-            ws.cell(row=row_num, column=8, value=emp.hire_date.strftime('%Y-%m-%d') if emp.hire_date else '')
-            ws.cell(row=row_num, column=9, value=emp.phone)
-            ws.cell(row=row_num, column=10, value='Yes' if emp.is_supervisor else 'No')
+            ws.cell(row=row_num, column=3, value=emp.employee_id)
+            ws.cell(row=row_num, column=4, value=emp.crew)
+            ws.cell(row=row_num, column=5, value=emp.position.name if emp.position else '')
+            ws.cell(row=row_num, column=6, value=emp.email)
         
         # Save to BytesIO
         output = io.BytesIO()
@@ -1081,6 +1051,17 @@ def test_upload_route():
             '/upload-history',
             '/export-employees'
         ],
+        'your_format': {
+            'columns': [
+                'Last Name',
+                'First Name',
+                'Employee ID',
+                'Crew Assigned',
+                'Current Job Position',
+                'Email'
+            ],
+            'default_password': 'password123'
+        },
         'authenticated': current_user.is_authenticated,
         'is_supervisor': current_user.is_supervisor if current_user.is_authenticated else False,
         'upload_folder': current_app.config.get('UPLOAD_FOLDER'),
@@ -1088,4 +1069,4 @@ def test_upload_route():
     })
 
 # Log successful blueprint loading
-logger.info("Employee import blueprint loaded successfully with all routes")
+logger.info("Employee import blueprint loaded successfully with YOUR format")
