@@ -658,6 +658,32 @@ def upload_employees():
         flash('Error loading upload page. Please try again.', 'error')
         return redirect(url_for('supervisor.dashboard'))
 
+@employee_import_bp.route('/upload-overtime')
+@login_required
+@supervisor_required
+def upload_overtime():
+    """Upload overtime data page"""
+    try:
+        stats = get_employee_stats()
+        recent_uploads = get_recent_uploads()
+        
+        # Try to use overtime template if it exists
+        try:
+            return render_template(
+                'upload_overtime.html',
+                stats=stats,
+                recent_uploads=recent_uploads
+            )
+        except:
+            # Fall back to employee upload page with a message
+            flash('Overtime upload functionality coming soon. Use the template below for now.', 'info')
+            return redirect(url_for('employee_import.upload_employees'))
+            
+    except Exception as e:
+        logger.error(f"Error in upload_overtime: {e}")
+        flash('Error loading overtime upload page.', 'error')
+        return redirect(url_for('supervisor.dashboard'))
+
 @employee_import_bp.route('/upload-employees', methods=['POST'])
 @login_required
 @supervisor_required
