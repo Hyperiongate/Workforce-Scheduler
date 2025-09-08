@@ -1,11 +1,12 @@
 # blueprints/employee_import.py
 """
 Complete Excel upload system for employee data management
-QUALIFICATION SYSTEM: Column headers define skills, cells contain Yes/No
-Deploy this ENTIRE file to blueprints/employee_import.py
+FIXED VERSION - Deploy this ENTIRE file to blueprints/employee_import.py
+Last Updated: 2025-09-08
+Changes: Added all missing routes for validation, export, download, and AJAX endpoints
 """
 
-from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, current_app, send_file, make_response
+from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, current_app, send_file, make_response, abort
 from flask_login import login_required, current_user
 from models import db, Employee, Position, OvertimeHistory, FileUpload, Skill, EmployeeSkill
 from datetime import datetime, timedelta, date
@@ -89,11 +90,39 @@ def get_employee_stats():
             func.count(func.distinct(EmployeeSkill.employee_id))
         ).scalar() or 0
         
+        # Get overtime statistics
+        employees_with_ot = db.session.query(
+            func.count(func.distinct(OvertimeHistory.employee_id))
+        ).scalar() or 0
+        
+        # Calculate OT categories
+        low_ot = 0
+        medium_ot = 0
+        high_ot = 0
+        
+        # Get average OT per employee
+        ot_data = db.session.query(
+            OvertimeHistory.employee_id,
+            func.avg(OvertimeHistory.overtime_hours).label('avg_ot')
+        ).group_by(OvertimeHistory.employee_id).all()
+        
+        for emp_ot in ot_data:
+            if emp_ot.avg_ot < 10:
+                low_ot += 1
+            elif emp_ot.avg_ot < 20:
+                medium_ot += 1
+            else:
+                high_ot += 1
+        
         return {
             'total_employees': total_employees,
             'crews': crew_distribution,
             'total_skills': total_skills,
             'employees_with_skills': employees_with_skills,
+            'with_overtime': employees_with_ot,
+            'low_ot': low_ot,
+            'medium_ot': medium_ot,
+            'high_ot': high_ot,
             'last_updated': datetime.now()
         }
     except Exception as e:
@@ -103,6 +132,10 @@ def get_employee_stats():
             'crews': {},
             'total_skills': 0,
             'employees_with_skills': 0,
+            'with_overtime': 0,
+            'low_ot': 0,
+            'medium_ot': 0,
+            'high_ot': 0,
             'last_updated': datetime.now()
         }
 
@@ -120,7 +153,7 @@ def get_recent_uploads(limit=5):
             'status': upload.status or 'completed',
             'records_processed': upload.records_processed or 0,
             'created_at': upload.uploaded_at,
-            'uploaded_by': upload.uploaded_by
+            'uploaded_by': upload.uploaded_by.name if upload.uploaded_by else 'Unknown'
         } for upload in uploads]
     except Exception as e:
         logger.error(f"Error getting recent uploads: {e}")
@@ -296,6 +329,170 @@ def validate_employee_data_comprehensive(df):
         'qualification_columns': qualification_columns,
         'qualification_count': len(qualification_columns),
         'employees_with_qualifications': employees_with_quals
+    }
+
+# ==========================================
+# VALIDATION ROUTE - ADDED 2025-01-09
+# ==========================================
+
+@employee_import_bp.route('/validate-upload', methods=['POST'])
+@login_required
+@supervisor_required
+def validate_upload():
+    """AJAX endpoint to validate uploaded file without importing"""
+    try:
+        if 'file' not in request.files:
+            return jsonify({'success': False, 'error': 'No file provided'})
+        
+        file = request.files['file']
+        upload_type = request.form.get('uploadType', 'employee')
+        
+        if file.filename == '':
+            return jsonify({'success': False, 'error': 'No file selected'})
+        
+        if not allowed_file(file.filename):
+            return jsonify({'success': False, 'error': 'Invalid file type. Please upload .xlsx or .xls'})
+        
+        # Save file temporarily
+        filepath = secure_file_path(file.filename)
+        file.save(filepath)
+        
+        try:
+            # Read Excel file
+            df = pd.read_excel(filepath, sheet_name=None)
+            
+            # Get the appropriate sheet
+            if isinstance(df, dict):
+                if 'Employee Data' in df:
+                    df = df['Employee Data']
+                elif 'Overtime Data' in df:
+                    df = df['Overtime Data']
+                else:
+                    df = df[list(df.keys())[0]]
+            
+            # Validate based on type
+            if upload_type == 'employee':
+                result = validate_employee_data_comprehensive(df)
+            elif upload_type == 'overtime':
+                result = validate_overtime_data(df)
+            else:
+                result = {'success': False, 'error': 'Invalid upload type'}
+            
+            # Add row count
+            result['total_rows'] = len(df)
+            
+            # Clean up temp file
+            if os.path.exists(filepath):
+                os.remove(filepath)
+            
+            return jsonify(result)
+            
+        except Exception as e:
+            logger.error(f"Error validating file: {e}")
+            if os.path.exists(filepath):
+                os.remove(filepath)
+            return jsonify({'success': False, 'error': f'Error reading file: {str(e)}'})
+            
+    except Exception as e:
+        logger.error(f"Error in validate_upload: {e}")
+        return jsonify({'success': False, 'error': 'Server error during validation'})
+
+def validate_overtime_data(df):
+    """Validate overtime data"""
+    errors = []
+    warnings = []
+    
+    # Required columns for overtime
+    required_cols = ['Employee ID', 'Week Start Date', 'Regular Hours', 'Overtime Hours']
+    
+    # Check for missing columns
+    missing_cols = [col for col in required_cols if col not in df.columns]
+    if missing_cols:
+        return {
+            'success': False,
+            'error': f'Missing required columns: {", ".join(missing_cols)}',
+            'errors': [f'Missing column: {col}' for col in missing_cols]
+        }
+    
+    # Track employees and their weeks
+    employee_weeks = {}
+    total_ot_hours = 0
+    
+    for idx, row in df.iterrows():
+        row_num = idx + 2
+        
+        # Validate Employee ID
+        emp_id = row.get('Employee ID')
+        if pd.isna(emp_id) or str(emp_id).strip() == '':
+            errors.append(f'Row {row_num}: Missing Employee ID')
+            continue
+        
+        emp_id_str = str(emp_id).strip()
+        
+        # Check if employee exists in database
+        employee = Employee.query.filter_by(employee_id=emp_id_str).first()
+        if not employee:
+            errors.append(f'Row {row_num}: Employee ID "{emp_id_str}" not found in system')
+        
+        # Validate Week Start Date
+        try:
+            week_date = pd.to_datetime(row['Week Start Date'])
+            if week_date.weekday() != 0:  # Monday is 0
+                warnings.append(f'Row {row_num}: Week start date is not a Monday')
+        except:
+            errors.append(f'Row {row_num}: Invalid date format for Week Start Date')
+            continue
+        
+        # Track weeks per employee
+        if emp_id_str not in employee_weeks:
+            employee_weeks[emp_id_str] = []
+        employee_weeks[emp_id_str].append(week_date)
+        
+        # Validate hours
+        try:
+            regular_hours = float(row.get('Regular Hours', 0))
+            overtime_hours = float(row.get('Overtime Hours', 0))
+            
+            if regular_hours < 0:
+                errors.append(f'Row {row_num}: Regular hours cannot be negative')
+            if overtime_hours < 0:
+                errors.append(f'Row {row_num}: Overtime hours cannot be negative')
+            
+            # Warnings for unusual values
+            if regular_hours > 60:
+                warnings.append(f'Row {row_num}: Unusually high regular hours ({regular_hours})')
+            if overtime_hours > 40:
+                warnings.append(f'Row {row_num}: Very high overtime hours ({overtime_hours})')
+            
+            total_ot_hours += overtime_hours
+            
+        except (ValueError, TypeError):
+            errors.append(f'Row {row_num}: Invalid numeric value for hours')
+    
+    # Check for 13 weeks per employee
+    for emp_id, weeks in employee_weeks.items():
+        if len(weeks) != 13:
+            warnings.append(f'Employee {emp_id} has {len(weeks)} weeks (expected 13)')
+    
+    # Calculate average OT
+    avg_ot = total_ot_hours / len(df) if len(df) > 0 else 0
+    
+    if errors:
+        return {
+            'success': False,
+            'error': f'Validation failed with {len(errors)} errors',
+            'errors': errors[:20],
+            'total_errors': len(errors),
+            'warnings': warnings
+        }
+    
+    return {
+        'success': True,
+        'message': 'Overtime validation passed',
+        'employee_count': len(employee_weeks),
+        'total_rows': len(df),
+        'avg_ot': round(avg_ot, 1),
+        'warnings': warnings
     }
 
 # ==========================================
@@ -540,7 +737,7 @@ def upload_employees_post():
                 flash(' - '.join(msg_parts), 'success')
             else:
                 upload_record.status = 'failed'
-                upload_record.error_details = {'error': result.get('error'), 'errors': result.get('errors', [])}
+                upload_record.error_details = json.dumps({'error': result.get('error'), 'errors': result.get('errors', [])})
                 flash(f"Upload failed: {result.get('error')}", 'error')
             
             db.session.commit()
@@ -548,7 +745,7 @@ def upload_employees_post():
         except Exception as e:
             logger.error(f"Error processing upload: {e}\n{traceback.format_exc()}")
             upload_record.status = 'failed'
-            upload_record.error_details = {'error': str(e)}
+            upload_record.error_details = json.dumps({'error': str(e)})
             db.session.commit()
             flash('Error processing file. Please check the format and try again.', 'error')
         
@@ -560,9 +757,10 @@ def upload_employees_post():
         return redirect(url_for('employee_import.upload_employees'))
 
 # ==========================================
-# TEMPLATE DOWNLOAD WITH HEADER-BASED SYSTEM
+# TEMPLATE DOWNLOAD ROUTES - FIXED 2025-01-09
 # ==========================================
 
+@employee_import_bp.route('/download-template')
 @employee_import_bp.route('/download-employee-template')
 @login_required
 @supervisor_required
@@ -707,23 +905,9 @@ def download_employee_template():
             ['• Yes, Y, 1, True, X = Employee HAS this qualification'],
             ['• No, N, 0, False, blank = Employee DOES NOT have this qualification'],
             [''],
-            ['WHY THIS SYSTEM?'],
-            ['• Faster data entry - just type Yes/No instead of full qualification names'],
-            ['• Consistency - same qualifications for all employees'],
-            ['• Easy overtime assignment - quickly see who has required skills'],
-            ['• Bulk updates - copy Yes/No patterns easily'],
-            [''],
-            ['IMPORTANT NOTES:'],
-            ['• Default password for new employees: password123'],
-            ['• Duplicate Employee IDs will update existing records'],
-            ['• New job positions are created automatically'],
-            ['• Qualifications become searchable skills in the system'],
-            ['• These skills will be used for overtime eligibility'],
+            ['DEFAULT PASSWORD: password123'],
             [''],
             ['TIPS:'],
-            ['• Use Excel\'s copy/paste for employees with similar qualifications'],
-            ['• Filter and sort to quickly fill in patterns'],
-            ['• The dropdown in qualification columns helps ensure consistency'],
             ['• Delete the sample rows before importing your data']
         ]
         
@@ -732,7 +916,7 @@ def download_employee_template():
                 cell = ws2.cell(row=row_num, column=1, value=instruction[0])
                 if row_num == 1:
                     cell.font = Font(bold=True, size=14, color="366092")
-                elif instruction[0].startswith(('COLUMN', 'CUSTOMIZING', 'VALID', 'WHY', 'IMPORTANT', 'TIPS')):
+                elif instruction[0].startswith(('COLUMN', 'CUSTOMIZING', 'VALID', 'DEFAULT', 'TIPS')):
                     cell.font = Font(bold=True, size=12)
         
         # Save to BytesIO
@@ -751,6 +935,280 @@ def download_employee_template():
         logger.error(f"Error creating employee template: {e}")
         flash('Error creating template. Please try again.', 'error')
         return redirect(url_for('employee_import.upload_employees'))
+
+@employee_import_bp.route('/download-overtime-template')
+@login_required
+@supervisor_required
+def download_overtime_template():
+    """Download overtime template"""
+    try:
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Overtime Data'
+        
+        headers = ['Employee ID', 'Week Start Date', 'Regular Hours', 'Overtime Hours', 'Total Hours', 'Notes']
+        
+        # Add headers
+        for col, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col, value=header)
+            cell.font = Font(bold=True)
+        
+        # Add sample data
+        sample_data = [
+            ['EMP001', '2025-01-06', 40, 10, 50, 'Week 1'],
+            ['EMP001', '2024-12-30', 40, 8, 48, 'Week 2'],
+        ]
+        
+        for row_num, row_data in enumerate(sample_data, 2):
+            for col_num, value in enumerate(row_data, 1):
+                ws.cell(row=row_num, column=col_num, value=value)
+        
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+        
+        return send_file(
+            output,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=f'overtime_template_{datetime.now().strftime("%Y%m%d")}.xlsx'
+        )
+    except Exception as e:
+        logger.error(f"Error creating overtime template: {e}")
+        flash('Error creating template', 'error')
+        return redirect(url_for('employee_import.upload_employees'))
+
+# ==========================================
+# EXPORT ROUTES - ADDED 2025-01-09
+# ==========================================
+
+@employee_import_bp.route('/export-employees')
+@login_required
+@supervisor_required
+def export_employees():
+    """Export current employees to Excel"""
+    try:
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Employee Data'
+        
+        # Get all active employees
+        employees = Employee.query.filter_by(is_active=True).all()
+        
+        # Get all skills
+        all_skills = Skill.query.all()
+        skill_headers = [skill.name for skill in all_skills]
+        
+        # Create headers
+        headers = ['Last Name', 'First Name', 'Employee ID', 'Crew Assigned', 'Current Job Position', 'Email'] + skill_headers
+        
+        # Write headers
+        for col, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col, value=header)
+            cell.font = Font(bold=True)
+        
+        # Write employee data
+        for row_num, employee in enumerate(employees, 2):
+            # Split name
+            name_parts = employee.name.split(' ', 1) if employee.name else ['', '']
+            first_name = name_parts[0] if len(name_parts) > 0 else ''
+            last_name = name_parts[1] if len(name_parts) > 1 else ''
+            
+            ws.cell(row=row_num, column=1, value=last_name)
+            ws.cell(row=row_num, column=2, value=first_name)
+            ws.cell(row=row_num, column=3, value=employee.employee_id)
+            ws.cell(row=row_num, column=4, value=employee.crew)
+            ws.cell(row=row_num, column=5, value=employee.position.name if employee.position else '')
+            ws.cell(row=row_num, column=6, value=employee.email)
+            
+            # Add skills
+            employee_skills = {es.skill.name for es in employee.employee_skills}
+            for col, skill_name in enumerate(skill_headers, 7):
+                ws.cell(row=row_num, column=col, value='Yes' if skill_name in employee_skills else 'No')
+        
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+        
+        return send_file(
+            output,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=f'employees_export_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
+        )
+        
+    except Exception as e:
+        logger.error(f"Error exporting employees: {e}")
+        flash('Error exporting employees', 'error')
+        return redirect(url_for('employee_import.upload_employees'))
+
+@employee_import_bp.route('/export-overtime')
+@login_required
+@supervisor_required
+def export_overtime():
+    """Export overtime data to Excel"""
+    try:
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Overtime Data'
+        
+        # Get all overtime records
+        overtime_records = OvertimeHistory.query.join(Employee).order_by(
+            Employee.employee_id, OvertimeHistory.week_start_date
+        ).all()
+        
+        # Headers
+        headers = ['Employee ID', 'Employee Name', 'Week Start Date', 'Regular Hours', 'Overtime Hours', 'Total Hours']
+        
+        for col, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col, value=header)
+            cell.font = Font(bold=True)
+        
+        # Write data
+        for row_num, ot in enumerate(overtime_records, 2):
+            ws.cell(row=row_num, column=1, value=ot.employee.employee_id)
+            ws.cell(row=row_num, column=2, value=ot.employee.name)
+            ws.cell(row=row_num, column=3, value=ot.week_start_date.strftime('%Y-%m-%d'))
+            ws.cell(row=row_num, column=4, value=ot.regular_hours)
+            ws.cell(row=row_num, column=5, value=ot.overtime_hours)
+            ws.cell(row=row_num, column=6, value=ot.total_hours)
+        
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+        
+        return send_file(
+            output,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=f'overtime_export_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
+        )
+        
+    except Exception as e:
+        logger.error(f"Error exporting overtime: {e}")
+        flash('Error exporting overtime data', 'error')
+        return redirect(url_for('employee_import.upload_employees'))
+
+# ==========================================
+# AJAX ENDPOINTS FOR UPLOAD HISTORY - ADDED 2025-01-09
+# ==========================================
+
+@employee_import_bp.route('/upload-details/<int:upload_id>')
+@login_required
+@supervisor_required
+def get_upload_details(upload_id):
+    """Get upload details for modal"""
+    try:
+        upload = FileUpload.query.get_or_404(upload_id)
+        
+        # Parse error details if JSON
+        error_details = None
+        if upload.error_details:
+            try:
+                error_details = json.loads(upload.error_details)
+            except:
+                error_details = upload.error_details
+        
+        return jsonify({
+            'id': upload.id,
+            'filename': upload.filename,
+            'upload_type': upload.upload_type or 'employee',
+            'status': upload.status or 'completed',
+            'file_size': upload.file_size,
+            'records_processed': upload.records_processed or 0,
+            'successful_records': upload.successful_records or 0,
+            'created_at': upload.uploaded_at.isoformat() if upload.uploaded_at else None,
+            'uploaded_by': upload.uploaded_by.name if upload.uploaded_by else 'Unknown',
+            'error_log': error_details,
+            'original_file_path': bool(upload.file_path and os.path.exists(upload.file_path))
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting upload details: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@employee_import_bp.route('/upload-errors/<int:upload_id>')
+@login_required
+@supervisor_required
+def get_upload_errors(upload_id):
+    """Get upload error details"""
+    try:
+        upload = FileUpload.query.get_or_404(upload_id)
+        
+        errors = []
+        if upload.error_details:
+            try:
+                error_data = json.loads(upload.error_details)
+                if isinstance(error_data, dict):
+                    errors = error_data.get('errors', [])
+                elif isinstance(error_data, list):
+                    errors = error_data
+            except:
+                errors = [{'message': upload.error_details}]
+        
+        # Format errors for display
+        formatted_errors = []
+        for error in errors:
+            if isinstance(error, str):
+                formatted_errors.append({'message': error, 'type': 'Error'})
+            else:
+                formatted_errors.append(error)
+        
+        return jsonify({
+            'errors': formatted_errors,
+            'error_count': len(formatted_errors)
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting upload errors: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@employee_import_bp.route('/download-upload/<int:upload_id>')
+@login_required
+@supervisor_required
+def download_upload(upload_id):
+    """Download original uploaded file"""
+    try:
+        upload = FileUpload.query.get_or_404(upload_id)
+        
+        if upload.file_path and os.path.exists(upload.file_path):
+            return send_file(
+                upload.file_path,
+                as_attachment=True,
+                download_name=upload.filename
+            )
+        else:
+            flash('Original file not found', 'error')
+            return redirect(url_for('employee_import.upload_history'))
+            
+    except Exception as e:
+        logger.error(f"Error downloading upload: {e}")
+        flash('Error downloading file', 'error')
+        return redirect(url_for('employee_import.upload_history'))
+
+@employee_import_bp.route('/delete-upload/<int:upload_id>', methods=['DELETE'])
+@login_required
+@supervisor_required
+def delete_upload(upload_id):
+    """Delete upload record"""
+    try:
+        upload = FileUpload.query.get_or_404(upload_id)
+        
+        # Delete file if exists
+        if upload.file_path and os.path.exists(upload.file_path):
+            try:
+                os.remove(upload.file_path)
+            except:
+                pass
+        
+        db.session.delete(upload)
+        db.session.commit()
+        
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        logger.error(f"Error deleting upload: {e}")
+        return jsonify({'error': str(e)}), 500
 
 # ==========================================
 # UPLOAD HISTORY ROUTE - FIXED
@@ -1006,8 +1464,14 @@ def test_upload_route():
             '/upload-employees',
             '/validate-upload',
             '/download-employee-template',
+            '/download-template',
             '/upload-history',
-            '/export-employees'
+            '/export-employees',
+            '/export-overtime',
+            '/upload-details/<id>',
+            '/upload-errors/<id>',
+            '/download-upload/<id>',
+            '/delete-upload/<id>'
         ],
         'system': 'Header-based qualifications - column headers define skills, cells contain Yes/No',
         'default_password': 'password123',
@@ -1018,4 +1482,4 @@ def test_upload_route():
     })
 
 # Log successful blueprint loading
-logger.info("Employee import blueprint loaded - Header-based qualification system active")
+logger.info("Employee import blueprint loaded - Header-based qualification system active - All routes added 2025-09-08")
