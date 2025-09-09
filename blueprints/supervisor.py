@@ -309,7 +309,7 @@ def dashboard():
                             <div class="card-body text-center">
                                 <i class="bi bi-upload" style="font-size: 2rem; color: #667eea;"></i>
                                 <h5 class="mt-2">Upload Data</h5>
-                                <a href="/import/upload-employees" class="btn btn-warning btn-sm">Import</a>
+                                <a href="/upload-employees" class="btn btn-warning btn-sm">Import</a>
                             </div>
                         </div>
                     </div>
