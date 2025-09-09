@@ -207,7 +207,8 @@
             </a>
         </div>
         <div class="col-md-3 mb-3">
-            <a href="{{ url_for('employee_import.upload_employees') }}" class="action-card text-center">
+            <!-- FIXED: Hard-coded URL -->
+            <a href="/upload-employees" class="action-card text-center">
                 <i class="bi bi-upload action-icon"></i>
                 <h5>Upload Data</h5>
                 <p class="text-muted mb-0">Import employees</p>
@@ -263,21 +264,24 @@
             <h2 class="h4 mb-3">Data Management</h2>
         </div>
         <div class="col-md-4 mb-3">
-            <a href="{{ url_for('employee_import.upload_employees') }}" class="action-card">
+            <!-- FIXED: Hard-coded URL -->
+            <a href="/upload-employees" class="action-card">
                 <i class="bi bi-file-earmark-excel action-icon"></i>
                 <h5>Import Employees</h5>
                 <p class="text-muted mb-0">Upload Excel files</p>
             </a>
         </div>
         <div class="col-md-4 mb-3">
-            <a href="{{ url_for('employee_import.upload_overtime') }}" class="action-card">
+            <!-- FIXED: Hard-coded URL -->
+            <a href="/upload-overtime" class="action-card">
                 <i class="bi bi-clock-history action-icon"></i>
                 <h5>Import Overtime</h5>
                 <p class="text-muted mb-0">13-week history</p>
             </a>
         </div>
         <div class="col-md-4 mb-3">
-            <a href="{{ url_for('employee_import.upload_history') }}" class="action-card">
+            <!-- FIXED: Hard-coded URL -->
+            <a href="/upload-history" class="action-card">
                 <i class="bi bi-clock-fill action-icon"></i>
                 <h5>Upload History</h5>
                 <p class="text-muted mb-0">View past uploads</p>
