@@ -800,16 +800,16 @@ def download_employee_template():
         
         # Common qualifications for your industry
         qualification_headers = [
-            'Forklift Certified',
-            'Crane Operator',
-            'OSHA 10',
-            'OSHA 30',
-            'First Aid/CPR',
-            'CDL License',
-            'Welding Certified',
-            'Electrical License',
-            'Machine Operator',
-            'Hazmat Certified'
+            'Add Qualification 1',
+            'Add Qualification 2',
+            'Add Qualification 3',
+            'Add Qualification 4',
+            'Add Qualification 5',
+            'Add Qualification 6',
+            'Add Qualification 7',
+            'Add Qualification 8',
+            'Add Qualification 9',
+            'Add Qualification 10'
         ]
         
         # Build all headers
