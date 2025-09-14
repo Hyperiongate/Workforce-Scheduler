@@ -1,22 +1,18 @@
-# blueprints/supervisor.py - SYNTAX FIXED FOR DEPLOYMENT
-"""
-Supervisor blueprint with crew filtering functionality
-FIXED: Python f-string syntax errors and database schema issues
-"""
+# Add this to your blueprints/supervisor.py file
+# COMPLETE EMPLOYEE MANAGEMENT ROUTE
+# Last Updated: 2025-01-14
 
-from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, session
+from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify
 from flask_login import login_required, current_user
-from models import db, Employee, TimeOffRequest, ShiftSwapRequest, Schedule, Position
-from datetime import date, datetime, timedelta
-from sqlalchemy import func, and_, or_, text
-from sqlalchemy.exc import ProgrammingError, OperationalError
+from models import db, Employee, Position, Skill, EmployeeSkill, OvertimeHistory
 from functools import wraps
+from sqlalchemy import func
 import logging
 
-# Set up logging
 logger = logging.getLogger(__name__)
 
-supervisor_bp = Blueprint('supervisor', __name__)
+# If blueprint doesn't exist, create it
+# supervisor_bp = Blueprint('supervisor', __name__, url_prefix='/supervisor')
 
 def supervisor_required(f):
     """Decorator to require supervisor access"""
@@ -26,782 +22,200 @@ def supervisor_required(f):
             flash('Please log in to access this page.', 'warning')
             return redirect(url_for('auth.login'))
         if not current_user.is_supervisor:
-            flash('Access denied. Supervisors only.', 'danger')
-            return redirect(url_for('main.employee_dashboard'))
+            flash('Access denied. Supervisors only.', 'error')
+            return redirect(url_for('main.dashboard'))
         return f(*args, **kwargs)
     return decorated_function
 
-def safe_database_query(operation_name, query_func):
-    """Safely execute database queries with error handling"""
-    try:
-        return query_func()
-    except (ProgrammingError, OperationalError) as e:
-        logger.error(f"Database error in {operation_name}: {e}")
-        db.session.rollback()
-        return None
-    except Exception as e:
-        logger.error(f"Unexpected error in {operation_name}: {e}")
-        db.session.rollback()
-        return None
-
-def get_filtered_statistics(crew=None):
-    """Get statistics filtered by crew if specified - DATABASE SAFE"""
-    stats = {
-        'pending_communications': 0,
-        'pending_time_off': 0,
-        'pending_swaps': 0,
-        'coverage_gaps': 0
-    }
-    
-    # Pending communications count (placeholder - can be enhanced with actual message tables)
-    def get_communications_count():
-        if crew and crew != 'all':
-            # For now, return a crew-specific placeholder count
-            return 2 if crew == 'A' else 1 if crew in ['B', 'C'] else 0
-        else:
-            return 3  # Total communications across all crews
-    
-    stats['pending_communications'] = get_communications_count()
-    
-    # Pending time off - use raw SQL to avoid model issues
-    def get_time_off_count():
-        if crew and crew != 'all':
-            result = db.session.execute(
-                text("""
-                    SELECT COUNT(*) FROM time_off_request tor
-                    JOIN employee e ON tor.employee_id = e.id
-                    WHERE COALESCE(tor.status, 'pending') = 'pending'
-                    AND e.crew = :crew
-                """),
-                {'crew': crew}
-            )
-        else:
-            result = db.session.execute(
-                text("""
-                    SELECT COUNT(*) FROM time_off_request
-                    WHERE COALESCE(status, 'pending') = 'pending'
-                """)
-            )
-        return result.scalar()
-    
-    time_off_count = safe_database_query("time off count", get_time_off_count)
-    if time_off_count is not None:
-        stats['pending_time_off'] = time_off_count
-    
-    # Pending swaps - use raw SQL to avoid missing column issues
-    def get_swap_count():
-        if crew and crew != 'all':
-            result = db.session.execute(
-                text("""
-                    SELECT COUNT(*) FROM shift_swap_request ssr
-                    JOIN employee e ON ssr.requester_id = e.id
-                    WHERE COALESCE(ssr.status, 'pending') = 'pending'
-                    AND e.crew = :crew
-                """),
-                {'crew': crew}
-            )
-        else:
-            result = db.session.execute(
-                text("""
-                    SELECT COUNT(*) FROM shift_swap_request
-                    WHERE COALESCE(status, 'pending') = 'pending'
-                """)
-            )
-        return result.scalar()
-    
-    swap_count = safe_database_query("swap count", get_swap_count)
-    if swap_count is not None:
-        stats['pending_swaps'] = swap_count
-    
-    # Coverage gaps - simplified count
-    stats['coverage_gaps'] = 1 if crew and crew != 'all' else 2
-    
-    return stats
-
-# ==========================================
-# MAIN DASHBOARD WITH CREW FILTERING - FIXED
-# ==========================================
-
-@supervisor_bp.route('/supervisor/dashboard')
-@login_required
-@supervisor_required
-def dashboard():
-    """Enhanced supervisor dashboard with crew filtering - ERROR SAFE"""
-    try:
-        # Get crew filter from URL parameter
-        selected_crew = request.args.get('crew', 'all')
-        
-        # Validate crew parameter
-        if selected_crew not in ['all', 'A', 'B', 'C', 'D']:
-            selected_crew = 'all'
-        
-        # Store in session for persistence
-        session['selected_crew'] = selected_crew
-        
-        # Get filtered statistics safely
-        stats = get_filtered_statistics(selected_crew)
-        
-        context = {
-            'selected_crew': selected_crew,
-            'datetime': datetime,
-            'timedelta': timedelta,
-            **stats
-        }
-        
-        return render_template('supervisor_dashboard.html', **context)
-        
-    except Exception as e:
-        logger.error(f"Error in supervisor dashboard: {e}")
-        
-        # SAFE FALLBACK - inline HTML template with FIXED syntax
-        current_year = datetime.now().year
-        user_name = current_user.name if current_user.is_authenticated else "User"
-        
-        safe_html = f"""
-        <!DOCTYPE html>
-        <html lang="en">
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Supervisor Dashboard</title>
-            <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-            <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
-        </head>
-        <body class="bg-light">
-            <nav class="navbar navbar-dark bg-dark">
-                <div class="container">
-                    <span class="navbar-brand">Workforce Scheduler</span>
-                    <span class="navbar-text text-white">Welcome, {user_name}</span>
-                </div>
-            </nav>
-            
-            <div class="container-fluid p-4">
-                <!-- Header with Crew Filter Buttons -->
-                <div class="row mb-4">
-                    <div class="col-md-8">
-                        <h1 class="h2">Supervisor Dashboard</h1>
-                        <p class="text-muted">Welcome back, {user_name}!</p>
-                    </div>
-                    <div class="col-md-4 text-end">
-                        <div class="btn-group" role="group">
-                            <a href="/supervisor/dashboard?crew=all" class="btn btn-sm btn-primary">All Crews</a>
-                            <a href="/supervisor/dashboard?crew=A" class="btn btn-sm btn-outline-primary">Crew A</a>
-                            <a href="/supervisor/dashboard?crew=B" class="btn btn-sm btn-outline-primary">Crew B</a>
-                            <a href="/supervisor/dashboard?crew=C" class="btn btn-sm btn-outline-primary">Crew C</a>
-                            <a href="/supervisor/dashboard?crew=D" class="btn btn-sm btn-outline-primary">Crew D</a>
-                        </div>
-                        <div class="mt-1">
-                            <small class="text-muted">Viewing: All Crews</small>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Statistics Row -->
-                <div class="row mb-4">
-                    <div class="col-md-3">
-                        <div class="card text-white" style="background: linear-gradient(135deg, #4e73df 0%, #224abe 100%);">
-                            <div class="card-body">
-                                <h6>Pending Time Off</h6>
-                                <h3>0</h3>
-                                <small>Requests awaiting approval</small>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="card text-white" style="background: linear-gradient(135deg, #4e73df 0%, #224abe 100%);">
-                            <div class="card-body">
-                                <h6>Pending Swaps</h6>
-                                <h3>0</h3>
-                                <small>Shift swap requests</small>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="card text-white" style="background: linear-gradient(135deg, #4e73df 0%, #224abe 100%);">
-                            <div class="card-body">
-                                <h6>Pending Communications</h6>
-                                <h3>3</h3>
-                                <small>Messages awaiting response</small>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="card text-white" style="background: linear-gradient(135deg, #4e73df 0%, #224abe 100%);">
-                            <div class="card-body">
-                                <h6>Coverage Gaps</h6>
-                                <h3>0</h3>
-                                <small>Positions needing coverage</small>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Coverage Gaps Section -->
-                <div class="row mb-4">
-                    <div class="col-12">
-                        <h2 class="h4 mb-3">Coverage Gaps</h2>
-                    </div>
-                    <div class="col-md-6 mb-3">
-                        <div class="card h-100">
-                            <div class="card-body text-center">
-                                <i class="bi bi-exclamation-triangle" style="font-size: 2rem; color: #667eea;"></i>
-                                <h5 class="mt-2">Coverage Gaps</h5>
-                                <p class="text-muted">Identify gaps</p>
-                                <a href="/supervisor/coverage-gaps" class="btn btn-primary btn-sm">View Gaps</a>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-6 mb-3">
-                        <div class="card h-100">
-                            <div class="card-body text-center">
-                                <i class="bi bi-shield-check" style="font-size: 2rem; color: #667eea;"></i>
-                                <h5 class="mt-2">Coverage Needs</h5>
-                                <p class="text-muted">Requirements</p>
-                                <a href="/supervisor/coverage-needs" class="btn btn-primary btn-sm">View Needs</a>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Employee Requests Section -->
-                <div class="row mb-4">
-                    <div class="col-12">
-                        <h2 class="h4 mb-3">Employee Requests</h2>
-                    </div>
-                    <div class="col-md-6 mb-3">
-                        <div class="card h-100">
-                            <div class="card-body text-center">
-                                <i class="bi bi-calendar-x" style="font-size: 2rem; color: #667eea;"></i>
-                                <h5 class="mt-2">Time Off Requests</h5>
-                                <p class="text-muted">No pending requests</p>
-                                <a href="/supervisor/time-off-requests" class="btn btn-success btn-sm">View Requests</a>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-6 mb-3">
-                        <div class="card h-100">
-                            <div class="card-body text-center">
-                                <i class="bi bi-arrow-left-right" style="font-size: 2rem; color: #667eea;"></i>
-                                <h5 class="mt-2">Shift Swaps</h5>
-                                <p class="text-muted">No pending swaps</p>
-                                <a href="/supervisor/shift-swaps" class="btn btn-warning btn-sm">View Swaps</a>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Additional Management Sections -->
-                <div class="row mb-4">
-                    <div class="col-12">
-                        <h2 class="h4 mb-3">Workforce Management and Scheduling</h2>
-                    </div>
-                    <div class="col-md-3 mb-3">
-                        <div class="card h-100">
-                            <div class="card-body text-center">
-                                <i class="bi bi-people" style="font-size: 2rem; color: #667eea;"></i>
-                                <h5 class="mt-2">Employees</h5>
-                                <a href="/supervisor/employee-management" class="btn btn-info btn-sm">Manage</a>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-3 mb-3">
-                        <div class="card h-100">
-                            <div class="card-body text-center">
-                                <i class="bi bi-upload" style="font-size: 2rem; color: #667eea;"></i>
-                                <h5 class="mt-2">Upload Data</h5>
-                                <a href="/upload-employees" class="btn btn-warning btn-sm">Import</a>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-3 mb-3">
-                        <div class="card h-100">
-                            <div class="card-body text-center">
-                                <i class="bi bi-calendar3" style="font-size: 2rem; color: #667eea;"></i>
-                                <h5 class="mt-2">Schedule</h5>
-                                <a href="/schedule/view" class="btn btn-secondary btn-sm">View</a>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-3 mb-3">
-                        <div class="card h-100">
-                            <div class="card-body text-center">
-                                <i class="bi bi-calendar-plus" style="font-size: 2rem; color: #667eea;"></i>
-                                <h5 class="mt-2">Choose your schedule</h5>
-                                <a href="/supervisor/schedule-selection" class="btn btn-outline-primary btn-sm">Select</a>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="alert alert-info">
-                    <strong>System Status:</strong> Dashboard loaded in safe mode. Crew filtering is active.
-                </div>
-            </div>
-
-            <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-        </body>
-        </html>
-        """
-        
-        return safe_html
-
-# ==========================================
-# TIME OFF MANAGEMENT - SYNTAX FIXED
-# ==========================================
-
-@supervisor_bp.route('/supervisor/time-off-requests')
-@login_required
-@supervisor_required
-def time_off_requests():
-    """View and manage time off requests - DATABASE SAFE"""
-    try:
-        crew = request.args.get('crew', session.get('selected_crew', 'all'))
-        
-        def get_requests():
-            if crew and crew != 'all':
-                result = db.session.execute(
-                    text("""
-                        SELECT tor.id, tor.employee_id, tor.start_date, tor.end_date,
-                               COALESCE(tor.status, 'pending') as status,
-                               COALESCE(tor.reason, '') as reason,
-                               e.name as employee_name, e.crew
-                        FROM time_off_request tor
-                        JOIN employee e ON tor.employee_id = e.id
-                        WHERE COALESCE(tor.status, 'pending') = 'pending'
-                        AND e.crew = :crew
-                        ORDER BY tor.start_date
-                    """),
-                    {'crew': crew}
-                )
-            else:
-                result = db.session.execute(
-                    text("""
-                        SELECT tor.id, tor.employee_id, tor.start_date, tor.end_date,
-                               COALESCE(tor.status, 'pending') as status,
-                               COALESCE(tor.reason, '') as reason,
-                               e.name as employee_name, e.crew
-                        FROM time_off_request tor
-                        JOIN employee e ON tor.employee_id = e.id
-                        WHERE COALESCE(tor.status, 'pending') = 'pending'
-                        ORDER BY tor.start_date
-                    """)
-                )
-            
-            requests = []
-            for row in result:
-                class SimpleRequest:
-                    pass
-                req = SimpleRequest()
-                req.id = row[0]
-                req.employee_id = row[1]
-                req.start_date = row[2]
-                req.end_date = row[3]
-                req.status = row[4]
-                req.reason = row[5] or ''
-                req.employee_name = row[6]
-                req.crew = row[7]
-                requests.append(req)
-            return requests
-        
-        pending_requests = safe_database_query("time off requests", get_requests) or []
-        
-        # Generate HTML with proper string formatting
-        crew_display = f"Crew {crew}" if crew != 'all' else 'All Crews'
-        
-        # Build table rows
-        table_rows = ""
-        if pending_requests:
-            for req in pending_requests:
-                reason_text = req.reason or "No reason provided"
-                table_rows += f"""
-                            <tr>
-                                <td>{req.employee_name}</td>
-                                <td>Crew {req.crew}</td>
-                                <td>{req.start_date}</td>
-                                <td>{req.end_date}</td>
-                                <td>{reason_text}</td>
-                                <td>
-                                    <a href="/supervisor/approve-time-off/{req.id}?crew={crew}" class="btn btn-success btn-sm">Approve</a>
-                                    <a href="/supervisor/deny-time-off/{req.id}?crew={crew}" class="btn btn-danger btn-sm">Deny</a>
-                                </td>
-                            </tr>"""
-        
-        # Safe HTML template
-        safe_html = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Time Off Requests</title>
-            <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-        </head>
-        <body>
-            <div class="container mt-4">
-                <h2>Pending Time Off Requests</h2>
-                <p class="text-muted">Viewing: {crew_display}</p>
-                
-                <div class="mb-3">
-                    <a href="/supervisor/dashboard" class="btn btn-secondary">Back to Dashboard</a>
-                    <div class="btn-group ms-2">
-                        <a href="/supervisor/time-off-requests?crew=all" class="btn btn-outline-primary btn-sm">All</a>
-                        <a href="/supervisor/time-off-requests?crew=A" class="btn btn-outline-primary btn-sm">A</a>
-                        <a href="/supervisor/time-off-requests?crew=B" class="btn btn-outline-primary btn-sm">B</a>
-                        <a href="/supervisor/time-off-requests?crew=C" class="btn btn-outline-primary btn-sm">C</a>
-                        <a href="/supervisor/time-off-requests?crew=D" class="btn btn-outline-primary btn-sm">D</a>
-                    </div>
-                </div>
-                
-                {f'<div class="alert alert-info">No pending time off requests found.</div>' if not pending_requests else ''}
-                
-                {f'''
-                <div class="table-responsive">
-                    <table class="table table-striped">
-                        <thead>
-                            <tr>
-                                <th>Employee</th>
-                                <th>Crew</th>
-                                <th>Start Date</th>
-                                <th>End Date</th>
-                                <th>Reason</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {table_rows}
-                        </tbody>
-                    </table>
-                </div>
-                ''' if pending_requests else ''}
-            </div>
-        </body>
-        </html>
-        """
-        
-        return safe_html
-        
-    except Exception as e:
-        logger.error(f"Error loading time off requests: {e}")
-        flash('Error loading time off requests.', 'danger')
-        return redirect(url_for('supervisor.dashboard'))
-
-@supervisor_bp.route('/supervisor/approve-time-off/<int:request_id>')
-@login_required
-@supervisor_required
-def approve_time_off(request_id):
-    """Approve a time off request - DATABASE SAFE"""
-    try:
-        def approve_request():
-            db.session.execute(
-                text("""
-                    UPDATE time_off_request 
-                    SET status = 'approved'
-                    WHERE id = :request_id
-                """),
-                {'request_id': request_id}
-            )
-            db.session.commit()
-            return True
-        
-        success = safe_database_query("approve time off", approve_request)
-        if success:
-            flash('Time off request approved!', 'success')
-        else:
-            flash('Error approving request.', 'danger')
-        
-    except Exception as e:
-        logger.error(f"Error approving time off: {e}")
-        flash('Error approving request.', 'danger')
-    
-    crew = request.args.get('crew', session.get('selected_crew', 'all'))
-    return redirect(url_for('supervisor.time_off_requests', crew=crew))
-
-@supervisor_bp.route('/supervisor/deny-time-off/<int:request_id>')
-@login_required
-@supervisor_required
-def deny_time_off(request_id):
-    """Deny a time off request - DATABASE SAFE"""
-    try:
-        def deny_request():
-            db.session.execute(
-                text("""
-                    UPDATE time_off_request 
-                    SET status = 'denied'
-                    WHERE id = :request_id
-                """),
-                {'request_id': request_id}
-            )
-            db.session.commit()
-            return True
-        
-        success = safe_database_query("deny time off", deny_request)
-        if success:
-            flash('Time off request denied.', 'info')
-        else:
-            flash('Error denying request.', 'danger')
-        
-    except Exception as e:
-        logger.error(f"Error denying time off: {e}")
-        flash('Error denying request.', 'danger')
-    
-    crew = request.args.get('crew', session.get('selected_crew', 'all'))
-    return redirect(url_for('supervisor.time_off_requests', crew=crew))
-
-# ==========================================
-# SHIFT SWAP MANAGEMENT - SYNTAX FIXED
-# ==========================================
-
-@supervisor_bp.route('/supervisor/shift-swaps')
-@login_required
-@supervisor_required
-def shift_swaps():
-    """View and manage shift swap requests - DATABASE SAFE"""
-    try:
-        crew = request.args.get('crew', session.get('selected_crew', 'all'))
-        
-        def get_swaps():
-            if crew and crew != 'all':
-                result = db.session.execute(
-                    text("""
-                        SELECT ssr.id, ssr.requester_id,
-                               COALESCE(ssr.status, 'pending') as status,
-                               COALESCE(ssr.reason, '') as reason,
-                               ssr.created_at,
-                               e.name as requester_name, e.crew
-                        FROM shift_swap_request ssr
-                        JOIN employee e ON ssr.requester_id = e.id
-                        WHERE COALESCE(ssr.status, 'pending') = 'pending'
-                        AND e.crew = :crew
-                        ORDER BY ssr.created_at DESC
-                    """),
-                    {'crew': crew}
-                )
-            else:
-                result = db.session.execute(
-                    text("""
-                        SELECT ssr.id, ssr.requester_id,
-                               COALESCE(ssr.status, 'pending') as status,
-                               COALESCE(ssr.reason, '') as reason,
-                               ssr.created_at,
-                               e.name as requester_name, e.crew
-                        FROM shift_swap_request ssr
-                        JOIN employee e ON ssr.requester_id = e.id
-                        WHERE COALESCE(ssr.status, 'pending') = 'pending'
-                        ORDER BY ssr.created_at DESC
-                    """)
-                )
-            
-            swaps = []
-            for row in result:
-                class SimpleSwap:
-                    pass
-                swap = SimpleSwap()
-                swap.id = row[0]
-                swap.requester_id = row[1]
-                swap.status = row[2]
-                swap.reason = row[3] or ''
-                swap.created_at = row[4]
-                swap.requester_name = row[5]
-                swap.crew = row[6]
-                swaps.append(swap)
-            return swaps
-        
-        pending_swaps = safe_database_query("shift swaps", get_swaps) or []
-        
-        # Generate HTML with proper string formatting
-        crew_display = f"Crew {crew}" if crew != 'all' else 'All Crews'
-        
-        # Build table rows
-        table_rows = ""
-        if pending_swaps:
-            for swap in pending_swaps:
-                reason_text = swap.reason or "No reason provided"
-                date_text = swap.created_at.strftime('%Y-%m-%d') if swap.created_at else 'Unknown'
-                table_rows += f"""
-                            <tr>
-                                <td>{swap.requester_name}</td>
-                                <td>Crew {swap.crew}</td>
-                                <td>{reason_text}</td>
-                                <td>{date_text}</td>
-                                <td>
-                                    <a href="/supervisor/approve-swap/{swap.id}?crew={crew}" class="btn btn-success btn-sm">Approve</a>
-                                    <a href="/supervisor/deny-swap/{swap.id}?crew={crew}" class="btn btn-danger btn-sm">Deny</a>
-                                </td>
-                            </tr>"""
-        
-        # Safe HTML template
-        safe_html = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Shift Swaps</title>
-            <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-        </head>
-        <body>
-            <div class="container mt-4">
-                <h2>Pending Shift Swap Requests</h2>
-                <p class="text-muted">Viewing: {crew_display}</p>
-                
-                <div class="mb-3">
-                    <a href="/supervisor/dashboard" class="btn btn-secondary">Back to Dashboard</a>
-                    <div class="btn-group ms-2">
-                        <a href="/supervisor/shift-swaps?crew=all" class="btn btn-outline-primary btn-sm">All</a>
-                        <a href="/supervisor/shift-swaps?crew=A" class="btn btn-outline-primary btn-sm">A</a>
-                        <a href="/supervisor/shift-swaps?crew=B" class="btn btn-outline-primary btn-sm">B</a>
-                        <a href="/supervisor/shift-swaps?crew=C" class="btn btn-outline-primary btn-sm">C</a>
-                        <a href="/supervisor/shift-swaps?crew=D" class="btn btn-outline-primary btn-sm">D</a>
-                    </div>
-                </div>
-                
-                {f'<div class="alert alert-info">No pending shift swap requests found.</div>' if not pending_swaps else ''}
-                
-                {f'''
-                <div class="table-responsive">
-                    <table class="table table-striped">
-                        <thead>
-                            <tr>
-                                <th>Requester</th>
-                                <th>Crew</th>
-                                <th>Reason</th>
-                                <th>Date Requested</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {table_rows}
-                        </tbody>
-                    </table>
-                </div>
-                ''' if pending_swaps else ''}
-            </div>
-        </body>
-        </html>
-        """
-        
-        return safe_html
-        
-    except Exception as e:
-        logger.error(f"Error loading shift swaps: {e}")
-        flash('Error loading shift swaps.', 'danger')
-        return redirect(url_for('supervisor.dashboard'))
-
-@supervisor_bp.route('/supervisor/approve-swap/<int:swap_id>')
-@login_required
-@supervisor_required
-def approve_swap(swap_id):
-    """Approve a shift swap request - DATABASE SAFE"""
-    try:
-        def approve_swap_func():
-            db.session.execute(
-                text("""
-                    UPDATE shift_swap_request 
-                    SET status = 'approved'
-                    WHERE id = :swap_id
-                """),
-                {'swap_id': swap_id}
-            )
-            db.session.commit()
-            return True
-        
-        success = safe_database_query("approve swap", approve_swap_func)
-        if success:
-            flash('Shift swap approved!', 'success')
-        else:
-            flash('Error approving swap.', 'danger')
-        
-    except Exception as e:
-        logger.error(f"Error approving swap: {e}")
-        flash('Error approving swap.', 'danger')
-    
-    crew = request.args.get('crew', session.get('selected_crew', 'all'))
-    return redirect(url_for('supervisor.shift_swaps', crew=crew))
-
-@supervisor_bp.route('/supervisor/deny-swap/<int:swap_id>')
-@login_required
-@supervisor_required
-def deny_swap(swap_id):
-    """Deny a shift swap request - DATABASE SAFE"""
-    try:
-        def deny_swap_func():
-            db.session.execute(
-                text("""
-                    UPDATE shift_swap_request 
-                    SET status = 'denied'
-                    WHERE id = :swap_id
-                """),
-                {'swap_id': swap_id}
-            )
-            db.session.commit()
-            return True
-        
-        success = safe_database_query("deny swap", deny_swap_func)
-        if success:
-            flash('Shift swap denied.', 'info')
-        else:
-            flash('Error denying swap.', 'danger')
-        
-    except Exception as e:
-        logger.error(f"Error denying swap: {e}")
-        flash('Error denying swap.', 'danger')
-    
-    crew = request.args.get('crew', session.get('selected_crew', 'all'))
-    return redirect(url_for('supervisor.shift_swaps', crew=crew))
-
-# ==========================================
-# BASIC EMPLOYEE MANAGEMENT ROUTES
-# ==========================================
-
-@supervisor_bp.route('/supervisor/employee-management')
+@supervisor_bp.route('/employee-management')
 @login_required
 @supervisor_required
 def employee_management():
-    """Basic employee management page"""
-    return """
-    <html><head><title>Employee Management</title></head>
-    <body style="padding:20px;">
-        <h2>Employee Management</h2>
-        <p>Employee management functionality available.</p>
-        <a href="/supervisor/dashboard">Back to Dashboard</a>
-    </body></html>
-    """
+    """Complete employee management page with all data"""
+    try:
+        # Get all employees with their relationships eagerly loaded
+        employees = db.session.query(Employee).options(
+            db.joinedload(Employee.position),
+            db.joinedload(Employee.employee_skills).joinedload(EmployeeSkill.skill)
+        ).order_by(Employee.crew, Employee.name).all()
+        
+        # Get all positions for filter dropdown
+        positions = Position.query.order_by(Position.name).all()
+        
+        # Get total skills count
+        total_skills = Skill.query.count()
+        
+        # Calculate statistics
+        stats = {
+            'total': len(employees),
+            'active': sum(1 for e in employees if e.is_active),
+            'inactive': sum(1 for e in employees if not e.is_active),
+            'supervisors': sum(1 for e in employees if e.is_supervisor),
+            'crews': {
+                'A': sum(1 for e in employees if e.crew == 'A'),
+                'B': sum(1 for e in employees if e.crew == 'B'),
+                'C': sum(1 for e in employees if e.crew == 'C'),
+                'D': sum(1 for e in employees if e.crew == 'D'),
+                'unassigned': sum(1 for e in employees if not e.crew or e.crew not in ['A','B','C','D'])
+            }
+        }
+        
+        return render_template(
+            'employee_management.html',
+            employees=employees,
+            positions=positions,
+            total_skills=total_skills,
+            stats=stats
+        )
+        
+    except Exception as e:
+        logger.error(f"Error loading employee management: {e}")
+        flash('Error loading employee data. Please try again.', 'error')
+        return redirect(url_for('supervisor.dashboard'))
 
-@supervisor_bp.route('/supervisor/coverage-gaps')
+@supervisor_bp.route('/api/employee/<int:employee_id>')
 @login_required
 @supervisor_required
-def coverage_gaps():
-    """Basic coverage gaps page"""
-    return """
-    <html><head><title>Coverage Gaps</title></head>
-    <body style="padding:20px;">
-        <h2>Coverage Gaps</h2>
-        <p>Coverage gap analysis functionality available.</p>
-        <a href="/supervisor/dashboard">Back to Dashboard</a>
-    </body></html>
-    """
+def get_employee_details(employee_id):
+    """API endpoint to get employee details for AJAX"""
+    try:
+        employee = Employee.query.get_or_404(employee_id)
+        
+        # Build response data
+        data = {
+            'id': employee.id,
+            'employee_id': employee.employee_id,
+            'name': employee.name,
+            'email': employee.email,
+            'phone': employee.phone,
+            'crew': employee.crew,
+            'position': employee.position.name if employee.position else None,
+            'position_id': employee.position_id,
+            'department': employee.department,
+            'is_active': employee.is_active,
+            'is_supervisor': employee.is_supervisor,
+            'hire_date': employee.hire_date.isoformat() if employee.hire_date else None,
+            'skills': [
+                {
+                    'id': es.skill.id,
+                    'name': es.skill.name,
+                    'category': es.skill.category,
+                    'certified_date': es.certified_date.isoformat() if es.certified_date else None,
+                    'expiry_date': es.expiry_date.isoformat() if es.expiry_date else None
+                }
+                for es in employee.employee_skills
+            ],
+            'overtime_avg': 0  # Calculate if needed
+        }
+        
+        # Calculate average overtime if data exists
+        if employee.overtime_histories:
+            recent_ot = employee.overtime_histories.limit(13).all()
+            if recent_ot:
+                data['overtime_avg'] = sum(h.overtime_hours for h in recent_ot) / len(recent_ot)
+        
+        return jsonify(data)
+        
+    except Exception as e:
+        logger.error(f"Error getting employee details: {e}")
+        return jsonify({'error': str(e)}), 500
 
-@supervisor_bp.route('/supervisor/coverage-needs')
+@supervisor_bp.route('/api/employee/<int:employee_id>/toggle-status', methods=['POST'])
 @login_required
 @supervisor_required
-def coverage_needs():
-    """Basic coverage needs page"""
-    return """
-    <html><head><title>Coverage Needs</title></head>
-    <body style="padding:20px;">
-        <h2>Coverage Needs</h2>
-        <p>Coverage needs analysis functionality available.</p>
-        <a href="/supervisor/dashboard">Back to Dashboard</a>
-    </body></html>
-    """
+def toggle_employee_status(employee_id):
+    """Toggle employee active/inactive status"""
+    try:
+        employee = Employee.query.get_or_404(employee_id)
+        
+        # Don't allow deactivating yourself
+        if employee.id == current_user.id and employee.is_active:
+            return jsonify({'error': 'You cannot deactivate your own account'}), 400
+        
+        employee.is_active = not employee.is_active
+        db.session.commit()
+        
+        action = 'activated' if employee.is_active else 'deactivated'
+        logger.info(f"Employee {employee.employee_id} {action} by {current_user.name}")
+        
+        return jsonify({
+            'success': True,
+            'is_active': employee.is_active,
+            'message': f'Employee {action} successfully'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error toggling employee status: {e}")
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
 
-# ==========================================
-# ERROR HANDLERS
-# ==========================================
+@supervisor_bp.route('/api/employee/<int:employee_id>', methods=['PUT'])
+@login_required
+@supervisor_required
+def update_employee(employee_id):
+    """Update employee details"""
+    try:
+        employee = Employee.query.get_or_404(employee_id)
+        data = request.get_json()
+        
+        # Update fields if provided
+        if 'name' in data:
+            employee.name = data['name']
+        if 'email' in data:
+            employee.email = data['email']
+        if 'phone' in data:
+            employee.phone = data['phone']
+        if 'crew' in data:
+            employee.crew = data['crew']
+        if 'position_id' in data:
+            employee.position_id = data['position_id']
+        if 'department' in data:
+            employee.department = data['department']
+        if 'is_supervisor' in data:
+            # Don't allow removing your own supervisor status
+            if employee.id == current_user.id and not data['is_supervisor']:
+                return jsonify({'error': 'You cannot remove your own supervisor status'}), 400
+            employee.is_supervisor = data['is_supervisor']
+        
+        db.session.commit()
+        logger.info(f"Employee {employee.employee_id} updated by {current_user.name}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Employee updated successfully'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error updating employee: {e}")
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
 
-@supervisor_bp.errorhandler(404)
-def not_found_error(error):
-    """Handle 404 errors"""
-    return redirect(url_for('supervisor.dashboard'))
-
-@supervisor_bp.errorhandler(500)
-def internal_error(error):
-    """Handle 500 errors"""
-    db.session.rollback()
-    return redirect(url_for('supervisor.dashboard'))
+@supervisor_bp.route('/api/employees/export')
+@login_required
+@supervisor_required
+def export_employees_json():
+    """Export employee data as JSON for other systems"""
+    try:
+        employees = Employee.query.filter_by(is_active=True).all()
+        
+        data = []
+        for emp in employees:
+            data.append({
+                'employee_id': emp.employee_id,
+                'name': emp.name,
+                'email': emp.email,
+                'crew': emp.crew,
+                'position': emp.position.name if emp.position else None,
+                'is_supervisor': emp.is_supervisor,
+                'skills': [es.skill.name for es in emp.employee_skills]
+            })
+        
+        return jsonify({
+            'employees': data,
+            'count': len(data),
+            'exported_at': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        logger.error(f"Error exporting employees: {e}")
+        return jsonify({'error': str(e)}), 500
