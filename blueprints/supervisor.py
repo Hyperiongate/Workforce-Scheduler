@@ -1,18 +1,19 @@
-# Add this to your blueprints/supervisor.py file
-# COMPLETE EMPLOYEE MANAGEMENT ROUTE
+# blueprints/supervisor.py
+# COMPLETE SUPERVISOR BLUEPRINT WITH EMPLOYEE MANAGEMENT
 # Last Updated: 2025-01-14
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify
 from flask_login import login_required, current_user
-from models import db, Employee, Position, Skill, EmployeeSkill, OvertimeHistory
+from models import db, Employee, Position, Skill, EmployeeSkill, OvertimeHistory, Schedule, TimeOffRequest, ShiftSwapRequest
 from functools import wraps
 from sqlalchemy import func
+from datetime import datetime, date, timedelta
 import logging
 
 logger = logging.getLogger(__name__)
 
-# If blueprint doesn't exist, create it
-# supervisor_bp = Blueprint('supervisor', __name__, url_prefix='/supervisor')
+# CREATE THE BLUEPRINT - THIS WAS MISSING!
+supervisor_bp = Blueprint('supervisor', __name__, url_prefix='/supervisor')
 
 def supervisor_required(f):
     """Decorator to require supervisor access"""
@@ -26,6 +27,41 @@ def supervisor_required(f):
             return redirect(url_for('main.dashboard'))
         return f(*args, **kwargs)
     return decorated_function
+
+@supervisor_bp.route('/dashboard')
+@login_required
+@supervisor_required
+def dashboard():
+    """Supervisor dashboard"""
+    try:
+        # Get statistics
+        total_employees = Employee.query.filter_by(is_active=True).count()
+        pending_time_off = TimeOffRequest.query.filter_by(status='pending').count()
+        pending_swaps = ShiftSwapRequest.query.filter_by(status='pending').count()
+        
+        # Get today's schedule count
+        today_schedules = Schedule.query.filter_by(date=date.today()).count()
+        
+        # Get crew distribution
+        crew_distribution = db.session.query(
+            Employee.crew, 
+            func.count(Employee.id)
+        ).filter(
+            Employee.is_active == True
+        ).group_by(Employee.crew).all()
+        
+        return render_template(
+            'supervisor_dashboard.html',
+            total_employees=total_employees,
+            pending_time_off=pending_time_off,
+            pending_swaps=pending_swaps,
+            today_schedules=today_schedules,
+            crew_distribution=dict(crew_distribution)
+        )
+    except Exception as e:
+        logger.error(f"Error loading supervisor dashboard: {e}")
+        flash('Error loading dashboard', 'error')
+        return redirect(url_for('main.dashboard'))
 
 @supervisor_bp.route('/employee-management')
 @login_required
@@ -109,10 +145,13 @@ def get_employee_details(employee_id):
         }
         
         # Calculate average overtime if data exists
-        if employee.overtime_histories:
-            recent_ot = employee.overtime_histories.limit(13).all()
-            if recent_ot:
-                data['overtime_avg'] = sum(h.overtime_hours for h in recent_ot) / len(recent_ot)
+        recent_ot = OvertimeHistory.query.filter_by(
+            employee_id=employee.id
+        ).order_by(OvertimeHistory.week_ending.desc()).limit(13).all()
+        
+        if recent_ot:
+            total_ot = sum(h.overtime_hours for h in recent_ot if h.overtime_hours)
+            data['overtime_avg'] = round(total_ot / len(recent_ot), 1)
         
         return jsonify(data)
         
@@ -219,3 +258,39 @@ def export_employees_json():
     except Exception as e:
         logger.error(f"Error exporting employees: {e}")
         return jsonify({'error': str(e)}), 500
+
+# Add more supervisor routes as needed
+@supervisor_bp.route('/schedules')
+@login_required
+@supervisor_required
+def manage_schedules():
+    """Schedule management page"""
+    return render_template('supervisor_schedules.html')
+
+@supervisor_bp.route('/time-off-requests')
+@login_required
+@supervisor_required
+def time_off_requests():
+    """View and manage time off requests"""
+    try:
+        requests = TimeOffRequest.query.order_by(TimeOffRequest.requested_at.desc()).all()
+        return render_template('time_off_requests.html', requests=requests)
+    except:
+        flash('Time off management page not yet implemented', 'info')
+        return redirect(url_for('supervisor.dashboard'))
+
+@supervisor_bp.route('/reports')
+@login_required
+@supervisor_required
+def reports():
+    """Reports and analytics"""
+    return render_template('supervisor_reports.html')
+
+# Catch-all for missing supervisor pages
+@supervisor_bp.route('/<path:path>')
+@login_required
+@supervisor_required
+def catch_all(path):
+    """Catch-all for undefined supervisor routes"""
+    flash(f'Page "{path}" not found in supervisor section', 'warning')
+    return redirect(url_for('supervisor.dashboard'))
