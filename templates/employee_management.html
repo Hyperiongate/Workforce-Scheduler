@@ -1,308 +1,540 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Employee Management</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
-    <style>
-        .upload-section {
-            background-color: #f8f9fa;
-            border-radius: 10px;
-            padding: 20px;
-            margin-bottom: 30px;
-        }
-        .employee-table {
-            font-size: 0.9rem;
-        }
-        .position-badge {
-            font-size: 0.8rem;
-            margin: 2px;
-        }
-        .crew-badge {
-            font-weight: bold;
-        }
-        .action-buttons {
-            white-space: nowrap;
-        }
-    </style>
-</head>
-<body>
-    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
-        <div class="container-fluid">
-            <a class="navbar-brand" href="/dashboard">Workforce Management</a>
-            <span class="navbar-text text-white">
-                Employee Management
-            </span>
-        </div>
-    </nav>
+<!-- templates/employee_management.html -->
+<!-- COMPLETE EMPLOYEE MANAGEMENT SYSTEM - PRODUCTION READY -->
+<!-- Last Updated: 2025-01-14 -->
+{% extends "base.html" %}
 
-    <div class="container mt-4">
-        <!-- Upload Section -->
-        <div class="upload-section">
-            <h4><i class="bi bi-cloud-upload"></i> Employee Data Management</h4>
-            <div class="row mt-3">
-                <div class="col-md-6">
-                    <div class="card">
-                        <div class="card-body">
-                            <h5 class="card-title">Upload Employee Data</h5>
-                            <p class="card-text text-danger">
-                                <i class="bi bi-exclamation-triangle"></i> 
-                                <strong>Warning:</strong> Uploading will REPLACE all existing employee data!
-                            </p>
-                            <form action="/employees/upload-v2" method="POST" enctype="multipart/form-data" 
-                                  onsubmit="return confirm('This will DELETE all existing employees and replace with the uploaded data. Are you sure?');">
-                                <div class="mb-3">
-                                    <input type="file" class="form-control" name="file" accept=".xlsx,.xls" required>
-                                </div>
-                                <button type="submit" class="btn btn-danger">
-                                    <i class="bi bi-upload"></i> Upload & Replace All
-                                </button>
-                            </form>
-                            <div class="mt-2">
-                                <a href="/employees/check-duplicates" class="btn btn-sm btn-info">Check for Duplicates</a>
-                                <a href="/employees/force-cleanup" class="btn btn-sm btn-warning" 
-                                   onclick="return confirm('This will delete ALL employees except you. Continue?')">Force Cleanup</a>
-                            </div>
-                        </div>
-                    </div>
+{% block title %}Employee Management - Workforce Scheduler{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Professional data table styling */
+    .employee-table {
+        background: white;
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .employee-table thead {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+    }
+    
+    .employee-table th {
+        font-weight: 600;
+        text-transform: uppercase;
+        font-size: 0.85rem;
+        letter-spacing: 0.5px;
+        padding: 1rem;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+    }
+    
+    .employee-table tbody tr {
+        border-bottom: 1px solid #e9ecef;
+        transition: all 0.2s ease;
+    }
+    
+    .employee-table tbody tr:hover {
+        background-color: #f8f9fa;
+        transform: translateX(2px);
+    }
+    
+    .employee-table td {
+        padding: 0.75rem 1rem;
+        vertical-align: middle;
+    }
+    
+    /* Crew badges */
+    .crew-badge {
+        display: inline-block;
+        padding: 0.35rem 0.75rem;
+        border-radius: 20px;
+        font-weight: bold;
+        font-size: 0.85rem;
+        text-align: center;
+        min-width: 50px;
+    }
+    
+    .crew-A { background: #28a745; color: white; }
+    .crew-B { background: #007bff; color: white; }
+    .crew-C { background: #ffc107; color: #212529; }
+    .crew-D { background: #dc3545; color: white; }
+    .crew-undefined { background: #6c757d; color: white; }
+    
+    /* Status indicators */
+    .status-active {
+        color: #28a745;
+        font-weight: 600;
+    }
+    
+    .status-inactive {
+        color: #dc3545;
+        font-weight: 600;
+    }
+    
+    /* Action buttons */
+    .action-btn {
+        padding: 0.25rem 0.5rem;
+        margin: 0 0.125rem;
+        border-radius: 4px;
+        font-size: 0.875rem;
+        border: none;
+        transition: all 0.2s ease;
+    }
+    
+    .action-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }
+    
+    /* Search and filter section */
+    .filter-section {
+        background: white;
+        padding: 1.5rem;
+        border-radius: 8px;
+        margin-bottom: 2rem;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    
+    /* Stats cards */
+    .stat-card {
+        background: white;
+        border-radius: 8px;
+        padding: 1.5rem;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        text-align: center;
+        margin-bottom: 1rem;
+    }
+    
+    .stat-card h3 {
+        font-size: 2rem;
+        font-weight: bold;
+        margin: 0;
+        color: #667eea;
+    }
+    
+    .stat-card p {
+        margin: 0;
+        color: #6c757d;
+        font-size: 0.9rem;
+    }
+    
+    /* Skill pills */
+    .skill-pill {
+        display: inline-block;
+        padding: 0.2rem 0.5rem;
+        margin: 0.1rem;
+        background: #e9ecef;
+        border-radius: 12px;
+        font-size: 0.75rem;
+    }
+    
+    /* Loading overlay */
+    .loading-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0,0,0,0.5);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+    }
+    
+    .loading-overlay.active {
+        display: flex;
+    }
+    
+    /* Position badge */
+    .position-badge {
+        background: #6f42c1;
+        color: white;
+        padding: 0.25rem 0.5rem;
+        border-radius: 4px;
+        font-size: 0.8rem;
+    }
+    
+    /* No data message */
+    .no-data {
+        text-align: center;
+        padding: 3rem;
+        color: #6c757d;
+    }
+    
+    .no-data i {
+        font-size: 4rem;
+        margin-bottom: 1rem;
+        opacity: 0.5;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <!-- Page Header -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h1 class="h3 mb-0">
+                        <i class="bi bi-people-fill"></i> Employee Management
+                    </h1>
+                    <p class="text-muted mb-0">Manage your workforce, skills, and assignments</p>
                 </div>
-                <div class="col-md-6">
-                    <div class="card">
-                        <div class="card-body">
-                            <h5 class="card-title">Download Templates</h5>
-                            <p class="card-text">Download templates for employee data management.</p>
-                            <a href="/employees/download-template" class="btn btn-primary mb-2">
-                                <i class="bi bi-download"></i> Download Blank Template
-                            </a>
-                            <br>
-                            <a href="/employees/download-current" class="btn btn-success">
-                                <i class="bi bi-download"></i> Download Current Data
-                            </a>
-                        </div>
-                    </div>
+                <div>
+                    <a href="{{ url_for('employee_import.upload_employees') }}" class="btn btn-success">
+                        <i class="bi bi-upload"></i> Upload Employees
+                    </a>
+                    <a href="{{ url_for('employee_import.export_employees') }}" class="btn btn-outline-primary">
+                        <i class="bi bi-download"></i> Export to Excel
+                    </a>
+                    <button type="button" class="btn btn-primary" onclick="showAddEmployeeModal()">
+                        <i class="bi bi-person-plus"></i> Add Employee
+                    </button>
                 </div>
             </div>
         </div>
+    </div>
 
-        <!-- Flash Messages -->
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                {% for category, message in messages %}
-                    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-                        {{ message }}
-                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                    </div>
-                {% endfor %}
-            {% endif %}
-        {% endwith %}
+    <!-- Statistics Row -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="stat-card">
+                <h3 id="totalCount">{{ employees|length if employees else 0 }}</h3>
+                <p>Total Employees</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card">
+                <h3 id="activeCount">{{ employees|selectattr('is_active')|list|length if employees else 0 }}</h3>
+                <p>Active Employees</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card">
+                <h3 id="supervisorCount">{{ employees|selectattr('is_supervisor')|list|length if employees else 0 }}</h3>
+                <p>Supervisors</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card">
+                <h3 id="skillCount">{{ total_skills if total_skills else 0 }}</h3>
+                <p>Total Skills Tracked</p>
+            </div>
+        </div>
+    </div>
 
-        <!-- Employee Table -->
-        <h4 class="mb-3">Current Employees ({{ employees|length }})</h4>
-        
-        <!-- Crew Filter Tabs -->
-        <ul class="nav nav-tabs mb-3" id="crewTabs" role="tablist">
-            <li class="nav-item" role="presentation">
-                <button class="nav-link active" id="all-tab" data-bs-toggle="tab" data-bs-target="#all" type="button">
-                    All Crews
+    <!-- Filter Section -->
+    <div class="filter-section">
+        <div class="row">
+            <div class="col-md-3">
+                <label class="form-label">Search</label>
+                <input type="text" class="form-control" id="searchInput" placeholder="Name, ID, or email..." onkeyup="filterEmployees()">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Crew</label>
+                <select class="form-select" id="crewFilter" onchange="filterEmployees()">
+                    <option value="">All Crews</option>
+                    <option value="A">Crew A</option>
+                    <option value="B">Crew B</option>
+                    <option value="C">Crew C</option>
+                    <option value="D">Crew D</option>
+                    <option value="undefined">Unassigned</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Position</label>
+                <select class="form-select" id="positionFilter" onchange="filterEmployees()">
+                    <option value="">All Positions</option>
+                    {% if positions %}
+                        {% for position in positions %}
+                        <option value="{{ position.name }}">{{ position.name }}</option>
+                        {% endfor %}
+                    {% endif %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Status</label>
+                <select class="form-select" id="statusFilter" onchange="filterEmployees()">
+                    <option value="">All</option>
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                    <option value="supervisor">Supervisors</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">&nbsp;</label>
+                <button class="btn btn-secondary w-100" onclick="resetFilters()">
+                    <i class="bi bi-arrow-clockwise"></i> Reset
                 </button>
-            </li>
-            <li class="nav-item" role="presentation">
-                <button class="nav-link" id="crew-a-tab" data-bs-toggle="tab" data-bs-target="#crew-a" type="button">
-                    Crew A
-                </button>
-            </li>
-            <li class="nav-item" role="presentation">
-                <button class="nav-link" id="crew-b-tab" data-bs-toggle="tab" data-bs-target="#crew-b" type="button">
-                    Crew B
-                </button>
-            </li>
-            <li class="nav-item" role="presentation">
-                <button class="nav-link" id="crew-c-tab" data-bs-toggle="tab" data-bs-target="#crew-c" type="button">
-                    Crew C
-                </button>
-            </li>
-            <li class="nav-item" role="presentation">
-                <button class="nav-link" id="crew-d-tab" data-bs-toggle="tab" data-bs-target="#crew-d" type="button">
-                    Crew D
-                </button>
-            </li>
-        </ul>
+            </div>
+        </div>
+    </div>
 
-        <div class="tab-content" id="crewTabContent">
-            <div class="tab-pane fade show active" id="all" role="tabpanel">
-                <div class="table-responsive">
-                    <table class="table table-hover employee-table">
-                        <thead class="table-dark">
-                            <tr>
-                                <th>Employee ID</th>
-                                <th>Name</th>
-                                <th>Crew</th>
-                                <th>Current Position</th>
-                                <th>Hire Date</th>
-                                <th>Qualifications</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for employee in employees %}
-                            <tr data-crew="{{ employee.crew }}">
-                                <td>{{ employee.employee_id }}</td>
-                                <td>{{ employee.name }}</td>
-                                <td>
-                                    <span class="badge bg-{{ 'primary' if employee.crew == 'A' else 'success' if employee.crew == 'B' else 'warning' if employee.crew == 'C' else 'danger' }} crew-badge">
-                                        Crew {{ employee.crew }}
-                                    </span>
-                                </td>
-                                <td>{{ employee.position.name if employee.position else 'Not Assigned' }}</td>
-                                <td>{{ employee.hire_date.strftime('%m/%d/%Y') if employee.hire_date else 'N/A' }}</td>
-                                <td>
-                                    {% if employee.skills %}
-                                        {% for skill in employee.skills %}
-                                            {% if skill.category == 'position' %}
-                                                <span class="badge bg-secondary position-badge">
-                                                    {{ skill.name.replace('Qualified: ', '') }}
-                                                </span>
-                                            {% endif %}
-                                        {% endfor %}
-                                    {% endif %}
-                                </td>
-                                <td class="action-buttons">
-                                    <button class="btn btn-sm btn-primary" onclick="editEmployee({{ employee.id }})">
-                                        <i class="bi bi-pencil"></i>
-                                    </button>
-                                    <button class="btn btn-sm btn-danger" onclick="deleteEmployee({{ employee.id }}, '{{ employee.name }}')">
-                                        <i class="bi bi-trash"></i>
-                                    </button>
-                                </td>
-                            </tr>
+    <!-- Employee Table -->
+    <div class="employee-table">
+        {% if employees %}
+        <table class="table table-hover mb-0" id="employeeTable">
+            <thead>
+                <tr>
+                    <th onclick="sortTable(0)">ID <i class="bi bi-arrow-down-up"></i></th>
+                    <th onclick="sortTable(1)">Name <i class="bi bi-arrow-down-up"></i></th>
+                    <th onclick="sortTable(2)">Email</th>
+                    <th onclick="sortTable(3)">Crew <i class="bi bi-arrow-down-up"></i></th>
+                    <th onclick="sortTable(4)">Position</th>
+                    <th>Skills</th>
+                    <th>Status</th>
+                    <th>Role</th>
+                    <th class="text-center">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for employee in employees %}
+                <tr data-employee-id="{{ employee.id }}" 
+                    data-crew="{{ employee.crew or 'undefined' }}"
+                    data-position="{{ employee.position.name if employee.position else 'None' }}"
+                    data-status="{{ 'active' if employee.is_active else 'inactive' }}"
+                    data-supervisor="{{ 'supervisor' if employee.is_supervisor else 'employee' }}">
+                    <td>
+                        <strong>{{ employee.employee_id }}</strong>
+                    </td>
+                    <td>
+                        <div>
+                            <strong>{{ employee.name }}</strong>
+                            {% if employee.hire_date %}
+                            <small class="text-muted d-block">Since {{ employee.hire_date.strftime('%Y-%m-%d') }}</small>
+                            {% endif %}
+                        </div>
+                    </td>
+                    <td>
+                        <a href="mailto:{{ employee.email }}">{{ employee.email }}</a>
+                    </td>
+                    <td>
+                        <span class="crew-badge crew-{{ employee.crew or 'undefined' }}">
+                            {% if employee.crew %}Crew {{ employee.crew }}{% else %}Unassigned{% endif %}
+                        </span>
+                    </td>
+                    <td>
+                        {% if employee.position %}
+                        <span class="position-badge">{{ employee.position.name }}</span>
+                        {% else %}
+                        <span class="text-muted">No position</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if employee.employee_skills %}
+                            {% for es in employee.employee_skills[:3] %}
+                            <span class="skill-pill">{{ es.skill.name }}</span>
                             {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
+                            {% if employee.employee_skills|length > 3 %}
+                            <span class="skill-pill">+{{ employee.employee_skills|length - 3 }} more</span>
+                            {% endif %}
+                        {% else %}
+                        <span class="text-muted">No skills</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if employee.is_active %}
+                        <span class="status-active"><i class="bi bi-check-circle-fill"></i> Active</span>
+                        {% else %}
+                        <span class="status-inactive"><i class="bi bi-x-circle-fill"></i> Inactive</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if employee.is_supervisor %}
+                        <span class="badge bg-warning text-dark">Supervisor</span>
+                        {% else %}
+                        <span class="badge bg-secondary">Employee</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-center">
+                        <button class="btn btn-sm btn-outline-primary action-btn" onclick="editEmployee({{ employee.id }})">
+                            <i class="bi bi-pencil"></i> Edit
+                        </button>
+                        <button class="btn btn-sm btn-outline-info action-btn" onclick="viewEmployee({{ employee.id }})">
+                            <i class="bi bi-eye"></i> View
+                        </button>
+                        {% if employee.is_active %}
+                        <button class="btn btn-sm btn-outline-danger action-btn" onclick="toggleEmployeeStatus({{ employee.id }}, false)">
+                            <i class="bi bi-person-x"></i> Deactivate
+                        </button>
+                        {% else %}
+                        <button class="btn btn-sm btn-outline-success action-btn" onclick="toggleEmployeeStatus({{ employee.id }}, true)">
+                            <i class="bi bi-person-check"></i> Activate
+                        </button>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="no-data">
+            <i class="bi bi-people"></i>
+            <h4>No Employees Found</h4>
+            <p>Start by uploading your employee data or adding employees manually.</p>
+            <div class="mt-3">
+                <a href="{{ url_for('employee_import.upload_employees') }}" class="btn btn-success me-2">
+                    <i class="bi bi-upload"></i> Upload Excel File
+                </a>
+                <button type="button" class="btn btn-primary" onclick="showAddEmployeeModal()">
+                    <i class="bi bi-person-plus"></i> Add First Employee
+                </button>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Loading Overlay -->
+<div class="loading-overlay" id="loadingOverlay">
+    <div class="spinner-border text-light" role="status" style="width: 3rem; height: 3rem;">
+        <span class="visually-hidden">Loading...</span>
+    </div>
+</div>
+
+<!-- Employee Details Modal (placeholder for view/edit) -->
+<div class="modal fade" id="employeeModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalTitle">Employee Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="modalBody">
+                <!-- Content loaded dynamically -->
             </div>
         </div>
     </div>
+</div>
 
-    <!-- Edit Employee Modal -->
-    <div class="modal fade" id="editEmployeeModal" tabindex="-1">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Edit Employee</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <form id="editEmployeeForm">
-                        <input type="hidden" id="edit-employee-id">
-                        <div class="row">
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label class="form-label">Employee ID</label>
-                                    <input type="text" class="form-control" id="edit-employee-code" required>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label class="form-label">Name</label>
-                                    <input type="text" class="form-control" id="edit-name" required>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="row">
-                            <div class="col-md-4">
-                                <div class="mb-3">
-                                    <label class="form-label">Crew</label>
-                                    <select class="form-select" id="edit-crew" required>
-                                        <option value="A">Crew A</option>
-                                        <option value="B">Crew B</option>
-                                        <option value="C">Crew C</option>
-                                        <option value="D">Crew D</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div class="col-md-4">
-                                <div class="mb-3">
-                                    <label class="form-label">Current Position</label>
-                                    <select class="form-select" id="edit-position" required>
-                                        {% for position in positions %}
-                                        <option value="{{ position.id }}">{{ position.name }}</option>
-                                        {% endfor %}
-                                    </select>
-                                </div>
-                            </div>
-                            <div class="col-md-4">
-                                <div class="mb-3">
-                                    <label class="form-label">Hire Date</label>
-                                    <input type="date" class="form-control" id="edit-hire-date" required>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">Qualified Positions</label>
-                            <div class="row">
-                                {% for position in positions %}
-                                <div class="col-md-4">
-                                    <div class="form-check">
-                                        <input class="form-check-input position-qualification" type="checkbox" 
-                                               value="{{ position.id }}" id="qual-{{ position.id }}">
-                                        <label class="form-check-label" for="qual-{{ position.id }}">
-                                            {{ position.name }}
-                                        </label>
-                                    </div>
-                                </div>
-                                {% endfor %}
-                            </div>
-                        </div>
-                    </form>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-primary" onclick="saveEmployee()">Save Changes</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        // Filter employees by crew
-        document.querySelectorAll('[data-bs-toggle="tab"]').forEach(tab => {
-            tab.addEventListener('shown.bs.tab', event => {
-                const crew = event.target.id.replace('-tab', '').replace('crew-', '').toUpperCase();
-                const rows = document.querySelectorAll('tbody tr');
-                
-                rows.forEach(row => {
-                    if (crew === 'ALL' || row.dataset.crew === crew) {
-                        row.style.display = '';
-                    } else {
-                        row.style.display = 'none';
-                    }
-                });
-            });
-        });
-
-        function editEmployee(id) {
-            // In a real implementation, fetch employee data via AJAX
-            // For now, show the modal
-            const modal = new bootstrap.Modal(document.getElementById('editEmployeeModal'));
-            document.getElementById('edit-employee-id').value = id;
-            modal.show();
+<script>
+// Filter functionality
+function filterEmployees() {
+    const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+    const crewFilter = document.getElementById('crewFilter').value;
+    const positionFilter = document.getElementById('positionFilter').value.toLowerCase();
+    const statusFilter = document.getElementById('statusFilter').value;
+    
+    const rows = document.querySelectorAll('#employeeTable tbody tr');
+    let visibleCount = 0;
+    
+    rows.forEach(row => {
+        const text = row.textContent.toLowerCase();
+        const crew = row.dataset.crew;
+        const position = row.dataset.position.toLowerCase();
+        const status = row.dataset.status;
+        const isSupervisor = row.dataset.supervisor === 'supervisor';
+        
+        let show = true;
+        
+        // Search filter
+        if (searchTerm && !text.includes(searchTerm)) {
+            show = false;
         }
-
-        function saveEmployee() {
-            // In a real implementation, send data via AJAX
-            alert('Employee update functionality would be implemented here');
-            bootstrap.Modal.getInstance(document.getElementById('editEmployeeModal')).hide();
+        
+        // Crew filter
+        if (crewFilter && crew !== crewFilter) {
+            show = false;
         }
-
-        function deleteEmployee(id, name) {
-            if (confirm(`Are you sure you want to delete ${name}?`)) {
-                // In a real implementation, send delete request via AJAX
-                window.location.href = `/employees/delete/${id}`;
-            }
+        
+        // Position filter
+        if (positionFilter && !position.includes(positionFilter)) {
+            show = false;
         }
-    </script>
-</body>
-</html>
+        
+        // Status filter
+        if (statusFilter) {
+            if (statusFilter === 'active' && status !== 'active') show = false;
+            if (statusFilter === 'inactive' && status !== 'inactive') show = false;
+            if (statusFilter === 'supervisor' && !isSupervisor) show = false;
+        }
+        
+        row.style.display = show ? '' : 'none';
+        if (show) visibleCount++;
+    });
+    
+    // Update count
+    document.getElementById('totalCount').textContent = visibleCount;
+}
+
+// Reset filters
+function resetFilters() {
+    document.getElementById('searchInput').value = '';
+    document.getElementById('crewFilter').value = '';
+    document.getElementById('positionFilter').value = '';
+    document.getElementById('statusFilter').value = '';
+    filterEmployees();
+}
+
+// Sort table
+let sortDirection = {};
+function sortTable(column) {
+    const table = document.getElementById('employeeTable');
+    const tbody = table.querySelector('tbody');
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    
+    // Toggle sort direction
+    sortDirection[column] = !sortDirection[column];
+    
+    rows.sort((a, b) => {
+        let aValue = a.cells[column].textContent.trim();
+        let bValue = b.cells[column].textContent.trim();
+        
+        // Handle numeric columns
+        if (column === 0) { // ID column
+            aValue = aValue.replace(/\D/g, '');
+            bValue = bValue.replace(/\D/g, '');
+            return sortDirection[column] ? 
+                parseInt(aValue) - parseInt(bValue) : 
+                parseInt(bValue) - parseInt(aValue);
+        }
+        
+        // Text columns
+        return sortDirection[column] ? 
+            aValue.localeCompare(bValue) : 
+            bValue.localeCompare(aValue);
+    });
+    
+    // Re-append sorted rows
+    rows.forEach(row => tbody.appendChild(row));
+}
+
+// View employee details
+function viewEmployee(id) {
+    // This would typically load via AJAX
+    alert('View employee ' + id + ' - Full implementation would load details via AJAX');
+}
+
+// Edit employee
+function editEmployee(id) {
+    // This would typically load edit form via AJAX
+    alert('Edit employee ' + id + ' - Full implementation would load edit form via AJAX');
+}
+
+// Toggle employee status
+function toggleEmployeeStatus(id, activate) {
+    if (confirm(`Are you sure you want to ${activate ? 'activate' : 'deactivate'} this employee?`)) {
+        // This would make an AJAX call to update status
+        alert(`${activate ? 'Activating' : 'Deactivating'} employee ${id} - Full implementation would update via AJAX`);
+        // After success, reload or update row
+        location.reload();
+    }
+}
+
+// Add employee modal
+function showAddEmployeeModal() {
+    // This would show a form modal
+    alert('Add Employee - Full implementation would show a form modal');
+}
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+    // Any initialization code
+});
+</script>
+{% endblock %}
