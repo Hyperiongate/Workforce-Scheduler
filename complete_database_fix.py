@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-COMPLETE DATABASE FIX for Workforce Scheduler
-Fixes all missing columns in shift_swap_request table
+COMPLETE DATABASE AND TEMPLATE FIX for Workforce Scheduler
+Fixes all missing columns in shift_swap_request table AND template route errors
 FULL DEPLOYMENT READY SCRIPT - NO HARM TO EXISTING DATA
 """
 
@@ -176,14 +176,14 @@ class WorkforceSchedulerDatabaseFixer:
         
         # List of all columns that should exist
         columns_to_add = [
-            ("requester_id", "INTEGER REFERENCES employee(id) ON DELETE CASCADE"),
-            ("requested_with_id", "INTEGER REFERENCES employee(id) ON DELETE CASCADE"),
-            ("requester_schedule_id", "INTEGER REFERENCES schedule(id) ON DELETE CASCADE"),
-            ("requested_schedule_id", "INTEGER REFERENCES schedule(id) ON DELETE CASCADE"),
+            ("requester_id", "INTEGER"),
+            ("requested_with_id", "INTEGER"),
+            ("requester_schedule_id", "INTEGER"),
+            ("requested_schedule_id", "INTEGER"),
             ("status", "VARCHAR(20) DEFAULT 'pending'"),
             ("reason", "TEXT"),
             ("created_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"),
-            ("reviewed_by_id", "INTEGER REFERENCES employee(id) ON DELETE SET NULL"),
+            ("reviewed_by_id", "INTEGER"),
             ("reviewed_at", "TIMESTAMP"),
             ("reviewer_notes", "TEXT")
         ]
