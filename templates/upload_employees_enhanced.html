@@ -442,3 +442,410 @@
                     </div>
                 </div>
                 <div class="card-footer text-center">
+                    <a href="{{ url_for('employee_import.upload_history') }}" class="text-decoration-none">
+                        View All Uploads <i class="bi bi-arrow-right"></i>
+                    </a>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Loading Overlay -->
+<div class="loading-overlay" id="loadingOverlay">
+    <div class="spinner-container">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        <div class="mt-3">
+            <h5>Processing Upload...</h5>
+            <p class="text-muted">Please wait while we validate and import your data.</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let selectedFile = null;
+    let validationPassed = false;
+    let uploadInProgress = false;
+
+    // DOM elements
+    const uploadArea = document.getElementById('uploadArea');
+    const fileInput = document.getElementById('fileInput');
+    const validateBtn = document.getElementById('validateBtn');
+    const uploadBtn = document.getElementById('uploadBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const validationResults = document.getElementById('validationResults');
+    const uploadForm = document.getElementById('uploadForm');
+    const loadingOverlay = document.getElementById('loadingOverlay');
+
+    // Initialize drag and drop
+    uploadArea.addEventListener('dragover', handleDragOver);
+    uploadArea.addEventListener('dragleave', handleDragLeave);
+    uploadArea.addEventListener('drop', handleDrop);
+    uploadArea.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', handleFileSelect);
+
+    // Button event listeners
+    validateBtn.addEventListener('click', validateFile);
+    uploadForm.addEventListener('submit', handleFormSubmit);
+
+    function handleDragOver(e) {
+        e.preventDefault();
+        uploadArea.classList.add('dragover');
+    }
+
+    function handleDragLeave(e) {
+        if (!uploadArea.contains(e.relatedTarget)) {
+            uploadArea.classList.remove('dragover');
+        }
+    }
+
+    function handleDrop(e) {
+        e.preventDefault();
+        uploadArea.classList.remove('dragover');
+        
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+            processFileSelection(files[0]);
+        }
+    }
+
+    function handleFileSelect(e) {
+        if (e.target.files.length > 0) {
+            processFileSelection(e.target.files[0]);
+        }
+    }
+
+    function processFileSelection(file) {
+        // Validate file type
+        const allowedTypes = [
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'application/vnd.ms-excel'
+        ];
+        
+        if (!allowedTypes.includes(file.type) && 
+            !file.name.toLowerCase().endsWith('.xlsx') && 
+            !file.name.toLowerCase().endsWith('.xls')) {
+            showAlert('Please select an Excel file (.xlsx or .xls)', 'error');
+            return;
+        }
+
+        // Check file size (16MB limit)
+        if (file.size > 16 * 1024 * 1024) {
+            showAlert('File size exceeds 16MB limit. Please choose a smaller file.', 'error');
+            return;
+        }
+
+        selectedFile = file;
+        displayFileInfo(file);
+        updateStep(1);
+        resetValidation();
+        
+        // Enable validate button
+        validateBtn.disabled = false;
+        clearBtn.style.display = 'inline-block';
+        
+        // Update upload area appearance
+        uploadArea.classList.add('file-selected');
+    }
+
+    function displayFileInfo(file) {
+        const fileInfo = document.getElementById('fileInfo');
+        fileInfo.innerHTML = `
+            <div class="alert alert-info mb-0">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <strong>Selected:</strong> ${file.name}<br>
+                        <small class="text-muted">Size: ${formatFileSize(file.size)} | Type: ${getUploadTypeLabel()}</small>
+                    </div>
+                    <i class="bi bi-file-earmark-excel fs-3 text-success"></i>
+                </div>
+            </div>
+        `;
+    }
+
+    function getUploadTypeLabel() {
+        const uploadType = document.getElementById('uploadType').value;
+        const labels = {
+            'employee': 'Employee Data',
+            'overtime': 'Overtime History',
+            'bulk_update': 'Bulk Updates'
+        };
+        return labels[uploadType] || 'Unknown';
+    }
+
+    function validateFile() {
+        if (!selectedFile) {
+            showAlert('Please select a file first', 'error');
+            return;
+        }
+
+        if (uploadInProgress) {
+            return;
+        }
+
+        uploadInProgress = true;
+        updateStep(2);
+        
+        // Show loading state
+        validateBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Validating...';
+        validateBtn.disabled = true;
+        
+        // Show validation progress
+        validationResults.innerHTML = `
+            <div class="alert alert-info">
+                <div class="d-flex align-items-center">
+                    <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                    <span>Validating file structure and data...</span>
+                </div>
+            </div>
+        `;
+        validationResults.style.display = 'block';
+
+        // Prepare form data
+        const formData = new FormData();
+        formData.append('file', selectedFile);
+        formData.append('uploadType', document.getElementById('uploadType').value);
+
+        // Make validation request
+        fetch('/validate-upload', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            displayValidationResults(data);
+        })
+        .catch(error => {
+            console.error('Validation error:', error);
+            showValidationError('Network error occurred. Please check your connection and try again.');
+        })
+        .finally(() => {
+            uploadInProgress = false;
+            validateBtn.innerHTML = '<i class="bi bi-check-circle"></i> Validate File';
+            validateBtn.disabled = false;
+        });
+    }
+
+    function displayValidationResults(data) {
+        if (data.success) {
+            validationPassed = true;
+            updateStep(3);
+            
+            let resultHTML = `
+                <div class="alert alert-success">
+                    <h5><i class="bi bi-check-circle-fill"></i> Validation Successful!</h5>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <strong>Records to process:</strong> ${data.employee_count || data.total_rows || 0}<br>
+                            <strong>Upload type:</strong> ${getUploadTypeLabel()}
+                        </div>
+                        <div class="col-md-6">
+            `;
+            
+            if (data.qualification_columns && data.qualification_columns.length > 0) {
+                resultHTML += `<strong>Qualifications found:</strong> ${data.qualification_columns.length}<br>`;
+            }
+            
+            if (data.employees_with_qualifications) {
+                resultHTML += `<strong>With qualifications:</strong> ${data.employees_with_qualifications}`;
+            }
+            
+            resultHTML += '</div></div>';
+            
+            // Show qualification details
+            if (data.qualification_columns && data.qualification_columns.length > 0) {
+                resultHTML += `
+                    <div class="mt-3">
+                        <strong>Qualification columns detected:</strong>
+                        <div class="mt-2">
+                `;
+                data.qualification_columns.forEach(qual => {
+                    resultHTML += `<span class="badge bg-secondary me-1">${qual}</span>`;
+                });
+                resultHTML += '</div></div>';
+            }
+            
+            resultHTML += '</div>';
+            
+            // Show warnings if any
+            if (data.warnings && data.warnings.length > 0) {
+                resultHTML += '<div class="alert alert-warning"><h6>Warnings:</h6><ul class="mb-0">';
+                data.warnings.forEach(warning => {
+                    resultHTML += `<li>${warning}</li>`;
+                });
+                resultHTML += '</ul></div>';
+            }
+            
+            validationResults.innerHTML = resultHTML;
+            uploadBtn.disabled = false;
+            
+        } else {
+            validationPassed = false;
+            showValidationError(data.error, data.errors);
+        }
+    }
+
+    function showValidationError(mainError, detailErrors = []) {
+        let resultHTML = `
+            <div class="alert alert-danger">
+                <h5><i class="bi bi-x-circle-fill"></i> Validation Failed</h5>
+                <p><strong>Error:</strong> ${mainError}</p>
+        `;
+        
+        if (detailErrors && detailErrors.length > 0) {
+            resultHTML += '<div class="mt-3"><strong>Issues found:</strong><ul>';
+            detailErrors.slice(0, 15).forEach(error => {
+                resultHTML += `<li>${error}</li>`;
+            });
+            if (detailErrors.length > 15) {
+                resultHTML += `<li><em>... and ${detailErrors.length - 15} more issues</em></li>`;
+            }
+            resultHTML += '</ul></div>';
+        }
+        
+        resultHTML += `
+            <div class="mt-3">
+                <small class="text-muted">
+                    <i class="bi bi-info-circle"></i> 
+                    Fix these issues in your Excel file and try uploading again.
+                </small>
+            </div>
+        </div>`;
+        
+        validationResults.innerHTML = resultHTML;
+        uploadBtn.disabled = true;
+    }
+
+    function handleFormSubmit(e) {
+        if (!validationPassed) {
+            e.preventDefault();
+            showAlert('Please validate the file successfully before importing', 'error');
+            return;
+        }
+
+        if (!confirm('Are you sure you want to import this data? This action cannot be undone.')) {
+            e.preventDefault();
+            return;
+        }
+
+        // Show loading overlay
+        updateStep(4);
+        showLoading();
+        
+        // Add import mode to form
+        const importMode = document.querySelector('input[name="importMode"]:checked').value;
+        if (importMode === 'replace') {
+            const replaceInput = document.createElement('input');
+            replaceInput.type = 'hidden';
+            replaceInput.name = 'replaceAll';
+            replaceInput.value = 'true';
+            uploadForm.appendChild(replaceInput);
+        }
+        
+        // Disable buttons
+        uploadBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Importing...';
+        uploadBtn.disabled = true;
+        validateBtn.disabled = true;
+    }
+
+    function clearFile() {
+        selectedFile = null;
+        validationPassed = false;
+        
+        // Reset file input
+        fileInput.value = '';
+        
+        // Reset UI
+        document.getElementById('fileInfo').innerHTML = '';
+        validationResults.style.display = 'none';
+        uploadArea.classList.remove('file-selected');
+        
+        // Reset buttons
+        validateBtn.disabled = true;
+        uploadBtn.disabled = true;
+        clearBtn.style.display = 'none';
+        
+        // Reset steps
+        updateStep(1);
+        resetValidation();
+    }
+
+    function updateStep(currentStep) {
+        // Update step indicators
+        for (let i = 1; i <= 4; i++) {
+            const step = document.getElementById('step' + i);
+            step.classList.remove('active', 'completed');
+            
+            if (i < currentStep) {
+                step.classList.add('completed');
+            } else if (i === currentStep) {
+                step.classList.add('active');
+            }
+        }
+    }
+
+    function resetValidation() {
+        validationPassed = false;
+        validationResults.style.display = 'none';
+        uploadBtn.disabled = true;
+    }
+
+    function showLoading() {
+        loadingOverlay.classList.add('active');
+    }
+
+    function hideLoading() {
+        loadingOverlay.classList.remove('active');
+    }
+
+    function showAlert(message, type = 'info') {
+        const alertClass = type === 'error' ? 'alert-danger' : `alert-${type}`;
+        const alert = document.createElement('div');
+        alert.className = `alert ${alertClass} alert-dismissible fade show`;
+        alert.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        
+        // Insert at top of main content
+        const container = document.querySelector('.container-fluid');
+        container.insertBefore(alert, container.firstChild);
+        
+        // Auto-dismiss after 5 seconds
+        setTimeout(() => {
+            if (alert.parentNode) {
+                alert.remove();
+            }
+        }, 5000);
+    }
+
+    function formatFileSize(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    // Update upload type handler
+    document.getElementById('uploadType').addEventListener('change', function() {
+        if (selectedFile) {
+            displayFileInfo(selectedFile);
+            resetValidation();
+        }
+    });
+
+    // Handle page unload during upload
+    window.addEventListener('beforeunload', function(e) {
+        if (uploadInProgress) {
+            e.preventDefault();
+            e.returnValue = 'Upload in progress. Are you sure you want to leave?';
+        }
+    });
+</script>
+{% endblock %}
