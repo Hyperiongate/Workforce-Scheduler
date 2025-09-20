@@ -499,3 +499,38 @@ if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('FLASK_ENV') == 'development'
     app.run(host='0.0.0.0', port=port, debug=debug)
+# AUTOMATIC DATABASE FIX - Add at bottom of app.py
+def auto_fix_database():
+    try:
+        from sqlalchemy import text, inspect
+        print("Auto-fixing database...")
+        
+        inspector = inspect(db.engine)
+        
+        if 'shift_swap_request' in inspector.get_table_names():
+            columns = [col['name'] for col in inspector.get_columns('shift_swap_request')]
+            
+            missing_columns = [
+                ('requested_with_id', 'INTEGER'),
+                ('requester_schedule_id', 'INTEGER'),
+                ('requested_schedule_id', 'INTEGER'),
+                ('reviewed_by_id', 'INTEGER'),
+                ('reviewed_at', 'TIMESTAMP'),
+                ('reviewer_notes', 'TEXT')
+            ]
+            
+            for col_name, col_type in missing_columns:
+                if col_name not in columns:
+                    print(f"Adding {col_name} column...")
+                    db.session.execute(text(f"ALTER TABLE shift_swap_request ADD COLUMN {col_name} {col_type};"))
+                    db.session.commit()
+                    print(f"Added {col_name} successfully!")
+            
+            print("Database auto-fix completed!")
+        
+    except Exception as e:
+        print(f"Auto-fix error: {e}")
+
+# Run the auto-fix
+with app.app_context():
+    auto_fix_database()
