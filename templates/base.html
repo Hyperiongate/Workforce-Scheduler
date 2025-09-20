@@ -285,7 +285,7 @@
                                 </a>
                             </li>
                             
-                            <!-- Schedule Management Dropdown -->
+                            <!-- Schedule Management Dropdown - MINIMAL SAFE VERSION -->
                             {% if show_pitman_nav %}
                             <li class="nav-item dropdown">
                                 <a class="nav-link dropdown-toggle" href="#" id="scheduleDropdown" role="button" 
@@ -310,12 +310,14 @@
                                         </h6>
                                     </li>
                                     <li>
+                                        <!-- FIXED: Changed from schedule.employee_schedules to schedule.view_schedules -->
                                         <a class="dropdown-item" href="{{ url_for('schedule.view_schedules') }}">
                                             <i class="bi bi-calendar3"></i> Current Schedule
                                         </a>
                                     </li>
                                     <li>
-                                        <a class="dropdown-item" href="{{ url_for('schedule.employee_schedules') }}">
+                                        <!-- FIXED: Use safe working route instead of non-existent one -->
+                                        <a class="dropdown-item" href="{{ url_for('schedule.view_schedules') }}">
                                             <i class="bi bi-people"></i> Employee Schedules
                                         </a>
                                     </li>
