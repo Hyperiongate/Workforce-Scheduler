@@ -85,7 +85,7 @@
         .dropdown-item {
             display: block;
             width: 100%;
-            padding: 0.25rem 1.5rem;
+            padding: 0.25rem 1rem;
             clear: both;
             font-weight: 400;
             color: #212529;
@@ -94,7 +94,6 @@
             white-space: nowrap;
             background-color: transparent;
             border: 0;
-            transition: color .15s ease-in-out,background-color .15s ease-in-out;
         }
         
         .dropdown-item:hover {
@@ -102,42 +101,11 @@
             background-color: #e9ecef;
         }
         
-        .dropdown-header {
-            display: block;
-            padding: 0.5rem 1.5rem;
-            margin-bottom: 0;
-            font-size: 0.875rem;
-            color: #6c757d;
-            white-space: nowrap;
-        }
-        
-        .dropdown-divider {
-            height: 0;
-            margin: 0.5rem 0;
-            overflow: hidden;
-            border-top: 1px solid #e9ecef;
-        }
-        
-        .dropdown-toggle::after {
-            display: inline-block;
-            margin-left: 0.255em;
-            vertical-align: 0.255em;
-            content: "";
-            border-top: 0.3em solid;
-            border-right: 0.3em solid transparent;
-            border-bottom: 0;
-            border-left: 0.3em solid transparent;
-        }
-        
-        .dropdown:hover .dropdown-menu {
-            display: block;
-        }
-        
         /* Badge Styles */
         .badge {
             display: inline-block;
             padding: 0.35em 0.65em;
-            font-size: .75em;
+            font-size: 0.75em;
             font-weight: 700;
             line-height: 1;
             color: #fff;
@@ -163,21 +131,24 @@
             color: #212529 !important;
         }
         
-        /* Main Content Area */
+        /* Main Content */
         main {
-            min-height: calc(100vh - 200px);
-            padding: 2rem 0;
+            min-height: calc(100vh - 120px);
         }
         
-        /* Footer Styles */
+        .container-fluid {
+            padding-right: 15px;
+            padding-left: 15px;
+            margin-right: auto;
+            margin-left: auto;
+        }
+        
+        /* Footer */
         footer {
-            background-color: #f8f9fa !important;
-            margin-top: 3rem;
+            background-color: #f8f9fa;
             border-top: 1px solid #dee2e6;
             padding: 1rem 0;
-        }
-        
-        .text-center {
+            margin-top: 2rem;
             text-align: center;
         }
         
@@ -234,6 +205,39 @@
             flex-basis: 100%;
             flex-grow: 1;
             align-items: center;
+        }
+        
+        /* Alert Styles */
+        .alert {
+            position: relative;
+            padding: 0.75rem 1.25rem;
+            margin-bottom: 1rem;
+            border: 1px solid transparent;
+            border-radius: 0.25rem;
+        }
+        
+        .alert-success {
+            color: #155724;
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+        }
+        
+        .alert-danger {
+            color: #721c24;
+            background-color: #f8d7da;
+            border-color: #f5c6cb;
+        }
+        
+        .alert-warning {
+            color: #856404;
+            background-color: #fff3cd;
+            border-color: #ffeeba;
+        }
+        
+        .alert-info {
+            color: #0c5460;
+            background-color: #d1ecf1;
+            border-color: #bee5eb;
         }
         
         /* Responsive Styles */
@@ -306,84 +310,20 @@
                                         </h6>
                                     </li>
                                     <li>
-                                        <a class="dropdown-item" href="{{ url_for('view_schedule') }}">
-                                            <i class="bi bi-calendar-week"></i> Current Schedule
+                                        <a class="dropdown-item" href="{{ url_for('schedule.view_schedules') }}">
+                                            <i class="bi bi-calendar3"></i> Current Schedule
                                         </a>
                                     </li>
-                                    <!-- FIXED: Removed datetime calculation from template -->
                                     <li>
-                                        <a class="dropdown-item" href="{{ url_for('view_schedule') }}?weeks=2">
-                                            <i class="bi bi-calendar-event"></i> Next 2 Weeks
-                                        </a>
-                                    </li>
-                                    <li><hr class="dropdown-divider"></li>
-                                    <li>
-                                        <h6 class="dropdown-header">
-                                            <i class="bi bi-tools"></i> Tools
-                                        </h6>
-                                    </li>
-                                    <li>
-                                        <a class="dropdown-item" href="{{ url_for('test_pitman') }}">
-                                            <i class="bi bi-bug"></i> Test Configuration
+                                        <a class="dropdown-item" href="{{ url_for('schedule.employee_schedules') }}">
+                                            <i class="bi bi-people"></i> Employee Schedules
                                         </a>
                                     </li>
                                 </ul>
                             </li>
                             {% endif %}
                             
-                            <!-- Data Management Dropdown -->
-                            <li class="nav-item dropdown">
-                                <a class="nav-link dropdown-toggle" href="#" id="dataDropdown" role="button" 
-                                   data-bs-toggle="dropdown" aria-expanded="false">
-                                    <i class="bi bi-database"></i> Data Management
-                                </a>
-                                <ul class="dropdown-menu" aria-labelledby="dataDropdown">
-                                    <li>
-                                        <h6 class="dropdown-header">
-                                            <i class="bi bi-upload"></i> Import Data
-                                        </h6>
-                                    </li>
-                                    <li>
-                                        <a class="dropdown-item" href="{{ url_for('employee_import.upload_employees') }}">
-                                            <i class="bi bi-people"></i> Import Employees
-                                        </a>
-                                    </li>
-                                    <li>
-                                        <a class="dropdown-item" href="{{ url_for('employee_import.upload_overtime') }}">
-                                            <i class="bi bi-clock-history"></i> Import Overtime Data
-                                        </a>
-                                    </li>
-                                    <li><hr class="dropdown-divider"></li>
-                                    <li>
-                                        <h6 class="dropdown-header">
-                                            <i class="bi bi-download"></i> Export Data
-                                        </h6>
-                                    </li>
-                                    <li>
-                                        <a class="dropdown-item" href="{{ url_for('employee_import.download_employee_template') }}">
-                                            <i class="bi bi-file-earmark-spreadsheet"></i> Employee Template
-                                        </a>
-                                    </li>
-                                    <li>
-                                        <a class="dropdown-item" href="{{ url_for('employee_import.download_overtime_template') }}">
-                                            <i class="bi bi-file-earmark-text"></i> Overtime Template
-                                        </a>
-                                    </li>
-                                    <li><hr class="dropdown-divider"></li>
-                                    <li>
-                                        <h6 class="dropdown-header">
-                                            <i class="bi bi-archive"></i> History
-                                        </h6>
-                                    </li>
-                                    <li>
-                                        <a class="dropdown-item" href="{{ url_for('employee_import.upload_history') }}">
-                                            <i class="bi bi-clock-history"></i> Upload History
-                                        </a>
-                                    </li>
-                                </ul>
-                            </li>
-                            
-                            <!-- Employee Management - FIXED: Changed route name -->
+                            <!-- Employee Management -->
                             <li class="nav-item">
                                 <a class="nav-link" href="{{ url_for('supervisor.employee_management') }}">
                                     <i class="bi bi-people-fill"></i> Employees
@@ -409,11 +349,48 @@
                                         </a>
                                     </li>
                                     <li>
-                                        <a class="dropdown-item" href="{{ url_for('supervisor.shift_swap_requests') }}">
+                                        <!-- FIXED: Changed from shift_swap_requests to shift_swaps -->
+                                        <a class="dropdown-item" href="{{ url_for('supervisor.shift_swaps') }}">
                                             <i class="bi bi-arrow-left-right"></i> Shift Swaps
                                             {% if pending_swaps > 0 %}
                                             <span class="badge bg-info text-dark">{{ pending_swaps }}</span>
                                             {% endif %}
+                                        </a>
+                                    </li>
+                                </ul>
+                            </li>
+                            
+                            <!-- Data Management Dropdown -->
+                            <li class="nav-item dropdown">
+                                <a class="nav-link dropdown-toggle" href="#" id="dataDropdown" role="button" 
+                                   data-bs-toggle="dropdown" aria-expanded="false">
+                                    <i class="bi bi-database"></i> Data Management
+                                </a>
+                                <ul class="dropdown-menu" aria-labelledby="dataDropdown">
+                                    <li>
+                                        <h6 class="dropdown-header">
+                                            <i class="bi bi-upload"></i> Import Data
+                                        </h6>
+                                    </li>
+                                    <li>
+                                        <a class="dropdown-item" href="/upload-employees">
+                                            <i class="bi bi-file-earmark-excel"></i> Import Employees
+                                        </a>
+                                    </li>
+                                    <li>
+                                        <a class="dropdown-item" href="/upload-overtime">
+                                            <i class="bi bi-clock-history"></i> Import Overtime
+                                        </a>
+                                    </li>
+                                    <li><hr class="dropdown-divider"></li>
+                                    <li>
+                                        <h6 class="dropdown-header">
+                                            <i class="bi bi-clock"></i> History
+                                        </h6>
+                                    </li>
+                                    <li>
+                                        <a class="dropdown-item" href="/upload-history">
+                                            <i class="bi bi-clock-fill"></i> Upload History
                                         </a>
                                     </li>
                                 </ul>
@@ -429,7 +406,7 @@
                         {% else %}
                             <!-- Employee Navigation -->
                             <li class="nav-item">
-                                <a class="nav-link" href="{{ url_for('employee.dashboard') }}">
+                                <a class="nav-link" href="{{ url_for('main.employee_dashboard') }}">
                                     <i class="bi bi-house"></i> My Dashboard
                                 </a>
                             </li>
@@ -460,20 +437,15 @@
                                data-bs-toggle="dropdown" aria-expanded="false">
                                 <i class="bi bi-person-circle"></i> {{ current_user.name }}
                             </a>
-                            <ul class="dropdown-menu" aria-labelledby="userDropdown">
+                            <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
                                 <li>
-                                    <a class="dropdown-item" href="{{ url_for('employee.profile') }}">
+                                    <a class="dropdown-item" href="/profile">
                                         <i class="bi bi-person"></i> My Profile
-                                    </a>
-                                </li>
-                                <li>
-                                    <a class="dropdown-item" href="{{ url_for('employee.settings') }}">
-                                        <i class="bi bi-gear"></i> Settings
                                     </a>
                                 </li>
                                 <li><hr class="dropdown-divider"></li>
                                 <li>
-                                    <a class="dropdown-item" href="{{ url_for('auth.logout') }}">
+                                    <a class="dropdown-item" href="/logout">
                                         <i class="bi bi-box-arrow-right"></i> Logout
                                     </a>
                                 </li>
@@ -481,7 +453,7 @@
                         </li>
                     {% else %}
                         <li class="nav-item">
-                            <a class="nav-link" href="{{ url_for('auth.login') }}">
+                            <a class="nav-link" href="/login">
                                 <i class="bi bi-box-arrow-in-right"></i> Login
                             </a>
                         </li>
@@ -492,18 +464,18 @@
     </nav>
 
     <!-- Flash Messages -->
-    {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-            <div class="container-fluid mt-3">
+    <div class="container-fluid mt-3">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
                 {% for category, message in messages %}
                     <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
                         {{ message }}
                         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                     </div>
                 {% endfor %}
-            </div>
-        {% endif %}
-    {% endwith %}
+            {% endif %}
+        {% endwith %}
+    </div>
 
     <!-- Main Content -->
     <main>
@@ -512,65 +484,33 @@
 
     <!-- Footer -->
     <footer class="py-3">
-        <div class="container-fluid">
-            <div class="row">
-                <div class="col-12 text-center">
-                    <p class="text-muted mb-0">
-                        <!-- FIXED: Use JavaScript for current year instead of template calculation -->
-                        &copy; <span id="currentYear">2025</span> Workforce Scheduler. 
-                        {% if current_user.is_authenticated and current_user.is_supervisor %}
-                        <a href="{{ url_for('health_check') }}" class="text-muted">System Status</a>
-                        {% endif %}
-                    </p>
-                </div>
-            </div>
+        <div class="container-fluid text-center">
+            <p class="text-muted mb-0">&copy; 2025 Workforce Scheduler. All rights reserved.</p>
         </div>
     </footer>
 
-    <!-- Bootstrap JS -->
+    <!-- Bootstrap JavaScript -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     
-    <!-- Global JavaScript -->
+    <!-- Custom JavaScript -->
     <script>
-        // Set current year in footer
-        document.getElementById('currentYear').textContent = new Date().getFullYear();
+        // Initialize Bootstrap dropdowns
+        document.addEventListener('DOMContentLoaded', function() {
+            var dropdownElementList = [].slice.call(document.querySelectorAll('.dropdown-toggle'));
+            var dropdownList = dropdownElementList.map(function (dropdownToggleEl) {
+                return new bootstrap.Dropdown(dropdownToggleEl);
+            });
+        });
         
         // Auto-dismiss alerts after 5 seconds
         document.addEventListener('DOMContentLoaded', function() {
-            const alerts = document.querySelectorAll('.alert:not(.alert-danger)');
-            alerts.forEach(function(alert) {
-                setTimeout(function() {
-                    const bsAlert = new bootstrap.Alert(alert);
+            setTimeout(function() {
+                var alerts = document.querySelectorAll('.alert-dismissible');
+                alerts.forEach(function(alert) {
+                    var bsAlert = new bootstrap.Alert(alert);
                     bsAlert.close();
-                }, 5000);
-            });
-        });
-        
-        // Add active state to current nav item
-        document.addEventListener('DOMContentLoaded', function() {
-            const currentPath = window.location.pathname;
-            const navLinks = document.querySelectorAll('.nav-link');
-            
-            navLinks.forEach(function(link) {
-                if (link.getAttribute('href') === currentPath) {
-                    link.classList.add('active');
-                    link.style.color = '#fff';
-                }
-            });
-        });
-        
-        // Handle dropdown for mobile
-        document.addEventListener('DOMContentLoaded', function() {
-            const dropdownToggles = document.querySelectorAll('.dropdown-toggle');
-            dropdownToggles.forEach(function(toggle) {
-                toggle.addEventListener('click', function(e) {
-                    if (window.innerWidth < 768) {
-                        e.preventDefault();
-                        const dropdown = this.closest('.dropdown');
-                        dropdown.classList.toggle('show');
-                    }
                 });
-            });
+            }, 5000);
         });
     </script>
     
