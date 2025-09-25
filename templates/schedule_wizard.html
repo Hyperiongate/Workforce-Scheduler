@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Schedule Wizard - {{ pattern_config.name }}{% endblock %}
+{% block title %}{{ pattern_config.name }} Schedule Pattern{% endblock %}
 
 {% block content %}
 <div class="container-fluid">
@@ -7,263 +7,151 @@
         <div class="col-12">
             <div class="d-flex justify-content-between align-items-center mb-4">
                 <div>
-                    <h1 class="h2">Schedule Wizard: {{ pattern_config.name }}</h1>
-                    <p class="text-muted">Configure and create your {{ pattern_config.name }} schedule</p>
+                    <h1 class="h2">{{ pattern_config.name }} Schedule Pattern</h1>
+                    <p class="text-muted">Learn about this pattern and preview how it works</p>
                 </div>
-                <a href="{{ url_for('schedule.schedule_select') }}" class="btn btn-outline-secondary">
-                    <i class="bi bi-arrow-left"></i> Back to Pattern Selection
-                </a>
+                <div class="btn-group">
+                    <a href="{{ url_for('schedule.schedule_select') }}" class="btn btn-outline-secondary">
+                        <i class="bi bi-arrow-left"></i> Back to Patterns
+                    </a>
+                    <button class="btn btn-primary" id="createScheduleBtn">
+                        <i class="bi bi-calendar-plus"></i> Create This Schedule
+                    </button>
+                </div>
             </div>
         </div>
     </div>
 
-    <!-- Wizard Steps -->
-    <div class="wizard-container">
-        <div class="wizard-steps">
-            <div class="step active" data-step="1">
-                <div class="step-number">1</div>
-                <div class="step-label">Basic Setup</div>
-            </div>
-            <div class="step" data-step="2">
-                <div class="step-number">2</div>
-                <div class="step-label">Pattern Config</div>
-            </div>
-            <div class="step" data-step="3">
-                <div class="step-number">3</div>
-                <div class="step-label">Preview</div>
-            </div>
-            <div class="step" data-step="4">
-                <div class="step-number">4</div>
-                <div class="step-label">Create</div>
-            </div>
-        </div>
-
-        <!-- Step 1: Basic Setup -->
-        <div class="wizard-step" id="step-1">
-            <div class="row">
-                <div class="col-lg-8">
-                    <div class="card">
-                        <div class="card-header">
-                            <h5>Basic Schedule Configuration</h5>
-                        </div>
-                        <div class="card-body">
-                            <form id="basicConfigForm">
-                                <div class="row">
-                                    <div class="col-md-6 mb-3">
-                                        <label for="startDate" class="form-label">Start Date</label>
-                                        <input type="date" class="form-control" id="startDate" required>
-                                        <div class="form-text">Schedule will begin on this date</div>
-                                    </div>
-                                    <div class="col-md-6 mb-3">
-                                        <label for="scheduleLength" class="form-label">Schedule Length (weeks)</label>
-                                        <select class="form-select" id="scheduleLength" required>
-                                            <option value="4">4 weeks</option>
-                                            <option value="8" selected>8 weeks</option>
-                                            <option value="12">12 weeks</option>
-                                            <option value="16">16 weeks</option>
-                                            <option value="26">26 weeks (6 months)</option>
-                                            <option value="52">52 weeks (1 year)</option>
-                                        </select>
-                                    </div>
-                                </div>
-
-                                <div class="row">
-                                    <div class="col-md-6 mb-3">
-                                        <label for="dayShiftStart" class="form-label">Day Shift Start Time</label>
-                                        <input type="time" class="form-control" id="dayShiftStart" value="06:00" required>
-                                    </div>
-                                    <div class="col-md-6 mb-3">
-                                        <label for="nightShiftStart" class="form-label">Night Shift Start Time</label>
-                                        <input type="time" class="form-control" id="nightShiftStart" value="18:00" required>
-                                    </div>
-                                </div>
-
-                                {% if pattern_config.allows_rotating %}
-                                <div class="mb-3">
-                                    <label class="form-label">Rotation Type</label>
-                                    <div>
-                                        {% if pattern_config.allows_fixed %}
-                                        <div class="form-check form-check-inline">
-                                            <input class="form-check-input" type="radio" name="rotationType" id="rotationFixed" value="fixed" checked>
-                                            <label class="form-check-label" for="rotationFixed">Fixed (crews stay on same shifts)</label>
-                                        </div>
-                                        {% endif %}
-                                        <div class="form-check form-check-inline">
-                                            <input class="form-check-input" type="radio" name="rotationType" id="rotationRotating" value="rotating">
-                                            <label class="form-check-label" for="rotationRotating">Rotating (crews change shifts)</label>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div id="rotationFrequencyDiv" style="display: none;" class="mb-3">
-                                    <label for="rotationFrequency" class="form-label">Rotation Frequency</label>
-                                    <select class="form-select" id="rotationFrequency">
-                                        {% for option in pattern_config.rotation_options %}
-                                        <option value="{{ option }}">{{ option.replace('_', ' ').title() }}</option>
-                                        {% endfor %}
-                                    </select>
-                                </div>
-                                {% endif %}
-
-                                <div class="d-flex justify-content-end">
-                                    <button type="button" class="btn btn-primary" onclick="nextStep(2)">
-                                        Next: Pattern Configuration <i class="bi bi-arrow-right"></i>
-                                    </button>
-                                </div>
-                            </form>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="col-lg-4">
-                    <div class="card">
-                        <div class="card-header">
-                            <h6>Current Crew Status</h6>
-                        </div>
-                        <div class="card-body">
-                            {% for crew, stats in crew_stats.items() %}
-                            <div class="crew-status-item">
-                                <div class="d-flex justify-content-between">
-                                    <strong>Crew {{ crew }}</strong>
-                                    <span class="badge bg-primary">{{ stats.count }} employees</span>
-                                </div>
-                                {% if stats.positions %}
-                                <div class="position-breakdown">
-                                    {% for position, count in stats.positions.items() %}
-                                    <small class="text-muted">{{ position }}: {{ count }}</small>
-                                    {% endfor %}
-                                </div>
-                                {% endif %}
-                            </div>
-                            {% endfor %}
-                            
-                            {% if unassigned_employees %}
-                            <div class="crew-status-item">
-                                <div class="d-flex justify-content-between">
-                                    <strong>Unassigned</strong>
-                                    <span class="badge bg-warning">{{ unassigned_employees|length }} employees</span>
-                                </div>
-                                <small class="text-muted">These employees need crew assignments</small>
-                            </div>
-                            {% endif %}
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Step 2: Pattern Configuration -->
-        <div class="wizard-step" id="step-2" style="display: none;">
-            <div class="card">
+    <div class="row">
+        <!-- Pattern Information -->
+        <div class="col-lg-4">
+            <div class="card mb-4">
                 <div class="card-header">
-                    <h5>Pattern-Specific Configuration</h5>
+                    <h5><i class="bi bi-info-circle"></i> Pattern Details</h5>
                 </div>
                 <div class="card-body">
-                    <div id="patternSpecificConfig">
-                        <!-- This will be populated based on the selected pattern -->
+                    <div class="pattern-info" id="patternInfo">
+                        <!-- Pattern details will be populated by JavaScript -->
                     </div>
+                    
+                    <hr>
+                    
+                    <div class="crew-requirements">
+                        <h6>Crew Requirements</h6>
+                        <div class="row">
+                            {% for crew in ['A', 'B', 'C', 'D'] %}
+                            <div class="col-6 mb-2">
+                                <div class="crew-stat">
+                                    <strong>Crew {{ crew }}:</strong> {{ crew_stats[crew]['count'] }} employees
+                                    {% if crew_stats[crew]['count'] == 0 %}
+                                        <span class="badge bg-warning ms-1">Empty</span>
+                                    {% elif crew_stats[crew]['count'] < 3 %}
+                                        <span class="badge bg-info ms-1">Low</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        
+                        {% if unassigned_employees %}
+                        <div class="alert alert-info mt-2">
+                            <small><i class="bi bi-exclamation-triangle"></i> {{ unassigned_employees|length }} unassigned employees need crew placement</small>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
 
-                    <div class="d-flex justify-content-between">
-                        <button type="button" class="btn btn-outline-secondary" onclick="prevStep(1)">
-                            <i class="bi bi-arrow-left"></i> Back: Basic Setup
-                        </button>
-                        <button type="button" class="btn btn-primary" onclick="nextStep(3)">
-                            Next: Preview Schedule <i class="bi bi-arrow-right"></i>
-                        </button>
-                    </div>
+            <!-- Pattern Configuration -->
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="bi bi-gear"></i> Configuration Options</h5>
+                </div>
+                <div class="card-body">
+                    <form id="patternConfig">
+                        <div class="mb-3">
+                            <label for="shiftRotation" class="form-label">Rotation Type</label>
+                            <select class="form-select" id="shiftRotation" name="rotation_type">
+                                {% if pattern_config.allows_fixed %}
+                                <option value="fixed">Fixed Crews (No Rotation)</option>
+                                {% endif %}
+                                {% if pattern_config.allows_rotating %}
+                                {% for option in pattern_config.rotation_options %}
+                                <option value="{{ option.lower().replace(' ', '_') }}">{{ option }}</option>
+                                {% endfor %}
+                                {% endif %}
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="startDate" class="form-label">Start Date</label>
+                            <input type="date" class="form-control" id="startDate" name="start_date" 
+                                   value="{{ (datetime.now().date() + timedelta(days=7)).strftime('%Y-%m-%d') }}">
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="shiftTimes" class="form-label">Shift Times</label>
+                            <div class="row">
+                                {% if pattern_config.shift_hours == 12 %}
+                                <div class="col-6">
+                                    <label class="form-label small">Day Start</label>
+                                    <input type="time" class="form-control" value="06:00" id="dayStart">
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label small">Night Start</label>
+                                    <input type="time" class="form-control" value="18:00" id="nightStart">
+                                </div>
+                                {% else %}
+                                <div class="col-4">
+                                    <label class="form-label small">Day</label>
+                                    <input type="time" class="form-control" value="07:00" id="dayStart">
+                                </div>
+                                <div class="col-4">
+                                    <label class="form-label small">Evening</label>
+                                    <input type="time" class="form-control" value="15:00" id="eveningStart">
+                                </div>
+                                <div class="col-4">
+                                    <label class="form-label small">Night</label>
+                                    <input type="time" class="form-control" value="23:00" id="nightStart">
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </form>
                 </div>
             </div>
         </div>
 
-        <!-- Step 3: Preview -->
-        <div class="wizard-step" id="step-3" style="display: none;">
+        <!-- Pattern Preview -->
+        <div class="col-lg-8">
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5>Schedule Preview</h5>
-                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="generatePreview()">
-                        <i class="bi bi-arrow-clockwise"></i> Refresh Preview
+                    <h5><i class="bi bi-calendar-week"></i> 4-Week Pattern Preview</h5>
+                    <button class="btn btn-sm btn-outline-primary" id="refreshPreview">
+                        <i class="bi bi-arrow-clockwise"></i> Update Preview
                     </button>
                 </div>
                 <div class="card-body">
                     <div id="schedulePreview">
-                        <div class="text-center text-muted">
-                            <i class="bi bi-hourglass-split"></i>
-                            <p>Click "Generate Preview" to see your schedule pattern</p>
+                        <!-- Schedule preview will be loaded here -->
+                        <div class="text-center p-4">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading preview...</span>
+                            </div>
+                            <p class="mt-2">Generating schedule preview...</p>
                         </div>
-                    </div>
-
-                    <div class="d-flex justify-content-between mt-4">
-                        <button type="button" class="btn btn-outline-secondary" onclick="prevStep(2)">
-                            <i class="bi bi-arrow-left"></i> Back: Pattern Config
-                        </button>
-                        <button type="button" class="btn btn-success" onclick="nextStep(4)" id="proceedToCreate" disabled>
-                            Create Schedule <i class="bi bi-check-circle"></i>
-                        </button>
                     </div>
                 </div>
             </div>
-        </div>
 
-        <!-- Step 4: Create -->
-        <div class="wizard-step" id="step-4" style="display: none;">
-            <div class="card">
+            <!-- Pattern Explanation -->
+            <div class="card mt-4">
                 <div class="card-header">
-                    <h5>Create Schedule</h5>
+                    <h5><i class="bi bi-book"></i> How This Pattern Works</h5>
                 </div>
                 <div class="card-body">
-                    <div id="createScheduleContent">
-                        <div class="alert alert-info">
-                            <h6><i class="bi bi-info-circle"></i> Ready to Create Schedule</h6>
-                            <p class="mb-0">Review your configuration and click "Create Schedule" to generate the schedule in your database.</p>
-                        </div>
-
-                        <div class="row">
-                            <div class="col-md-6">
-                                <h6>Configuration Summary</h6>
-                                <ul id="configSummary" class="list-unstyled">
-                                    <!-- Will be populated by JavaScript -->
-                                </ul>
-                            </div>
-                            <div class="col-md-6">
-                                <h6>Impact Analysis</h6>
-                                <div id="impactAnalysis">
-                                    <!-- Will be populated by JavaScript -->
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="form-check mb-3">
-                            <input class="form-check-input" type="checkbox" id="confirmOverwrite">
-                            <label class="form-check-label" for="confirmOverwrite">
-                                I understand this will replace any existing schedules in the selected date range
-                            </label>
-                        </div>
-
-                        <div class="d-flex justify-content-between">
-                            <button type="button" class="btn btn-outline-secondary" onclick="prevStep(3)">
-                                <i class="bi bi-arrow-left"></i> Back: Preview
-                            </button>
-                            <button type="button" class="btn btn-success" onclick="createSchedule()" id="finalCreateBtn" disabled>
-                                <i class="bi bi-plus-circle"></i> Create Schedule Now
-                            </button>
-                        </div>
-                    </div>
-
-                    <div id="creationProgress" style="display: none;">
-                        <div class="text-center">
-                            <div class="spinner-border text-primary mb-3" role="status">
-                                <span class="visually-hidden">Creating schedule...</span>
-                            </div>
-                            <h6>Creating Your Schedule</h6>
-                            <p class="text-muted">This may take a moment...</p>
-                            <div class="progress">
-                                <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div id="creationResult" style="display: none;">
-                        <!-- Results will be shown here -->
+                    <div id="patternExplanation">
+                        <!-- Pattern explanation will be populated by JavaScript -->
                     </div>
                 </div>
             </div>
@@ -272,713 +160,467 @@
 </div>
 
 <style>
-.wizard-container {
-    max-width: 1200px;
-    margin: 0 auto;
+.schedule-grid {
+    display: grid;
+    grid-template-columns: auto repeat(7, 1fr);
+    gap: 1px;
+    background: #dee2e6;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    overflow: hidden;
 }
 
-.wizard-steps {
-    display: flex;
-    justify-content: center;
-    margin-bottom: 3rem;
-    position: relative;
-}
-
-.wizard-steps::before {
-    content: '';
-    position: absolute;
-    top: 25px;
-    left: 25%;
-    right: 25%;
-    height: 2px;
-    background: #e9ecef;
-    z-index: 1;
-}
-
-.step {
+.schedule-cell {
+    background: white;
+    padding: 8px;
+    min-height: 60px;
     display: flex;
     flex-direction: column;
-    align-items: center;
-    flex: 1;
-    max-width: 150px;
-    position: relative;
-    z-index: 2;
-}
-
-.step-number {
-    width: 50px;
-    height: 50px;
-    border-radius: 50%;
-    background: #e9ecef;
-    color: #6c757d;
-    display: flex;
-    align-items: center;
     justify-content: center;
+    align-items: center;
+    font-size: 0.875rem;
+}
+
+.schedule-header {
+    background: #f8f9fa;
     font-weight: 600;
-    font-size: 1.1rem;
-    margin-bottom: 0.5rem;
-    transition: all 0.3s;
+    color: #495057;
 }
 
-.step-label {
-    font-weight: 500;
-    text-align: center;
-    color: #6c757d;
-    font-size: 0.9rem;
+.schedule-week {
+    background: #e9ecef;
+    font-weight: 600;
+    color: #495057;
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
 }
 
-.step.active .step-number {
-    background: #007bff;
-    color: white;
+.shift-day {
+    background: #fff3cd;
+    color: #856404;
+    border-left: 3px solid #ffc107;
 }
 
-.step.active .step-label {
-    color: #007bff;
+.shift-night {
+    background: #cce5ff;
+    color: #004085;
+    border-left: 3px solid #007bff;
 }
 
-.step.completed .step-number {
-    background: #28a745;
-    color: white;
+.shift-evening {
+    background: #ffe6cc;
+    color: #8b4000;
+    border-left: 3px solid #fd7e14;
 }
 
-.step.completed .step-label {
-    color: #28a745;
+.shift-off {
+    background: #d1edff;
+    color: #0c5460;
 }
 
-.crew-status-item {
-    padding: 0.75rem 0;
-    border-bottom: 1px solid #e9ecef;
+.crew-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-bottom: 2px;
 }
 
-.crew-status-item:last-child {
+.shift-time {
+    font-size: 0.7rem;
+    opacity: 0.8;
+}
+
+.pattern-info .info-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.pattern-info .info-item:last-child {
     border-bottom: none;
 }
 
-.position-breakdown {
-    margin-top: 0.25rem;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-}
-
-.schedule-preview-calendar {
-    min-height: 400px;
-    border: 1px solid #dee2e6;
-    border-radius: 6px;
-    padding: 1rem;
-}
-
-.preview-legend {
-    display: flex;
-    justify-content: center;
-    gap: 1rem;
-    margin-bottom: 1rem;
-}
-
-.legend-item {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
+.crew-stat {
     font-size: 0.9rem;
 }
 
-.legend-color {
-    width: 16px;
-    height: 16px;
-    border-radius: 3px;
-}
-
 @media (max-width: 768px) {
-    .wizard-steps {
-        flex-direction: column;
-        gap: 1rem;
+    .schedule-grid {
+        grid-template-columns: auto repeat(3, 1fr);
     }
     
-    .wizard-steps::before {
-        display: none;
-    }
-    
-    .step {
-        flex-direction: row;
-        max-width: none;
-        justify-content: flex-start;
-        gap: 1rem;
-    }
-    
-    .step-number {
-        margin-bottom: 0;
+    .schedule-cell {
+        min-height: 40px;
+        padding: 4px;
+        font-size: 0.75rem;
     }
 }
 </style>
 
 <script>
-let currentStep = 1;
-let previewData = null;
-const pattern = '{{ pattern }}';
-const patternConfig = {{ pattern_config | tojson }};
-
 document.addEventListener('DOMContentLoaded', function() {
-    initializeWizard();
-    setupEventListeners();
-});
-
-function initializeWizard() {
-    // Set today as default start date
-    const today = new Date();
-    const nextMonday = new Date(today);
-    nextMonday.setDate(today.getDate() + (1 + 7 - today.getDay()) % 7);
-    document.getElementById('startDate').value = nextMonday.toISOString().split('T')[0];
+    const pattern = '{{ pattern }}';
+    const patternConfig = {{ pattern_config | tojson }};
     
-    // Initialize pattern-specific configuration
-    initializePatternConfig();
-}
-
-function setupEventListeners() {
-    // Rotation type change handler
-    document.querySelectorAll('input[name="rotationType"]').forEach(radio => {
-        radio.addEventListener('change', function() {
-            const frequencyDiv = document.getElementById('rotationFrequencyDiv');
-            if (this.value === 'rotating') {
-                frequencyDiv.style.display = 'block';
-            } else {
-                frequencyDiv.style.display = 'none';
-            }
-        });
-    });
-    
-    // Confirm overwrite checkbox
-    const confirmCheckbox = document.getElementById('confirmOverwrite');
-    if (confirmCheckbox) {
-        confirmCheckbox.addEventListener('change', function() {
-            document.getElementById('finalCreateBtn').disabled = !this.checked;
-        });
-    }
-}
-
-function initializePatternConfig() {
-    const configDiv = document.getElementById('patternSpecificConfig');
-    
-    // Pattern-specific configurations
-    const configs = {
-        'pitman': `
-            <div class="row">
-                <div class="col-md-6 mb-3">
-                    <label class="form-label">Weekend Coverage</label>
-                    <select class="form-select" id="weekendCoverage">
-                        <option value="standard">Standard (Every other weekend off)</option>
-                        <option value="enhanced">Enhanced (More weekend coverage)</option>
-                    </select>
+    // Pattern information and explanations
+    const patternData = {
+        'pitman': {
+            cycle: '14 days',
+            avgHours: '42 hours/week',
+            maxConsecutive: '3 days',
+            weekendsOff: 'Every other weekend',
+            advantages: [
+                'Balanced work-life schedule',
+                'Never more than 3 consecutive days',
+                'Regular weekend breaks',
+                'Well-tested in industry'
+            ],
+            considerations: [
+                'Can work 7 days across week boundaries',
+                'Requires good crew coordination',
+                'Complex for new employees initially'
+            ],
+            explanation: `
+                <p><strong>The Pitman schedule follows a 2-2-3 pattern:</strong></p>
+                <ul>
+                    <li><strong>Week 1:</strong> Work 2 days, off 2 days, work 3 days</li>
+                    <li><strong>Week 2:</strong> Off 2 days, work 2 days, off 3 days</li>
+                </ul>
+                <p>This 14-day cycle repeats continuously. Each crew works opposite shifts (when Crew A works days, Crew C works nights), ensuring 24/7 coverage.</p>
+                <div class="alert alert-info">
+                    <strong>Key Benefit:</strong> Employees get every other weekend completely off, providing excellent work-life balance.
                 </div>
-                <div class="col-md-6 mb-3">
-                    <label class="form-label">Shift Handover</label>
-                    <select class="form-select" id="shiftHandover">
-                        <option value="30">30 minutes overlap</option>
-                        <option value="60">1 hour overlap</option>
-                        <option value="0">No overlap</option>
-                    </select>
-                </div>
-            </div>
-            <div class="mb-3">
-                <div class="form-check">
-                    <input class="form-check-input" type="checkbox" id="balanceOvertimeChk" checked>
-                    <label class="form-check-label" for="balanceOvertimeChk">
-                        Balance overtime distribution across crews
-                    </label>
-                </div>
-            </div>
-        `,
-        'dupont': `
-            <div class="alert alert-info">
-                <h6>DuPont Schedule Configuration</h6>
-                <p>The DuPont schedule is automatically configured for optimal rotation. 
-                You can adjust shift times and coverage requirements below.</p>
-            </div>
-            <div class="row">
-                <div class="col-md-6 mb-3">
-                    <label for="rotationSpeed" class="form-label">Rotation Speed</label>
-                    <select class="form-select" id="rotationSpeed">
-                        <option value="standard">Standard (28-day cycle)</option>
-                        <option value="accelerated">Accelerated (21-day cycle)</option>
-                    </select>
-                </div>
-                <div class="col-md-6 mb-3">
-                    <label for="restPeriod" class="form-label">Rest Period Length</label>
-                    <select class="form-select" id="restPeriod">
-                        <option value="7">7 consecutive days off</option>
-                        <option value="8">8 consecutive days off</option>
-                        <option value="9">9 consecutive days off</option>
-                    </select>
-                </div>
-            </div>
-        `,
-        'southern_swing': `
-            <div class="alert alert-warning">
-                <h6>Southern Swing Configuration</h6>
-                <p>This pattern uses 8-hour shifts with evening shift (2:00 PM - 10:00 PM) included.</p>
-            </div>
-            <div class="row">
-                <div class="col-md-4 mb-3">
-                    <label for="eveningShiftStart" class="form-label">Evening Shift Start</label>
-                    <input type="time" class="form-control" id="eveningShiftStart" value="14:00">
-                </div>
-                <div class="col-md-4 mb-3">
-                    <label for="rotationDirection" class="form-label">Rotation Direction</label>
-                    <select class="form-select" id="rotationDirection">
-                        <option value="forward">Forward (Days → Evenings → Nights)</option>
-                        <option value="backward">Backward (Days → Nights → Evenings)</option>
-                    </select>
-                </div>
-                <div class="col-md-4 mb-3">
-                    <label for="rotationWeeks" class="form-label">Weeks per Shift</label>
-                    <select class="form-select" id="rotationWeeks">
-                        <option value="1">1 week</option>
-                        <option value="2" selected>2 weeks</option>
-                        <option value="3">3 weeks</option>
-                    </select>
-                </div>
-            </div>
-        `,
-        'fixed_fixed': `
-            <div class="alert alert-info">
-                <h6>Fixed Teams Configuration</h6>
-                <p>Configure how teams are split between weekday and weekend coverage.</p>
-            </div>
-            <div class="row">
-                <div class="col-md-6 mb-3">
-                    <label for="weekdayTeams" class="form-label">Weekday Teams (Mon-Thu)</label>
-                    <div class="form-text mb-2">Select crews for weekday coverage</div>
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" id="crewA_weekday" value="A" checked>
-                        <label class="form-check-label" for="crewA_weekday">Crew A</label>
-                    </div>
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" id="crewB_weekday" value="B" checked>
-                        <label class="form-check-label" for="crewB_weekday">Crew B</label>
-                    </div>
-                </div>
-                <div class="col-md-6 mb-3">
-                    <label for="weekendTeams" class="form-label">Weekend Teams (Fri-Sun)</label>
-                    <div class="form-text mb-2">Select crews for weekend coverage</div>
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" id="crewC_weekend" value="C" checked>
-                        <label class="form-check-label" for="crewC_weekend">Crew C</label>
-                    </div>
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" id="crewD_weekend" value="D" checked>
-                        <label class="form-check-label" for="crewD_weekend">Crew D</label>
-                    </div>
-                </div>
-            </div>
-        `,
-        'four_on_four_off': `
-            <div class="row">
-                <div class="col-md-6 mb-3">
-                    <label for="startingCrew" class="form-label">Starting Crew</label>
-                    <select class="form-select" id="startingCrew">
-                        <option value="A">Crew A starts first</option>
-                        <option value="B">Crew B starts first</option>
-                        <option value="C">Crew C starts first</option>
-                        <option value="D">Crew D starts first</option>
-                    </select>
-                </div>
-                <div class="col-md-6 mb-3">
-                    <label for="shiftLength" class="form-label">Shift Length</label>
-                    <select class="form-select" id="shiftLength">
-                        <option value="12" selected>12 hours</option>
-                        <option value="10">10 hours</option>
-                    </select>
-                </div>
-            </div>
-            <div class="mb-3">
-                <div class="form-check">
-                    <input class="form-check-input" type="checkbox" id="staggerTeamsChk">
-                    <label class="form-check-label" for="staggerTeamsChk">
-                        Stagger team start dates for smoother transition
-                    </label>
-                </div>
-            </div>
-        `,
-        'five_and_two': `
-            <div class="alert alert-info">
-                <h6>5 & 2 Schedule Configuration</h6>
-                <p>This pattern alternates between 5-day and 2-day work stretches.</p>
-            </div>
-            <div class="row">
-                <div class="col-md-6 mb-3">
-                    <label for="longStretch" class="form-label">Long Work Stretch</label>
-                    <select class="form-select" id="longStretch">
-                        <option value="5" selected>5 days</option>
-                        <option value="6">6 days</option>
-                    </select>
-                </div>
-                <div class="col-md-6 mb-3">
-                    <label for="shortStretch" class="form-label">Short Work Stretch</label>
-                    <select class="form-select" id="shortStretch">
-                        <option value="2" selected>2 days</option>
-                        <option value="3">3 days</option>
-                    </select>
-                </div>
-            </div>
-        `
-    };
-    
-    configDiv.innerHTML = configs[pattern] || '<p>No additional configuration needed for this pattern.</p>';
-}
-
-function nextStep(step) {
-    if (validateCurrentStep()) {
-        document.querySelector(`#step-${currentStep}`).style.display = 'none';
-        document.querySelector(`#step-${step}`).style.display = 'block';
-        
-        // Update step indicators
-        document.querySelector(`[data-step="${currentStep}"]`).classList.add('completed');
-        document.querySelector(`[data-step="${currentStep}"]`).classList.remove('active');
-        document.querySelector(`[data-step="${step}"]`).classList.add('active');
-        
-        currentStep = step;
-        
-        // Special handling for step 3 (preview)
-        if (step === 3) {
-            generatePreview();
-        }
-        
-        // Special handling for step 4 (create)
-        if (step === 4) {
-            prepareCreationStep();
-        }
-    }
-}
-
-function prevStep(step) {
-    document.querySelector(`#step-${currentStep}`).style.display = 'none';
-    document.querySelector(`#step-${step}`).style.display = 'block';
-    
-    // Update step indicators
-    document.querySelector(`[data-step="${currentStep}"]`).classList.remove('active');
-    document.querySelector(`[data-step="${step}"]`).classList.add('active');
-    
-    currentStep = step;
-}
-
-function validateCurrentStep() {
-    switch (currentStep) {
-        case 1:
-            const startDate = document.getElementById('startDate').value;
-            const scheduleLength = document.getElementById('scheduleLength').value;
-            const dayShiftStart = document.getElementById('dayShiftStart').value;
-            const nightShiftStart = document.getElementById('nightShiftStart').value;
-            
-            if (!startDate || !scheduleLength || !dayShiftStart || !nightShiftStart) {
-                alert('Please fill in all required fields.');
-                return false;
-            }
-            
-            return true;
-            
-        case 2:
-            // Pattern-specific validation would go here
-            return true;
-            
-        case 3:
-            if (!previewData) {
-                alert('Please generate a preview before proceeding.');
-                return false;
-            }
-            return true;
-            
-        default:
-            return true;
-    }
-}
-
-function generatePreview() {
-    const previewDiv = document.getElementById('schedulePreview');
-    
-    // Show loading
-    previewDiv.innerHTML = `
-        <div class="text-center">
-            <div class="spinner-border text-primary mb-3" role="status">
-                <span class="visually-hidden">Generating preview...</span>
-            </div>
-            <p>Generating schedule preview...</p>
-        </div>
-    `;
-    
-    // Collect configuration
-    const config = collectConfiguration();
-    
-    // Call preview API
-    fetch('/schedule/preview-pattern', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
+            `
         },
-        body: JSON.stringify({
-            pattern: pattern,
-            ...config
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            previewData = data;
-            displayPreview(data);
-            document.getElementById('proceedToCreate').disabled = false;
-        } else {
-            previewDiv.innerHTML = `
-                <div class="alert alert-danger">
-                    <h6>Preview Generation Failed</h6>
-                    <p>${data.error}</p>
+        'dupont': {
+            cycle: '28 days',
+            avgHours: '42 hours/week', 
+            maxConsecutive: '4 days',
+            weekendsOff: 'One 7-day break per cycle',
+            advantages: [
+                '7 consecutive days off every 4 weeks',
+                'Built-in recovery time',
+                'Excellent for work-life balance',
+                'Popular with employees'
+            ],
+            considerations: [
+                'Complex rotation pattern',
+                'Requires rotation (cannot be fixed)',
+                'Learning curve for new employees'
+            ],
+            explanation: `
+                <p><strong>The DuPont schedule provides a famous 7-day break:</strong></p>
+                <ul>
+                    <li>4 nights on, 3 off</li>
+                    <li>3 days on, 1 off</li>
+                    <li>3 nights on, 3 off</li>
+                    <li>4 days on, <strong>7 off</strong></li>
+                </ul>
+                <div class="alert alert-success">
+                    <strong>Famous Feature:</strong> The 7 consecutive days off allows for extended vacations, family time, or personal projects.
                 </div>
-            `;
+            `
+        },
+        'southern_swing': {
+            cycle: '28 days',
+            avgHours: '40 hours/week',
+            maxConsecutive: '7 days',
+            weekendsOff: '1 weekend per month',
+            advantages: [
+                'Experience all three shifts',
+                'Forward rotation (easier on body)',
+                'Traditional proven pattern',
+                'Cross-training benefits'
+            ],
+            considerations: [
+                'Only 1 weekend off per month',
+                'Constant rotation adjustment',
+                'More shift changes than 12-hour patterns'
+            ],
+            explanation: `
+                <p><strong>8-hour rotation through all shifts:</strong></p>
+                <ul>
+                    <li><strong>Week 1:</strong> Monday-Friday days, weekend off</li>
+                    <li><strong>Week 2:</strong> Monday-Tuesday off, Wednesday-Sunday evenings</li>
+                    <li><strong>Week 3:</strong> Monday-Tuesday evenings, Wednesday off, Thursday-Sunday nights</li>
+                    <li><strong>Week 4:</strong> Monday-Wednesday nights, Thursday-Friday off, Saturday-Sunday days</li>
+                </ul>
+                <div class="alert alert-warning">
+                    <strong>Note:</strong> Forward rotation (days→evenings→nights) is easier on circadian rhythms than backward rotation.
+                </div>
+            `
+        },
+        'fixed_fixed': {
+            cycle: '7 days',
+            avgHours: 'Varies by team',
+            maxConsecutive: '4 days',
+            weekendsOff: 'Depends on assignment',
+            advantages: [
+                'Completely predictable',
+                'Choose lifestyle preference',
+                'Simple to understand',
+                'No rotation fatigue'
+            ],
+            considerations: [
+                'Unequal hours between teams',
+                'Weekend teams work every weekend',
+                'Less flexibility for employees'
+            ],
+            explanation: `
+                <p><strong>Two separate fixed teams:</strong></p>
+                <ul>
+                    <li><strong>Weekday Team:</strong> Monday-Thursday (48 hours/week)</li>
+                    <li><strong>Weekend Team:</strong> Friday-Sunday (36 hours/week)</li>
+                </ul>
+                <p>This creates a lifestyle choice: weekday team gets every weekend off but works longer hours. Weekend team works fewer hours but works every weekend.</p>
+                <div class="alert alert-info">
+                    <strong>Best For:</strong> Operations where weekend coverage needs are different from weekday needs.
+                </div>
+            `
+        },
+        'four_on_four_off': {
+            cycle: '8 days',
+            avgHours: '42 hours/week',
+            maxConsecutive: '4 days',
+            weekendsOff: 'Varies by rotation',
+            advantages: [
+                'Simple pattern to understand',
+                'Equal work and off days',
+                'Good work-life balance',
+                'Can be fixed or rotating'
+            ],
+            considerations: [
+                'May require overtime for coverage',
+                'Weekend coverage varies',
+                'Averages above 40 hours'
+            ],
+            explanation: `
+                <p><strong>Simple alternating pattern:</strong></p>
+                <ul>
+                    <li>Work 4 consecutive 12-hour days</li>
+                    <li>Off 4 consecutive days</li>
+                    <li>Repeat cycle</li>
+                </ul>
+                <p>This pattern can be implemented as fixed crews (some always days, some always nights) or as rotating crews (switch between days and nights).</p>
+                <div class="alert alert-success">
+                    <strong>Key Benefit:</strong> Equal number of work days and off days provides excellent work-life balance.
+                </div>
+            `
+        },
+        'five_and_two': {
+            cycle: '28 days',
+            avgHours: '42 hours/week',
+            maxConsecutive: '5 days',
+            weekendsOff: 'Varies within cycle',
+            advantages: [
+                'Longer break periods',
+                'Balanced coverage',
+                'Predictable when fixed',
+                'Good for planning'
+            ],
+            considerations: [
+                'Complex pattern to learn',
+                '5 consecutive work days',
+                'Requires careful planning',
+                'Usually only works as fixed crews'
+            ],
+            explanation: `
+                <p><strong>Work stretches of 5 and 2 days:</strong></p>
+                <p>The pattern alternates between working 5 consecutive days and 2 consecutive days, with corresponding off periods of 5 and 2 days.</p>
+                <ul>
+                    <li>5 on, 5 off, 2 on, 2 off (repeat)</li>
+                </ul>
+                <div class="alert alert-warning">
+                    <strong>Challenge:</strong> The 5 consecutive work days can be demanding, but the 5-day break periods provide excellent recovery time.
+                </div>
+            `
         }
-    })
-    .catch(error => {
-        console.error('Preview error:', error);
-        previewDiv.innerHTML = `
-            <div class="alert alert-danger">
-                <h6>Preview Error</h6>
-                <p>Unable to generate preview. Please check your configuration.</p>
-            </div>
-        `;
-    });
-}
-
-function displayPreview(data) {
-    const previewDiv = document.getElementById('schedulePreview');
-    
-    // Create legend
-    const legend = `
-        <div class="preview-legend">
-            <div class="legend-item">
-                <div class="legend-color" style="background-color: #28a745;"></div>
-                <span>Crew A</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background-color: #17a2b8;"></div>
-                <span>Crew B</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background-color: #ffc107;"></div>
-                <span>Crew C</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background-color: #dc3545;"></div>
-                <span>Crew D</span>
-            </div>
-        </div>
-    `;
-    
-    // Create summary
-    const summary = `
-        <div class="row mb-4">
-            <div class="col-md-4">
-                <div class="card">
-                    <div class="card-body text-center">
-                        <h5 class="text-primary">${data.total_shifts}</h5>
-                        <small class="text-muted">Total Shifts</small>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="card">
-                    <div class="card-body text-center">
-                        <h5 class="text-success">4 weeks</h5>
-                        <small class="text-muted">Preview Period</small>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="card">
-                    <div class="card-body text-center">
-                        <h5 class="text-info">Balanced</h5>
-                        <small class="text-muted">Coverage Status</small>
-                    </div>
-                </div>
-            </div>
-        </div>
-    `;
-    
-    // Simple calendar preview
-    const calendarPreview = `
-        <div class="schedule-preview-calendar">
-            <h6>First 4 Weeks Preview</h6>
-            <div class="table-responsive">
-                <table class="table table-sm">
-                    <thead>
-                        <tr>
-                            <th>Date</th>
-                            <th>Day Shift</th>
-                            <th>Night Shift</th>
-                        </tr>
-                    </thead>
-                    <tbody id="previewTableBody">
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    `;
-    
-    previewDiv.innerHTML = legend + summary + calendarPreview;
-    
-    // Populate preview table with sample data
-    const tbody = document.getElementById('previewTableBody');
-    const sampleDates = [];
-    const startDate = new Date();
-    
-    for (let i = 0; i < 14; i++) {
-        const date = new Date(startDate);
-        date.setDate(startDate.getDate() + i);
-        sampleDates.push(date);
-    }
-    
-    sampleDates.forEach((date, index) => {
-        const dayShift = `Crew ${['A', 'B', 'C', 'D'][index % 4]}`;
-        const nightShift = `Crew ${['B', 'C', 'D', 'A'][index % 4]}`;
-        
-        tbody.innerHTML += `
-            <tr>
-                <td>${date.toLocaleDateString()}</td>
-                <td><span class="badge bg-primary">${dayShift}</span></td>
-                <td><span class="badge bg-secondary">${nightShift}</span></td>
-            </tr>
-        `;
-    });
-}
-
-function collectConfiguration() {
-    return {
-        start_date: document.getElementById('startDate').value,
-        schedule_length: parseInt(document.getElementById('scheduleLength').value),
-        day_shift_start: document.getElementById('dayShiftStart').value,
-        night_shift_start: document.getElementById('nightShiftStart').value,
-        rotation_type: document.querySelector('input[name="rotationType"]:checked')?.value || 'fixed',
-        rotation_frequency: document.getElementById('rotationFrequency')?.value
     };
-}
-
-function prepareCreationStep() {
-    const config = collectConfiguration();
-    const summaryList = document.getElementById('configSummary');
-    const impactDiv = document.getElementById('impactAnalysis');
     
-    // Build configuration summary
-    const endDate = new Date(config.start_date);
-    endDate.setDate(endDate.getDate() + (config.schedule_length * 7));
-    
-    summaryList.innerHTML = `
-        <li><strong>Pattern:</strong> ${patternConfig.name}</li>
-        <li><strong>Start Date:</strong> ${new Date(config.start_date).toLocaleDateString()}</li>
-        <li><strong>End Date:</strong> ${endDate.toLocaleDateString()}</li>
-        <li><strong>Duration:</strong> ${config.schedule_length} weeks</li>
-        <li><strong>Day Shift:</strong> ${config.day_shift_start}</li>
-        <li><strong>Night Shift:</strong> ${config.night_shift_start}</li>
-        <li><strong>Rotation:</strong> ${config.rotation_type}</li>
-    `;
-    
-    // Build impact analysis
-    impactDiv.innerHTML = `
-        <div class="alert alert-warning">
-            <h6><i class="bi bi-exclamation-triangle"></i> Impact</h6>
-            <ul class="mb-0">
-                <li>Will create approximately ${Math.ceil(config.schedule_length * 7 * 2)} schedule entries</li>
-                <li>Affects all active employees in crews A, B, C, D</li>
-                <li>Replaces any existing schedules in this date range</li>
+    // Populate pattern information
+    const patternInfo = patternData[pattern] || {};
+    const infoHtml = `
+        <div class="info-item">
+            <span>Cycle Length:</span>
+            <strong>${patternInfo.cycle || 'N/A'}</strong>
+        </div>
+        <div class="info-item">
+            <span>Average Hours:</span>
+            <strong>${patternInfo.avgHours || 'N/A'}</strong>
+        </div>
+        <div class="info-item">
+            <span>Max Consecutive:</span>
+            <strong>${patternInfo.maxConsecutive || 'N/A'}</strong>
+        </div>
+        <div class="info-item">
+            <span>Weekends Off:</span>
+            <strong>${patternInfo.weekendsOff || 'N/A'}</strong>
+        </div>
+        <div class="mt-3">
+            <h6 class="text-success">Advantages:</h6>
+            <ul class="list-unstyled">
+                ${(patternInfo.advantages || []).map(item => `<li class="text-success"><i class="bi bi-check-circle"></i> ${item}</li>`).join('')}
+            </ul>
+        </div>
+        <div class="mt-3">
+            <h6 class="text-warning">Considerations:</h6>
+            <ul class="list-unstyled">
+                ${(patternInfo.considerations || []).map(item => `<li class="text-warning"><i class="bi bi-exclamation-triangle"></i> ${item}</li>`).join('')}
             </ul>
         </div>
     `;
-}
-
-function createSchedule() {
-    const createBtn = document.getElementById('finalCreateBtn');
-    const contentDiv = document.getElementById('createScheduleContent');
-    const progressDiv = document.getElementById('creationProgress');
-    const resultDiv = document.getElementById('creationResult');
     
-    // Hide content, show progress
-    contentDiv.style.display = 'none';
-    progressDiv.style.display = 'block';
+    document.getElementById('patternInfo').innerHTML = infoHtml;
     
-    // Animate progress bar
-    const progressBar = progressDiv.querySelector('.progress-bar');
-    let progress = 0;
-    const progressInterval = setInterval(() => {
-        progress += Math.random() * 15;
-        if (progress > 90) progress = 90;
-        progressBar.style.width = progress + '%';
-    }, 200);
+    // Populate pattern explanation
+    document.getElementById('patternExplanation').innerHTML = patternInfo.explanation || '<p>Pattern explanation will be available soon.</p>';
     
-    // Collect all configuration
-    const config = collectConfiguration();
-    
-    // Call creation API
-    fetch('/schedule/create-pattern', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            pattern: pattern,
-            ...config,
-            force_overwrite: true
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        clearInterval(progressInterval);
-        progressBar.style.width = '100%';
+    // Generate schedule preview
+    function generateSchedulePreview() {
+        const startDate = new Date(document.getElementById('startDate').value);
+        const rotation = document.getElementById('shiftRotation').value;
         
-        setTimeout(() => {
-            progressDiv.style.display = 'none';
-            resultDiv.style.display = 'block';
+        // Generate 4 weeks of preview data
+        let previewHtml = '<div class="schedule-grid">';
+        
+        // Header row
+        previewHtml += '<div class="schedule-cell schedule-header">Week</div>';
+        const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        dayNames.forEach(day => {
+            previewHtml += `<div class="schedule-cell schedule-header">${day}</div>`;
+        });
+        
+        // Generate 4 weeks
+        for (let week = 1; week <= 4; week++) {
+            previewHtml += `<div class="schedule-cell schedule-week">Week ${week}</div>`;
             
-            if (data.success) {
-                resultDiv.innerHTML = `
-                    <div class="alert alert-success">
-                        <h4><i class="bi bi-check-circle"></i> Schedule Created Successfully!</h4>
-                        <p>${data.message}</p>
-                        <hr>
-                        <div class="d-flex gap-2">
-                            <a href="${data.redirect_url}" class="btn btn-primary">
-                                <i class="bi bi-calendar-week"></i> View Schedule
-                            </a>
-                            <a href="{{ url_for('supervisor.dashboard') }}" class="btn btn-outline-secondary">
-                                <i class="bi bi-house"></i> Back to Dashboard
-                            </a>
+            for (let day = 0; day < 7; day++) {
+                const currentDate = new Date(startDate);
+                currentDate.setDate(startDate.getDate() + (week - 1) * 7 + day);
+                
+                // Generate crew assignments based on pattern
+                const assignment = generateCrewAssignment(pattern, week, day, rotation);
+                
+                previewHtml += `<div class="schedule-cell ${assignment.cssClass}">
+                    <div class="crew-label">${assignment.crews}</div>
+                    <div class="shift-time">${assignment.time}</div>
+                </div>`;
+            }
+        }
+        
+        previewHtml += '</div>';
+        
+        // Add legend
+        previewHtml += `
+            <div class="mt-3">
+                <h6>Legend:</h6>
+                <div class="row">
+                    <div class="col-md-3">
+                        <div class="d-flex align-items-center mb-1">
+                            <div class="shift-day" style="width: 20px; height: 20px; border-radius: 3px; margin-right: 8px;"></div>
+                            <span>Day Shift</span>
                         </div>
                     </div>
-                `;
-            } else {
-                resultDiv.innerHTML = `
-                    <div class="alert alert-danger">
-                        <h4><i class="bi bi-exclamation-circle"></i> Creation Failed</h4>
-                        <p>${data.error}</p>
-                        <hr>
-                        <button class="btn btn-outline-primary" onclick="location.reload()">
-                            <i class="bi bi-arrow-clockwise"></i> Try Again
-                        </button>
+                    <div class="col-md-3">
+                        <div class="d-flex align-items-center mb-1">
+                            <div class="shift-night" style="width: 20px; height: 20px; border-radius: 3px; margin-right: 8px;"></div>
+                            <span>Night Shift</span>
+                        </div>
                     </div>
-                `;
-            }
-        }, 1000);
-    })
-    .catch(error => {
-        clearInterval(progressInterval);
-        console.error('Creation error:', error);
-        
-        progressDiv.style.display = 'none';
-        resultDiv.style.display = 'block';
-        resultDiv.innerHTML = `
-            <div class="alert alert-danger">
-                <h4><i class="bi bi-exclamation-circle"></i> Creation Error</h4>
-                <p>An error occurred while creating the schedule. Please try again.</p>
-                <hr>
-                <button class="btn btn-outline-primary" onclick="location.reload()">
-                    <i class="bi bi-arrow-clockwise"></i> Try Again
-                </button>
+                    ${patternConfig.shift_hours === 8 ? `
+                    <div class="col-md-3">
+                        <div class="d-flex align-items-center mb-1">
+                            <div class="shift-evening" style="width: 20px; height: 20px; border-radius: 3px; margin-right: 8px;"></div>
+                            <span>Evening Shift</span>
+                        </div>
+                    </div>
+                    ` : ''}
+                    <div class="col-md-3">
+                        <div class="d-flex align-items-center mb-1">
+                            <div class="shift-off" style="width: 20px; height: 20px; border-radius: 3px; margin-right: 8px;"></div>
+                            <span>Off Day</span>
+                        </div>
+                    </div>
+                </div>
             </div>
         `;
+        
+        document.getElementById('schedulePreview').innerHTML = previewHtml;
+    }
+    
+    function generateCrewAssignment(pattern, week, day, rotation) {
+        // Simplified pattern generation for preview
+        // This would be replaced with actual pattern algorithms
+        
+        const dayOfCycle = (week - 1) * 7 + day;
+        let assignment = {
+            crews: '',
+            time: '',
+            cssClass: 'shift-off'
+        };
+        
+        switch(pattern) {
+            case 'pitman':
+                // Simplified Pitman pattern
+                const pitmanPattern = [1,1,0,0,1,1,1,0,0,1,1,0,0,0]; // 14-day cycle
+                const dayIndex = dayOfCycle % 14;
+                if (pitmanPattern[dayIndex]) {
+                    assignment.crews = dayIndex % 2 === 0 ? 'A,B' : 'C,D';
+                    assignment.time = '6:00-18:00';
+                    assignment.cssClass = 'shift-day';
+                }
+                break;
+                
+            case 'four_on_four_off':
+                // 4-on-4-off pattern
+                const fourOnPattern = dayOfCycle % 8 < 4;
+                if (fourOnPattern) {
+                    assignment.crews = dayOfCycle % 8 < 2 ? 'A,B' : 'C,D';
+                    assignment.time = dayOfCycle % 2 === 0 ? '6:00-18:00' : '18:00-6:00';
+                    assignment.cssClass = dayOfCycle % 2 === 0 ? 'shift-day' : 'shift-night';
+                }
+                break;
+                
+            case 'southern_swing':
+                // Simplified Southern Swing
+                const weekInCycle = (week - 1) % 4;
+                if (weekInCycle === 0 && day >= 1 && day <= 5) {
+                    assignment.crews = 'A,B,C,D';
+                    assignment.time = '7:00-15:00';
+                    assignment.cssClass = 'shift-day';
+                } else if (weekInCycle === 1 && day >= 3) {
+                    assignment.crews = 'A,B,C,D';
+                    assignment.time = '15:00-23:00';
+                    assignment.cssClass = 'shift-evening';
+                }
+                break;
+                
+            default:
+                // Default pattern
+                if (dayOfCycle % 2 === 0) {
+                    assignment.crews = 'A,B';
+                    assignment.time = '6:00-18:00';
+                    assignment.cssClass = 'shift-day';
+                }
+        }
+        
+        return assignment;
+    }
+    
+    // Event listeners
+    document.getElementById('refreshPreview').addEventListener('click', generateSchedulePreview);
+    document.getElementById('startDate').addEventListener('change', generateSchedulePreview);
+    document.getElementById('shiftRotation').addEventListener('change', generateSchedulePreview);
+    
+    // Create schedule button
+    document.getElementById('createScheduleBtn').addEventListener('click', function() {
+        // For now, show a message. Later this would create the actual schedule
+        alert(`Schedule creation for ${patternConfig.name} will be implemented in the next phase. This preview shows you exactly how the pattern will work.`);
     });
-}
+    
+    // Generate initial preview
+    setTimeout(generateSchedulePreview, 500);
+});
 </script>
 {% endblock %}
