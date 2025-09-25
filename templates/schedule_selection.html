@@ -8,11 +8,40 @@
             <div class="d-flex justify-content-between align-items-center mb-4">
                 <div>
                     <h1 class="h2">Create New Schedule</h1>
-                    <p class="text-muted">Select a schedule pattern to create your workforce schedule</p>
+                    <p class="text-muted">Select from 26+ schedule patterns to create your workforce schedule</p>
                 </div>
                 <a href="{{ url_for('supervisor.dashboard') }}" class="btn btn-outline-secondary">
                     <i class="bi bi-arrow-left"></i> Back to Dashboard
                 </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filter Controls -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body py-3">
+                    <div class="d-flex flex-wrap align-items-center justify-content-between">
+                        <div class="filter-buttons mb-2 mb-md-0">
+                            <button class="btn btn-outline-primary active filter-btn" data-filter="recommended">
+                                <i class="bi bi-star"></i> Recommended (6)
+                            </button>
+                            <button class="btn btn-outline-info filter-btn" data-filter="12-hour">
+                                <i class="bi bi-clock"></i> 12-Hour (21)
+                            </button>
+                            <button class="btn btn-outline-warning filter-btn" data-filter="8-hour">
+                                <i class="bi bi-clock-history"></i> 8-Hour (5)
+                            </button>
+                            <button class="btn btn-outline-secondary filter-btn" data-filter="all">
+                                <i class="bi bi-list"></i> All Patterns (26)
+                            </button>
+                        </div>
+                        <div class="pattern-search">
+                            <input type="text" class="form-control" placeholder="Search patterns..." id="patternSearch">
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -22,8 +51,10 @@
         <div class="col-12">
             <div class="pattern-grid">
                 
+                <!-- RECOMMENDED PATTERNS (6) -->
+                
                 <!-- Pitman Pattern -->
-                <div class="pattern-card" data-pattern="pitman">
+                <div class="pattern-card" data-pattern="pitman" data-category="recommended 12-hour pitman">
                     <div class="pattern-header">
                         <h4><i class="bi bi-calendar2-week text-primary"></i> Pitman (2-2-3)</h4>
                         <span class="badge bg-success">Recommended</span>
@@ -67,7 +98,7 @@
                 </div>
 
                 <!-- DuPont Pattern -->
-                <div class="pattern-card" data-pattern="dupont">
+                <div class="pattern-card" data-pattern="dupont" data-category="recommended 12-hour">
                     <div class="pattern-header">
                         <h4><i class="bi bi-calendar3 text-info"></i> DuPont</h4>
                         <span class="badge bg-info">Popular</span>
@@ -112,7 +143,7 @@
                 </div>
 
                 <!-- Southern Swing Pattern -->
-                <div class="pattern-card" data-pattern="southern_swing">
+                <div class="pattern-card" data-pattern="southern_swing" data-category="recommended 8-hour">
                     <div class="pattern-header">
                         <h4><i class="bi bi-arrow-repeat text-warning"></i> Southern Swing</h4>
                         <span class="badge bg-warning text-dark">8-Hour</span>
@@ -156,8 +187,52 @@
                     </div>
                 </div>
 
+                <!-- 4-on-4-off Pattern -->
+                <div class="pattern-card" data-pattern="four_on_four_off" data-category="recommended 12-hour 4-on-4-off">
+                    <div class="pattern-header">
+                        <h4><i class="bi bi-calendar4-week text-primary"></i> 4-on-4-off</h4>
+                        <span class="badge bg-primary">Balanced</span>
+                    </div>
+                    <div class="pattern-body">
+                        <p class="pattern-description">Work 4 days, off 4 days</p>
+                        <div class="pattern-details">
+                            <div class="detail-item">
+                                <strong>Shift Length:</strong> 12 hours
+                            </div>
+                            <div class="detail-item">
+                                <strong>Cycle:</strong> 8 days
+                            </div>
+                            <div class="detail-item">
+                                <strong>Variations:</strong> Fixed, Rotating
+                            </div>
+                        </div>
+                        <div class="pros-cons">
+                            <div class="pros">
+                                <h6>Advantages:</h6>
+                                <ul>
+                                    <li>Simple pattern</li>
+                                    <li>Equal work/off days</li>
+                                    <li>Good work-life balance</li>
+                                </ul>
+                            </div>
+                            <div class="cons">
+                                <h6>Considerations:</h6>
+                                <ul>
+                                    <li>Averages 42 hours/week</li>
+                                    <li>May need overtime for coverage</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="pattern-footer">
+                        <button class="btn btn-primary w-100 select-pattern" data-pattern="four_on_four_off">
+                            Select 4-on-4-off
+                        </button>
+                    </div>
+                </div>
+
                 <!-- Fixed Teams Pattern -->
-                <div class="pattern-card" data-pattern="fixed_fixed">
+                <div class="pattern-card" data-pattern="fixed_fixed" data-category="recommended 12-hour">
                     <div class="pattern-header">
                         <h4><i class="bi bi-people-fill text-success"></i> Fixed Teams</h4>
                         <span class="badge bg-secondary">Simple</span>
@@ -201,14 +276,243 @@
                     </div>
                 </div>
 
-                <!-- 4-on-4-off Pattern -->
-                <div class="pattern-card" data-pattern="four_on_four_off">
+                <!-- Continental Pattern -->
+                <div class="pattern-card" data-pattern="continental" data-category="recommended 8-hour">
                     <div class="pattern-header">
-                        <h4><i class="bi bi-calendar4-week text-primary"></i> 4-on-4-off</h4>
-                        <span class="badge bg-primary">Balanced</span>
+                        <h4><i class="bi bi-globe text-danger"></i> Continental</h4>
+                        <span class="badge bg-danger">8-Hour</span>
                     </div>
                     <div class="pattern-body">
-                        <p class="pattern-description">Work 4 days, off 4 days</p>
+                        <p class="pattern-description">8-week cycle with forward rotation</p>
+                        <div class="pattern-details">
+                            <div class="detail-item">
+                                <strong>Shift Length:</strong> 8 hours
+                            </div>
+                            <div class="detail-item">
+                                <strong>Cycle:</strong> 56 days
+                            </div>
+                            <div class="detail-item">
+                                <strong>Variations:</strong> Standard
+                            </div>
+                        </div>
+                        <div class="pros-cons">
+                            <div class="pros">
+                                <h6>Advantages:</h6>
+                                <ul>
+                                    <li>Balanced shift exposure</li>
+                                    <li>Regular weekends off</li>
+                                    <li>Forward rotation</li>
+                                </ul>
+                            </div>
+                            <div class="cons">
+                                <h6>Considerations:</h6>
+                                <ul>
+                                    <li>Long cycle period</li>
+                                    <li>Complex planning</li>
+                                    <li>Less predictability</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="pattern-footer">
+                        <button class="btn btn-danger w-100 select-pattern" data-pattern="continental">
+                            Select Continental
+                        </button>
+                    </div>
+                </div>
+
+                <!-- PITMAN VARIATIONS (4 additional) -->
+
+                <!-- Fixed Pitman -->
+                <div class="pattern-card" data-pattern="pitman_fixed" data-category="12-hour pitman">
+                    <div class="pattern-header">
+                        <h4><i class="bi bi-lock text-primary"></i> Fixed Pitman</h4>
+                        <span class="badge bg-outline-primary">Pitman Variation</span>
+                    </div>
+                    <div class="pattern-body">
+                        <p class="pattern-description">Pitman pattern with fixed day/night crews</p>
+                        <div class="pattern-details">
+                            <div class="detail-item">
+                                <strong>Shift Length:</strong> 12 hours
+                            </div>
+                            <div class="detail-item">
+                                <strong>Cycle:</strong> 14 days
+                            </div>
+                            <div class="detail-item">
+                                <strong>Rotation:</strong> None (fixed crews)
+                            </div>
+                        </div>
+                        <div class="pros-cons">
+                            <div class="pros">
+                                <h6>Advantages:</h6>
+                                <ul>
+                                    <li>No shift rotation</li>
+                                    <li>Consistent schedule</li>
+                                    <li>Specialized crews</li>
+                                </ul>
+                            </div>
+                            <div class="cons">
+                                <h6>Considerations:</h6>
+                                <ul>
+                                    <li>Night crew always nights</li>
+                                    <li>Less variety</li>
+                                    <li>Skill specialization needed</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="pattern-footer">
+                        <button class="btn btn-outline-primary w-100 select-pattern" data-pattern="pitman_fixed">
+                            Select Fixed Pitman
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Rapid Rotation Pitman -->
+                <div class="pattern-card" data-pattern="pitman_rapid" data-category="12-hour pitman">
+                    <div class="pattern-header">
+                        <h4><i class="bi bi-arrow-clockwise text-primary"></i> Rapid Rotation Pitman</h4>
+                        <span class="badge bg-outline-primary">Pitman Variation</span>
+                    </div>
+                    <div class="pattern-body">
+                        <p class="pattern-description">Pitman with shift changes after every break</p>
+                        <div class="pattern-details">
+                            <div class="detail-item">
+                                <strong>Shift Length:</strong> 12 hours
+                            </div>
+                            <div class="detail-item">
+                                <strong>Cycle:</strong> 28 days
+                            </div>
+                            <div class="detail-item">
+                                <strong>Rotation:</strong> After every break period
+                            </div>
+                        </div>
+                        <div class="pros-cons">
+                            <div class="pros">
+                                <h6>Advantages:</h6>
+                                <ul>
+                                    <li>Quick adaptation</li>
+                                    <li>Equal shift exposure</li>
+                                    <li>Prevents stagnation</li>
+                                </ul>
+                            </div>
+                            <div class="cons">
+                                <h6>Considerations:</h6>
+                                <ul>
+                                    <li>Frequent changes</li>
+                                    <li>Higher fatigue risk</li>
+                                    <li>Requires flexibility</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="pattern-footer">
+                        <button class="btn btn-outline-primary w-100 select-pattern" data-pattern="pitman_rapid">
+                            Select Rapid Rotation Pitman
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 2-Week Rotation Pitman -->
+                <div class="pattern-card" data-pattern="pitman_2week" data-category="12-hour pitman">
+                    <div class="pattern-header">
+                        <h4><i class="bi bi-calendar2 text-primary"></i> 2-Week Rotation Pitman</h4>
+                        <span class="badge bg-outline-primary">Pitman Variation</span>
+                    </div>
+                    <div class="pattern-body">
+                        <p class="pattern-description">2 weeks days, then 2 weeks nights</p>
+                        <div class="pattern-details">
+                            <div class="detail-item">
+                                <strong>Shift Length:</strong> 12 hours
+                            </div>
+                            <div class="detail-item">
+                                <strong>Cycle:</strong> 28 days
+                            </div>
+                            <div class="detail-item">
+                                <strong>Rotation:</strong> Every 2 weeks
+                            </div>
+                        </div>
+                        <div class="pros-cons">
+                            <div class="pros">
+                                <h6>Advantages:</h6>
+                                <ul>
+                                    <li>Time to adapt</li>
+                                    <li>Moderate rotation</li>
+                                    <li>Balanced exposure</li>
+                                </ul>
+                            </div>
+                            <div class="cons">
+                                <h6>Considerations:</h6>
+                                <ul>
+                                    <li>Regular adjustments</li>
+                                    <li>Planning complexity</li>
+                                    <li>Some circadian disruption</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="pattern-footer">
+                        <button class="btn btn-outline-primary w-100 select-pattern" data-pattern="pitman_2week">
+                            Select 2-Week Rotation Pitman
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 4-Week Rotation Pitman -->
+                <div class="pattern-card" data-pattern="pitman_4week" data-category="12-hour pitman">
+                    <div class="pattern-header">
+                        <h4><i class="bi bi-calendar4 text-primary"></i> 4-Week Rotation Pitman</h4>
+                        <span class="badge bg-outline-primary">Pitman Variation</span>
+                    </div>
+                    <div class="pattern-body">
+                        <p class="pattern-description">4 weeks days, then 4 weeks nights</p>
+                        <div class="pattern-details">
+                            <div class="detail-item">
+                                <strong>Shift Length:</strong> 12 hours
+                            </div>
+                            <div class="detail-item">
+                                <strong>Cycle:</strong> 56 days
+                            </div>
+                            <div class="detail-item">
+                                <strong>Rotation:</strong> Every 4 weeks
+                            </div>
+                        </div>
+                        <div class="pros-cons">
+                            <div class="pros">
+                                <h6>Advantages:</h6>
+                                <ul>
+                                    <li>Full circadian adaptation</li>
+                                    <li>Minimal disruption</li>
+                                    <li>Stable routine</li>
+                                </ul>
+                            </div>
+                            <div class="cons">
+                                <h6>Considerations:</h6>
+                                <ul>
+                                    <li>Long stretches same shift</li>
+                                    <li>Complex cycle tracking</li>
+                                    <li>Extended planning horizon</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="pattern-footer">
+                        <button class="btn btn-outline-primary w-100 select-pattern" data-pattern="pitman_4week">
+                            Select 4-Week Rotation Pitman
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 4-ON-4-OFF VARIATIONS (4 additional) -->
+
+                <!-- Fixed 4-on-4-off -->
+                <div class="pattern-card" data-pattern="four_on_four_off_fixed" data-category="12-hour 4-on-4-off">
+                    <div class="pattern-header">
+                        <h4><i class="bi bi-lock-fill text-success"></i> Fixed 4-on-4-off</h4>
+                        <span class="badge bg-outline-success">4-on-4-off Variation</span>
+                    </div>
+                    <div class="pattern-body">
+                        <p class="pattern-description">4-on-4-off with fixed day/night crews</p>
                         <div class="pattern-details">
                             <div class="detail-item">
                                 <strong>Shift Length:</strong> 12 hours
@@ -217,39 +521,359 @@
                                 <strong>Cycle:</strong> 8 days
                             </div>
                             <div class="detail-item">
-                                <strong>Variations:</strong> Fixed, Rotating
+                                <strong>Rotation:</strong> None (fixed crews)
                             </div>
                         </div>
                         <div class="pros-cons">
                             <div class="pros">
                                 <h6>Advantages:</h6>
                                 <ul>
-                                    <li>Simple pattern</li>
-                                    <li>Equal work/off days</li>
+                                    <li>Simple and predictable</li>
+                                    <li>No rotation fatigue</li>
+                                    <li>Specialized crews</li>
+                                </ul>
+                            </div>
+                            <div class="cons">
+                                <h6>Considerations:</h6>
+                                <ul>
+                                    <li>Limited variety</li>
+                                    <li>Night crew always nights</li>
+                                    <li>Skill specialization needed</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="pattern-footer">
+                        <button class="btn btn-outline-success w-100 select-pattern" data-pattern="four_on_four_off_fixed">
+                            Select Fixed 4-on-4-off
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Modified 4-on-4-off -->
+                <div class="pattern-card" data-pattern="four_on_four_off_modified" data-category="12-hour 4-on-4-off">
+                    <div class="pattern-header">
+                        <h4><i class="bi bi-calendar-week text-success"></i> Modified 4-on-4-off</h4>
+                        <span class="badge bg-outline-success">4-on-4-off Variation</span>
+                    </div>
+                    <div class="pattern-body">
+                        <p class="pattern-description">Modified for full weekends off</p>
+                        <div class="pattern-details">
+                            <div class="detail-item">
+                                <strong>Shift Length:</strong> 12 hours
+                            </div>
+                            <div class="detail-item">
+                                <strong>Cycle:</strong> 56 days
+                            </div>
+                            <div class="detail-item">
+                                <strong>Weekend Focus:</strong> 4 full weekends off out of 8
+                            </div>
+                        </div>
+                        <div class="pros-cons">
+                            <div class="pros">
+                                <h6>Advantages:</h6>
+                                <ul>
+                                    <li>Complete weekends off</li>
+                                    <li>Better work-life balance</li>
+                                    <li>Family time</li>
+                                </ul>
+                            </div>
+                            <div class="cons">
+                                <h6>Considerations:</h6>
+                                <ul>
+                                    <li>Irregular work stretches</li>
+                                    <li>Complex scheduling</li>
+                                    <li>Coverage gaps possible</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="pattern-footer">
+                        <button class="btn btn-outline-success w-100 select-pattern" data-pattern="four_on_four_off_modified">
+                            Select Modified 4-on-4-off
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Fast Rotation 4-on-4-off -->
+                <div class="pattern-card" data-pattern="four_on_four_off_fast" data-category="12-hour 4-on-4-off">
+                    <div class="pattern-header">
+                        <h4><i class="bi bi-arrow-repeat text-success"></i> Fast Rotation 4-on-4-off</h4>
+                        <span class="badge bg-outline-success">4-on-4-off Variation</span>
+                    </div>
+                    <div class="pattern-body">
+                        <p class="pattern-description">Very fast rotation between shifts</p>
+                        <div class="pattern-details">
+                            <div class="detail-item">
+                                <strong>Shift Length:</strong> 12 hours
+                            </div>
+                            <div class="detail-item">
+                                <strong>Cycle:</strong> 16 days
+                            </div>
+                            <div class="detail-item">
+                                <strong>Rotation:</strong> After each work period
+                            </div>
+                        </div>
+                        <div class="pros-cons">
+                            <div class="pros">
+                                <h6>Advantages:</h6>
+                                <ul>
+                                    <li>Equal shift exposure</li>
+                                    <li>Prevents routine stagnation</li>
+                                    <li>Cross-training benefits</li>
+                                </ul>
+                            </div>
+                            <div class="cons">
+                                <h6>Considerations:</h6>
+                                <ul>
+                                    <li>High fatigue potential</li>
+                                    <li>Constant adjustment</li>
+                                    <li>Not for all employees</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="pattern-footer">
+                        <button class="btn btn-outline-success w-100 select-pattern" data-pattern="four_on_four_off_fast">
+                            Select Fast Rotation 4-on-4-off
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Weekly Rotation 4-on-4-off -->
+                <div class="pattern-card" data-pattern="four_on_four_off_weekly" data-category="12-hour 4-on-4-off">
+                    <div class="pattern-header">
+                        <h4><i class="bi bi-calendar3 text-success"></i> Weekly Rotation 4-on-4-off</h4>
+                        <span class="badge bg-outline-success">4-on-4-off Variation</span>
+                    </div>
+                    <div class="pattern-body">
+                        <p class="pattern-description">Rotation every week</p>
+                        <div class="pattern-details">
+                            <div class="detail-item">
+                                <strong>Shift Length:</strong> 12 hours
+                            </div>
+                            <div class="detail-item">
+                                <strong>Cycle:</strong> 28 days
+                            </div>
+                            <div class="detail-item">
+                                <strong>Rotation:</strong> Weekly
+                            </div>
+                        </div>
+                        <div class="pros-cons">
+                            <div class="pros">
+                                <h6>Advantages:</h6>
+                                <ul>
+                                    <li>Regular rotation</li>
+                                    <li>Balanced shift exposure</li>
+                                    <li>Manageable adjustment</li>
+                                </ul>
+                            </div>
+                            <div class="cons">
+                                <h6>Considerations:</h6>
+                                <ul>
+                                    <li>Weekly disruption</li>
+                                    <li>Planning complexity</li>
+                                    <li>Circadian challenges</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="pattern-footer">
+                        <button class="btn btn-outline-success w-100 select-pattern" data-pattern="four_on_four_off_weekly">
+                            Select Weekly Rotation 4-on-4-off
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 3-ON-3-OFF VARIATIONS (4) -->
+
+                <!-- Basic 3-on-3-off -->
+                <div class="pattern-card" data-pattern="three_on_three_off" data-category="12-hour 3-on-3-off">
+                    <div class="pattern-header">
+                        <h4><i class="bi bi-calendar-date text-info"></i> Basic 3-on-3-off</h4>
+                        <span class="badge bg-outline-info">3-on-3-off Variation</span>
+                    </div>
+                    <div class="pattern-body">
+                        <p class="pattern-description">Work 3 days, off 3 days</p>
+                        <div class="pattern-details">
+                            <div class="detail-item">
+                                <strong>Shift Length:</strong> 12 hours
+                            </div>
+                            <div class="detail-item">
+                                <strong>Cycle:</strong> 42 days
+                            </div>
+                            <div class="detail-item">
+                                <strong>Rotation:</strong> Every 6 weeks
+                            </div>
+                        </div>
+                        <div class="pros-cons">
+                            <div class="pros">
+                                <h6>Advantages:</h6>
+                                <ul>
+                                    <li>Short work stretches</li>
+                                    <li>Frequent time off</li>
                                     <li>Good work-life balance</li>
                                 </ul>
                             </div>
                             <div class="cons">
                                 <h6>Considerations:</h6>
                                 <ul>
-                                    <li>Averages 42 hours/week</li>
-                                    <li>May need overtime for coverage</li>
+                                    <li>Complex coverage</li>
+                                    <li>Long cycle period</li>
+                                    <li>Irregular weekends</li>
                                 </ul>
                             </div>
                         </div>
                     </div>
                     <div class="pattern-footer">
-                        <button class="btn btn-primary w-100 select-pattern" data-pattern="four_on_four_off">
-                            Select 4-on-4-off
+                        <button class="btn btn-outline-info w-100 select-pattern" data-pattern="three_on_three_off">
+                            Select Basic 3-on-3-off
                         </button>
                     </div>
                 </div>
 
+                <!-- Fixed Complex 3-on-3-off -->
+                <div class="pattern-card" data-pattern="three_on_three_off_fixed" data-category="12-hour 3-on-3-off">
+                    <div class="pattern-header">
+                        <h4><i class="bi bi-lock text-info"></i> Fixed Complex 3-on-3-off</h4>
+                        <span class="badge bg-outline-info">3-on-3-off Variation</span>
+                    </div>
+                    <div class="pattern-body">
+                        <p class="pattern-description">Fixed crews with complex 3-on-3-off pattern</p>
+                        <div class="pattern-details">
+                            <div class="detail-item">
+                                <strong>Shift Length:</strong> 12 hours
+                            </div>
+                            <div class="detail-item">
+                                <strong>Cycle:</strong> 21 days
+                            </div>
+                            <div class="detail-item">
+                                <strong>Rotation:</strong> None (fixed crews)
+                            </div>
+                        </div>
+                        <div class="pros-cons">
+                            <div class="pros">
+                                <h6>Advantages:</h6>
+                                <ul>
+                                    <li>No rotation fatigue</li>
+                                    <li>Predictable schedule</li>
+                                    <li>Specialized crews</li>
+                                </ul>
+                            </div>
+                            <div class="cons">
+                                <h6>Considerations:</h6>
+                                <ul>
+                                    <li>Complex pattern</li>
+                                    <li>Limited variety</li>
+                                    <li>Coverage challenges</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="pattern-footer">
+                        <button class="btn btn-outline-info w-100 select-pattern" data-pattern="three_on_three_off_fixed">
+                            Select Fixed Complex 3-on-3-off
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Weekly Rotation 3-on-3-off -->
+                <div class="pattern-card" data-pattern="three_on_three_off_weekly" data-category="12-hour 3-on-3-off">
+                    <div class="pattern-header">
+                        <h4><i class="bi bi-calendar-week text-info"></i> Weekly Rotation 3-on-3-off</h4>
+                        <span class="badge bg-outline-info">3-on-3-off Variation</span>
+                    </div>
+                    <div class="pattern-body">
+                        <p class="pattern-description">3-on-3-off with weekly rotation</p>
+                        <div class="pattern-details">
+                            <div class="detail-item">
+                                <strong>Shift Length:</strong> 12 hours
+                            </div>
+                            <div class="detail-item">
+                                <strong>Cycle:</strong> 28 days
+                            </div>
+                            <div class="detail-item">
+                                <strong>Rotation:</strong> Weekly
+                            </div>
+                        </div>
+                        <div class="pros-cons">
+                            <div class="pros">
+                                <h6>Advantages:</h6>
+                                <ul>
+                                    <li>Regular rotation</li>
+                                    <li>Short work periods</li>
+                                    <li>Balanced shift exposure</li>
+                                </ul>
+                            </div>
+                            <div class="cons">
+                                <h6>Considerations:</h6>
+                                <ul>
+                                    <li>Weekly adjustment</li>
+                                    <li>Complex scheduling</li>
+                                    <li>Circadian disruption</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="pattern-footer">
+                        <button class="btn btn-outline-info w-100 select-pattern" data-pattern="three_on_three_off_weekly">
+                            Select Weekly Rotation 3-on-3-off
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 6-Week Rotation 3-on-3-off -->
+                <div class="pattern-card" data-pattern="three_on_three_off_6week" data-category="12-hour 3-on-3-off">
+                    <div class="pattern-header">
+                        <h4><i class="bi bi-calendar-range text-info"></i> 6-Week Rotation 3-on-3-off</h4>
+                        <span class="badge bg-outline-info">3-on-3-off Variation</span>
+                    </div>
+                    <div class="pattern-body">
+                        <p class="pattern-description">3-on-3-off with 6-week rotation</p>
+                        <div class="pattern-details">
+                            <div class="detail-item">
+                                <strong>Shift Length:</strong> 12 hours
+                            </div>
+                            <div class="detail-item">
+                                <strong>Cycle:</strong> 42 days
+                            </div>
+                            <div class="detail-item">
+                                <strong>Rotation:</strong> Every 6 weeks
+                            </div>
+                        </div>
+                        <div class="pros-cons">
+                            <div class="pros">
+                                <h6>Advantages:</h6>
+                                <ul>
+                                    <li>Full adaptation time</li>
+                                    <li>Stable routine</li>
+                                    <li>Infrequent disruption</li>
+                                </ul>
+                            </div>
+                            <div class="cons">
+                                <h6>Considerations:</h6>
+                                <ul>
+                                    <li>Long same-shift periods</li>
+                                    <li>Complex cycle tracking</li>
+                                    <li>Extended planning needed</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="pattern-footer">
+                        <button class="btn btn-outline-info w-100 select-pattern" data-pattern="three_on_three_off_6week">
+                            Select 6-Week Rotation 3-on-3-off
+                        </button>
+                    </div>
+                </div>
+
+                <!-- SPECIALTY 12-HOUR PATTERNS (5) -->
+
                 <!-- 5 & 2 Pattern -->
-                <div class="pattern-card" data-pattern="five_and_two">
+                <div class="pattern-card" data-pattern="five_and_two" data-category="12-hour">
                     <div class="pattern-header">
                         <h4><i class="bi bi-calendar-range text-danger"></i> 5 & 2 Schedule</h4>
-                        <span class="badge bg-outline-secondary">Advanced</span>
+                        <span class="badge bg-outline-danger">Advanced</span>
                     </div>
                     <div class="pattern-body">
                         <p class="pattern-description">Work stretches of 5 and 2 days</p>
@@ -258,7 +882,7 @@
                                 <strong>Shift Length:</strong> 12 hours
                             </div>
                             <div class="detail-item">
-                                <strong>Cycle:</strong> 14 days
+                                <strong>Cycle:</strong> 28 days
                             </div>
                             <div class="detail-item">
                                 <strong>Variations:</strong> Fixed only
@@ -290,6 +914,323 @@
                     </div>
                 </div>
 
+                <!-- Panama Pattern -->
+                <div class="pattern-card" data-pattern="panama" data-category="12-hour">
+                    <div class="pattern-header">
+                        <h4><i class="bi bi-globe-americas text-warning"></i> Panama (2-3-2)</h4>
+                        <span class="badge bg-outline-warning">Specialty</span>
+                    </div>
+                    <div class="pattern-body">
+                        <p class="pattern-description">2 days on, 2 off, 3 on, 2 off, 2 on, 3 off</p>
+                        <div class="pattern-details">
+                            <div class="detail-item">
+                                <strong>Shift Length:</strong> 12 hours
+                            </div>
+                            <div class="detail-item">
+                                <strong>Cycle:</strong> 14 days
+                            </div>
+                            <div class="detail-item">
+                                <strong>Variations:</strong> Fixed, Rotating
+                            </div>
+                        </div>
+                        <div class="pros-cons">
+                            <div class="pros">
+                                <h6>Advantages:</h6>
+                                <ul>
+                                    <li>Regular time off</li>
+                                    <li>Balanced workload</li>
+                                    <li>Flexible variations</li>
+                                </ul>
+                            </div>
+                            <div class="cons">
+                                <h6>Considerations:</h6>
+                                <ul>
+                                    <li>Irregular weekend pattern</li>
+                                    <li>Learning curve</li>
+                                    <li>Coverage coordination</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="pattern-footer">
+                        <button class="btn btn-outline-warning w-100 select-pattern" data-pattern="panama">
+                            Select Panama Schedule
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Fixed 5&2 12-Hour -->
+                <div class="pattern-card" data-pattern="fixed_five_two_12" data-category="12-hour">
+                    <div class="pattern-header">
+                        <h4><i class="bi bi-calendar-check text-secondary"></i> Fixed 5&2 12-Hour</h4>
+                        <span class="badge bg-outline-secondary">Specialty</span>
+                    </div>
+                    <div class="pattern-body">
+                        <p class="pattern-description">Fixed crews with 5&2 pattern</p>
+                        <div class="pattern-details">
+                            <div class="detail-item">
+                                <strong>Shift Length:</strong> 12 hours
+                            </div>
+                            <div class="detail-item">
+                                <strong>Cycle:</strong> 14 days
+                            </div>
+                            <div class="detail-item">
+                                <strong>Rotation:</strong> None (fixed crews)
+                            </div>
+                        </div>
+                        <div class="pros-cons">
+                            <div class="pros">
+                                <h6>Advantages:</h6>
+                                <ul>
+                                    <li>No rotation fatigue</li>
+                                    <li>Predictable schedule</li>
+                                    <li>Specialized crews</li>
+                                </ul>
+                            </div>
+                            <div class="cons">
+                                <h6>Considerations:</h6>
+                                <ul>
+                                    <li>Limited variety</li>
+                                    <li>Night crew always nights</li>
+                                    <li>Skill specialization needed</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="pattern-footer">
+                        <button class="btn btn-outline-secondary w-100 select-pattern" data-pattern="fixed_five_two_12">
+                            Select Fixed 5&2 12-Hour
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Fixed 4/3 -->
+                <div class="pattern-card" data-pattern="fixed_four_three" data-category="12-hour">
+                    <div class="pattern-header">
+                        <h4><i class="bi bi-calendar-plus text-dark"></i> Fixed 4/3</h4>
+                        <span class="badge bg-outline-dark">Specialty</span>
+                    </div>
+                    <div class="pattern-body">
+                        <p class="pattern-description">4 days on, 3 days off pattern</p>
+                        <div class="pattern-details">
+                            <div class="detail-item">
+                                <strong>Shift Length:</strong> 12 hours
+                            </div>
+                            <div class="detail-item">
+                                <strong>Cycle:</strong> 7 days
+                            </div>
+                            <div class="detail-item">
+                                <strong>Rotation:</strong> None (fixed crews)
+                            </div>
+                        </div>
+                        <div class="pros-cons">
+                            <div class="pros">
+                                <h6>Advantages:</h6>
+                                <ul>
+                                    <li>Simple pattern</li>
+                                    <li>Regular long breaks</li>
+                                    <li>Predictable</li>
+                                </ul>
+                            </div>
+                            <div class="cons">
+                                <h6>Considerations:</h6>
+                                <ul>
+                                    <li>High weekly hours</li>
+                                    <li>4 consecutive days</li>
+                                    <li>Coverage challenges</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="pattern-footer">
+                        <button class="btn btn-outline-dark w-100 select-pattern" data-pattern="fixed_four_three">
+                            Select Fixed 4/3
+                        </button>
+                    </div>
+                </div>
+
+                <!-- DuPont Fixed Shift -->
+                <div class="pattern-card" data-pattern="dupont_fixed" data-category="12-hour">
+                    <div class="pattern-header">
+                        <h4><i class="bi bi-lock text-info"></i> DuPont Fixed Shift</h4>
+                        <span class="badge bg-outline-info">Specialty</span>
+                    </div>
+                    <div class="pattern-body">
+                        <p class="pattern-description">DuPont pattern with fixed day/night crews</p>
+                        <div class="pattern-details">
+                            <div class="detail-item">
+                                <strong>Shift Length:</strong> 12 hours
+                            </div>
+                            <div class="detail-item">
+                                <strong>Cycle:</strong> 28 days
+                            </div>
+                            <div class="detail-item">
+                                <strong>Rotation:</strong> None (fixed crews)
+                            </div>
+                        </div>
+                        <div class="pros-cons">
+                            <div class="pros">
+                                <h6>Advantages:</h6>
+                                <ul>
+                                    <li>7 consecutive days off</li>
+                                    <li>No rotation fatigue</li>
+                                    <li>Predictable breaks</li>
+                                </ul>
+                            </div>
+                            <div class="cons">
+                                <h6>Considerations:</h6>
+                                <ul>
+                                    <li>Complex fixed pattern</li>
+                                    <li>Limited variety</li>
+                                    <li>Night crew challenges</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="pattern-footer">
+                        <button class="btn btn-outline-info w-100 select-pattern" data-pattern="dupont_fixed">
+                            Select DuPont Fixed Shift
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 8-HOUR PATTERNS (4 additional) -->
+
+                <!-- Southern Swing Counter-clockwise -->
+                <div class="pattern-card" data-pattern="southern_swing_ccw" data-category="8-hour">
+                    <div class="pattern-header">
+                        <h4><i class="bi bi-arrow-counterclockwise text-warning"></i> Southern Swing CCW</h4>
+                        <span class="badge bg-outline-warning">8-Hour Variation</span>
+                    </div>
+                    <div class="pattern-body">
+                        <p class="pattern-description">Counter-clockwise rotation (nights → evenings → days)</p>
+                        <div class="pattern-details">
+                            <div class="detail-item">
+                                <strong>Shift Length:</strong> 8 hours
+                            </div>
+                            <div class="detail-item">
+                                <strong>Cycle:</strong> 28 days
+                            </div>
+                            <div class="detail-item">
+                                <strong>Rotation:</strong> Backward (CCW)
+                            </div>
+                        </div>
+                        <div class="pros-cons">
+                            <div class="pros">
+                                <h6>Advantages:</h6>
+                                <ul>
+                                    <li>Some prefer backward rotation</li>
+                                    <li>Experience all shifts</li>
+                                    <li>Traditional pattern</li>
+                                </ul>
+                            </div>
+                            <div class="cons">
+                                <h6>Considerations:</h6>
+                                <ul>
+                                    <li>Against natural circadian</li>
+                                    <li>Only 1 weekend off per month</li>
+                                    <li>Constant rotation</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="pattern-footer">
+                        <button class="btn btn-outline-warning w-100 select-pattern" data-pattern="southern_swing_ccw">
+                            Select Southern Swing CCW
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Southern Swing Fixed Shifts -->
+                <div class="pattern-card" data-pattern="southern_swing_fixed" data-category="8-hour">
+                    <div class="pattern-header">
+                        <h4><i class="bi bi-lock text-warning"></i> Southern Swing Fixed</h4>
+                        <span class="badge bg-outline-warning">8-Hour Variation</span>
+                    </div>
+                    <div class="pattern-body">
+                        <p class="pattern-description">Southern swing pattern with fixed crews</p>
+                        <div class="pattern-details">
+                            <div class="detail-item">
+                                <strong>Shift Length:</strong> 8 hours
+                            </div>
+                            <div class="detail-item">
+                                <strong>Cycle:</strong> 7 days
+                            </div>
+                            <div class="detail-item">
+                                <strong>Rotation:</strong> None (fixed crews)
+                            </div>
+                        </div>
+                        <div class="pros-cons">
+                            <div class="pros">
+                                <h6>Advantages:</h6>
+                                <ul>
+                                    <li>No rotation fatigue</li>
+                                    <li>Predictable schedule</li>
+                                    <li>Specialized crews</li>
+                                </ul>
+                            </div>
+                            <div class="cons">
+                                <h6>Considerations:</h6>
+                                <ul>
+                                    <li>Night crew always nights</li>
+                                    <li>Limited variety</li>
+                                    <li>Skill specialization needed</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="pattern-footer">
+                        <button class="btn btn-outline-warning w-100 select-pattern" data-pattern="southern_swing_fixed">
+                            Select Southern Swing Fixed
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Fixed 5&2 8-Hour -->
+                <div class="pattern-card" data-pattern="fixed_five_two_8" data-category="8-hour">
+                    <div class="pattern-header">
+                        <h4><i class="bi bi-calendar-event text-secondary"></i> Fixed 5&2 8-Hour</h4>
+                        <span class="badge bg-outline-secondary">8-Hour Variation</span>
+                    </div>
+                    <div class="pattern-body">
+                        <p class="pattern-description">5 days on, 2 days off with 8-hour shifts</p>
+                        <div class="pattern-details">
+                            <div class="detail-item">
+                                <strong>Shift Length:</strong> 8 hours
+                            </div>
+                            <div class="detail-item">
+                                <strong>Cycle:</strong> 7 days
+                            </div>
+                            <div class="detail-item">
+                                <strong>Rotation:</strong> None (fixed crews)
+                            </div>
+                        </div>
+                        <div class="pros-cons">
+                            <div class="pros">
+                                <h6>Advantages:</h6>
+                                <ul>
+                                    <li>Traditional work week</li>
+                                    <li>Weekends off</li>
+                                    <li>Simple to understand</li>
+                                </ul>
+                            </div>
+                            <div class="cons">
+                                <h6>Considerations:</h6>
+                                <ul>
+                                    <li>5 consecutive days</li>
+                                    <li>Need weekend coverage</li>
+                                    <li>Higher staffing needs</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="pattern-footer">
+                        <button class="btn btn-outline-secondary w-100 select-pattern" data-pattern="fixed_five_two_8">
+                            Select Fixed 5&2 8-Hour
+                        </button>
+                    </div>
+                </div>
+
             </div>
         </div>
     </div>
@@ -303,17 +1244,24 @@
                 </div>
                 <div class="card-body">
                     <div class="row">
-                        <div class="col-md-4">
-                            <h6>First Time?</h6>
-                            <p>Start with <strong>Pitman (2-2-3)</strong> - it's widely used and balances work-life needs.</p>
+                        <div class="col-md-6">
+                            <h6>Pattern Categories:</h6>
+                            <ul>
+                                <li><strong>Recommended (6):</strong> Most popular and proven patterns</li>
+                                <li><strong>12-Hour (21):</strong> Longer shifts, fewer work days</li>
+                                <li><strong>8-Hour (5):</strong> Traditional shift lengths</li>
+                                <li><strong>Pitman Variations (5):</strong> Different rotation speeds</li>
+                                <li><strong>4-on-4-off Variations (5):</strong> Balanced work/time off</li>
+                            </ul>
                         </div>
-                        <div class="col-md-4">
-                            <h6>8-Hour Shifts?</h6>
-                            <p>Choose <strong>Southern Swing</strong> for traditional 8-hour rotating shifts.</p>
-                        </div>
-                        <div class="col-md-4">
-                            <h6>Want Predictability?</h6>
-                            <p>Use <strong>Fixed Teams</strong> for completely predictable schedules.</p>
+                        <div class="col-md-6">
+                            <h6>Quick Filters:</h6>
+                            <p>Use the filter buttons above to narrow down options based on:</p>
+                            <ul>
+                                <li>Shift length preference (8 vs 12 hours)</li>
+                                <li>Pattern family (Pitman, 4-on-4-off, etc.)</li>
+                                <li>Recommended vs all options</li>
+                            </ul>
                         </div>
                     </div>
                 </div>
@@ -337,12 +1285,17 @@
     transition: all 0.3s ease;
     border: 2px solid transparent;
     overflow: hidden;
+    display: block;
 }
 
 .pattern-card:hover {
     transform: translateY(-2px);
     box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
     border-color: #007bff;
+}
+
+.pattern-card.hidden {
+    display: none;
 }
 
 .pattern-header {
@@ -432,6 +1385,29 @@
     letter-spacing: 0.5px;
 }
 
+.filter-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.filter-btn {
+    border-radius: 20px;
+    font-size: 0.875rem;
+    padding: 0.375rem 1rem;
+}
+
+.filter-btn.active {
+    background-color: var(--bs-primary);
+    border-color: var(--bs-primary);
+    color: white;
+}
+
+.pattern-search input {
+    border-radius: 20px;
+    min-width: 200px;
+}
+
 @media (max-width: 768px) {
     .pattern-grid {
         grid-template-columns: 1fr;
@@ -451,12 +1427,98 @@
         align-items: flex-start;
         gap: 0.5rem;
     }
+    
+    .filter-buttons {
+        justify-content: center;
+    }
+    
+    .pattern-search input {
+        min-width: 100%;
+    }
 }
 </style>
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Add click handlers to pattern selection buttons
+    const cards = document.querySelectorAll('.pattern-card');
+    const filterButtons = document.querySelectorAll('.filter-btn');
+    const searchInput = document.getElementById('patternSearch');
+
+    // Filter functionality
+    function filterPatterns(filterType) {
+        cards.forEach(card => {
+            const categories = card.dataset.category.toLowerCase();
+            let show = false;
+
+            switch(filterType) {
+                case 'recommended':
+                    show = categories.includes('recommended');
+                    break;
+                case '12-hour':
+                    show = categories.includes('12-hour');
+                    break;
+                case '8-hour':
+                    show = categories.includes('8-hour');
+                    break;
+                case 'all':
+                    show = true;
+                    break;
+                default:
+                    show = categories.includes(filterType);
+            }
+
+            if (show) {
+                card.classList.remove('hidden');
+            } else {
+                card.classList.add('hidden');
+            }
+        });
+    }
+
+    // Search functionality
+    function searchPatterns(searchTerm) {
+        const term = searchTerm.toLowerCase();
+        cards.forEach(card => {
+            const title = card.querySelector('h4').textContent.toLowerCase();
+            const description = card.querySelector('.pattern-description').textContent.toLowerCase();
+            
+            if (title.includes(term) || description.includes(term) || term === '') {
+                card.classList.remove('hidden');
+            } else {
+                card.classList.add('hidden');
+            }
+        });
+    }
+
+    // Filter button event listeners
+    filterButtons.forEach(button => {
+        button.addEventListener('click', function() {
+            // Remove active class from all buttons
+            filterButtons.forEach(btn => btn.classList.remove('active'));
+            // Add active class to clicked button
+            this.classList.add('active');
+            
+            // Apply filter
+            const filterType = this.dataset.filter;
+            filterPatterns(filterType);
+            
+            // Clear search when filtering
+            searchInput.value = '';
+        });
+    });
+
+    // Search input event listener
+    searchInput.addEventListener('input', function() {
+        const searchTerm = this.value;
+        searchPatterns(searchTerm);
+        
+        // Remove active state from filter buttons when searching
+        if (searchTerm) {
+            filterButtons.forEach(btn => btn.classList.remove('active'));
+        }
+    });
+
+    // Pattern selection button event listeners
     document.querySelectorAll('.select-pattern').forEach(button => {
         button.addEventListener('click', function() {
             const pattern = this.dataset.pattern;
@@ -466,9 +1528,21 @@ document.addEventListener('DOMContentLoaded', function() {
             this.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Loading...';
             this.disabled = true;
             
-            // Navigate to wizard
+            // Navigate to wizard (adjust URL as needed for your routing)
             setTimeout(() => {
-                window.location.href = `/schedule/wizard/${pattern}`;
+                if (pattern === 'pitman') {
+                    // If only Pitman is implemented, redirect to existing route
+                    window.location.href = '/schedule/pitman/preview';
+                } else {
+                    // For future implementation when other patterns are available
+                    window.location.href = `/schedule/wizard/${pattern}`;
+                    
+                    // Temporary fallback - show message for unimplemented patterns
+                    // Remove this when all patterns are implemented
+                    this.innerHTML = originalText;
+                    this.disabled = false;
+                    alert(`${pattern.replace(/_/g, ' ').toUpperCase()} schedule is not yet implemented. Only Pitman is currently available.`);
+                }
             }, 500);
         });
     });
@@ -476,13 +1550,18 @@ document.addEventListener('DOMContentLoaded', function() {
     // Add hover effects to cards
     document.querySelectorAll('.pattern-card').forEach(card => {
         card.addEventListener('mouseenter', function() {
-            this.style.borderColor = '#007bff';
+            if (!this.classList.contains('hidden')) {
+                this.style.borderColor = '#007bff';
+            }
         });
         
         card.addEventListener('mouseleave', function() {
             this.style.borderColor = 'transparent';
         });
     });
+
+    // Initialize with recommended filter active
+    filterPatterns('recommended');
 });
 </script>
 {% endblock %}
