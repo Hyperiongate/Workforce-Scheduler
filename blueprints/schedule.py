@@ -1,6 +1,7 @@
-# blueprints/schedule.py - COMPLETE WORKING FILE
+# blueprints/schedule.py - FIXED for Database Schema Compatibility
 """
-Schedule management blueprint - Fixed and tested
+Schedule management blueprint - FIXED for your actual database schema
+UPDATED: September 25, 2025 - Fixed Position.is_active and Schedule.hours compatibility
 """
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, current_app
@@ -45,23 +46,38 @@ def schedule_select():
 @schedule_bp.route('/schedule/wizard/<pattern>')
 @login_required
 def schedule_wizard(pattern):
-    """Pattern-specific schedule creation wizard"""
+    """Pattern-specific schedule creation wizard - FIXED for database schema"""
     try:
         # Check supervisor permission
         if not current_user.is_supervisor:
             flash('Access denied. Supervisors only.', 'danger')
             return redirect(url_for('supervisor.dashboard'))
         
-        # Validate pattern
-        valid_patterns = ['pitman', 'dupont', 'southern_swing', 'fixed_fixed', 'four_on_four_off', 'five_and_two']
+        # Expand valid patterns to include all 26+ patterns from selection page
+        valid_patterns = [
+            # Original 6 patterns
+            'pitman', 'dupont', 'southern_swing', 'fixed_fixed', 'four_on_four_off', 'five_and_two',
+            # Pitman variations
+            'pitman_fixed', 'pitman_rapid', 'pitman_2week', 'pitman_4week',
+            # 4-on-4-off variations
+            'four_on_four_off_fixed', 'four_on_four_off_modified', 'four_on_four_off_fast', 'four_on_four_off_weekly',
+            # 3-on-3-off variations
+            'three_on_three_off', 'three_on_three_off_fixed', 'three_on_three_off_weekly', 'three_on_three_off_6week',
+            # Specialty patterns
+            'panama', 'fixed_five_two_12', 'fixed_four_three', 'dupont_fixed',
+            # 8-hour variations
+            'southern_swing_ccw', 'southern_swing_fixed', 'fixed_five_two_8', 'continental'
+        ]
         
         if pattern not in valid_patterns:
             flash(f'Invalid schedule pattern: {pattern}', 'danger')
             return redirect(url_for('schedule.schedule_select'))
         
-        # Get employees and positions
+        # Get employees and positions - FIXED queries for your schema
         employees = Employee.query.filter_by(is_active=True, is_supervisor=False).order_by(Employee.name).all()
-        positions = Position.query.filter_by(is_active=True).order_by(Position.name).all()
+        
+        # FIXED: Remove is_active filter since Position model doesn't have this field
+        positions = Position.query.order_by(Position.name).all()
         
         # Group employees by crew
         employees_by_crew = {'A': [], 'B': [], 'C': [], 'D': [], 'Unassigned': []}
@@ -85,8 +101,9 @@ def schedule_wizard(pattern):
                         crew_stats[crew]['positions'][pos_name] = 0
                     crew_stats[crew]['positions'][pos_name] += 1
         
-        # Pattern configurations
+        # Enhanced pattern configurations with all 26+ patterns
         pattern_configs = {
+            # Original 6 patterns
             'pitman': {
                 'name': 'Pitman (2-2-3)',
                 'shift_hours': 12,
@@ -128,22 +145,171 @@ def schedule_wizard(pattern):
                 'allows_fixed': True,
                 'allows_rotating': False,
                 'rotation_options': []
+            },
+            
+            # Pitman variations
+            'pitman_fixed': {
+                'name': 'Fixed Pitman',
+                'shift_hours': 12,
+                'allows_fixed': True,
+                'allows_rotating': False,
+                'rotation_options': []
+            },
+            'pitman_rapid': {
+                'name': 'Rapid Rotation Pitman',
+                'shift_hours': 12,
+                'allows_fixed': False,
+                'allows_rotating': True,
+                'rotation_options': ['Rapid Rotation']
+            },
+            'pitman_2week': {
+                'name': '2-Week Rotation Pitman',
+                'shift_hours': 12,
+                'allows_fixed': False,
+                'allows_rotating': True,
+                'rotation_options': ['2-Week Rotation']
+            },
+            'pitman_4week': {
+                'name': '4-Week Rotation Pitman',
+                'shift_hours': 12,
+                'allows_fixed': False,
+                'allows_rotating': True,
+                'rotation_options': ['4-Week Rotation']
+            },
+            
+            # 4-on-4-off variations
+            'four_on_four_off_fixed': {
+                'name': 'Fixed 4-on-4-off',
+                'shift_hours': 12,
+                'allows_fixed': True,
+                'allows_rotating': False,
+                'rotation_options': []
+            },
+            'four_on_four_off_modified': {
+                'name': 'Modified 4-on-4-off',
+                'shift_hours': 12,
+                'allows_fixed': True,
+                'allows_rotating': True,
+                'rotation_options': ['Modified for Full Weekends']
+            },
+            'four_on_four_off_fast': {
+                'name': 'Fast Rotation 4-on-4-off',
+                'shift_hours': 12,
+                'allows_fixed': False,
+                'allows_rotating': True,
+                'rotation_options': ['Fast Rotation']
+            },
+            'four_on_four_off_weekly': {
+                'name': 'Weekly Rotation 4-on-4-off',
+                'shift_hours': 12,
+                'allows_fixed': False,
+                'allows_rotating': True,
+                'rotation_options': ['Weekly Rotation']
+            },
+            
+            # 3-on-3-off variations
+            'three_on_three_off': {
+                'name': 'Basic 3-on-3-off',
+                'shift_hours': 12,
+                'allows_fixed': True,
+                'allows_rotating': True,
+                'rotation_options': ['Standard']
+            },
+            'three_on_three_off_fixed': {
+                'name': 'Fixed Complex 3-on-3-off',
+                'shift_hours': 12,
+                'allows_fixed': True,
+                'allows_rotating': False,
+                'rotation_options': []
+            },
+            'three_on_three_off_weekly': {
+                'name': 'Weekly Rotation 3-on-3-off',
+                'shift_hours': 12,
+                'allows_fixed': False,
+                'allows_rotating': True,
+                'rotation_options': ['Weekly Rotation']
+            },
+            'three_on_three_off_6week': {
+                'name': '6-Week Rotation 3-on-3-off',
+                'shift_hours': 12,
+                'allows_fixed': False,
+                'allows_rotating': True,
+                'rotation_options': ['6-Week Rotation']
+            },
+            
+            # Specialty 12-hour patterns
+            'panama': {
+                'name': 'Panama (2-3-2)',
+                'shift_hours': 12,
+                'allows_fixed': True,
+                'allows_rotating': True,
+                'rotation_options': ['Fixed', 'Rotating']
+            },
+            'fixed_five_two_12': {
+                'name': 'Fixed 5&2 12-Hour',
+                'shift_hours': 12,
+                'allows_fixed': True,
+                'allows_rotating': False,
+                'rotation_options': []
+            },
+            'fixed_four_three': {
+                'name': 'Fixed 4/3',
+                'shift_hours': 12,
+                'allows_fixed': True,
+                'allows_rotating': False,
+                'rotation_options': []
+            },
+            'dupont_fixed': {
+                'name': 'DuPont Fixed Shift',
+                'shift_hours': 12,
+                'allows_fixed': True,
+                'allows_rotating': False,
+                'rotation_options': []
+            },
+            
+            # 8-hour variations
+            'southern_swing_ccw': {
+                'name': 'Southern Swing Counter-clockwise',
+                'shift_hours': 8,
+                'allows_fixed': False,
+                'allows_rotating': True,
+                'rotation_options': ['Counter-clockwise']
+            },
+            'southern_swing_fixed': {
+                'name': 'Southern Swing Fixed',
+                'shift_hours': 8,
+                'allows_fixed': True,
+                'allows_rotating': False,
+                'rotation_options': []
+            },
+            'fixed_five_two_8': {
+                'name': 'Fixed 5&2 8-Hour',
+                'shift_hours': 8,
+                'allows_fixed': True,
+                'allows_rotating': False,
+                'rotation_options': []
+            },
+            'continental': {
+                'name': 'Continental',
+                'shift_hours': 8,
+                'allows_fixed': False,
+                'allows_rotating': True,
+                'rotation_options': ['Standard']
             }
         }
         
-        # Check if wizard template exists, otherwise show message
-        try:
-            return render_template('schedule_wizard.html',
-                                 pattern=pattern,
-                                 pattern_config=pattern_configs.get(pattern, {}),
-                                 employees=employees,
-                                 positions=positions,
-                                 employees_by_crew=employees_by_crew,
-                                 unassigned_employees=employees_by_crew.get('Unassigned', []),
-                                 crew_stats=crew_stats)
-        except:
-            flash(f'Schedule wizard for {pattern} is being prepared.', 'info')
-            return redirect(url_for('schedule.schedule_select'))
+        # Render the wizard template
+        return render_template('schedule_wizard.html',
+                             pattern=pattern,
+                             pattern_config=pattern_configs.get(pattern, {}),
+                             employees=employees,
+                             positions=positions,
+                             employees_by_crew=employees_by_crew,
+                             unassigned_employees=employees_by_crew.get('Unassigned', []),
+                             crew_stats=crew_stats,
+                             # Add datetime imports for template
+                             datetime=datetime,
+                             timedelta=timedelta)
             
     except Exception as e:
         logger.error(f"Error in schedule_wizard: {str(e)}")
@@ -153,7 +319,7 @@ def schedule_wizard(pattern):
 @schedule_bp.route('/schedule/view')
 @login_required
 def view_schedules():
-    """View existing schedules"""
+    """View existing schedules - FIXED for your schema"""
     try:
         # Get parameters
         crew = request.args.get('crew', 'all')
@@ -213,19 +379,19 @@ def view_schedules():
         # Populate grid
         for schedule in schedules:
             if schedule.date in schedule_grid:
-                shift_type = schedule.shift_type or 'day'
+                shift_type = schedule.shift_type.value if schedule.shift_type else 'day'
                 if shift_type in schedule_grid[schedule.date]:
                     schedule_grid[schedule.date][shift_type].append(schedule)
         
-        # Calculate crew statistics
+        # Calculate crew statistics - FIXED to handle hours properly
         crew_stats = {}
         for crew_letter in ['A', 'B', 'C', 'D']:
             crew_schedules = [s for s in schedules if s.employee and s.employee.crew == crew_letter]
             crew_stats[crew_letter] = {
                 'total_shifts': len(crew_schedules),
-                'day_shifts': len([s for s in crew_schedules if s.shift_type == 'day']),
-                'night_shifts': len([s for s in crew_schedules if s.shift_type == 'night']),
-                'hours': sum(s.hours or 0 for s in crew_schedules)
+                'day_shifts': len([s for s in crew_schedules if s.shift_type and s.shift_type.value == 'day']),
+                'night_shifts': len([s for s in crew_schedules if s.shift_type and s.shift_type.value == 'night']),
+                'hours': sum(s.hours or 8.0 for s in crew_schedules)  # FIXED: Use hours field safely
             }
         
         # Try to render template
