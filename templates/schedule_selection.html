@@ -1518,7 +1518,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    // Pattern selection button event listeners
+    // Pattern selection button event listeners - FIXED FOR ALL 26+ PATTERNS
     document.querySelectorAll('.select-pattern').forEach(button => {
         button.addEventListener('click', function() {
             const pattern = this.dataset.pattern;
@@ -1528,21 +1528,9 @@ document.addEventListener('DOMContentLoaded', function() {
             this.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Loading...';
             this.disabled = true;
             
-            // Navigate to wizard (adjust URL as needed for your routing)
+            // FIXED: Navigate to wizard for ALL patterns - no restrictions
             setTimeout(() => {
-                if (pattern === 'pitman') {
-                    // If only Pitman is implemented, redirect to existing route
-                    window.location.href = '/schedule/pitman/preview';
-                } else {
-                    // For future implementation when other patterns are available
-                    window.location.href = `/schedule/wizard/${pattern}`;
-                    
-                    // Temporary fallback - show message for unimplemented patterns
-                    // Remove this when all patterns are implemented
-                    this.innerHTML = originalText;
-                    this.disabled = false;
-                    alert(`${pattern.replace(/_/g, ' ').toUpperCase()} schedule is not yet implemented. Only Pitman is currently available.`);
-                }
+                window.location.href = `/schedule/wizard/${pattern}`;
             }, 500);
         });
     });
