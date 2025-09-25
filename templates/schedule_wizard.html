@@ -476,6 +476,271 @@ document.addEventListener('DOMContentLoaded', function() {
     // Populate pattern explanation
     document.getElementById('patternExplanation').innerHTML = patternInfo.explanation || '<p>Pattern explanation will be available soon.</p>';
     
+    // ===== FIXED PATTERN GENERATION ALGORITHMS =====
+    // Updated: 2025-01-10 - Accurate pattern algorithms based on instruction manual
+    
+    /**
+     * Generate accurate crew assignments based on specific pattern algorithms
+     * @param {string} pattern - Pattern name
+     * @param {number} week - Week number (1-4)
+     * @param {number} day - Day of week (0=Sunday, 6=Saturday)
+     * @param {string} rotation - Rotation type (fixed, rotating, etc.)
+     * @returns {Object} Assignment with crews, time, and CSS class
+     */
+    function generateCrewAssignment(pattern, week, day, rotation) {
+        const dayOfCycle = (week - 1) * 7 + day;
+        let assignment = {
+            crews: 'Off',
+            time: '',
+            cssClass: 'shift-off'
+        };
+        
+        // Get shift times
+        const dayStart = document.getElementById('dayStart').value || '06:00';
+        const nightStart = document.getElementById('nightStart').value || '18:00';
+        const eveningStart = document.getElementById('eveningStart')?.value || '15:00';
+        
+        switch(pattern) {
+            case 'pitman':
+                // Accurate Pitman (2-2-3) pattern implementation
+                // 14-day cycle: Work 2, Off 2, Work 3, Off 2, Work 2, Off 3
+                const pitmanBase = [1,1,0,0,1,1,1,0,0,1,1,0,0,0];
+                const pitmanOffsets = {
+                    'A': 0,  // Days - starts at day 0
+                    'B': 7,  // Days - starts opposite of A
+                    'C': 0,  // Nights - same as A but nights
+                    'D': 7   // Nights - same as B but nights
+                };
+                
+                // Calculate which crews work today
+                const crewAWorks = pitmanBase[dayOfCycle % 14];
+                const crewBWorks = pitmanBase[(dayOfCycle + 7) % 14];
+                const crewCWorks = crewAWorks; // C mirrors A on nights
+                const crewDWorks = crewBWorks; // D mirrors B on nights
+                
+                if (rotation === 'fixed') {
+                    // Fixed crews: A&B always days, C&D always nights
+                    if (crewAWorks || crewBWorks) {
+                        const dayCrews = [];
+                        if (crewAWorks) dayCrews.push('A');
+                        if (crewBWorks) dayCrews.push('B');
+                        assignment.crews = dayCrews.join(',');
+                        assignment.time = `${dayStart}-${nightStart}`;
+                        assignment.cssClass = 'shift-day';
+                    }
+                    if (crewCWorks || crewDWorks) {
+                        const nightCrews = [];
+                        if (crewCWorks) nightCrews.push('C');
+                        if (crewDWorks) nightCrews.push('D');
+                        if (assignment.crews !== 'Off') {
+                            assignment.crews += ' / ' + nightCrews.join(',');
+                        } else {
+                            assignment.crews = nightCrews.join(',');
+                        }
+                        if (!assignment.time) {
+                            assignment.time = `${nightStart}-${dayStart}`;
+                            assignment.cssClass = 'shift-night';
+                        }
+                    }
+                } else {
+                    // Rotating crews - simplified for preview
+                    if (crewAWorks || crewBWorks) {
+                        assignment.crews = crewAWorks ? 'A,C' : 'B,D';
+                        assignment.time = `${dayStart}/${nightStart}`;
+                        assignment.cssClass = 'shift-day';
+                    }
+                }
+                break;
+                
+            case 'dupont':
+                // Accurate DuPont pattern: 4N-3off-3D-1off-3N-3off-4D-7off (28-day cycle)
+                const dupontPattern = [
+                    // Days 1-7: 4 nights, then 3 off
+                    {shift: 'night', crews: 'A'}, {shift: 'night', crews: 'A'}, 
+                    {shift: 'night', crews: 'A'}, {shift: 'night', crews: 'A'},
+                    {shift: 'off', crews: ''}, {shift: 'off', crews: ''}, {shift: 'off', crews: ''},
+                    // Days 8-14: 3 days, 1 off, 3 nights
+                    {shift: 'day', crews: 'A'}, {shift: 'day', crews: 'A'}, {shift: 'day', crews: 'A'},
+                    {shift: 'off', crews: ''},
+                    {shift: 'night', crews: 'A'}, {shift: 'night', crews: 'A'}, {shift: 'night', crews: 'A'},
+                    // Days 15-21: 3 off, 4 days
+                    {shift: 'off', crews: ''}, {shift: 'off', crews: ''}, {shift: 'off', crews: ''},
+                    {shift: 'day', crews: 'A'}, {shift: 'day', crews: 'A'}, 
+                    {shift: 'day', crews: 'A'}, {shift: 'day', crews: 'A'},
+                    // Days 22-28: 7 off
+                    {shift: 'off', crews: ''}, {shift: 'off', crews: ''}, {shift: 'off', crews: ''},
+                    {shift: 'off', crews: ''}, {shift: 'off', crews: ''}, {shift: 'off', crews: ''}, {shift: 'off', crews: ''}
+                ];
+                
+                // Each crew is offset by 7 days
+                const dupontCrewOffsets = {'A': 0, 'B': 7, 'C': 14, 'D': 21};
+                const workingCrews = [];
+                let shiftType = 'off';
+                
+                for (const [crew, offset] of Object.entries(dupontCrewOffsets)) {
+                    const crewDay = (dayOfCycle + offset) % 28;
+                    const crewShift = dupontPattern[crewDay];
+                    if (crewShift.shift !== 'off') {
+                        workingCrews.push(crew);
+                        shiftType = crewShift.shift;
+                    }
+                }
+                
+                if (workingCrews.length > 0) {
+                    assignment.crews = workingCrews.join(',');
+                    if (shiftType === 'day') {
+                        assignment.time = `${dayStart}-${nightStart}`;
+                        assignment.cssClass = 'shift-day';
+                    } else if (shiftType === 'night') {
+                        assignment.time = `${nightStart}-${dayStart}`;
+                        assignment.cssClass = 'shift-night';
+                    }
+                }
+                break;
+                
+            case 'southern_swing':
+                // Southern Swing: 8-hour shifts rotating through days, evenings, nights
+                // Week 1: M-F days, weekend off
+                // Week 2: M-T off, W-Sun evenings  
+                // Week 3: M-T evenings, W off, Th-Sun nights
+                // Week 4: M-W nights, Th-F off, Sat-Sun days
+                
+                const weekInCycle = Math.floor(dayOfCycle / 7) % 4;
+                const dayInWeek = dayOfCycle % 7;
+                const dayMapping = [0,1,2,3,4,5,6]; // Sun=0, Mon=1, etc.
+                
+                if (weekInCycle === 0) {
+                    // Week 1: Monday-Friday days
+                    if (dayInWeek >= 1 && dayInWeek <= 5) {
+                        assignment.crews = 'All';
+                        assignment.time = `${dayStart}-${eveningStart}`;
+                        assignment.cssClass = 'shift-day';
+                    }
+                } else if (weekInCycle === 1) {
+                    // Week 2: Wed-Sun evenings
+                    if (dayInWeek >= 3 || dayInWeek === 0) {
+                        assignment.crews = 'All';
+                        assignment.time = `${eveningStart}-${document.getElementById('nightStart').value}`;
+                        assignment.cssClass = 'shift-evening';
+                    }
+                } else if (weekInCycle === 2) {
+                    // Week 3: Mon-Tue evenings, Thu-Sun nights
+                    if (dayInWeek === 1 || dayInWeek === 2) {
+                        assignment.crews = 'All';
+                        assignment.time = `${eveningStart}-${document.getElementById('nightStart').value}`;
+                        assignment.cssClass = 'shift-evening';
+                    } else if (dayInWeek >= 4 || dayInWeek === 0) {
+                        assignment.crews = 'All';
+                        assignment.time = `${document.getElementById('nightStart').value}-${dayStart}`;
+                        assignment.cssClass = 'shift-night';
+                    }
+                } else if (weekInCycle === 3) {
+                    // Week 4: Mon-Wed nights, Sat-Sun days
+                    if (dayInWeek >= 1 && dayInWeek <= 3) {
+                        assignment.crews = 'All';
+                        assignment.time = `${document.getElementById('nightStart').value}-${dayStart}`;
+                        assignment.cssClass = 'shift-night';
+                    } else if (dayInWeek === 6 || dayInWeek === 0) {
+                        assignment.crews = 'All';
+                        assignment.time = `${dayStart}-${eveningStart}`;
+                        assignment.cssClass = 'shift-day';
+                    }
+                }
+                break;
+                
+            case 'four_on_four_off':
+                // Accurate 4-on-4-off pattern
+                // Each crew works 4 consecutive days, then has 4 days off
+                // Crews are staggered by 2 days
+                const fourOnCycle = 8; // 4 on + 4 off = 8 days
+                const fourOnOffsets = {'A': 0, 'B': 2, 'C': 4, 'D': 6};
+                
+                for (const [crew, offset] of Object.entries(fourOnOffsets)) {
+                    const crewDay = (dayOfCycle + offset) % fourOnCycle;
+                    if (crewDay < 4) { // First 4 days = working
+                        if (!assignment.crews || assignment.crews === 'Off') {
+                            assignment.crews = crew;
+                        } else {
+                            assignment.crews += ',' + crew;
+                        }
+                    }
+                }
+                
+                if (assignment.crews !== 'Off') {
+                    if (rotation === 'fixed') {
+                        // Fixed: A&B days, C&D nights
+                        const dayCrews = assignment.crews.split(',').filter(c => ['A','B'].includes(c));
+                        const nightCrews = assignment.crews.split(',').filter(c => ['C','D'].includes(c));
+                        
+                        if (dayCrews.length > 0 && nightCrews.length > 0) {
+                            assignment.crews = dayCrews.join(',') + ' / ' + nightCrews.join(',');
+                            assignment.time = `${dayStart}/${nightStart}`;
+                            assignment.cssClass = 'shift-day';
+                        } else if (dayCrews.length > 0) {
+                            assignment.crews = dayCrews.join(',');
+                            assignment.time = `${dayStart}-${nightStart}`;
+                            assignment.cssClass = 'shift-day';
+                        } else {
+                            assignment.crews = nightCrews.join(',');
+                            assignment.time = `${nightStart}-${dayStart}`;
+                            assignment.cssClass = 'shift-night';
+                        }
+                    } else {
+                        // Rotating pattern
+                        assignment.time = `${dayStart}/${nightStart}`;
+                        assignment.cssClass = dayOfCycle % 14 < 7 ? 'shift-day' : 'shift-night';
+                    }
+                }
+                break;
+                
+            case 'fixed_fixed':
+                // Fixed Teams: Weekday team (Mon-Thu) vs Weekend team (Fri-Sun)
+                const dayOfWeek = day; // 0=Sunday, 1=Monday, etc.
+                
+                if (dayOfWeek >= 1 && dayOfWeek <= 4) {
+                    // Monday-Thursday: Weekday team
+                    assignment.crews = 'A,B';
+                    assignment.time = `${dayStart}-${nightStart}`;
+                    assignment.cssClass = 'shift-day';
+                } else if (dayOfWeek === 5 || dayOfWeek === 6 || dayOfWeek === 0) {
+                    // Friday-Sunday: Weekend team
+                    assignment.crews = 'C,D';
+                    assignment.time = `${dayStart}-${nightStart}`;
+                    assignment.cssClass = 'shift-day';
+                }
+                break;
+                
+            case 'five_and_two':
+                // 5&2 Pattern: 5 on, 2 off, 5 on, 5 off, 2 on, 2 off (21-day cycle)
+                const fiveAndTwoPattern = [
+                    1,1,1,1,1,0,0,  // 5 on, 2 off
+                    1,1,1,1,1,      // 5 on
+                    0,0,0,0,0,      // 5 off
+                    1,1,0,0         // 2 on, 2 off
+                ];
+                
+                // Simplified for preview - show basic pattern
+                const fiveTwoDay = dayOfCycle % 21;
+                if (fiveTwoDay < fiveAndTwoPattern.length && fiveAndTwoPattern[fiveTwoDay]) {
+                    assignment.crews = 'A,B';
+                    assignment.time = `${dayStart}-${nightStart}`;
+                    assignment.cssClass = 'shift-day';
+                }
+                break;
+                
+            default:
+                // For patterns not yet implemented, show a simple alternating pattern
+                if (dayOfCycle % 2 === 0) {
+                    assignment.crews = 'Pattern Preview';
+                    assignment.time = 'Coming Soon';
+                    assignment.cssClass = 'shift-day';
+                }
+                break;
+        }
+        
+        return assignment;
+    }
+    
     // Generate schedule preview
     function generateSchedulePreview() {
         const startDate = new Date(document.getElementById('startDate').value);
@@ -544,68 +809,13 @@ document.addEventListener('DOMContentLoaded', function() {
                     </div>
                 </div>
             </div>
+            
+            <div class="alert alert-info mt-3">
+                <strong>Note:</strong> This preview shows the basic pattern structure. Actual schedule generation will assign specific employees to each crew based on their current assignments.
+            </div>
         `;
         
         document.getElementById('schedulePreview').innerHTML = previewHtml;
-    }
-    
-    function generateCrewAssignment(pattern, week, day, rotation) {
-        // Simplified pattern generation for preview
-        // This would be replaced with actual pattern algorithms
-        
-        const dayOfCycle = (week - 1) * 7 + day;
-        let assignment = {
-            crews: '',
-            time: '',
-            cssClass: 'shift-off'
-        };
-        
-        switch(pattern) {
-            case 'pitman':
-                // Simplified Pitman pattern
-                const pitmanPattern = [1,1,0,0,1,1,1,0,0,1,1,0,0,0]; // 14-day cycle
-                const dayIndex = dayOfCycle % 14;
-                if (pitmanPattern[dayIndex]) {
-                    assignment.crews = dayIndex % 2 === 0 ? 'A,B' : 'C,D';
-                    assignment.time = '6:00-18:00';
-                    assignment.cssClass = 'shift-day';
-                }
-                break;
-                
-            case 'four_on_four_off':
-                // 4-on-4-off pattern
-                const fourOnPattern = dayOfCycle % 8 < 4;
-                if (fourOnPattern) {
-                    assignment.crews = dayOfCycle % 8 < 2 ? 'A,B' : 'C,D';
-                    assignment.time = dayOfCycle % 2 === 0 ? '6:00-18:00' : '18:00-6:00';
-                    assignment.cssClass = dayOfCycle % 2 === 0 ? 'shift-day' : 'shift-night';
-                }
-                break;
-                
-            case 'southern_swing':
-                // Simplified Southern Swing
-                const weekInCycle = (week - 1) % 4;
-                if (weekInCycle === 0 && day >= 1 && day <= 5) {
-                    assignment.crews = 'A,B,C,D';
-                    assignment.time = '7:00-15:00';
-                    assignment.cssClass = 'shift-day';
-                } else if (weekInCycle === 1 && day >= 3) {
-                    assignment.crews = 'A,B,C,D';
-                    assignment.time = '15:00-23:00';
-                    assignment.cssClass = 'shift-evening';
-                }
-                break;
-                
-            default:
-                // Default pattern
-                if (dayOfCycle % 2 === 0) {
-                    assignment.crews = 'A,B';
-                    assignment.time = '6:00-18:00';
-                    assignment.cssClass = 'shift-day';
-                }
-        }
-        
-        return assignment;
     }
     
     // Event listeners
@@ -616,7 +826,17 @@ document.addEventListener('DOMContentLoaded', function() {
     // Create schedule button
     document.getElementById('createScheduleBtn').addEventListener('click', function() {
         // For now, show a message. Later this would create the actual schedule
-        alert(`Schedule creation for ${patternConfig.name} will be implemented in the next phase. This preview shows you exactly how the pattern will work.`);
+        const config = {
+            pattern: pattern,
+            rotation: document.getElementById('shiftRotation').value,
+            startDate: document.getElementById('startDate').value,
+            dayStart: document.getElementById('dayStart').value,
+            nightStart: document.getElementById('nightStart')?.value,
+            eveningStart: document.getElementById('eveningStart')?.value
+        };
+        
+        console.log('Schedule Configuration:', config);
+        alert(`Schedule creation for ${patternConfig.name} will be implemented in the next phase. Configuration has been logged to console.`);
     });
     
     // Generate initial preview
