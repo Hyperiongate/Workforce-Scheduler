@@ -65,22 +65,29 @@
             <!-- Pattern Configuration -->
             <div class="card">
                 <div class="card-header">
-                    <h5><i class="bi bi-gear"></i> Configuration Options</h5>
+                    <h5><i class="bi bi-gear"></i> Pattern Configuration</h5>
                 </div>
                 <div class="card-body">
                     <form id="patternConfig">
                         {% if pattern == 'pitman' %}
                         <!-- Special Pitman Configuration -->
                         <div class="mb-3">
-                            <label for="pitmanVariation" class="form-label">Pitman Variation</label>
+                            <label for="pitmanVariation" class="form-label">Select Pitman Rotation Type</label>
                             <select class="form-select" id="pitmanVariation" name="pitman_variation">
-                                <option value="">-- Select Pitman Type --</option>
+                                <option value="">-- Choose Rotation --</option>
                                 <option value="fixed">Fixed Shifts (No Rotation)</option>
                                 <option value="fast">Fast Rotation (Every Work Set)</option>
                                 <option value="medium">Medium Rotation (Every 2 Weeks)</option>
                                 <option value="slow">Slow Rotation (Every 4 Weeks)</option>
                             </select>
-                            <div class="form-text">Choose how crews rotate between day and night shifts</div>
+                            <div class="form-text">
+                                <ul class="mb-0 mt-2">
+                                    <li><strong>Fixed:</strong> A&B always work days, C&D always work nights (2-week cycle)</li>
+                                    <li><strong>Fast:</strong> Rotate after each work stretch (4-week cycle)</li>
+                                    <li><strong>Medium:</strong> Rotate every 2 weeks (4-week cycle)</li>
+                                    <li><strong>Slow:</strong> Rotate every 4 weeks (8-week cycle)</li>
+                                </ul>
+                            </div>
                         </div>
                         {% else %}
                         <div class="mb-3">
@@ -97,44 +104,6 @@
                             </select>
                         </div>
                         {% endif %}
-
-                        <div class="mb-3">
-                            <label for="startDate" class="form-label">Schedule Start Date</label>
-                            <input type="date" class="form-control" id="startDate" name="start_date" 
-                                   value="{{ (datetime.now().date() + timedelta(days=7)).strftime('%Y-%m-%d') }}">
-                            {% if pattern == 'pitman' %}
-                            <div class="form-text">Will automatically adjust to the nearest Sunday</div>
-                            {% endif %}
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="shiftTimes" class="form-label">Shift Start Times</label>
-                            <div class="row">
-                                {% if pattern_config.shift_hours == 12 %}
-                                <div class="col-6">
-                                    <label class="form-label small">Day Shift Start</label>
-                                    <input type="time" class="form-control" value="06:00" id="dayStart" required>
-                                </div>
-                                <div class="col-6">
-                                    <label class="form-label small">Night Shift Start</label>
-                                    <input type="time" class="form-control" value="18:00" id="nightStart" required>
-                                </div>
-                                {% else %}
-                                <div class="col-4">
-                                    <label class="form-label small">Day</label>
-                                    <input type="time" class="form-control" value="07:00" id="dayStart" required>
-                                </div>
-                                <div class="col-4">
-                                    <label class="form-label small">Evening</label>
-                                    <input type="time" class="form-control" value="15:00" id="eveningStart">
-                                </div>
-                                <div class="col-4">
-                                    <label class="form-label small">Night</label>
-                                    <input type="time" class="form-control" value="23:00" id="nightStart">
-                                </div>
-                                {% endif %}
-                            </div>
-                        </div>
                     </form>
                 </div>
             </div>
@@ -951,8 +920,8 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Generate schedule preview
     function generateSchedulePreview() {
-        // For Pitman, automatically adjust to nearest Sunday
-        let startDate = new Date(document.getElementById('startDate').value);
+        // For pattern preview, we don't need actual dates
+        // Just show the pattern cycle
         
         if (pattern === 'pitman') {
             // Get rotation type
@@ -961,21 +930,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 document.getElementById('schedulePreview').innerHTML = `
                     <div class="alert alert-warning text-center">
                         <i class="bi bi-info-circle fs-1"></i>
-                        <h5 class="mt-2">Select Pitman Variation</h5>
-                        <p>Please choose between Fixed Shifts, Fast, Medium, or Slow Rotation above to see the schedule preview.</p>
+                        <h5 class="mt-2">Select Rotation Type</h5>
+                        <p>Please choose your preferred Pitman rotation type above to see the complete schedule cycle.</p>
                     </div>
                 `;
                 return;
-            }
-            
-            // Automatically adjust to Sunday
-            const dayOfWeek = startDate.getDay();
-            if (dayOfWeek !== 0) {
-                // Find the nearest Sunday (previous Sunday if Mon-Wed, next Sunday if Thu-Sat)
-                const daysToAdjust = dayOfWeek <= 3 ? -dayOfWeek : (7 - dayOfWeek);
-                startDate.setDate(startDate.getDate() + daysToAdjust);
-                // Update the date input to show adjusted date
-                document.getElementById('startDate').value = startDate.toISOString().split('T')[0];
             }
         }
         
@@ -983,8 +942,39 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('pitmanVariation')?.value : 
             document.getElementById('shiftRotation')?.value || 'fixed';
         
-        // Generate 4 weeks of preview data
-        let previewHtml = '<div class="schedule-grid">';
+        // Determine number of weeks to show based on pattern and rotation
+        let weeksToShow = 4;  // default
+        
+        if (pattern === 'pitman') {
+            switch(rotation) {
+                case 'fixed':
+                    weeksToShow = 2;  // Complete cycle in 2 weeks
+                    break;
+                case 'fast':
+                case 'medium':
+                    weeksToShow = 4;  // Complete rotation cycle in 4 weeks
+                    break;
+                case 'slow':
+                    weeksToShow = 8;  // Complete rotation cycle in 8 weeks
+                    break;
+            }
+        } else if (pattern === 'dupont') {
+            weeksToShow = 4;  // 28-day cycle
+        } else if (pattern === 'southern_swing') {
+            weeksToShow = 4;  // 28-day cycle
+        } else if (pattern === 'fouronfouroff' || pattern.includes('four')) {
+            weeksToShow = 4;  // Shows full pattern
+        }
+        
+        // Use default shift times
+        const dayStart = '06:00';
+        const nightStart = '18:00';
+        
+        // Generate preview with appropriate weeks
+        let previewHtml = `
+            <h6 class="mb-3">Complete ${weeksToShow}-Week Cycle Preview</h6>
+            <div class="schedule-grid">
+        `;
         
         // Header row
         previewHtml += '<div class="schedule-cell schedule-header">Week</div>';
@@ -993,15 +983,12 @@ document.addEventListener('DOMContentLoaded', function() {
             previewHtml += `<div class="schedule-cell schedule-header">${day}</div>`;
         });
         
-        // Generate 4 weeks
-        for (let week = 1; week <= 4; week++) {
+        // Generate weeks based on cycle length
+        for (let week = 1; week <= weeksToShow; week++) {
             previewHtml += `<div class="schedule-cell schedule-week">Week ${week}</div>`;
             
             for (let day = 0; day < 7; day++) {
-                const currentDate = new Date(startDate);
-                currentDate.setDate(startDate.getDate() + (week - 1) * 7 + day);
-                
-                // Generate crew assignments based on pattern
+                // For preview purposes, we just need the pattern, not actual dates
                 const assignment = generateCrewAssignment(pattern, week, day, rotation);
                 
                 previewHtml += `<div class="schedule-cell ${assignment.cssClass}">
@@ -1021,13 +1008,13 @@ document.addEventListener('DOMContentLoaded', function() {
                     <div class="col-md-3">
                         <div class="d-flex align-items-center mb-1">
                             <div class="shift-day" style="width: 20px; height: 20px; border-radius: 3px; margin-right: 8px;"></div>
-                            <span>Day Shift</span>
+                            <span>Day Shift (${dayStart}-${nightStart})</span>
                         </div>
                     </div>
                     <div class="col-md-3">
                         <div class="d-flex align-items-center mb-1">
                             <div class="shift-night" style="width: 20px; height: 20px; border-radius: 3px; margin-right: 8px;"></div>
-                            <span>Night Shift</span>
+                            <span>Night Shift (${nightStart}-${dayStart})</span>
                         </div>
                     </div>
                     ${patternConfig.shift_hours === 8 ? `
@@ -1057,17 +1044,26 @@ document.addEventListener('DOMContentLoaded', function() {
             
             legendHtml += `
                 <div class="alert alert-info mt-3">
-                    <strong>Pitman Pattern - ${rotationText}</strong><br>
-                    <strong>Pattern:</strong> Sun(W), Mon-Tue(O), Wed-Thu-Fri(W), Sat(O), Sun(O), Mon-Tue(W), Wed-Thu(O), Fri-Sat(W)<br>
-                    <strong>Start Date:</strong> ${startDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}<br>
-                    ${rotation !== 'fixed' ? '<strong>Note:</strong> Crews rotate between day and night shifts based on selected speed.' : '<strong>Note:</strong> A&B always work days, C&D always work nights.'}
+                    <h5>Pitman Pattern - ${rotationText}</h5>
+                    <p><strong>Base Pattern (2-2-3):</strong><br>
+                    Week 1: Sun(Work), Mon-Tue(Off), Wed-Thu-Fri(Work), Sat(Off)<br>
+                    Week 2: Sun(Off), Mon-Tue(Work), Wed-Thu(Off), Fri-Sat(Work)</p>
+                    ${rotation === 'fixed' ? 
+                        '<p><strong>Fixed Assignment:</strong> A&B always work day shifts, C&D always work night shifts. This shows the complete 2-week cycle.</p>' : 
+                    rotation === 'fast' ? 
+                        '<p><strong>Fast Rotation:</strong> Crews switch between days and nights after each work stretch. This shows the complete 4-week rotation cycle.</p>' :
+                    rotation === 'medium' ? 
+                        '<p><strong>Medium Rotation:</strong> Crews work 2 weeks on days, then 2 weeks on nights. This shows the complete 4-week cycle.</p>' :
+                    rotation === 'slow' ? 
+                        '<p><strong>Slow Rotation:</strong> Crews work 4 weeks on days, then 4 weeks on nights. This shows the complete 8-week cycle.</p>' : ''}
+                    <p class="mb-0"><strong>Coverage:</strong> Two crews working each shift ensures 24/7 operations.</p>
                 </div>
             `;
         } else {
             legendHtml += `
                 <div class="alert alert-info mt-3">
                     <strong>Pattern: ${patternConfig.name || pattern}</strong><br>
-                    This preview shows the actual schedule pattern. Specific employees will be assigned based on their current crew assignments.
+                    This shows the complete ${weeksToShow}-week cycle. The pattern will repeat continuously.
                 </div>
             `;
         }
@@ -1076,11 +1072,10 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('schedulePreview').innerHTML = previewHtml;
     }
     
-    // Event listeners
-    document.getElementById('refreshPreview').addEventListener('click', generateSchedulePreview);
-    document.getElementById('startDate').addEventListener('change', generateSchedulePreview);
+    // Event listeners - simplified
+    document.getElementById('refreshPreview')?.addEventListener('click', generateSchedulePreview);
     
-    // Pitman-specific event listener - auto-generate on change
+    // Auto-generate preview when rotation is selected
     if (pattern === 'pitman') {
         const pitmanSelect = document.getElementById('pitmanVariation');
         if (pitmanSelect) {
@@ -1090,22 +1085,19 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             });
         }
-        // Also generate on shift time changes
-        document.getElementById('dayStart')?.addEventListener('change', generateSchedulePreview);
-        document.getElementById('nightStart')?.addEventListener('change', generateSchedulePreview);
     } else {
         document.getElementById('shiftRotation')?.addEventListener('change', generateSchedulePreview);
     }
     
-    // Try to generate initial preview if we have defaults
+    // Initial state
     setTimeout(() => {
         if (pattern === 'pitman') {
-            // Don't auto-generate for Pitman, wait for variation selection
             document.getElementById('schedulePreview').innerHTML = `
                 <div class="alert alert-info text-center">
                     <i class="bi bi-calendar-week fs-1"></i>
-                    <h5 class="mt-2">Configure Your Pitman Schedule</h5>
-                    <p>Select your preferred rotation type and shift times above to generate the schedule preview.</p>
+                    <h5 class="mt-2">Select Your Pitman Rotation Type</h5>
+                    <p>Choose from Fixed, Fast, Medium, or Slow rotation above to see the complete schedule cycle.</p>
+                    <p class="mb-0"><small>Each option shows different cycle lengths: Fixed (2 weeks), Fast/Medium (4 weeks), Slow (8 weeks)</small></p>
                 </div>
             `;
         } else {
