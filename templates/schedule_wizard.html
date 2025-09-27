@@ -531,16 +531,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                     
                     assignment.crews = display.join('\n');
-                    
-                    // Show times only if crews are working
-                    if (dayShiftCrews.length > 0 && nightShiftCrews.length > 0) {
-                        assignment.time = '';  // Times shown in crew labels
-                    } else if (dayShiftCrews.length > 0) {
-                        assignment.time = `${dayStart}-${nightStart}`;
-                    } else {
-                        assignment.time = `${nightStart}-${dayStart}`;
-                    }
-                    
+                    assignment.time = '';  // Times shown in legend
                     assignment.cssClass = dayShiftCrews.length > 0 ? 'shift-day' : 'shift-night';
                 } else {
                     // No crews working - it's an off day
