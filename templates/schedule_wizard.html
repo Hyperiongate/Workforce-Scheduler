@@ -102,7 +102,9 @@
                             <label for="startDate" class="form-label">Schedule Start Date</label>
                             <input type="date" class="form-control" id="startDate" name="start_date" 
                                    value="{{ (datetime.now().date() + timedelta(days=7)).strftime('%Y-%m-%d') }}">
-                            <div class="form-text">Must start on a Sunday for Pitman pattern</div>
+                            {% if pattern == 'pitman' %}
+                            <div class="form-text">Will automatically adjust to the nearest Sunday</div>
+                            {% endif %}
                         </div>
 
                         <div class="mb-3">
@@ -563,7 +565,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     
                     // Show times only if crews are working
                     if (dayShiftCrews.length > 0 && nightShiftCrews.length > 0) {
-                        assignment.time = `${dayStart}-${nightStart}`;
+                        assignment.time = '';  // Times shown in crew labels
                     } else if (dayShiftCrews.length > 0) {
                         assignment.time = `${dayStart}-${nightStart}`;
                     } else {
@@ -571,6 +573,11 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                     
                     assignment.cssClass = dayShiftCrews.length > 0 ? 'shift-day' : 'shift-night';
+                } else {
+                    // No crews working - it's an off day
+                    assignment.crews = 'Off';
+                    assignment.time = '';
+                    assignment.cssClass = 'shift-off';
                 }
                 break;
                 
@@ -944,38 +951,37 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Generate schedule preview
     function generateSchedulePreview() {
-        const startDate = new Date(document.getElementById('startDate').value);
+        // For Pitman, automatically adjust to nearest Sunday
+        let startDate = new Date(document.getElementById('startDate').value);
         
-        // Get rotation type - special handling for Pitman
-        let rotation;
         if (pattern === 'pitman') {
-            rotation = document.getElementById('pitmanVariation')?.value || 'fixed';
+            // Get rotation type
+            const rotation = document.getElementById('pitmanVariation')?.value;
             if (!rotation) {
                 document.getElementById('schedulePreview').innerHTML = `
-                    <div class="alert alert-warning">
-                        <h6>Please select a Pitman variation</h6>
-                        <p>Choose between Fixed Shifts, Fast Rotation, Medium Rotation, or Slow Rotation to see the schedule preview.</p>
+                    <div class="alert alert-warning text-center">
+                        <i class="bi bi-info-circle fs-1"></i>
+                        <h5 class="mt-2">Select Pitman Variation</h5>
+                        <p>Please choose between Fixed Shifts, Fast, Medium, or Slow Rotation above to see the schedule preview.</p>
                     </div>
                 `;
                 return;
             }
-        } else {
-            rotation = document.getElementById('shiftRotation')?.value || 'fixed';
-        }
-        
-        // Validate Sunday start for Pitman
-        if (pattern === 'pitman') {
+            
+            // Automatically adjust to Sunday
             const dayOfWeek = startDate.getDay();
             if (dayOfWeek !== 0) {
-                document.getElementById('schedulePreview').innerHTML = `
-                    <div class="alert alert-danger">
-                        <h6>Pitman schedule must start on Sunday</h6>
-                        <p>Please select a Sunday as the start date for the Pitman pattern to work correctly.</p>
-                    </div>
-                `;
-                return;
+                // Find the nearest Sunday (previous Sunday if Mon-Wed, next Sunday if Thu-Sat)
+                const daysToAdjust = dayOfWeek <= 3 ? -dayOfWeek : (7 - dayOfWeek);
+                startDate.setDate(startDate.getDate() + daysToAdjust);
+                // Update the date input to show adjusted date
+                document.getElementById('startDate').value = startDate.toISOString().split('T')[0];
             }
         }
+        
+        const rotation = pattern === 'pitman' ? 
+            document.getElementById('pitmanVariation')?.value : 
+            document.getElementById('shiftRotation')?.value || 'fixed';
         
         // Generate 4 weeks of preview data
         let previewHtml = '<div class="schedule-grid">';
@@ -1044,15 +1050,17 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Add Pitman-specific information
         if (pattern === 'pitman') {
+            const rotationText = rotation === 'fixed' ? 'Fixed Shifts (No Rotation)' : 
+                               rotation === 'fast' ? 'Fast Rotation (Every Work Set)' :
+                               rotation === 'medium' ? 'Medium Rotation (Every 2 Weeks)' : 
+                               rotation === 'slow' ? 'Slow Rotation (Every 4 Weeks)' : 'Unknown';
+            
             legendHtml += `
                 <div class="alert alert-info mt-3">
-                    <strong>Pitman Pattern (${rotation === 'fixed' ? 'Fixed Shifts' : 
-                                          rotation === 'fast' ? 'Fast Rotation' :
-                                          rotation === 'medium' ? 'Medium Rotation' : 
-                                          'Slow Rotation'}):</strong><br>
-                    Week 1: Sun(Work), Mon-Tue(Off), Wed-Thu-Fri(Work), Sat(Off)<br>
-                    Week 2: Sun(Off), Mon-Tue(Work), Wed-Thu(Off), Fri-Sat(Work)<br>
-                    ${rotation !== 'fixed' ? '<br><strong>Rotation:</strong> Crews alternate between day and night shifts based on selected speed.' : ''}
+                    <strong>Pitman Pattern - ${rotationText}</strong><br>
+                    <strong>Pattern:</strong> Sun(W), Mon-Tue(O), Wed-Thu-Fri(W), Sat(O), Sun(O), Mon-Tue(W), Wed-Thu(O), Fri-Sat(W)<br>
+                    <strong>Start Date:</strong> ${startDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}<br>
+                    ${rotation !== 'fixed' ? '<strong>Note:</strong> Crews rotate between day and night shifts based on selected speed.' : '<strong>Note:</strong> A&B always work days, C&D always work nights.'}
                 </div>
             `;
         } else {
@@ -1072,16 +1080,38 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('refreshPreview').addEventListener('click', generateSchedulePreview);
     document.getElementById('startDate').addEventListener('change', generateSchedulePreview);
     
-    // Pitman-specific event listener
+    // Pitman-specific event listener - auto-generate on change
     if (pattern === 'pitman') {
-        document.getElementById('pitmanVariation')?.addEventListener('change', generateSchedulePreview);
+        const pitmanSelect = document.getElementById('pitmanVariation');
+        if (pitmanSelect) {
+            pitmanSelect.addEventListener('change', function() {
+                if (this.value) {
+                    generateSchedulePreview();
+                }
+            });
+        }
+        // Also generate on shift time changes
+        document.getElementById('dayStart')?.addEventListener('change', generateSchedulePreview);
+        document.getElementById('nightStart')?.addEventListener('change', generateSchedulePreview);
     } else {
         document.getElementById('shiftRotation')?.addEventListener('change', generateSchedulePreview);
     }
     
-    // Day/Night shift time change listeners
-    document.getElementById('dayStart')?.addEventListener('change', generateSchedulePreview);
-    document.getElementById('nightStart')?.addEventListener('change', generateSchedulePreview);
+    // Try to generate initial preview if we have defaults
+    setTimeout(() => {
+        if (pattern === 'pitman') {
+            // Don't auto-generate for Pitman, wait for variation selection
+            document.getElementById('schedulePreview').innerHTML = `
+                <div class="alert alert-info text-center">
+                    <i class="bi bi-calendar-week fs-1"></i>
+                    <h5 class="mt-2">Configure Your Pitman Schedule</h5>
+                    <p>Select your preferred rotation type and shift times above to generate the schedule preview.</p>
+                </div>
+            `;
+        } else {
+            generateSchedulePreview();
+        }
+    }, 100);
     
     // Create schedule button
     document.getElementById('createScheduleBtn').addEventListener('click', function() {
