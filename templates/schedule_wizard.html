@@ -923,12 +923,14 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Generate schedule preview
     function generateSchedulePreview() {
-        // For pattern preview, we don't need actual dates
-        // Just show the pattern cycle
+        console.log('Generating preview for pattern:', pattern);
         
+        // Get rotation type
+        let rotation;
         if (pattern === 'pitman') {
-            // Get rotation type
-            const rotation = document.getElementById('pitmanVariation')?.value;
+            rotation = document.getElementById('pitmanVariation')?.value;
+            console.log('Pitman rotation selected:', rotation);
+            
             if (!rotation) {
                 document.getElementById('schedulePreview').innerHTML = `
                     <div class="alert alert-warning text-center">
@@ -939,11 +941,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 `;
                 return;
             }
+        } else {
+            rotation = document.getElementById('shiftRotation')?.value || 'fixed';
         }
-        
-        const rotation = pattern === 'pitman' ? 
-            document.getElementById('pitmanVariation')?.value : 
-            document.getElementById('shiftRotation')?.value || 'fixed';
         
         // Determine number of weeks to show based on pattern and rotation
         let weeksToShow = 4;  // default
@@ -961,13 +961,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     weeksToShow = 8;  // Complete rotation cycle in 8 weeks
                     break;
             }
-        } else if (pattern === 'dupont') {
-            weeksToShow = 4;  // 28-day cycle
-        } else if (pattern === 'southern_swing') {
-            weeksToShow = 4;  // 28-day cycle
-        } else if (pattern === 'fouronfouroff' || pattern.includes('four')) {
-            weeksToShow = 4;  // Shows full pattern
         }
+        
+        console.log('Weeks to show:', weeksToShow);
         
         // Use default shift times
         const dayStart = '06:00';
@@ -1010,27 +1006,19 @@ document.addEventListener('DOMContentLoaded', function() {
                 <div class="row">
                     <div class="col-md-3">
                         <div class="d-flex align-items-center mb-1">
-                            <div class="shift-day" style="width: 20px; height: 20px; border-radius: 3px; margin-right: 8px;"></div>
+                            <div style="width: 20px; height: 20px; background: #fff3cd; border-left: 3px solid #ffc107; border-radius: 3px; margin-right: 8px;"></div>
                             <span>Day Shift (${dayStart}-${nightStart})</span>
                         </div>
                     </div>
                     <div class="col-md-3">
                         <div class="d-flex align-items-center mb-1">
-                            <div class="shift-night" style="width: 20px; height: 20px; border-radius: 3px; margin-right: 8px;"></div>
+                            <div style="width: 20px; height: 20px; background: #cce5ff; border-left: 3px solid #007bff; border-radius: 3px; margin-right: 8px;"></div>
                             <span>Night Shift (${nightStart}-${dayStart})</span>
                         </div>
                     </div>
-                    ${patternConfig.shift_hours === 8 ? `
                     <div class="col-md-3">
                         <div class="d-flex align-items-center mb-1">
-                            <div class="shift-evening" style="width: 20px; height: 20px; border-radius: 3px; margin-right: 8px;"></div>
-                            <span>Evening Shift</span>
-                        </div>
-                    </div>
-                    ` : ''}
-                    <div class="col-md-3">
-                        <div class="d-flex align-items-center mb-1">
-                            <div class="shift-off" style="width: 20px; height: 20px; border-radius: 3px; margin-right: 8px;"></div>
+                            <div style="width: 20px; height: 20px; background: #d1edff; border-radius: 3px; margin-right: 8px;"></div>
                             <span>Off Day</span>
                         </div>
                     </div>
@@ -1062,78 +1050,104 @@ document.addEventListener('DOMContentLoaded', function() {
                     <p class="mb-0"><strong>Coverage:</strong> Two crews working each shift ensures 24/7 operations.</p>
                 </div>
             `;
-        } else {
-            legendHtml += `
-                <div class="alert alert-info mt-3">
-                    <strong>Pattern: ${patternConfig.name || pattern}</strong><br>
-                    This shows the complete ${weeksToShow}-week cycle. The pattern will repeat continuously.
-                </div>
-            `;
         }
         
         previewHtml += legendHtml;
-        document.getElementById('schedulePreview').innerHTML = previewHtml;
+        
+        // Update the preview div
+        const previewDiv = document.getElementById('schedulePreview');
+        if (previewDiv) {
+            previewDiv.innerHTML = previewHtml;
+            console.log('Preview generated successfully');
+        } else {
+            console.error('Preview div not found!');
+        }
     }
+    
+    // Make generateSchedulePreview available globally for debugging
+    window.generateSchedulePreview = generateSchedulePreview;
     
     // Event listeners - simplified
-    const generateBtn = document.getElementById('generatePreviewBtn');
-    if (generateBtn) {
-        generateBtn.addEventListener('click', generateSchedulePreview);
-    }
-    
-    // Show/hide generate button based on selection
-    if (pattern === 'pitman') {
-        const pitmanSelect = document.getElementById('pitmanVariation');
-        if (pitmanSelect) {
-            pitmanSelect.addEventListener('change', function() {
-                const btn = document.getElementById('generatePreviewBtn');
-                if (this.value) {
-                    // Show the button when a rotation is selected
-                    btn.style.display = 'block';
-                    // Also update button text based on selection
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log('Setting up event listeners for pattern:', pattern);
+        
+        const generateBtn = document.getElementById('generatePreviewBtn');
+        if (generateBtn) {
+            console.log('Generate button found, adding click listener');
+            generateBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                console.log('Generate button clicked');
+                generateSchedulePreview();
+            });
+        } else {
+            console.log('Generate button not found');
+        }
+        
+        // Show/hide generate button based on selection
+        if (pattern === 'pitman') {
+            const pitmanSelect = document.getElementById('pitmanVariation');
+            if (pitmanSelect) {
+                console.log('Pitman select found');
+                pitmanSelect.addEventListener('change', function() {
+                    const btn = document.getElementById('generatePreviewBtn');
+                    if (this.value) {
+                        // Show the button when a rotation is selected
+                        btn.style.display = 'block';
+                        // Also update button text based on selection
+                        const selectedText = this.options[this.selectedIndex].text;
+                        btn.innerHTML = `<i class="bi bi-calendar-check"></i> Generate ${selectedText} Preview`;
+                        console.log('Button shown for:', selectedText);
+                    } else {
+                        // Hide button if no selection
+                        btn.style.display = 'none';
+                    }
+                });
+            }
+        } else {
+            // For other patterns, button is always visible
+            const rotationSelect = document.getElementById('shiftRotation');
+            if (rotationSelect) {
+                rotationSelect.addEventListener('change', function() {
+                    const btn = document.getElementById('generatePreviewBtn');
                     const selectedText = this.options[this.selectedIndex].text;
                     btn.innerHTML = `<i class="bi bi-calendar-check"></i> Generate ${selectedText} Preview`;
-                } else {
-                    // Hide button if no selection
-                    btn.style.display = 'none';
-                }
+                });
+            }
+        }
+        
+        // Refresh preview button (in the preview card header)
+        const refreshBtn = document.getElementById('refreshPreview');
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                generateSchedulePreview();
             });
         }
-    } else {
-        // For other patterns, button is always visible
-        document.getElementById('shiftRotation')?.addEventListener('change', function() {
-            const btn = document.getElementById('generatePreviewBtn');
-            const selectedText = this.options[this.selectedIndex].text;
-            btn.innerHTML = `<i class="bi bi-calendar-check"></i> Generate ${selectedText} Preview`;
-        });
-    }
-    
-    // Refresh preview button (in the preview card header)
-    document.getElementById('refreshPreview')?.addEventListener('click', generateSchedulePreview);
-    
-    // Initial state
-    setTimeout(() => {
-        if (pattern === 'pitman') {
-            document.getElementById('schedulePreview').innerHTML = `
-                <div class="alert alert-info text-center">
-                    <i class="bi bi-calendar-week fs-1"></i>
-                    <h5 class="mt-2">Select Your Pitman Rotation Type</h5>
-                    <p>1. Choose from Fixed, Fast, Medium, or Slow rotation above</p>
-                    <p>2. Click "Generate Preview" to see the complete schedule cycle</p>
-                    <p class="mb-0"><small>Each option shows different cycle lengths: Fixed (2 weeks), Fast/Medium (4 weeks), Slow (8 weeks)</small></p>
-                </div>
-            `;
-        } else {
-            // For non-Pitman patterns, still need to click button
-            document.getElementById('schedulePreview').innerHTML = `
-                <div class="alert alert-info text-center">
-                    <i class="bi bi-calendar-week fs-1"></i>
-                    <h5 class="mt-2">Configure Your Schedule</h5>
-                    <p>Select your options above and click "Generate Schedule Preview" to see the pattern.</p>
-                </div>
-            `;
-        }
-    }, 100);
+        
+        // Initial state
+        setTimeout(() => {
+            if (pattern === 'pitman') {
+                document.getElementById('schedulePreview').innerHTML = `
+                    <div class="alert alert-info text-center">
+                        <i class="bi bi-calendar-week fs-1"></i>
+                        <h5 class="mt-2">Select Your Pitman Rotation Type</h5>
+                        <p>1. Choose from Fixed, Fast, Medium, or Slow rotation above</p>
+                        <p>2. Click "Generate Preview" to see the complete schedule cycle</p>
+                        <p class="mb-0"><small>Each option shows different cycle lengths: Fixed (2 weeks), Fast/Medium (4 weeks), Slow (8 weeks)</small></p>
+                    </div>
+                `;
+            } else {
+                // For non-Pitman patterns, still need to click button
+                document.getElementById('schedulePreview').innerHTML = `
+                    <div class="alert alert-info text-center">
+                        <i class="bi bi-calendar-week fs-1"></i>
+                        <h5 class="mt-2">Configure Your Schedule</h5>
+                        <p>Select your options above and click "Generate Schedule Preview" to see the pattern.</p>
+                    </div>
+                `;
+            }
+        }, 100);
+    });
     
     // Create schedule button
     document.getElementById('createScheduleBtn').addEventListener('click', function() {
