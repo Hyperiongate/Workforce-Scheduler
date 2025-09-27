@@ -89,6 +89,12 @@
                                 </ul>
                             </div>
                         </div>
+                        
+                        <div class="d-grid gap-2">
+                            <button type="button" class="btn btn-primary" id="generatePreviewBtn" style="display: none;">
+                                <i class="bi bi-calendar-check"></i> Generate Schedule Preview
+                            </button>
+                        </div>
                         {% else %}
                         <div class="mb-3">
                             <label for="shiftRotation" class="form-label">Rotation Type</label>
@@ -102,6 +108,12 @@
                                 {% endfor %}
                                 {% endif %}
                             </select>
+                        </div>
+                        
+                        <div class="d-grid gap-2">
+                            <button type="button" class="btn btn-primary" id="generatePreviewBtn">
+                                <i class="bi bi-calendar-check"></i> Generate Schedule Preview
+                            </button>
                         </div>
                         {% endif %}
                     </form>
@@ -1064,21 +1076,40 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     // Event listeners - simplified
-    document.getElementById('refreshPreview')?.addEventListener('click', generateSchedulePreview);
+    const generateBtn = document.getElementById('generatePreviewBtn');
+    if (generateBtn) {
+        generateBtn.addEventListener('click', generateSchedulePreview);
+    }
     
-    // Auto-generate preview when rotation is selected
+    // Show/hide generate button based on selection
     if (pattern === 'pitman') {
         const pitmanSelect = document.getElementById('pitmanVariation');
         if (pitmanSelect) {
             pitmanSelect.addEventListener('change', function() {
+                const btn = document.getElementById('generatePreviewBtn');
                 if (this.value) {
-                    generateSchedulePreview();
+                    // Show the button when a rotation is selected
+                    btn.style.display = 'block';
+                    // Also update button text based on selection
+                    const selectedText = this.options[this.selectedIndex].text;
+                    btn.innerHTML = `<i class="bi bi-calendar-check"></i> Generate ${selectedText} Preview`;
+                } else {
+                    // Hide button if no selection
+                    btn.style.display = 'none';
                 }
             });
         }
     } else {
-        document.getElementById('shiftRotation')?.addEventListener('change', generateSchedulePreview);
+        // For other patterns, button is always visible
+        document.getElementById('shiftRotation')?.addEventListener('change', function() {
+            const btn = document.getElementById('generatePreviewBtn');
+            const selectedText = this.options[this.selectedIndex].text;
+            btn.innerHTML = `<i class="bi bi-calendar-check"></i> Generate ${selectedText} Preview`;
+        });
     }
+    
+    // Refresh preview button (in the preview card header)
+    document.getElementById('refreshPreview')?.addEventListener('click', generateSchedulePreview);
     
     // Initial state
     setTimeout(() => {
@@ -1087,12 +1118,20 @@ document.addEventListener('DOMContentLoaded', function() {
                 <div class="alert alert-info text-center">
                     <i class="bi bi-calendar-week fs-1"></i>
                     <h5 class="mt-2">Select Your Pitman Rotation Type</h5>
-                    <p>Choose from Fixed, Fast, Medium, or Slow rotation above to see the complete schedule cycle.</p>
+                    <p>1. Choose from Fixed, Fast, Medium, or Slow rotation above</p>
+                    <p>2. Click "Generate Preview" to see the complete schedule cycle</p>
                     <p class="mb-0"><small>Each option shows different cycle lengths: Fixed (2 weeks), Fast/Medium (4 weeks), Slow (8 weeks)</small></p>
                 </div>
             `;
         } else {
-            generateSchedulePreview();
+            // For non-Pitman patterns, still need to click button
+            document.getElementById('schedulePreview').innerHTML = `
+                <div class="alert alert-info text-center">
+                    <i class="bi bi-calendar-week fs-1"></i>
+                    <h5 class="mt-2">Configure Your Schedule</h5>
+                    <p>Select your options above and click "Generate Schedule Preview" to see the pattern.</p>
+                </div>
+            `;
         }
     }, 100);
     
