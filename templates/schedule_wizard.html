@@ -631,16 +631,19 @@ document.addEventListener('DOMContentLoaded', function() {
         
         switch(basePattern) {
             case 'pitman':
-                // PITMAN (2-2-3) PATTERN - COMPLETE IMPLEMENTATION
+                // PITMAN (2-2-3) PATTERN - CORRECTED IMPLEMENTATION
+                // Pattern: Work 2, Off 2, Work 3, Off 2, Work 2, Off 3
+                // Week 1: Sun(W), Mon-Tue(O), Wed-Thu(W), Fri-Sat(O)
+                // Week 2: Sun(O), Mon-Tue(W), Wed-Thu(O), Fri-Sat(W)
                 const pitmanBase = [
-                    1, 0, 0, 1, 1, 1, 0,  // Week 1: Sun(W), Mon-Tue(O), Wed-Fri(W), Sat(O)
-                    0, 1, 1, 0, 0, 1, 1   // Week 2: Sun(O), Mon-Tue(W), Wed-Thu(O), Fri-Sat(W)
+                    1, 0, 0, 1, 1, 0, 0,  // Week 1: Work Sun, Off Mon-Tue, Work Wed-Thu, Off Fri-Sat
+                    0, 1, 1, 0, 0, 1, 1   // Week 2: Off Sun, Work Mon-Tue, Off Wed-Thu, Work Fri-Sat
                 ];
                 
                 const crewADay = dayOfCycle % 14;
-                const crewBDay = (dayOfCycle + 7) % 14;
-                const crewCDay = dayOfCycle % 14;
-                const crewDDay = (dayOfCycle + 7) % 14;
+                const crewBDay = (dayOfCycle + 7) % 14;  // B is opposite week from A
+                const crewCDay = dayOfCycle % 14;        // C works same days as A (nights)
+                const crewDDay = (dayOfCycle + 7) % 14;  // D works same days as B (nights)
                 
                 const aWorks = pitmanBase[crewADay];
                 const bWorks = pitmanBase[crewBDay];
@@ -1115,25 +1118,23 @@ document.addEventListener('DOMContentLoaded', function() {
                 `;
                 
                 if (dayCrews.length > 0) {
-                    dayCrews.forEach(crew => {
-                        previewHtml += `
-                            <div class="shift-block shift-day">
-                                <span class="shift-label">DAY</span>
-                                <span class="crew-letter">${crew}</span>
-                            </div>
-                        `;
-                    });
+                    // Combine crews if multiple work same shift
+                    previewHtml += `
+                        <div class="shift-block shift-day">
+                            <span class="shift-label">DAY</span>
+                            <span class="crew-letter">${dayCrews.join('+')}</span>
+                        </div>
+                    `;
                 }
                 
                 if (nightCrews.length > 0) {
-                    nightCrews.forEach(crew => {
-                        previewHtml += `
-                            <div class="shift-block shift-night">
-                                <span class="shift-label">NIGHT</span>
-                                <span class="crew-letter">${crew}</span>
-                            </div>
-                        `;
-                    });
+                    // Combine crews if multiple work same shift
+                    previewHtml += `
+                        <div class="shift-block shift-night">
+                            <span class="shift-label">NIGHT</span>
+                            <span class="crew-letter">${nightCrews.join('+')}</span>
+                        </div>
+                    `;
                 }
                 
                 if (dayCrews.length === 0 && nightCrews.length === 0) {
