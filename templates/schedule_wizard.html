@@ -157,97 +157,202 @@
 </div>
 
 <style>
-.schedule-grid {
-    display: grid;
-    grid-template-columns: auto repeat(7, 1fr);
-    gap: 1px;
-    background: #dee2e6;
-    border: 1px solid #dee2e6;
-    border-radius: 6px;
+/* Timeline View Styles - Updated 12/27/2024 */
+.schedule-preview-container {
+    background: white;
+    border-radius: 20px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08);
     overflow: hidden;
 }
 
-.schedule-cell {
-    background: white;
-    padding: 8px;
-    min-height: 80px;
+.preview-header {
+    background: linear-gradient(135deg, #2d3748 0%, #4a5568 100%);
+    color: white;
+    padding: 25px;
+    position: relative;
+    overflow: hidden;
+}
+
+.preview-header::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    right: -10%;
+    width: 50%;
+    height: 200%;
+    background: rgba(255, 255, 255, 0.05);
+    transform: rotate(-35deg);
+}
+
+.preview-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin-bottom: 8px;
+    position: relative;
+}
+
+.preview-subtitle {
+    opacity: 0.9;
+    font-size: 0.9rem;
+    position: relative;
+}
+
+/* Pattern Statistics Bar */
+.pattern-stats {
+    background: linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%);
+    padding: 20px;
+    display: flex;
+    justify-content: space-around;
+    text-align: center;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.stat-item {
+    flex: 1;
+}
+
+.stat-value {
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: #2d3748;
+}
+
+.stat-label {
+    font-size: 0.8rem;
+    color: #718096;
+    margin-top: 5px;
+}
+
+/* Timeline Container */
+.timeline-container {
+    padding: 25px;
+}
+
+.week-timeline {
+    margin-bottom: 35px;
+}
+
+.week-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #e2e8f0;
+}
+
+.week-number {
+    background: #4299e1;
+    color: white;
+    padding: 8px 16px;
+    border-radius: 25px;
+    font-weight: 600;
+    margin-right: 15px;
+    font-size: 0.9rem;
+}
+
+.week-info {
+    color: #718096;
+    font-size: 0.85rem;
+}
+
+/* Days Grid */
+.days-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 8px;
+}
+
+.day-column {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.day-label {
+    background: #2d3748;
+    color: white;
+    text-align: center;
+    padding: 10px 5px;
+    border-radius: 10px;
+    font-weight: 500;
+    font-size: 0.85rem;
+}
+
+.day-label.weekend {
+    background: #805ad5;
+}
+
+/* Shift Blocks */
+.shift-block {
+    border-radius: 10px;
+    padding: 12px 8px;
+    text-align: center;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    cursor: pointer;
+    min-height: 60px;
     display: flex;
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    font-size: 0.875rem;
-    white-space: pre-line;
-    line-height: 1.4;
+    gap: 4px;
 }
 
-.schedule-header {
-    background: #f8f9fa;
-    font-weight: 600;
-    color: #495057;
-}
-
-.schedule-week {
-    background: #e9ecef;
-    font-weight: 600;
-    color: #495057;
-    writing-mode: vertical-rl;
-    text-orientation: mixed;
+.shift-block:hover {
+    transform: scale(1.05);
+    z-index: 10;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .shift-day {
-    background: #fff3cd;
-    color: #856404;
-    border-left: 3px solid #ffc107;
+    background: linear-gradient(135deg, #f6d365 0%, #fda085 100%);
+    color: #744210;
 }
 
 .shift-night {
-    background: #cce5ff;
-    color: #004085;
-    border-left: 3px solid #007bff;
-}
-
-.shift-evening {
-    background: #ffe6cc;
-    color: #8b4000;
-    border-left: 3px solid #fd7e14;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
 }
 
 .shift-off {
-    background: #d1edff;
-    color: #0c5460;
+    background: #e2e8f0;
+    color: #718096;
+    opacity: 0.6;
 }
 
-.crew-label {
-    font-size: 0.85rem;
-    font-weight: 700;
-    margin-bottom: 2px;
-    color: #212529;
-}
-
-.shift-time {
+.shift-label {
     font-size: 0.7rem;
-    opacity: 0.7;
-    margin-top: 2px;
+    opacity: 0.9;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 
-.shift-day .crew-label {
-    color: #856404;
+.crew-letter {
+    font-size: 1.1rem;
+    font-weight: 700;
 }
 
-.shift-night .crew-label {
-    color: #004085;
+/* Legend */
+.legend-strip {
+    display: flex;
+    justify-content: center;
+    gap: 25px;
+    padding: 20px;
+    background: #f7fafc;
+    border-top: 1px solid #e2e8f0;
 }
 
-.shift-evening .crew-label {
-    color: #8b4000;
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.85rem;
 }
 
-.crew-badge {
-    display: inline-block;
-    padding: 2px 6px;
-    border-radius: 3px;
-    font-weight: 600;
-    margin: 1px;
+.legend-box {
+    width: 35px;
+    height: 22px;
+    border-radius: 6px;
 }
 
 .pattern-info .info-item {
@@ -266,16 +371,65 @@
     font-size: 0.9rem;
 }
 
+/* Responsive adjustments */
 @media (max-width: 768px) {
-    .schedule-grid {
-        grid-template-columns: auto repeat(3, 1fr);
+    .timeline-container {
+        padding: 15px;
     }
     
-    .schedule-cell {
-        min-height: 40px;
-        padding: 4px;
-        font-size: 0.75rem;
+    .days-grid {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 6px;
     }
+    
+    .day-label {
+        font-size: 0.75rem;
+        padding: 8px 3px;
+    }
+    
+    .shift-block {
+        min-height: 45px;
+        padding: 8px 5px;
+    }
+    
+    .shift-label {
+        font-size: 0.6rem;
+    }
+    
+    .crew-letter {
+        font-size: 0.9rem;
+    }
+    
+    .pattern-stats {
+        flex-wrap: wrap;
+    }
+    
+    .stat-item {
+        flex: 1 1 45%;
+        margin-bottom: 10px;
+    }
+}
+
+@media (max-width: 480px) {
+    .days-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+.pattern-info .info-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.pattern-info .info-item:last-child {
+    border-bottom: none;
+}
+
+.crew-stat {
+    font-size: 0.9rem;
 }
 </style>
 
@@ -843,7 +997,7 @@ document.addEventListener('DOMContentLoaded', function() {
         return assignment;
     }
     
-    // ===== GENERATE SCHEDULE PREVIEW =====
+    // ===== GENERATE SCHEDULE PREVIEW WITH TIMELINE VIEW =====
     function generateSchedulePreview() {
         console.log('===== Generating Schedule Preview =====');
         
@@ -877,82 +1031,148 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
         
+        // Get pattern info for stats
+        const patternInfo = patternData[pattern] || {
+            cycle: '14 days',
+            avgHours: '42 hours/week',
+            maxConsecutive: '3 days',
+            weekendsOff: 'Every other'
+        };
+        
         console.log('Generating preview for', weeksToShow, 'weeks');
         
-        // Generate preview HTML
+        // Generate Timeline View HTML
         let previewHtml = `
-            <h6 class="mb-3">Complete ${weeksToShow}-Week Cycle Preview</h6>
-            <div class="schedule-grid">
+            <div class="schedule-preview-container">
+                <!-- Header -->
+                <div class="preview-header">
+                    <h4 class="preview-title">
+                        <i class="bi bi-calendar-range"></i> ${patternConfig.name || pattern} Schedule Timeline
+                    </h4>
+                    <p class="preview-subtitle">${rotation === 'fixed' ? 'Fixed' : 'Rotating'} ${weeksToShow}-Week Cycle • Continuous 24/7 Coverage</p>
+                </div>
+                
+                <!-- Pattern Stats -->
+                <div class="pattern-stats">
+                    <div class="stat-item">
+                        <div class="stat-value">${patternInfo.cycle.split(' ')[0]}</div>
+                        <div class="stat-label">Day Cycle</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value">${patternInfo.avgHours.split(' ')[0]}</div>
+                        <div class="stat-label">Hours/Week</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value">${patternInfo.maxConsecutive.split(' ')[0]}</div>
+                        <div class="stat-label">Max Days</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value">${patternInfo.weekendsOff.includes('Every') ? '50%' : patternInfo.weekendsOff}</div>
+                        <div class="stat-label">Weekends Off</div>
+                    </div>
+                </div>
+                
+                <div class="timeline-container">
         `;
         
-        // Header row
-        previewHtml += '<div class="schedule-cell schedule-header">Week</div>';
-        const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-        dayNames.forEach(day => {
-            previewHtml += `<div class="schedule-cell schedule-header">${day}</div>`;
-        });
+        const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        const dayAbbr = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
         
         // Generate weeks
         for (let week = 1; week <= weeksToShow; week++) {
-            previewHtml += `<div class="schedule-cell schedule-week">Week ${week}</div>`;
+            previewHtml += `
+                <div class="week-timeline">
+                    <div class="week-header">
+                        <span class="week-number">Week ${week}</span>
+                        <span class="week-info">${week === 1 ? 'Pattern begins' : week === weeksToShow ? 'Cycle completes' : 'Pattern continues'}</span>
+                    </div>
+                    
+                    <div class="days-grid">
+            `;
             
             for (let day = 0; day < 7; day++) {
                 const assignment = generateCrewAssignment(pattern, week, day, rotation);
-                previewHtml += `<div class="schedule-cell ${assignment.cssClass}">
-                    <div class="crew-label">${assignment.crews}</div>
-                    <div class="shift-time">${assignment.time}</div>
-                </div>`;
+                const isWeekend = (day === 0 || day === 6);
+                
+                // Parse crews from assignment
+                let dayCrews = [];
+                let nightCrews = [];
+                
+                if (assignment.crews && assignment.crews !== 'Off') {
+                    const lines = assignment.crews.split('\n');
+                    lines.forEach(line => {
+                        if (line.includes('Day:')) {
+                            dayCrews = line.replace('Day:', '').trim().split('+');
+                        } else if (line.includes('Night:')) {
+                            nightCrews = line.replace('Night:', '').trim().split('+');
+                        }
+                    });
+                }
+                
+                previewHtml += `
+                    <div class="day-column">
+                        <div class="day-label ${isWeekend ? 'weekend' : ''}">${dayAbbr[day]}</div>
+                `;
+                
+                if (dayCrews.length > 0) {
+                    dayCrews.forEach(crew => {
+                        previewHtml += `
+                            <div class="shift-block shift-day">
+                                <span class="shift-label">DAY</span>
+                                <span class="crew-letter">${crew}</span>
+                            </div>
+                        `;
+                    });
+                }
+                
+                if (nightCrews.length > 0) {
+                    nightCrews.forEach(crew => {
+                        previewHtml += `
+                            <div class="shift-block shift-night">
+                                <span class="shift-label">NIGHT</span>
+                                <span class="crew-letter">${crew}</span>
+                            </div>
+                        `;
+                    });
+                }
+                
+                if (dayCrews.length === 0 && nightCrews.length === 0) {
+                    previewHtml += `
+                        <div class="shift-block shift-off">
+                            <span class="crew-letter">OFF</span>
+                        </div>
+                    `;
+                }
+                
+                previewHtml += `</div>`;
             }
+            
+            previewHtml += `
+                    </div>
+                </div>
+            `;
         }
         
-        previewHtml += '</div>';
-        
-        // Add legend
         previewHtml += `
-            <div class="mt-3">
-                <h6>Legend:</h6>
-                <div class="row">
-                    <div class="col-md-3">
-                        <div class="d-flex align-items-center mb-1">
-                            <div style="width: 20px; height: 20px; background: #fff3cd; border-left: 3px solid #ffc107; border-radius: 3px; margin-right: 8px;"></div>
-                            <span>Day Shift (06:00-18:00)</span>
-                        </div>
+                </div>
+                
+                <!-- Legend -->
+                <div class="legend-strip">
+                    <div class="legend-item">
+                        <div class="legend-box shift-day"></div>
+                        <span>Day Shift (06:00-18:00)</span>
                     </div>
-                    <div class="col-md-3">
-                        <div class="d-flex align-items-center mb-1">
-                            <div style="width: 20px; height: 20px; background: #cce5ff; border-left: 3px solid #007bff; border-radius: 3px; margin-right: 8px;"></div>
-                            <span>Night Shift (18:00-06:00)</span>
-                        </div>
+                    <div class="legend-item">
+                        <div class="legend-box shift-night"></div>
+                        <span>Night Shift (18:00-06:00)</span>
                     </div>
-                    <div class="col-md-3">
-                        <div class="d-flex align-items-center mb-1">
-                            <div style="width: 20px; height: 20px; background: #d1edff; border-radius: 3px; margin-right: 8px;"></div>
-                            <span>Off Day</span>
-                        </div>
+                    <div class="legend-item">
+                        <div class="legend-box shift-off"></div>
+                        <span>Off Day</span>
                     </div>
                 </div>
             </div>
         `;
-        
-        // Add pattern-specific information
-        if (pattern === 'pitman') {
-            const rotationText = {
-                'fixed': 'Fixed Shifts (No Rotation)',
-                'fast': 'Fast Rotation (Every Work Set)',
-                'medium': 'Medium Rotation (Every 2 Weeks)',
-                'slow': 'Slow Rotation (Every 4 Weeks)'
-            }[rotation] || 'Unknown';
-            
-            previewHtml += `
-                <div class="alert alert-info mt-3">
-                    <h5>Pitman Pattern - ${rotationText}</h5>
-                    <p><strong>Base Pattern (2-2-3):</strong><br>
-                    Week 1: Sun(Work), Mon-Tue(Off), Wed-Thu-Fri(Work), Sat(Off)<br>
-                    Week 2: Sun(Off), Mon-Tue(Work), Wed-Thu(Off), Fri-Sat(Work)</p>
-                    <p class="mb-0"><strong>Coverage:</strong> Two crews working each shift ensures 24/7 operations.</p>
-                </div>
-            `;
-        }
         
         document.getElementById('schedulePreview').innerHTML = previewHtml;
         console.log('Preview generated successfully');
