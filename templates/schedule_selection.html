@@ -1,17 +1,14 @@
 {# templates/schedule_selection.html #}
-{# Schedule Pattern Selection Page - Complete Rewrite #}
+{# Schedule Pattern Selection Page - Consolidated Patterns #}
 {# Author: Workforce Scheduler Development Team #}
 {# Created: 09/30/2025 #}
 {# Last Modified: 09/30/2025 #}
 {# 
    Changes:
-   - 09/30/2025: Removed all filter options (Recommended/12-Hour/8-Hour/All)
-   - 09/30/2025: Consolidated all Pitman variations into single option
-   - 09/30/2025: Updated advantages/considerations based on instruction manual
-   - 09/30/2025: Added all 12 major schedule patterns
-   - 09/30/2025: Simplified UI to show all patterns at once
-   - 09/30/2025: Fixed color-coded badges for shift lengths
-   - 09/30/2025: Added accurate cycle/hours/consecutive days data
+   - 09/30/2025: Consolidated patterns with variations into single options
+   - 09/30/2025: Removed Panama and EOWEO patterns
+   - 09/30/2025: Pitman, 4-on-4-off, 3-on-3-off, Southern Swing all have variations selected in wizard
+   - 09/30/2025: Total of 10 main pattern choices (with variations handled in wizard)
 #}
 
 {% extends "base.html" %}
@@ -33,7 +30,7 @@
         </div>
     </div>
 
-    <!-- Pattern Selection Grid -->
+    <!-- Pattern Selection Grid - Consolidated Patterns -->
     <div class="pattern-grid" id="patternGrid">
         
         <!-- Pitman Pattern (Consolidated) -->
@@ -55,8 +52,8 @@
                     <span class="detail-value">42 hours/week</span>
                 </div>
                 <div class="detail-row">
-                    <span class="detail-label">Max Consecutive:</span>
-                    <span class="detail-value">3 days (but 7 across weeks)</span>
+                    <span class="detail-label">Variations:</span>
+                    <span class="detail-value">Fixed, Rapid, 2-Week, 4-Week Rotation</span>
                 </div>
             </div>
             <div class="pros-cons">
@@ -85,7 +82,7 @@
             </div>
         </div>
 
-        <!-- DuPont Pattern -->
+        <!-- DuPont Pattern (Consolidated) -->
         <div class="pattern-card" data-pattern="dupont">
             <div class="pattern-badge twelve-hour">12 Hour</div>
             <div class="pattern-header">
@@ -104,8 +101,8 @@
                     <span class="detail-value">42 hours/week</span>
                 </div>
                 <div class="detail-row">
-                    <span class="detail-label">Max Consecutive:</span>
-                    <span class="detail-value">4 days</span>
+                    <span class="detail-label">Variations:</span>
+                    <span class="detail-value">Rotating or Fixed</span>
                 </div>
             </div>
             <div class="pros-cons">
@@ -121,9 +118,9 @@
                 <div class="cons">
                     <h6 class="text-warning">Considerations:</h6>
                     <ul>
-                        <li>Must be rotating (no fixed option)</li>
                         <li>Complex pattern to learn</li>
                         <li>Long work stretches before break</li>
+                        <li>Must coordinate crew changes</li>
                     </ul>
                 </div>
             </div>
@@ -134,7 +131,105 @@
             </div>
         </div>
 
-        <!-- Southern Swing Pattern -->
+        <!-- 4-on-4-off Pattern (Consolidated) -->
+        <div class="pattern-card" data-pattern="four_on_four_off">
+            <div class="pattern-badge twelve-hour">12 Hour</div>
+            <div class="pattern-header">
+                <h4><i class="bi bi-arrow-repeat text-success"></i> 4-on-4-off</h4>
+            </div>
+            <div class="pattern-description">
+                Work 4 consecutive days, off 4 consecutive days
+            </div>
+            <div class="pattern-details">
+                <div class="detail-row">
+                    <span class="detail-label">Cycle:</span>
+                    <span class="detail-value">8 days</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Average Hours:</span>
+                    <span class="detail-value">42 hours/week</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Variations:</span>
+                    <span class="detail-value">Basic, Modified, Fixed, Fast/Weekly Rotation</span>
+                </div>
+            </div>
+            <div class="pros-cons">
+                <div class="pros">
+                    <h6 class="text-success">Advantages:</h6>
+                    <ul>
+                        <li>Simple and predictable</li>
+                        <li>Equal work and rest days</li>
+                        <li>Good recovery time</li>
+                        <li>Multiple rotation options</li>
+                    </ul>
+                </div>
+                <div class="cons">
+                    <h6 class="text-warning">Considerations:</h6>
+                    <ul>
+                        <li>Weekend coverage varies</li>
+                        <li>Split shift option (2D-2N) is tough</li>
+                        <li>Modified version has irregular stretches</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="pattern-footer">
+                <button class="btn btn-success w-100 select-pattern" data-pattern="four_on_four_off">
+                    SELECT 4-ON-4-OFF
+                </button>
+            </div>
+        </div>
+
+        <!-- 3-on-3-off Pattern (Consolidated) -->
+        <div class="pattern-card" data-pattern="three_on_three_off">
+            <div class="pattern-badge twelve-hour">12 Hour</div>
+            <div class="pattern-header">
+                <h4><i class="bi bi-calendar3 text-purple"></i> 3-on-3-off</h4>
+            </div>
+            <div class="pattern-description">
+                Work 3 consecutive days, off 3 consecutive days
+            </div>
+            <div class="pattern-details">
+                <div class="detail-row">
+                    <span class="detail-label">Cycle:</span>
+                    <span class="detail-value">6 days</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Average Hours:</span>
+                    <span class="detail-value">42 hours/week</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Variations:</span>
+                    <span class="detail-value">Basic, Fixed Complex, Weekly/6-Week Rotation</span>
+                </div>
+            </div>
+            <div class="pros-cons">
+                <div class="pros">
+                    <h6 class="text-success">Advantages:</h6>
+                    <ul>
+                        <li>Shorter work stretches</li>
+                        <li>Regular pattern</li>
+                        <li>3 full weekends off/6 weeks (modified)</li>
+                        <li>Good for fatigue management</li>
+                    </ul>
+                </div>
+                <div class="cons">
+                    <h6 class="text-warning">Considerations:</h6>
+                    <ul>
+                        <li>Split weekends in basic version</li>
+                        <li>Modified creates 2 and 4-day stretches</li>
+                        <li>6-week full rotation</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="pattern-footer">
+                <button class="btn btn-purple w-100 select-pattern" data-pattern="three_on_three_off">
+                    SELECT 3-ON-3-OFF
+                </button>
+            </div>
+        </div>
+
+        <!-- Southern Swing Pattern (Consolidated) -->
         <div class="pattern-card" data-pattern="southern_swing">
             <div class="pattern-badge eight-hour">8 Hour</div>
             <div class="pattern-header">
@@ -153,8 +248,8 @@
                     <span class="detail-value">40 hours/week</span>
                 </div>
                 <div class="detail-row">
-                    <span class="detail-label">Max Consecutive:</span>
-                    <span class="detail-value">7 days</span>
+                    <span class="detail-label">Variations:</span>
+                    <span class="detail-value">Clockwise, Counter-clockwise, Fixed</span>
                 </div>
             </div>
             <div class="pros-cons">
@@ -232,19 +327,19 @@
             </div>
         </div>
 
-        <!-- 4-on-4-off Pattern -->
-        <div class="pattern-card" data-pattern="four_on_four_off">
+        <!-- 5&2 Pattern -->
+        <div class="pattern-card" data-pattern="five_and_two">
             <div class="pattern-badge twelve-hour">12 Hour</div>
             <div class="pattern-header">
-                <h4><i class="bi bi-arrow-repeat text-success"></i> 4-on-4-off</h4>
+                <h4><i class="bi bi-calendar2 text-indigo"></i> 5&2 Schedule</h4>
             </div>
             <div class="pattern-description">
-                Work 4 consecutive days, off 4 consecutive days
+                Work stretches of 5 and 2 days, off stretches of 5 and 2 days
             </div>
             <div class="pattern-details">
                 <div class="detail-row">
                     <span class="detail-label">Cycle:</span>
-                    <span class="detail-value">8 days</span>
+                    <span class="detail-value">28 days (4 patterns)</span>
                 </div>
                 <div class="detail-row">
                     <span class="detail-label">Average Hours:</span>
@@ -252,80 +347,31 @@
                 </div>
                 <div class="detail-row">
                     <span class="detail-label">Max Consecutive:</span>
-                    <span class="detail-value">4 days</span>
+                    <span class="detail-value">5 days</span>
                 </div>
             </div>
             <div class="pros-cons">
                 <div class="pros">
                     <h6 class="text-success">Advantages:</h6>
                     <ul>
-                        <li>Simple and predictable</li>
-                        <li>Equal work and rest days</li>
-                        <li>Good recovery time</li>
-                        <li>Can be fixed or rotating</li>
+                        <li>Fixed shifts (no rotation)</li>
+                        <li>Balanced coverage</li>
+                        <li>Predictable off periods</li>
+                        <li>Good for planning</li>
                     </ul>
                 </div>
                 <div class="cons">
                     <h6 class="text-warning">Considerations:</h6>
                     <ul>
-                        <li>Weekend coverage varies</li>
-                        <li>Split shift option (2D-2N) is tough</li>
-                        <li>Modified version has irregular stretches</li>
+                        <li>Complex 4 different cycles</li>
+                        <li>5 consecutive days is tough</li>
+                        <li>Pattern hard to memorize</li>
                     </ul>
                 </div>
             </div>
             <div class="pattern-footer">
-                <button class="btn btn-success w-100 select-pattern" data-pattern="four_on_four_off">
-                    SELECT 4-ON-4-OFF
-                </button>
-            </div>
-        </div>
-
-        <!-- 3-on-3-off Pattern -->
-        <div class="pattern-card" data-pattern="three_on_three_off">
-            <div class="pattern-badge twelve-hour">12 Hour</div>
-            <div class="pattern-header">
-                <h4><i class="bi bi-calendar3 text-purple"></i> 3-on-3-off</h4>
-            </div>
-            <div class="pattern-description">
-                Work 3 consecutive days, off 3 consecutive days
-            </div>
-            <div class="pattern-details">
-                <div class="detail-row">
-                    <span class="detail-label">Cycle:</span>
-                    <span class="detail-value">6 days</span>
-                </div>
-                <div class="detail-row">
-                    <span class="detail-label">Average Hours:</span>
-                    <span class="detail-value">42 hours/week</span>
-                </div>
-                <div class="detail-row">
-                    <span class="detail-label">Max Consecutive:</span>
-                    <span class="detail-value">3 days (4 in modified)</span>
-                </div>
-            </div>
-            <div class="pros-cons">
-                <div class="pros">
-                    <h6 class="text-success">Advantages:</h6>
-                    <ul>
-                        <li>Shorter work stretches</li>
-                        <li>Regular pattern</li>
-                        <li>3 full weekends off/6 weeks (modified)</li>
-                        <li>Good for fatigue management</li>
-                    </ul>
-                </div>
-                <div class="cons">
-                    <h6 class="text-warning">Considerations:</h6>
-                    <ul>
-                        <li>Split weekends in basic version</li>
-                        <li>Modified creates 2 and 4-day stretches</li>
-                        <li>6-week full rotation</li>
-                    </ul>
-                </div>
-            </div>
-            <div class="pattern-footer">
-                <button class="btn btn-purple w-100 select-pattern" data-pattern="three_on_three_off">
-                    SELECT 3-ON-3-OFF
+                <button class="btn btn-indigo w-100 select-pattern" data-pattern="five_and_two">
+                    SELECT 5&2 SCHEDULE
                 </button>
             </div>
         </div>
@@ -379,55 +425,6 @@
             </div>
         </div>
 
-        <!-- 5&2 Pattern -->
-        <div class="pattern-card" data-pattern="five_and_two">
-            <div class="pattern-badge twelve-hour">12 Hour</div>
-            <div class="pattern-header">
-                <h4><i class="bi bi-calendar2 text-indigo"></i> 5&2 Schedule</h4>
-            </div>
-            <div class="pattern-description">
-                Work stretches of 5 and 2 days, off stretches of 5 and 2 days
-            </div>
-            <div class="pattern-details">
-                <div class="detail-row">
-                    <span class="detail-label">Cycle:</span>
-                    <span class="detail-value">28 days (4 patterns)</span>
-                </div>
-                <div class="detail-row">
-                    <span class="detail-label">Average Hours:</span>
-                    <span class="detail-value">42 hours/week</span>
-                </div>
-                <div class="detail-row">
-                    <span class="detail-label">Max Consecutive:</span>
-                    <span class="detail-value">5 days</span>
-                </div>
-            </div>
-            <div class="pros-cons">
-                <div class="pros">
-                    <h6 class="text-success">Advantages:</h6>
-                    <ul>
-                        <li>Fixed shifts (no rotation)</li>
-                        <li>Balanced coverage</li>
-                        <li>Predictable off periods</li>
-                        <li>Good for planning</li>
-                    </ul>
-                </div>
-                <div class="cons">
-                    <h6 class="text-warning">Considerations:</h6>
-                    <ul>
-                        <li>Complex 4 different cycles</li>
-                        <li>5 consecutive days is tough</li>
-                        <li>Pattern hard to memorize</li>
-                    </ul>
-                </div>
-            </div>
-            <div class="pattern-footer">
-                <button class="btn btn-indigo w-100 select-pattern" data-pattern="five_and_two">
-                    SELECT 5&2 SCHEDULE
-                </button>
-            </div>
-        </div>
-
         <!-- Continental Pattern -->
         <div class="pattern-card" data-pattern="continental">
             <div class="pattern-badge eight-hour">8 Hour</div>
@@ -477,109 +474,11 @@
             </div>
         </div>
 
-        <!-- Panama Pattern -->
-        <div class="pattern-card" data-pattern="panama">
-            <div class="pattern-badge twelve-hour">12 Hour</div>
-            <div class="pattern-header">
-                <h4><i class="bi bi-globe text-primary"></i> Panama (2-3-2)</h4>
-            </div>
-            <div class="pattern-description">
-                2 on, 2 off, 3 on, 2 off, 2 on, 3 off
-            </div>
-            <div class="pattern-details">
-                <div class="detail-row">
-                    <span class="detail-label">Cycle:</span>
-                    <span class="detail-value">14 days</span>
-                </div>
-                <div class="detail-row">
-                    <span class="detail-label">Average Hours:</span>
-                    <span class="detail-value">42 hours/week</span>
-                </div>
-                <div class="detail-row">
-                    <span class="detail-label">Max Consecutive:</span>
-                    <span class="detail-value">3 days</span>
-                </div>
-            </div>
-            <div class="pros-cons">
-                <div class="pros">
-                    <h6 class="text-success">Advantages:</h6>
-                    <ul>
-                        <li>Very similar to Pitman</li>
-                        <li>Every other weekend off</li>
-                        <li>Never more than 3 consecutive</li>
-                        <li>Well-balanced pattern</li>
-                    </ul>
-                </div>
-                <div class="cons">
-                    <h6 class="text-warning">Considerations:</h6>
-                    <ul>
-                        <li>Complex rotation options</li>
-                        <li>Requires crew coordination</li>
-                        <li>Initial learning curve</li>
-                    </ul>
-                </div>
-            </div>
-            <div class="pattern-footer">
-                <button class="btn btn-primary w-100 select-pattern" data-pattern="panama">
-                    SELECT PANAMA
-                </button>
-            </div>
-        </div>
-
-        <!-- EOWEO Pattern -->
-        <div class="pattern-card" data-pattern="eoweo">
-            <div class="pattern-badge twelve-hour">12 Hour</div>
-            <div class="pattern-header">
-                <h4><i class="bi bi-calendar-week text-info"></i> EOWEO</h4>
-            </div>
-            <div class="pattern-description">
-                Every Other Weekend Off - work weekdays, alternate weekends
-            </div>
-            <div class="pattern-details">
-                <div class="detail-row">
-                    <span class="detail-label">Cycle:</span>
-                    <span class="detail-value">14 days</span>
-                </div>
-                <div class="detail-row">
-                    <span class="detail-label">Average Hours:</span>
-                    <span class="detail-value">40 hours/week</span>
-                </div>
-                <div class="detail-row">
-                    <span class="detail-label">Max Consecutive:</span>
-                    <span class="detail-value">7 days</span>
-                </div>
-            </div>
-            <div class="pros-cons">
-                <div class="pros">
-                    <h6 class="text-success">Advantages:</h6>
-                    <ul>
-                        <li>Simple pattern</li>
-                        <li>Regular weekends off</li>
-                        <li>Popular choice</li>
-                        <li>Easy to understand</li>
-                    </ul>
-                </div>
-                <div class="cons">
-                    <h6 class="text-warning">Considerations:</h6>
-                    <ul>
-                        <li>7 consecutive work days</li>
-                        <li>Weekend work required</li>
-                        <li>Long stretches when covering weekend</li>
-                    </ul>
-                </div>
-            </div>
-            <div class="pattern-footer">
-                <button class="btn btn-info w-100 select-pattern" data-pattern="eoweo">
-                    SELECT EOWEO
-                </button>
-            </div>
-        </div>
-
     </div>
 </div>
 
 <style>
-/* Simplified Pattern Card Styles - Updated 12/30/2024 */
+/* Pattern Card Styles - Updated 09/30/2025 */
 .pattern-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
@@ -669,6 +568,7 @@
 .detail-value {
     color: #6c757d;
     font-size: 0.85rem;
+    text-align: right;
 }
 
 .pros-cons {
@@ -810,7 +710,7 @@
 </style>
 
 <script>
-// Simplified Pattern Selection JavaScript - Updated 12/30/2024
+// Pattern Selection JavaScript - Updated 09/30/2025
 document.addEventListener('DOMContentLoaded', function() {
     console.log('Initializing pattern selection page...');
     
