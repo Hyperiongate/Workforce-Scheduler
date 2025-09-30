@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Employee List - Workforce Scheduler</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.8.1/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+        .page-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 2rem 0;
+            margin-bottom: 2rem;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .filter-section {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 0.5rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .employee-table {
+            background: white;
+            border-radius: 0.5rem;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .employee-table .table {
+            margin-bottom: 0;
+        }
+        .employee-table thead {
+            background: #f8f9fa;
+        }
+        .status-active {
+            color: #28a745;
+        }
+        .status-inactive {
+            color: #dc3545;
+        }
+        .action-btn {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.875rem;
+        }
+        .stats-row {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        .stat-card {
+            background: white;
+            border-radius: 0.5rem;
+            padding: 1.5rem;
+            flex: 1;
+            text-align: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .stat-card h3 {
+            color: #667eea;
+            margin-bottom: 0.5rem;
+            font-size: 2rem;
+            font-weight: bold;
+        }
+        .stat-card p {
+            color: #6c757d;
+            margin: 0;
+        }
+        .crew-badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 0.875rem;
+        }
+        .crew-a { background: #e3f2fd; color: #1565c0; }
+        .crew-b { background: #f3e5f5; color: #6a1b9a; }
+        .crew-c { background: #e8f5e9; color: #2e7d32; }
+        .crew-d { background: #fff3e0; color: #e65100; }
+        .crew-unassigned { background: #f5f5f5; color: #616161; }
+        .no-data {
+            text-align: center;
+            padding: 3rem;
+            color: #6c757d;
+        }
+        .no-data i {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+            color: #dee2e6;
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="{{ url_for('supervisor.dashboard') }}">
+                <i class="bi bi-speedometer2"></i> Workforce Scheduler
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('supervisor.dashboard') }}">
+                            <i class="bi bi-house"></i> Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('supervisor.employee_management', crew=selected_crew) }}">
+                            <i class="bi bi-gear"></i> Employee Management
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="#">
+                            <i class="bi bi-people"></i> Employee List
+                        </a>
+                    </li>
+                </ul>
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <span class="navbar-text me-3">
+                            <i class="bi bi-person-circle"></i> {{ current_user.name if current_user else 'Supervisor' }}
+                        </span>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('auth.logout') }}">
+                            <i class="bi bi-box-arrow-right"></i> Logout
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Page Header -->
+    <div class="page-header">
+        <div class="container-fluid">
+            <div class="row align-items-center">
+                <div class="col">
+                    <h1><i class="bi bi-people-fill"></i> Employee List</h1>
+                    <p class="mb-0">
+                        {% if selected_crew == 'all' %}
+                            All Employees
+                        {% else %}
+                            Crew {{ selected_crew }} Members
+                        {% endif %}
+                    </p>
+                </div>
+                <div class="col-auto">
+                    <a href="{{ url_for('employee_import.upload_employees') }}" class="btn btn-light">
+                        <i class="bi bi-upload"></i> Import Employees
+                    </a>
+                    <a href="{{ url_for('employee_import.download_employee_template') }}" class="btn btn-outline-light ms-2">
+                        <i class="bi bi-download"></i> Download Template
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container-fluid">
+        <!-- Statistics Row -->
+        <div class="stats-row">
+            <div class="stat-card">
+                <h3>{{ employees|length if employees else 0 }}</h3>
+                <p>Total Employees</p>
+            </div>
+            <div class="stat-card">
+                <h3>{{ employees|selectattr('is_active')|list|length if employees else 0 }}</h3>
+                <p>Active</p>
+            </div>
+            <div class="stat-card">
+                <h3>{{ employees|selectattr('is_supervisor')|list|length if employees else 0 }}</h3>
+                <p>Supervisors</p>
+            </div>
+            <div class="stat-card">
+                <h3>{{ employees|rejectattr('is_active')|list|length if employees else 0 }}</h3>
+                <p>Inactive</p>
+            </div>
+        </div>
+
+        <!-- Filter Section -->
+        <div class="filter-section">
+            <div class="row align-items-end">
+                <div class="col-md-4">
+                    <label class="form-label">Search Employee</label>
+                    <input type="text" class="form-control" id="searchInput" 
+                           placeholder="Name, ID, or email..." onkeyup="filterTable()">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Crew Filter</label>
+                    <select class="form-select" onchange="window.location.href=this.value">
+                        <option value="{{ url_for('supervisor.employees', crew='all') }}" 
+                                {% if selected_crew == 'all' %}selected{% endif %}>All Crews</option>
+                        <option value="{{ url_for('supervisor.employees', crew='A') }}"
+                                {% if selected_crew == 'A' %}selected{% endif %}>Crew A</option>
+                        <option value="{{ url_for('supervisor.employees', crew='B') }}"
+                                {% if selected_crew == 'B' %}selected{% endif %}>Crew B</option>
+                        <option value="{{ url_for('supervisor.employees', crew='C') }}"
+                                {% if selected_crew == 'C' %}selected{% endif %}>Crew C</option>
+                        <option value="{{ url_for('supervisor.employees', crew='D') }}"
+                                {% if selected_crew == 'D' %}selected{% endif %}>Crew D</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Status</label>
+                    <select class="form-select" id="statusFilter" onchange="filterTable()">
+                        <option value="">All Status</option>
+                        <option value="active">Active Only</option>
+                        <option value="inactive">Inactive Only</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Role</label>
+                    <select class="form-select" id="roleFilter" onchange="filterTable()">
+                        <option value="">All Roles</option>
+                        <option value="supervisor">Supervisors</option>
+                        <option value="employee">Employees</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <button class="btn btn-secondary w-100" onclick="resetFilters()">
+                        <i class="bi bi-arrow-clockwise"></i> Reset Filters
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Employee Table -->
+        <div class="employee-table">
+            {% if employees %}
+            <table class="table table-hover" id="employeeTable">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Crew</th>
+                        <th>Position</th>
+                        <th>Department</th>
+                        <th>Status</th>
+                        <th>Role</th>
+                        <th class="text-center">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for employee in employees %}
+                    <tr data-status="{% if employee.is_active %}active{% else %}inactive{% endif %}"
+                        data-role="{% if employee.is_supervisor %}supervisor{% else %}employee{% endif %}">
+                        <td>{{ employee.employee_id|default(employee.id) }}</td>
+                        <td>
+                            <strong>{{ employee.name }}</strong>
+                        </td>
+                        <td>{{ employee.email|default('N/A') }}</td>
+                        <td>
+                            {% if employee.crew %}
+                                <span class="crew-badge crew-{{ employee.crew|lower }}">
+                                    Crew {{ employee.crew }}
+                                </span>
+                            {% else %}
+                                <span class="crew-badge crew-unassigned">Unassigned</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ employee.position.name if employee.position else 'N/A' }}</td>
+                        <td>{{ employee.department|default('N/A') }}</td>
+                        <td>
+                            {% if employee.is_active %}
+                                <span class="status-active">
+                                    <i class="bi bi-check-circle-fill"></i> Active
+                                </span>
+                            {% else %}
+                                <span class="status-inactive">
+                                    <i class="bi bi-x-circle-fill"></i> Inactive
+                                </span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if employee.is_supervisor %}
+                                <span class="badge bg-warning text-dark">Supervisor</span>
+                            {% else %}
+                                <span class="badge bg-secondary">Employee</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            <div class="btn-group" role="group">
+                                <button class="btn btn-sm btn-outline-primary action-btn" 
+                                        onclick="viewEmployee({{ employee.id }})"
+                                        title="View Details">
+                                    <i class="bi bi-eye"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-secondary action-btn"
+                                        onclick="editEmployee({{ employee.id }})"
+                                        title="Edit Employee">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                {% if employee.is_active %}
+                                    <button class="btn btn-sm btn-outline-danger action-btn"
+                                            onclick="toggleStatus({{ employee.id }}, false)"
+                                            title="Deactivate">
+                                        <i class="bi bi-person-x"></i>
+                                    </button>
+                                {% else %}
+                                    <button class="btn btn-sm btn-outline-success action-btn"
+                                            onclick="toggleStatus({{ employee.id }}, true)"
+                                            title="Activate">
+                                        <i class="bi bi-person-check"></i>
+                                    </button>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="no-data">
+                <i class="bi bi-people"></i>
+                <h4>No Employees Found</h4>
+                <p>
+                    {% if selected_crew != 'all' %}
+                        No employees in Crew {{ selected_crew }}.
+                    {% else %}
+                        Start by importing your employee data.
+                    {% endif %}
+                </p>
+                <div class="mt-3">
+                    <a href="{{ url_for('employee_import.upload_employees') }}" class="btn btn-primary">
+                        <i class="bi bi-upload"></i> Import Employees
+                    </a>
+                    <a href="{{ url_for('supervisor.employee_management', crew='all') }}" class="btn btn-secondary ms-2">
+                        <i class="bi bi-arrow-left"></i> Back to Management
+                    </a>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Filter table function
+        function filterTable() {
+            const searchInput = document.getElementById('searchInput').value.toLowerCase();
+            const statusFilter = document.getElementById('statusFilter').value;
+            const roleFilter = document.getElementById('roleFilter').value;
+            const table = document.getElementById('employeeTable');
+            
+            if (!table) return;
+            
+            const rows = table.getElementsByTagName('tbody')[0].getElementsByTagName('tr');
+            
+            for (let row of rows) {
+                let showRow = true;
+                
+                // Search filter
+                if (searchInput) {
+                    const text = row.textContent.toLowerCase();
+                    if (!text.includes(searchInput)) {
+                        showRow = false;
+                    }
+                }
+                
+                // Status filter
+                if (statusFilter && row.dataset.status !== statusFilter) {
+                    showRow = false;
+                }
+                
+                // Role filter
+                if (roleFilter && row.dataset.role !== roleFilter) {
+                    showRow = false;
+                }
+                
+                row.style.display = showRow ? '' : 'none';
+            }
+        }
+        
+        // Reset filters
+        function resetFilters() {
+            document.getElementById('searchInput').value = '';
+            document.getElementById('statusFilter').value = '';
+            document.getElementById('roleFilter').value = '';
+            filterTable();
+        }
+        
+        // View employee details
+        function viewEmployee(id) {
+            // Implement view functionality
+            alert(`View employee ${id} - This would show detailed employee information`);
+        }
+        
+        // Edit employee
+        function editEmployee(id) {
+            // Implement edit functionality
+            alert(`Edit employee ${id} - This would open an edit form`);
+        }
+        
+        // Toggle employee status
+        function toggleStatus(id, activate) {
+            const action = activate ? 'activate' : 'deactivate';
+            if (confirm(`Are you sure you want to ${action} this employee?`)) {
+                // Implement status toggle
+                alert(`Would ${action} employee ${id}`);
+                // In production, make an AJAX call to update the status
+            }
+        }
+    </script>
+</body>
+</html>
