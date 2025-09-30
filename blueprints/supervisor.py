@@ -2,7 +2,7 @@
 """
 Supervisor blueprint with comprehensive error handling and ALL ROUTE FIXES
 FIXES THE REDIRECT LOOP AND MISSING ROUTES
-COMPLETE DEPLOYMENT-READY VERSION - UPDATED 2025-09-20
+COMPLETE DEPLOYMENT-READY VERSION - UPDATED 2025-01-09
 """
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, session
@@ -502,16 +502,17 @@ def employees():
         flash('Error loading employees.', 'danger')
         return redirect(url_for('supervisor.dashboard'))
 
-# FIX: Add the missing employee_management route - CORRECT HYPHEN FORMAT
+# FIX: Updated employee_management route to use correct template
 @supervisor_bp.route('/supervisor/employee-management')
 @login_required
 @supervisor_required
 def employee_management():
-    """Employee management page - FIXES TEMPLATE ERROR"""
+    """Employee management page - renders the comprehensive employee list"""
     try:
         crew = request.args.get('crew', session.get('selected_crew', 'all'))
         session['selected_crew'] = crew
         
+        # Get employees based on crew filter
         def get_employees():
             if crew == 'all':
                 return Employee.query.order_by(Employee.name).all()
@@ -520,70 +521,22 @@ def employee_management():
         
         employees_list = safe_database_query("employees", get_employees, [])
         
-        # Try to render template, fallback to simple HTML if template missing
+        # Get positions for the filter dropdown
+        positions = Position.query.order_by(Position.name).all()
+        
+        # Calculate total skills if you have the Skill model
         try:
-            return render_template('supervisor/employee_management.html',
-                                 employees=employees_list,
-                                 selected_crew=crew)
+            from models import Skill
+            total_skills = db.session.query(func.count(func.distinct(Skill.id))).scalar() or 0
         except:
-            # Fallback HTML if template doesn't exist
-            employee_count = len(employees_list)
-            return f"""
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Employee Management</title>
-                <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-                <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
-            </head>
-            <body>
-                <div class="container mt-4">
-                    <div class="d-flex justify-content-between align-items-center mb-4">
-                        <h2><i class="bi bi-person-gear me-2"></i>Employee Management</h2>
-                        <a href="/supervisor/dashboard" class="btn btn-outline-primary">
-                            <i class="bi bi-arrow-left"></i> Back to Dashboard
-                        </a>
-                    </div>
-                    
-                    <div class="alert alert-info">
-                        <h5><i class="bi bi-info-circle me-2"></i>Current Status</h5>
-                        <p>Managing {employee_count} employees for {crew if crew != 'all' else 'all crews'}.</p>
-                    </div>
-                    
-                    <div class="row">
-                        <div class="col-md-6">
-                            <div class="card">
-                                <div class="card-body">
-                                    <h5><i class="bi bi-people me-2"></i>Quick Actions</h5>
-                                    <div class="d-grid gap-2">
-                                        <a href="/supervisor/employees?crew={crew}" class="btn btn-primary">
-                                            <i class="bi bi-list"></i> View Employee List
-                                        </a>
-                                        <a href="/upload-employees" class="btn btn-success">
-                                            <i class="bi bi-upload"></i> Import Employees
-                                        </a>
-                                        <a href="/supervisor/time-off-requests?crew={crew}" class="btn btn-warning">
-                                            <i class="bi bi-calendar-x"></i> Time Off Requests
-                                        </a>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="card">
-                                <div class="card-body">
-                                    <h5><i class="bi bi-graph-up me-2"></i>Statistics</h5>
-                                    <p><strong>Total Employees:</strong> {employee_count}</p>
-                                    <p><strong>Viewing:</strong> {crew if crew != 'all' else 'All Crews'}</p>
-                                    <p><strong>Last Updated:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M')}</p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </body>
-            </html>
-            """
+            total_skills = 0
+        
+        # FIXED: Render the template - use employee_management.html directly (not supervisor/employee_management.html)
+        return render_template('employee_management.html',
+                             employees=employees_list,
+                             positions=positions,
+                             total_skills=total_skills,
+                             selected_crew=crew)
     
     except Exception as e:
         logger.error(f"Error loading employee management: {e}")
@@ -684,6 +637,28 @@ def crew_management():
     except Exception as e:
         logger.error(f"Error loading crew management: {e}")
         flash('Error loading crew management.', 'danger')
+        return redirect(url_for('supervisor.dashboard'))
+
+# ==========================================
+# OVERTIME MANAGEMENT - ADD THIS ROUTE
+# ==========================================
+
+@supervisor_bp.route('/supervisor/overtime-management')
+@login_required
+@supervisor_required
+def overtime_management():
+    """Overtime management page"""
+    try:
+        crew = request.args.get('crew', session.get('selected_crew', 'all'))
+        session['selected_crew'] = crew
+        
+        # For now, redirect to employee management or show a placeholder
+        flash('Overtime management feature coming soon.', 'info')
+        return redirect(url_for('supervisor.employee_management', crew=crew))
+    
+    except Exception as e:
+        logger.error(f"Error loading overtime management: {e}")
+        flash('Error loading overtime management.', 'danger')
         return redirect(url_for('supervisor.dashboard'))
 
 # ==========================================
