@@ -578,9 +578,7 @@ document.addEventListener('DOMContentLoaded', function() {
     };
     
     // ===== COMPLETE CREW ASSIGNMENT GENERATION =====
-    // [Keeping existing generateCrewAssignment function - no changes needed]
     function generateCrewAssignment(pattern, week, day, rotation) {
-        // ... [existing implementation stays the same]
         const dayOfCycle = (week - 1) * 7 + day;
         let assignment = {
             crews: 'Off',
@@ -588,8 +586,106 @@ document.addEventListener('DOMContentLoaded', function() {
             cssClass: 'shift-off'
         };
         
-        // [Rest of the existing generateCrewAssignment code remains unchanged]
-        // ... [truncated for brevity - use existing implementation]
+        // Default shift times
+        const dayStart = '06:00';
+        const nightStart = '18:00';
+        const eveningStart = '15:00';
+        
+        // Normalize pattern name
+        let normalizedPattern = pattern.toLowerCase()
+            .replace(/_/g, '')
+            .replace(/-/g, '')
+            .replace(/\s+/g, '');
+        
+        switch(normalizedPattern) {
+            case 'pitman':
+                // PITMAN (2-2-3) PATTERN - CORRECTED IMPLEMENTATION
+                const pitmanBase = [
+                    1, 0, 0, 1, 1, 0, 0,  // Week 1
+                    0, 1, 1, 0, 0, 1, 1   // Week 2
+                ];
+                
+                const crewADay = dayOfCycle % 14;
+                const crewBDay = (dayOfCycle + 7) % 14;
+                const crewCDay = dayOfCycle % 14;
+                const crewDDay = (dayOfCycle + 7) % 14;
+                
+                const aWorks = pitmanBase[crewADay];
+                const bWorks = pitmanBase[crewBDay];
+                const cWorks = pitmanBase[crewCDay];
+                const dWorks = pitmanBase[crewDDay];
+                
+                let dayShiftCrews = [];
+                let nightShiftCrews = [];
+                
+                const rotationType = rotation || 'fixed';
+                
+                if (rotationType === 'fixed') {
+                    if (aWorks) dayShiftCrews.push('A');
+                    if (bWorks) dayShiftCrews.push('B');
+                    if (cWorks) nightShiftCrews.push('C');
+                    if (dWorks) nightShiftCrews.push('D');
+                } else if (rotationType === 'fast') {
+                    const setNumber = Math.floor(dayOfCycle / 3) % 4;
+                    if (setNumber % 2 === 0) {
+                        if (aWorks) dayShiftCrews.push('A');
+                        if (bWorks) dayShiftCrews.push('B');
+                        if (cWorks) nightShiftCrews.push('C');
+                        if (dWorks) nightShiftCrews.push('D');
+                    } else {
+                        if (aWorks) nightShiftCrews.push('A');
+                        if (bWorks) nightShiftCrews.push('B');
+                        if (cWorks) dayShiftCrews.push('C');
+                        if (dWorks) dayShiftCrews.push('D');
+                    }
+                } else if (rotationType === 'medium') {
+                    const cycleWeek = Math.floor(dayOfCycle / 14) % 2;
+                    if (cycleWeek === 0) {
+                        if (aWorks) dayShiftCrews.push('A');
+                        if (bWorks) dayShiftCrews.push('B');
+                        if (cWorks) nightShiftCrews.push('C');
+                        if (dWorks) nightShiftCrews.push('D');
+                    } else {
+                        if (aWorks) nightShiftCrews.push('A');
+                        if (bWorks) nightShiftCrews.push('B');
+                        if (cWorks) dayShiftCrews.push('C');
+                        if (dWorks) dayShiftCrews.push('D');
+                    }
+                } else if (rotationType === 'slow') {
+                    const monthCycle = Math.floor(dayOfCycle / 28) % 2;
+                    if (monthCycle === 0) {
+                        if (aWorks) dayShiftCrews.push('A');
+                        if (bWorks) dayShiftCrews.push('B');
+                        if (cWorks) nightShiftCrews.push('C');
+                        if (dWorks) nightShiftCrews.push('D');
+                    } else {
+                        if (aWorks) nightShiftCrews.push('A');
+                        if (bWorks) nightShiftCrews.push('B');
+                        if (cWorks) dayShiftCrews.push('C');
+                        if (dWorks) dayShiftCrews.push('D');
+                    }
+                }
+                
+                if (dayShiftCrews.length > 0 || nightShiftCrews.length > 0) {
+                    let display = [];
+                    if (dayShiftCrews.length > 0) {
+                        display.push(`Day: ${dayShiftCrews.join('+')}`);
+                    }
+                    if (nightShiftCrews.length > 0) {
+                        display.push(`Night: ${nightShiftCrews.join('+')}`);
+                    }
+                    assignment.crews = display.join('\n');
+                    assignment.cssClass = dayShiftCrews.length > 0 ? 'shift-day' : 'shift-night';
+                }
+                break;
+                
+            // Add other pattern cases here as needed
+            default:
+                assignment.crews = `${pattern} Pattern`;
+                assignment.time = 'Configuration needed';
+                assignment.cssClass = 'shift-day';
+                break;
+        }
         
         return assignment;
     }
@@ -733,6 +829,13 @@ document.addEventListener('DOMContentLoaded', function() {
                     const selectedText = this.options[this.selectedIndex].text.split('(')[0].trim();
                     btn.innerHTML = `<i class="bi bi-calendar-check"></i> Generate ${selectedText} Preview`;
                     console.log('Button shown');
+                    
+                    // Make sure button clicks work
+                    btn.onclick = function(e) {
+                        e.preventDefault();
+                        console.log('Preview button clicked via onclick');
+                        generateSchedulePreview();
+                    };
                     
                     // Auto-generate preview
                     setTimeout(generateSchedulePreview, 100);
