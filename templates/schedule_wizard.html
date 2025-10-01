@@ -725,8 +725,158 @@ document.addEventListener('DOMContentLoaded', function() {
             rotation = 'fixed';
         }
         
-        // [Rest of generateSchedulePreview remains the same]
-        // ... [truncated for brevity - use existing implementation]
+        // Determine number of weeks to show
+        let weeksToShow = 4;
+        if (pattern === 'pitman') {
+            switch(rotation) {
+                case 'fixed': weeksToShow = 2; break;
+                case 'fast':
+                case 'medium': weeksToShow = 4; break;
+                case 'slow': weeksToShow = 8; break;
+            }
+        }
+        
+        // Get pattern info for stats
+        const patternInfo = patternData[pattern] || {
+            cycle: '14 days',
+            avgHours: '42 hours/week',
+            maxConsecutive: '3 days',
+            weekendsOff: 'Every other'
+        };
+        
+        console.log('Generating preview for', weeksToShow, 'weeks');
+        
+        // Generate Timeline View HTML
+        let previewHtml = `
+            <div class="schedule-preview-container">
+                <!-- Header -->
+                <div class="preview-header">
+                    <h4 class="preview-title">
+                        <i class="bi bi-calendar-range"></i> ${patternConfig.name || pattern} Schedule Timeline
+                    </h4>
+                    <p class="preview-subtitle">${rotation === 'fixed' ? 'Fixed' : 'Rotating'} ${weeksToShow}-Week Cycle • Continuous 24/7 Coverage</p>
+                </div>
+                
+                <!-- Pattern Stats -->
+                <div class="pattern-stats">
+                    <div class="stat-item">
+                        <div class="stat-value">${patternInfo.cycle.split(' ')[0]}</div>
+                        <div class="stat-label">Day Cycle</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value">${patternInfo.avgHours.split(' ')[0]}</div>
+                        <div class="stat-label">Hours/Week</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value">${patternInfo.maxConsecutive.split(' ')[0]}</div>
+                        <div class="stat-label">Max Days</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value">${patternInfo.weekendsOff.includes('Every') ? '50%' : patternInfo.weekendsOff}</div>
+                        <div class="stat-label">Weekends Off</div>
+                    </div>
+                </div>
+                
+                <div class="timeline-container">
+        `;
+        
+        const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        const dayAbbr = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+        
+        // Generate weeks
+        for (let week = 1; week <= weeksToShow; week++) {
+            previewHtml += `
+                <div class="week-timeline">
+                    <div class="week-header">
+                        <span class="week-number">Week ${week}</span>
+                        <span class="week-info">${week === 1 ? 'Pattern begins' : week === weeksToShow ? 'Cycle completes' : 'Pattern continues'}</span>
+                    </div>
+                    
+                    <div class="days-grid">
+            `;
+            
+            for (let day = 0; day < 7; day++) {
+                const assignment = generateCrewAssignment(pattern, week, day, rotation);
+                const isWeekend = (day === 0 || day === 6);
+                
+                // Parse crews from assignment
+                let dayCrews = [];
+                let nightCrews = [];
+                
+                if (assignment.crews && assignment.crews !== 'Off') {
+                    const lines = assignment.crews.split('\n');
+                    lines.forEach(line => {
+                        if (line.includes('Day:')) {
+                            dayCrews = line.replace('Day:', '').trim().split('+');
+                        } else if (line.includes('Night:')) {
+                            nightCrews = line.replace('Night:', '').trim().split('+');
+                        }
+                    });
+                }
+                
+                previewHtml += `
+                    <div class="day-column">
+                        <div class="day-label ${isWeekend ? 'weekend' : ''}">${dayAbbr[day]}</div>
+                `;
+                
+                if (dayCrews.length > 0) {
+                    previewHtml += `
+                        <div class="shift-block shift-day">
+                            <span class="shift-label">DAY</span>
+                            <span class="crew-letter">${dayCrews.join('+')}</span>
+                        </div>
+                    `;
+                }
+                
+                if (nightCrews.length > 0) {
+                    previewHtml += `
+                        <div class="shift-block shift-night">
+                            <span class="shift-label">NIGHT</span>
+                            <span class="crew-letter">${nightCrews.join('+')}</span>
+                        </div>
+                    `;
+                }
+                
+                if (dayCrews.length === 0 && nightCrews.length === 0) {
+                    previewHtml += `
+                        <div class="shift-block shift-off">
+                            <span class="crew-letter">OFF</span>
+                        </div>
+                    `;
+                }
+                
+                previewHtml += `</div>`;
+            }
+            
+            previewHtml += `
+                    </div>
+                </div>
+            `;
+        }
+        
+        previewHtml += `
+                </div>
+                
+                <!-- Legend -->
+                <div class="legend-strip">
+                    <div class="legend-item">
+                        <div class="legend-box shift-day"></div>
+                        <span>Day Shift (06:00-18:00)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-box shift-night"></div>
+                        <span>Night Shift (18:00-06:00)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-box shift-off"></div>
+                        <span>Off Day</span>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        document.getElementById('schedulePreview').innerHTML = previewHtml;
+        console.log('Preview HTML inserted into DOM');
     }
     
     // ===== POPULATE PATTERN INFO =====
