@@ -679,8 +679,57 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
                 break;
                 
-            // Add other pattern cases here as needed
-            default:
+            case 'dupont':
+                // DUPONT PATTERN - 28-day cycle (4 weeks)
+                // Week 1: D12, D12, D12, D12, off, off, off
+                // Week 2: off, off, off, off, N12, N12, N12
+                // Week 3: N12, off, off, off, D12, D12, D12
+                // Week 4: off, N12, N12, N12, off, off, N12
+                
+                const dupontPattern = [
+                    // Week 1 (Days 0-6)
+                    'D', 'D', 'D', 'D', 'O', 'O', 'O',
+                    // Week 2 (Days 7-13)
+                    'O', 'O', 'O', 'O', 'N', 'N', 'N',
+                    // Week 3 (Days 14-20)
+                    'N', 'O', 'O', 'O', 'D', 'D', 'D',
+                    // Week 4 (Days 21-27)
+                    'O', 'N', 'N', 'N', 'O', 'O', 'N'
+                ];
+                
+                // Each crew starts at a different week in the cycle
+                const dupontOffsets = {
+                    'A': 0,   // Starts at Week 1
+                    'B': 7,   // Starts at Week 2
+                    'C': 14,  // Starts at Week 3
+                    'D': 21   // Starts at Week 4
+                };
+                
+                let dupontDayCrews = [];
+                let dupontNightCrews = [];
+                
+                for (const [crew, offset] of Object.entries(dupontOffsets)) {
+                    const scheduleDay = (dayOfCycle + offset) % 28;
+                    const shift = dupontPattern[scheduleDay];
+                    if (shift === 'D') {
+                        dupontDayCrews.push(crew);
+                    } else if (shift === 'N') {
+                        dupontNightCrews.push(crew);
+                    }
+                }
+                
+                if (dupontDayCrews.length > 0 || dupontNightCrews.length > 0) {
+                    let display = [];
+                    if (dupontDayCrews.length > 0) {
+                        display.push(`Day: ${dupontDayCrews.join('+')}`);
+                    }
+                    if (dupontNightCrews.length > 0) {
+                        display.push(`Night: ${dupontNightCrews.join('+')}`);
+                    }
+                    assignment.crews = display.join('\n');
+                    assignment.cssClass = dupontDayCrews.length > 0 ? 'shift-day' : 'shift-night';
+                }
+                break;
                 assignment.crews = `${pattern} Pattern`;
                 assignment.time = 'Configuration needed';
                 assignment.cssClass = 'shift-day';
@@ -734,6 +783,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 case 'medium': weeksToShow = 4; break;
                 case 'slow': weeksToShow = 8; break;
             }
+        } else if (pattern === 'dupont') {
+            weeksToShow = 4;  // DuPont is a 4-week cycle
+        } else if (pattern === 'four_on_four_off') {
+            weeksToShow = rotation === 'fixed' ? 2 : 4;
+        } else if (pattern === 'three_on_three_off') {
+            weeksToShow = rotation === 'fixed' ? 2 : 3;
         }
         
         // Get pattern info for stats
