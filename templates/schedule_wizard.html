@@ -1,16 +1,6 @@
 {# templates/schedule_wizard.html #}
-{# Schedule Pattern Wizard - Complete Fixed Version #}
-{# Author: Workforce Scheduler Development Team #}
-{# Created: 09/30/2025 #}
-{# Last Modified: 09/30/2025 #}
-{# 
-   Changes:
-   - 09/30/2025: Removed all instances of "Select Your Pitman Rotation Type"
-   - 09/30/2025: Added red-bordered Pattern Configuration section
-   - 09/30/2025: Updated considerations to match selection page
-   - 09/30/2025: Added configurations for all patterns with variations
-   - 09/30/2025: Made "Select Your Pattern Configuration" appear in red
-#}
+{# Schedule Pattern Wizard - DuPont Fixed Option Removed #}
+{# Last Modified: 10/01/2025 - Removed DuPont Fixed Shift option #}
 
 {% extends "base.html" %}
 {% block title %}{{ pattern_config.name }} Schedule Pattern{% endblock %}
@@ -140,15 +130,12 @@
                             </select>
                         </div>
                         {% elif pattern == 'dupont' %}
-                        <!-- DuPont Configuration -->
-                        <div class="mb-3">
-                            <label for="dupontVariation" class="form-label fw-bold">Pattern Type:</label>
-                            <select class="form-select form-select-lg" id="dupontVariation" name="dupont_variation">
-                                <option value="">-- Select Type --</option>
-                                <option value="rotating">Rotating (Standard)</option>
-                                <option value="fixed">Fixed Shifts</option>
-                            </select>
+                        <!-- DuPont Configuration - SIMPLIFIED: Rotating Only -->
+                        <div class="alert alert-info">
+                            <i class="bi bi-info-circle"></i> DuPont is a rotating schedule pattern only.
+                            <p class="mb-0 mt-2"><small>All 4 crews rotate through the 4-week cycle, experiencing both day and night shifts with the famous 7-day break.</small></p>
                         </div>
+                        <input type="hidden" id="dupontVariation" name="dupont_variation" value="rotating">
                         {% else %}
                         <!-- Standard patterns without variations -->
                         <div class="alert alert-info">
@@ -157,7 +144,7 @@
                         {% endif %}
                         
                         <div class="d-grid gap-2 mt-3">
-                            <button type="button" class="btn btn-primary btn-lg" id="generatePreviewBtn" {% if pattern in ['pitman', 'four_on_four_off', 'three_on_three_off', 'southern_swing', 'dupont'] %}style="display: none;"{% endif %}>
+                            <button type="button" class="btn btn-primary btn-lg" id="generatePreviewBtn" {% if pattern in ['pitman', 'four_on_four_off', 'three_on_three_off', 'southern_swing'] %}style="display: none;"{% endif %}>
                                 <i class="bi bi-calendar-check"></i> Generate Schedule Preview
                             </button>
                         </div>
@@ -198,7 +185,6 @@
 </div>
 
 <style>
-/* Configuration Card - Make it stand out */
 .configuration-card {
     border: 2px solid #dc3545;
     box-shadow: 0 6px 20px rgba(220, 53, 69, 0.15);
@@ -218,7 +204,6 @@
     box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.25);
 }
 
-/* Timeline View Styles */
 .schedule-preview-container {
     background: white;
     border-radius: 20px;
@@ -258,7 +243,6 @@
     position: relative;
 }
 
-/* Pattern Statistics Bar */
 .pattern-stats {
     background: linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%);
     padding: 20px;
@@ -284,7 +268,6 @@
     margin-top: 5px;
 }
 
-/* Timeline Container */
 .timeline-container {
     padding: 25px;
 }
@@ -316,7 +299,6 @@
     font-size: 0.85rem;
 }
 
-/* Days Grid */
 .days-grid {
     display: grid;
     grid-template-columns: repeat(7, 1fr);
@@ -343,7 +325,6 @@
     background: #805ad5;
 }
 
-/* Shift Blocks */
 .shift-block {
     border-radius: 10px;
     padding: 12px 8px;
@@ -393,7 +374,6 @@
     font-weight: 700;
 }
 
-/* Legend */
 .legend-strip {
     display: flex;
     justify-content: center;
@@ -432,7 +412,6 @@
     font-size: 0.9rem;
 }
 
-/* Responsive adjustments */
 @media (max-width: 768px) {
     .timeline-container {
         padding: 15px;
@@ -479,10 +458,6 @@
 </style>
 
 <script>
-// COMPLETE IMPLEMENTATION WITH ALL PATTERNS
-// Updated: 09/30/2025
-// Fixed: Configuration messages, considerations, and all patterns
-
 document.addEventListener('DOMContentLoaded', function() {
     console.log('===== Schedule Wizard Initialization =====');
     
@@ -492,7 +467,6 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('Pattern:', pattern);
     console.log('Pattern Config:', patternConfig);
     
-    // ===== COMPLETE PATTERN DATA - UPDATED CONSIDERATIONS =====
     const patternData = {
         'pitman': {
             cycle: '14 days',
@@ -507,10 +481,10 @@ document.addEventListener('DOMContentLoaded', function() {
             cycle: '28 days',
             avgHours: '42 hours/week',
             maxConsecutive: '4 days',
-            weekendsOff: 'One 7-day break',
+            weekendsOff: 'One 7-day break per cycle',
             advantages: ['7 consecutive days off every cycle', 'Built-in recovery periods', 'Popular in industry', 'Good work-life balance'],
-            considerations: ['Complex pattern to learn', 'Long work stretches before break', 'Must coordinate crew changes'],
-            explanation: 'DuPont: 4N-3off-3D-1off-3N-3off-4D-7off. Famous for the 7-day break.'
+            considerations: ['Complex pattern to learn', 'Long work stretches before break', 'All crews rotate through day and night'],
+            explanation: 'DuPont: 4 days, 3 off, 3 nights, 1 off, 3 days, 3 off, 4 nights, 7 off. All crews rotate through the 28-day cycle.'
         },
         'southern_swing': {
             cycle: '28 days',
@@ -538,46 +512,9 @@ document.addEventListener('DOMContentLoaded', function() {
             advantages: ['Shorter work stretches', 'Regular pattern', '3 full weekends off/6 weeks (modified)', 'Good for fatigue management'],
             considerations: ['Split weekends in basic version', 'Modified creates 2 and 4-day stretches', '6-week full rotation'],
             explanation: '3-on-3-off: Work 3 days, then off 3 days. Shorter work stretches.'
-        },
-        'fixed_fixed': {
-            cycle: '7 days',
-            avgHours: '48 or 36 hours/week',
-            maxConsecutive: '4 days (Mon-Thu) or 3 (Fri-Sun)',
-            weekendsOff: '3-day weekends for Mon-Thu crews',
-            advantages: ['Completely predictable schedule', 'No rotation stress', 'Lifestyle choice (weekdays vs weekends)', '3-day weekends for Mon-Thu crews'],
-            considerations: ['Unequal hours (48 vs 36)', 'Weekend crews work every weekend', 'No variety in schedule'],
-            explanation: 'Fixed-Fixed: Mon-Thu crews work 48hrs, Fri-Sun crews work 36hrs.'
-        },
-        'five_and_two': {
-            cycle: '28 days (4 patterns)',
-            avgHours: '42 hours/week',
-            maxConsecutive: '5 days',
-            weekendsOff: 'Varies by pattern',
-            advantages: ['Fixed shifts (no rotation)', 'Balanced coverage', 'Predictable off periods', 'Good for planning'],
-            considerations: ['Complex 4 different cycles', '5 consecutive days is tough', 'Pattern hard to memorize'],
-            explanation: '5&2: Work stretches of 5 and 2 days, off stretches of 5 and 2 days.'
-        },
-        'alternating_fixed': {
-            cycle: '14 days (2 weeks)',
-            avgHours: '42 hours/week',
-            maxConsecutive: '4 days',
-            weekendsOff: 'Alternating',
-            advantages: ['Mostly predictable schedule', 'Balances weekend work', 'One crew Sun, other Sat', 'Can be fixed or rotating'],
-            considerations: ['Alternating 4th day confusing', 'Weekend work required', 'Pattern takes adjustment'],
-            explanation: 'Alternating Fixed: Core 3 days always worked, 4th day alternates.'
-        },
-        'continental': {
-            cycle: '8 days',
-            avgHours: '42 hours/week',
-            maxConsecutive: '2 days',
-            weekendsOff: 'Varies',
-            advantages: ['Short work stretches', 'Experience all shifts', 'European standard', 'Never more than 2 in a row'],
-            considerations: ['Constant rotation stress', 'Body clock adjustment hard', 'Weekend coverage varies'],
-            explanation: 'Continental: 2D-2E-2N-2off. Rotate through all shifts in 8 days.'
         }
     };
     
-    // ===== COMPLETE CREW ASSIGNMENT GENERATION =====
     function generateCrewAssignment(pattern, week, day, rotation) {
         const dayOfCycle = (week - 1) * 7 + day;
         let assignment = {
@@ -586,23 +523,13 @@ document.addEventListener('DOMContentLoaded', function() {
             cssClass: 'shift-off'
         };
         
-        // Default shift times
-        const dayStart = '06:00';
-        const nightStart = '18:00';
-        const eveningStart = '15:00';
-        
-        // Normalize pattern name
-        let normalizedPattern = pattern.toLowerCase()
-            .replace(/_/g, '')
-            .replace(/-/g, '')
-            .replace(/\s+/g, '');
+        let normalizedPattern = pattern.toLowerCase().replace(/_/g, '').replace(/-/g, '').replace(/\s+/g, '');
         
         switch(normalizedPattern) {
             case 'pitman':
-                // PITMAN (2-2-3) PATTERN - CORRECTED IMPLEMENTATION
                 const pitmanBase = [
-                    1, 0, 0, 1, 1, 0, 0,  // Week 1
-                    0, 1, 1, 0, 0, 1, 1   // Week 2
+                    1, 0, 0, 1, 1, 0, 0,
+                    0, 1, 1, 0, 0, 1, 1
                 ];
                 
                 const crewADay = dayOfCycle % 14;
@@ -680,37 +607,23 @@ document.addEventListener('DOMContentLoaded', function() {
                 break;
                 
             case 'dupont':
-                // DUPONT PATTERN - 28-day cycle (4 weeks)
-                // Based on the provided table:
-                // Week 1: 4 days on (Mon-Thu), 3 off (Fri-Sun)
-                // Week 2: 4 off (Mon-Thu), 3 nights (Fri-Sun)
-                // Week 3: 1 night (Mon), 3 off (Tue-Thu), 3 days (Fri-Sun)
-                // Week 4: 1 off (Mon), 3 nights (Tue-Thu), 2 off (Fri-Sat), 1 night (Sun)
-                
                 const dupontPattern = [
-                    // Week 1 (Days 0-6: Mon-Sun)
                     'D', 'D', 'D', 'D', 'O', 'O', 'O',
-                    // Week 2 (Days 7-13: Mon-Sun)
                     'O', 'O', 'O', 'O', 'N', 'N', 'N',
-                    // Week 3 (Days 14-20: Mon-Sun)
                     'N', 'O', 'O', 'O', 'D', 'D', 'D',
-                    // Week 4 (Days 21-27: Mon-Sun)
                     'O', 'N', 'N', 'N', 'O', 'O', 'N'
                 ];
                 
-                // Each crew starts at a different week in the cycle
-                // Need to adjust offsets to start on Monday (day 1)
                 const dupontOffsets = {
-                    'A': 0,   // Starts at Week 1
-                    'B': 21,  // Starts at Week 4
-                    'C': 14,  // Starts at Week 3
-                    'D': 7    // Starts at Week 2
+                    'A': 0,
+                    'B': 21,
+                    'C': 14,
+                    'D': 7
                 };
                 
                 let dupontDayCrews = [];
                 let dupontNightCrews = [];
                 
-                // Adjust for starting on Sunday (day 0) vs Monday (day 1)
                 const adjustedDay = dayOfCycle === 0 ? 6 : dayOfCycle - 1;
                 
                 for (const [crew, offset] of Object.entries(dupontOffsets)) {
@@ -735,22 +648,16 @@ document.addEventListener('DOMContentLoaded', function() {
                     assignment.cssClass = dupontDayCrews.length > 0 ? 'shift-day' : 'shift-night';
                 }
                 break;
-                assignment.crews = `${pattern} Pattern`;
-                assignment.time = 'Configuration needed';
-                assignment.cssClass = 'shift-day';
-                break;
         }
         
         return assignment;
     }
     
-    // ===== GENERATE SCHEDULE PREVIEW =====
     function generateSchedulePreview() {
         console.log('===== Generating Schedule Preview =====');
         
         let rotation;
         
-        // Get the appropriate variation selector based on pattern
         const variationSelectors = {
             'pitman': document.getElementById('pitmanVariation'),
             'four_on_four_off': document.getElementById('fourVariation'),
@@ -764,7 +671,11 @@ document.addEventListener('DOMContentLoaded', function() {
             rotation = currentSelector.value;
             console.log(`${pattern} rotation selected:`, rotation);
             
-            if (!rotation) {
+            if (pattern === 'dupont') {
+                rotation = 'rotating';
+            }
+            
+            if (!rotation && pattern !== 'dupont') {
                 document.getElementById('schedulePreview').innerHTML = `
                     <div class="alert alert-danger text-center">
                         <i class="bi bi-exclamation-triangle fs-1"></i>
@@ -779,7 +690,6 @@ document.addEventListener('DOMContentLoaded', function() {
             rotation = 'fixed';
         }
         
-        // Determine number of weeks to show
         let weeksToShow = 4;
         if (pattern === 'pitman') {
             switch(rotation) {
@@ -789,14 +699,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 case 'slow': weeksToShow = 8; break;
             }
         } else if (pattern === 'dupont') {
-            weeksToShow = 4;  // DuPont is a 4-week cycle
+            weeksToShow = 4;
         } else if (pattern === 'four_on_four_off') {
             weeksToShow = rotation === 'fixed' ? 2 : 4;
         } else if (pattern === 'three_on_three_off') {
             weeksToShow = rotation === 'fixed' ? 2 : 3;
         }
         
-        // Get pattern info for stats
         const patternInfo = patternData[pattern] || {
             cycle: '14 days',
             avgHours: '42 hours/week',
@@ -806,18 +715,15 @@ document.addEventListener('DOMContentLoaded', function() {
         
         console.log('Generating preview for', weeksToShow, 'weeks');
         
-        // Generate Timeline View HTML
         let previewHtml = `
             <div class="schedule-preview-container">
-                <!-- Header -->
                 <div class="preview-header">
                     <h4 class="preview-title">
                         <i class="bi bi-calendar-range"></i> ${patternConfig.name || pattern} Schedule Timeline
                     </h4>
-                    <p class="preview-subtitle">${rotation === 'fixed' ? 'Fixed' : 'Rotating'} ${weeksToShow}-Week Cycle • Continuous 24/7 Coverage</p>
+                    <p class="preview-subtitle">${pattern === 'dupont' ? 'Rotating' : rotation === 'fixed' ? 'Fixed' : 'Rotating'} ${weeksToShow}-Week Cycle • Continuous 24/7 Coverage</p>
                 </div>
                 
-                <!-- Pattern Stats -->
                 <div class="pattern-stats">
                     <div class="stat-item">
                         <div class="stat-value">${patternInfo.cycle.split(' ')[0]}</div>
@@ -840,10 +746,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 <div class="timeline-container">
         `;
         
-        const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
         const dayAbbr = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
         
-        // Generate weeks
         for (let week = 1; week <= weeksToShow; week++) {
             previewHtml += `
                 <div class="week-timeline">
@@ -859,7 +763,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 const assignment = generateCrewAssignment(pattern, week, day, rotation);
                 const isWeekend = (day === 0 || day === 6);
                 
-                // Parse crews from assignment
                 let dayCrews = [];
                 let nightCrews = [];
                 
@@ -917,7 +820,6 @@ document.addEventListener('DOMContentLoaded', function() {
         previewHtml += `
                 </div>
                 
-                <!-- Legend -->
                 <div class="legend-strip">
                     <div class="legend-item">
                         <div class="legend-box shift-day"></div>
@@ -939,7 +841,6 @@ document.addEventListener('DOMContentLoaded', function() {
         console.log('Preview HTML inserted into DOM');
     }
     
-    // ===== POPULATE PATTERN INFO =====
     function populatePatternInfo() {
         const patternInfo = patternData[pattern] || {
             cycle: 'Custom',
@@ -986,11 +887,9 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('patternExplanation').innerHTML = `<p>${patternInfo.explanation}</p>`;
     }
     
-    // ===== SET UP EVENT LISTENERS =====
     function setupEventListeners() {
         console.log('Setting up event listeners...');
         
-        // Generate Preview Button
         const generateBtn = document.getElementById('generatePreviewBtn');
         if (generateBtn) {
             console.log('Generate button found');
@@ -1001,7 +900,6 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         }
         
-        // Refresh Preview Button
         const refreshBtn = document.getElementById('refreshPreview');
         if (refreshBtn) {
             refreshBtn.addEventListener('click', function(e) {
@@ -1010,16 +908,13 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         }
         
-        // Pattern Variation Selectors - Unified handling
         const variationSelectors = {
             'pitman': document.getElementById('pitmanVariation'),
             'four_on_four_off': document.getElementById('fourVariation'),
             'three_on_three_off': document.getElementById('threeVariation'),
-            'southern_swing': document.getElementById('swingVariation'),
-            'dupont': document.getElementById('dupontVariation')
+            'southern_swing': document.getElementById('swingVariation')
         };
         
-        // Handle variation selection for any pattern with options
         const currentSelector = variationSelectors[pattern];
         if (currentSelector) {
             console.log(`Setting up ${pattern} variation selector`);
@@ -1034,26 +929,21 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
                 
                 if (this.value) {
-                    // Show button
                     btn.style.display = 'block';
                     const selectedText = this.options[this.selectedIndex].text.split('(')[0].trim();
                     btn.innerHTML = `<i class="bi bi-calendar-check"></i> Generate ${selectedText} Preview`;
                     console.log('Button shown');
                     
-                    // Make sure button clicks work
                     btn.onclick = function(e) {
                         e.preventDefault();
                         console.log('Preview button clicked via onclick');
                         generateSchedulePreview();
                     };
                     
-                    // Auto-generate preview
                     setTimeout(generateSchedulePreview, 100);
                 } else {
-                    // Hide button
                     btn.style.display = 'none';
                     
-                    // Show instruction
                     document.getElementById('schedulePreview').innerHTML = `
                         <div class="alert alert-danger text-center">
                             <i class="bi bi-exclamation-triangle fs-1"></i>
@@ -1064,26 +954,16 @@ document.addEventListener('DOMContentLoaded', function() {
                     `;
                 }
             });
-        } else if (pattern) {
-            // For patterns without variations, generate immediately
+        } else if (pattern === 'dupont' || pattern) {
             setTimeout(generateSchedulePreview, 100);
         }
         
-        // Create Schedule Button
         const createBtn = document.getElementById('createScheduleBtn');
         if (createBtn) {
             createBtn.addEventListener('click', function() {
-                const variationSelectors = {
-                    'pitman': document.getElementById('pitmanVariation'),
-                    'four_on_four_off': document.getElementById('fourVariation'),
-                    'three_on_three_off': document.getElementById('threeVariation'),
-                    'southern_swing': document.getElementById('swingVariation'),
-                    'dupont': document.getElementById('dupontVariation')
-                };
-                
                 let config = {
                     pattern: pattern,
-                    rotation: 'fixed'
+                    rotation: pattern === 'dupont' ? 'rotating' : 'fixed'
                 };
                 
                 const currentSelector = variationSelectors[pattern];
@@ -1101,22 +981,16 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
-    // ===== INITIALIZATION =====
     console.log('Starting initialization...');
     
-    // Populate pattern info
     populatePatternInfo();
-    
-    // Set up event listeners
     setupEventListeners();
     
-    // Set initial state
     const variationSelectors = {
         'pitman': document.getElementById('pitmanVariation'),
         'four_on_four_off': document.getElementById('fourVariation'),
         'three_on_three_off': document.getElementById('threeVariation'),
-        'southern_swing': document.getElementById('swingVariation'),
-        'dupont': document.getElementById('dupontVariation')
+        'southern_swing': document.getElementById('swingVariation')
     };
     
     if (variationSelectors[pattern]) {
@@ -1129,11 +1003,9 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
         `;
     } else {
-        // For patterns without variations, generate immediately
         setTimeout(generateSchedulePreview, 100);
     }
     
-    // Make functions globally available for debugging
     window.generateSchedulePreview = generateSchedulePreview;
     window.generateCrewAssignment = generateCrewAssignment;
     
