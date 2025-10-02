@@ -105,6 +105,9 @@
                                 <option value="fast">Fast Rotation</option>
                                 <option value="weekly">Weekly Rotation</option>
                             </select>
+                            <div class="form-text mt-2">
+                                <small>Debug: Pattern = {{ pattern }}</small>
+                            </div>
                         </div>
                         {% elif pattern == 'three_on_three_off' %}
                         <!-- 3-on-3-off Configuration -->
@@ -526,6 +529,79 @@ document.addEventListener('DOMContentLoaded', function() {
         // Normalize pattern name - remove underscores, hyphens, and spaces
         let normalizedPattern = pattern.toLowerCase().replace(/_/g, '').replace(/-/g, '').replace(/\s+/g, '');
         
+        // Debug logging
+        if (week === 1 && day === 0) {
+            console.log('Debug - Pattern:', pattern);
+            console.log('Debug - Normalized Pattern:', normalizedPattern);  
+            console.log('Debug - Rotation:', rotation);
+            console.log('Debug - Pattern === "four_on_four_off"?', pattern === 'four_on_four_off');
+            console.log('Debug - Normalized === "fouronfourooff"?', normalizedPattern === 'fouronfourooff');
+        }
+        
+        // Special handling for four_on_four_off to ensure it works
+        if (pattern === 'four_on_four_off' || normalizedPattern === 'fouronfourooff') {
+            if (rotation === 'fast') {
+                console.log('DEBUG: Entering 4-on-4-off fast rotation logic (direct check)');
+                
+                // 8-week pattern for 4-on-4-off Fast Rotation
+                // Pattern arranged Sunday-Saturday to match the display grid
+                const fastPattern = [
+                    // Week 1: Sun(off), Mon(D), Tue(D), Wed(N), Thu(N), Fri(off), Sat(off)
+                    'O', 'D', 'D', 'N', 'N', 'O', 'O',
+                    // Week 2: Sun(off), Mon(off), Tue(D), Wed(D), Thu(N), Fri(N), Sat(off)
+                    'O', 'O', 'D', 'D', 'N', 'N', 'O',
+                    // Week 3: Sun(off), Mon(off), Tue(off), Wed(D), Thu(D), Fri(N), Sat(N)
+                    'O', 'O', 'O', 'D', 'D', 'N', 'N',
+                    // Week 4: Sun(N), Mon(off), Tue(off), Wed(off), Thu(D), Fri(D), Sat(D)
+                    'N', 'O', 'O', 'O', 'D', 'D', 'D',
+                    // Week 5: Sun(N), Mon(off), Tue(off), Wed(off), Thu(off), Fri(D), Sat(D)
+                    'N', 'O', 'O', 'O', 'O', 'D', 'D',
+                    // Week 6: Sun(D), Mon(N), Tue(off), Wed(off), Thu(off), Fri(off), Sat(D)
+                    'D', 'N', 'O', 'O', 'O', 'O', 'D',
+                    // Week 7: Sun(D), Mon(N), Tue(N), Wed(off), Thu(off), Fri(off), Sat(off)
+                    'D', 'N', 'N', 'O', 'O', 'O', 'O',
+                    // Week 8: Sun(off), Mon(D), Tue(N), Wed(N), Thu(off), Fri(off), Sat(off)
+                    'O', 'D', 'N', 'N', 'O', 'O', 'O'
+                ];
+                
+                const crewOffsets = {
+                    'A': 0,
+                    'B': 14,
+                    'C': 28,
+                    'D': 42
+                };
+                
+                let fourDayCrews = [];
+                let fourNightCrews = [];
+                
+                for (const [crew, offset] of Object.entries(crewOffsets)) {
+                    const crewDay = (dayOfCycle + offset) % 56;
+                    const shift = fastPattern[crewDay];
+                    
+                    if (shift === 'D') {
+                        fourDayCrews.push(crew);
+                    } else if (shift === 'N') {
+                        fourNightCrews.push(crew);
+                    }
+                }
+                
+                if (fourDayCrews.length > 0 || fourNightCrews.length > 0) {
+                    let display = [];
+                    if (fourDayCrews.length > 0) {
+                        display.push(`Day: ${fourDayCrews.join('+')}`);
+                    }
+                    if (fourNightCrews.length > 0) {
+                        display.push(`Night: ${fourNightCrews.join('+')}`);
+                    }
+                    assignment.crews = display.join('\n');
+                    assignment.cssClass = fourDayCrews.length > 0 ? 'shift-day' : 'shift-night';
+                }
+                
+                // Skip the switch statement since we handled it
+                return assignment;
+            }
+        }
+        
         switch(normalizedPattern) {
             case 'pitman':
                 const pitmanBase = [
@@ -652,6 +728,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 
             case 'fouronfourooff':  // FIXED: removed space in pattern name
                 if (rotation === 'fast') {
+                    console.log('DEBUG: Entering 4-on-4-off fast rotation logic');
+                    console.log('DEBUG: Day of cycle:', dayOfCycle);
+                    
                     // 8-week pattern for 4-on-4-off Fast Rotation
                     // Pattern arranged Sunday-Saturday to match the display grid
                     const fastPattern = [
@@ -692,12 +771,18 @@ document.addEventListener('DOMContentLoaded', function() {
                         const crewDay = (dayOfCycle + offset) % 56;
                         const shift = fastPattern[crewDay];
                         
+                        if (week === 1 && day === 1) { // Debug Monday Week 1
+                            console.log(`DEBUG: Crew ${crew} - crewDay: ${crewDay}, shift: ${shift}`);
+                        }
+                        
                         if (shift === 'D') {
                             fourDayCrews.push(crew);
                         } else if (shift === 'N') {
                             fourNightCrews.push(crew);
                         }
                     }
+                    
+                    console.log(`DEBUG: Week ${week} Day ${day} - Day crews: ${fourDayCrews}, Night crews: ${fourNightCrews}`);
                     
                     if (fourDayCrews.length > 0 || fourNightCrews.length > 0) {
                         let display = [];
@@ -710,7 +795,14 @@ document.addEventListener('DOMContentLoaded', function() {
                         assignment.crews = display.join('\n');
                         assignment.cssClass = fourDayCrews.length > 0 ? 'shift-day' : 'shift-night';
                     }
+                } else {
+                    console.log('DEBUG: Not fast rotation, rotation is:', rotation);
                 }
+                break;
+            
+            default:
+                console.log('WARNING: Pattern not matched:', normalizedPattern);
+                console.log('Expected one of: pitman, dupont, fouronfourooff');
                 break;
         }
         
@@ -826,6 +918,14 @@ document.addEventListener('DOMContentLoaded', function() {
             for (let day = 0; day < 7; day++) {
                 const assignment = generateCrewAssignment(pattern, week, day, rotation);
                 const isWeekend = (day === 0 || day === 6);
+                
+                // Debug for first Monday
+                if (week === 1 && day === 1) {
+                    console.log('Preview generation - Week 1 Monday:');
+                    console.log('  Pattern passed:', pattern);
+                    console.log('  Rotation passed:', rotation);
+                    console.log('  Assignment returned:', assignment);
+                }
                 
                 let dayCrews = [];
                 let nightCrews = [];
