@@ -1,7 +1,7 @@
-# blueprints/schedule.py - FIXED for Database Schema Compatibility
+# blueprints/schedule.py - DuPont Fixed Option Removed
 """
 Schedule management blueprint - FIXED for your actual database schema
-UPDATED: September 25, 2025 - Fixed Position.is_active and Schedule.hours compatibility
+UPDATED: October 1, 2025 - Removed dupont_fixed pattern, kept dupont rotating only
 """
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, current_app
@@ -53,7 +53,7 @@ def schedule_wizard(pattern):
             flash('Access denied. Supervisors only.', 'danger')
             return redirect(url_for('supervisor.dashboard'))
         
-        # Expand valid patterns to include all 26+ patterns from selection page
+        # UPDATED: Removed dupont_fixed from valid patterns
         valid_patterns = [
             # Original 6 patterns
             'pitman', 'dupont', 'southern_swing', 'fixed_fixed', 'four_on_four_off', 'five_and_two',
@@ -63,8 +63,8 @@ def schedule_wizard(pattern):
             'four_on_four_off_fixed', 'four_on_four_off_modified', 'four_on_four_off_fast', 'four_on_four_off_weekly',
             # 3-on-3-off variations
             'three_on_three_off', 'three_on_three_off_fixed', 'three_on_three_off_weekly', 'three_on_three_off_6week',
-            # Specialty patterns
-            'panama', 'fixed_five_two_12', 'fixed_four_three', 'dupont_fixed',
+            # Specialty patterns (dupont_fixed REMOVED)
+            'panama', 'fixed_five_two_12', 'fixed_four_three',
             # 8-hour variations
             'southern_swing_ccw', 'southern_swing_fixed', 'fixed_five_two_8', 'continental'
         ]
@@ -101,7 +101,7 @@ def schedule_wizard(pattern):
                         crew_stats[crew]['positions'][pos_name] = 0
                     crew_stats[crew]['positions'][pos_name] += 1
         
-        # Enhanced pattern configurations with all 26+ patterns
+        # UPDATED: Removed dupont_fixed from pattern configurations
         pattern_configs = {
             # Original 6 patterns
             'pitman': {
@@ -237,7 +237,7 @@ def schedule_wizard(pattern):
                 'rotation_options': ['6-Week Rotation']
             },
             
-            # Specialty 12-hour patterns
+            # Specialty 12-hour patterns (dupont_fixed REMOVED)
             'panama': {
                 'name': 'Panama (2-3-2)',
                 'shift_hours': 12,
@@ -254,13 +254,6 @@ def schedule_wizard(pattern):
             },
             'fixed_four_three': {
                 'name': 'Fixed 4/3',
-                'shift_hours': 12,
-                'allows_fixed': True,
-                'allows_rotating': False,
-                'rotation_options': []
-            },
-            'dupont_fixed': {
-                'name': 'DuPont Fixed Shift',
                 'shift_hours': 12,
                 'allows_fixed': True,
                 'allows_rotating': False,
