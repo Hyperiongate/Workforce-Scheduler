@@ -1,6 +1,6 @@
 {# templates/schedule_wizard.html #}
-{# Schedule Pattern Wizard - DuPont Fixed Option Removed #}
-{# Last Modified: 10/01/2025 - Removed DuPont Fixed Shift option #}
+{# Schedule Pattern Wizard - DuPont Fixed Option Removed, 4-on-4-off Fast Rotation Added #}
+{# Last Modified: 10/02/2025 - Added 4-on-4-off Fast Rotation 8-week pattern #}
 
 {% extends "base.html" %}
 {% block title %}{{ pattern_config.name }} Schedule Pattern{% endblock %}
@@ -483,7 +483,7 @@ document.addEventListener('DOMContentLoaded', function() {
             maxConsecutive: '4 days',
             weekendsOff: 'One 7-day break per cycle',
             advantages: ['7 consecutive days off every cycle', 'Built-in recovery periods', 'Popular in industry', 'Good work-life balance'],
-            considerations: ['Complex pattern to learn', 'Long work stretches before break', 'All crews rotate through day and night'],
+            considerations: ['Complex pattern to learn', 'Long work stretches before break', 'Must rotate - all crews work both day and night shifts'],
             explanation: 'DuPont: 4 days, 3 off, 3 nights, 1 off, 3 days, 3 off, 4 nights, 7 off. All crews rotate through the 28-day cycle.'
         },
         'southern_swing': {
@@ -496,13 +496,13 @@ document.addEventListener('DOMContentLoaded', function() {
             explanation: 'Southern Swing: Rotate through days→evenings→nights over 4 weeks.'
         },
         'four_on_four_off': {
-            cycle: '8 days',
+            cycle: '8 weeks',
             avgHours: '42 hours/week',
             maxConsecutive: '4 days',
-            weekendsOff: 'Varies',
+            weekendsOff: 'Varies by rotation',
             advantages: ['Simple and predictable', 'Equal work and rest days', 'Good recovery time', 'Multiple rotation options'],
-            considerations: ['Weekend coverage varies', 'Split shift option (2D-2N) is tough', 'Modified version has irregular stretches'],
-            explanation: '4-on-4-off: Work 4 days, then off 4 days. Simple and balanced.'
+            considerations: ['Weekend coverage varies', 'Fast rotation alternates day/night frequently', 'Modified version has irregular stretches'],
+            explanation: '4-on-4-off: Work 4 days, then off 4 days. Fast rotation alternates between day and night shifts over 8-week cycle.'
         },
         'three_on_three_off': {
             cycle: '6 days',
@@ -648,6 +648,69 @@ document.addEventListener('DOMContentLoaded', function() {
                     assignment.cssClass = dupontDayCrews.length > 0 ? 'shift-day' : 'shift-night';
                 }
                 break;
+                
+            case 'fouronfouro off':
+                if (rotation === 'fast') {
+                    // 8-week pattern for 4-on-4-off Fast Rotation
+                    // Pattern from user's table (0=Monday, 6=Sunday, adjusted for 0-based array)
+                    const fastPattern = [
+                        // Week 1: Mon(D), Tue(D), Wed(N), Thu(N), Fri(off), Sat(off), Sun(off)
+                        'D', 'D', 'N', 'N', 'O', 'O', 'O',
+                        // Week 2: Mon(off), Tue(D), Wed(D), Thu(N), Fri(N), Sat(off), Sun(off)
+                        'O', 'D', 'D', 'N', 'N', 'O', 'O',
+                        // Week 3: Mon(off), Tue(off), Wed(D), Thu(D), Fri(N), Sat(N), Sun(off)
+                        'O', 'O', 'D', 'D', 'N', 'N', 'O',
+                        // Week 4: Mon(off), Tue(off), Wed(off), Thu(D), Fri(D), Sat(D), Sun(N)
+                        'O', 'O', 'O', 'D', 'D', 'D', 'N',
+                        // Week 5: Mon(off), Tue(off), Wed(off), Thu(off), Fri(D), Sat(D), Sun(N)
+                        'O', 'O', 'O', 'O', 'D', 'D', 'N',
+                        // Week 6: Mon(N), Tue(off), Wed(off), Thu(off), Fri(off), Sat(D), Sun(D)
+                        'N', 'O', 'O', 'O', 'O', 'D', 'D',
+                        // Week 7: Mon(N), Tue(N), Wed(off), Thu(off), Fri(off), Sat(off), Sun(D)
+                        'N', 'N', 'O', 'O', 'O', 'O', 'D',
+                        // Week 8: Mon(D), Tue(N), Wed(N), Thu(off), Fri(off), Sat(off), Sun(off)
+                        'D', 'N', 'N', 'O', 'O', 'O', 'O'
+                    ];
+                    
+                    // Crews start at different weeks (odd weeks only)
+                    // Crew A starts Week 1 (day 0)
+                    // Crew B starts Week 3 (day 14)
+                    // Crew C starts Week 5 (day 28)
+                    // Crew D starts Week 7 (day 42)
+                    const crewOffsets = {
+                        'A': 0,
+                        'B': 14,
+                        'C': 28,
+                        'D': 42
+                    };
+                    
+                    let fourDayCrews = [];
+                    let fourNightCrews = [];
+                    
+                    for (const [crew, offset] of Object.entries(crewOffsets)) {
+                        const crewDay = (dayOfCycle + offset) % 56;
+                        const shift = fastPattern[crewDay];
+                        
+                        if (shift === 'D') {
+                            fourDayCrews.push(crew);
+                        } else if (shift === 'N') {
+                            fourNightCrews.push(crew);
+                        }
+                    }
+                    
+                    if (fourDayCrews.length > 0 || fourNightCrews.length > 0) {
+                        let display = [];
+                        if (fourDayCrews.length > 0) {
+                            display.push(`Day: ${fourDayCrews.join('+')}`);
+                        }
+                        if (fourNightCrews.length > 0) {
+                            display.push(`Night: ${fourNightCrews.join('+')}`);
+                        }
+                        assignment.crews = display.join('\n');
+                        assignment.cssClass = fourDayCrews.length > 0 ? 'shift-day' : 'shift-night';
+                    }
+                }
+                break;
         }
         
         return assignment;
@@ -701,7 +764,7 @@ document.addEventListener('DOMContentLoaded', function() {
         } else if (pattern === 'dupont') {
             weeksToShow = 4;
         } else if (pattern === 'four_on_four_off') {
-            weeksToShow = rotation === 'fixed' ? 2 : 4;
+            weeksToShow = rotation === 'fast' ? 8 : (rotation === 'fixed' ? 2 : 4);
         } else if (pattern === 'three_on_three_off') {
             weeksToShow = rotation === 'fixed' ? 2 : 3;
         }
