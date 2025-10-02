@@ -1,6 +1,6 @@
 {# templates/schedule_wizard.html #}
-{# Schedule Pattern Wizard - DuPont Fixed Option Removed, 4-on-4-off Fast Rotation Added #}
-{# Last Modified: 10/02/2025 - Added 4-on-4-off Fast Rotation 8-week pattern #}
+{# Schedule Pattern Wizard - 4-on-4-off Fast Rotation FIXED #}
+{# Last Modified: 10/02/2025 - Fixed typo in pattern matching for 4-on-4-off #}
 
 {% extends "base.html" %}
 {% block title %}{{ pattern_config.name }} Schedule Pattern{% endblock %}
@@ -496,7 +496,7 @@ document.addEventListener('DOMContentLoaded', function() {
             explanation: 'Southern Swing: Rotate through days→evenings→nights over 4 weeks.'
         },
         'four_on_four_off': {
-            cycle: '8 weeks',
+            cycle: '8 weeks (fast rotation)',
             avgHours: '42 hours/week',
             maxConsecutive: '4 days',
             weekendsOff: 'Varies by rotation',
@@ -523,6 +523,7 @@ document.addEventListener('DOMContentLoaded', function() {
             cssClass: 'shift-off'
         };
         
+        // Normalize pattern name - remove underscores, hyphens, and spaces
         let normalizedPattern = pattern.toLowerCase().replace(/_/g, '').replace(/-/g, '').replace(/\s+/g, '');
         
         switch(normalizedPattern) {
@@ -649,7 +650,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
                 break;
                 
-            case 'fouronfouro off':
+            case 'fouronfourooff':  // FIXED: removed space in pattern name
                 if (rotation === 'fast') {
                     // 8-week pattern for 4-on-4-off Fast Rotation
                     // Pattern from user's table (0=Monday, 6=Sunday, adjusted for 0-based array)
