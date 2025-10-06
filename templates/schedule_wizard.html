@@ -104,16 +104,16 @@
                             <label for="fourVariation" class="form-label fw-bold">Pattern Variation:</label>
                             <select class="form-select form-select-lg" id="fourVariation" name="four_variation">
                                 <option value="">-- Select Variation --</option>
-                                <option value="basic">Basic 4-on-4-off</option>
-                                <option value="modified">Modified (Full Weekends)</option>
-                                <option value="fixed_simple">Fixed Shifts (4D-4Off / 4N-4Off)</option>
                                 <option value="fast">Fast Rotation (2D-2N-4Off)</option>
                                 <option value="weekly">Weekly Rotation (4D-4Off-4N-4Off)</option>
+                                <option value="fixed_simple">Fixed Shifts (4D-4Off / 4N-4Off)</option>
+                                <option value="modified">Modified (Full Weekends Off)</option>
                             </select>
                             <div class="form-text mt-2">
-                                <small><strong>Fixed:</strong> A&B work days only, C&D work nights only (8-day cycle)</small><br>
                                 <small><strong>Fast:</strong> All crews rotate, 8-day cycle with 2 day, 2 night, 4 off</small><br>
-                                <small><strong>Weekly:</strong> All crews rotate, 16-day cycle with 4 day, 4 off, 4 night, 4 off</small>
+                                <small><strong>Weekly:</strong> All crews rotate, 16-day cycle with 4 day, 4 off, 4 night, 4 off</small><br>
+                                <small><strong>Fixed:</strong> A&B work days only, C&D work nights only (8-day cycle)</small><br>
+                                <small><strong>Modified:</strong> 4-on-4-off with weekend swaps to eliminate split weekends</small>
                             </div>
                         </div>
                         {% elif pattern == 'three_on_three_off' %}
