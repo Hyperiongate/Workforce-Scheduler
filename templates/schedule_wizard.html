@@ -1,11 +1,15 @@
 {# templates/schedule_wizard.html #}
 {# Schedule Pattern Wizard - 4-on-4-off Fast & Weekly Rotation COMPLETE #}
-{# Last Modified: 2025-10-06 - Added fixed simple shift option #}
+{# Last Modified: 2025-10-06 - Added modified 4-on-4-off with full weekends #}
 {# Change Log: #}
+{#   2025-10-06: Added 'modified' pattern - 4-on-4-off with weekend swaps to eliminate split weekends #}
+{#              Crew A/C start Week 1, Crew B/D start Week 5 (28-day offset), 56-day full cycle #}
+{#              Week 3: Sat taken off (3 work, 5 off, full weekend off) #}
+{#              Week 7: Sat added to work (3 off, 5 work, full weekend work) #}
+{#   2025-10-06: Removed 'basic' and 'fixed complex' options - streamlined to 4 variations #}
 {#   2025-10-06: Added fixed_simple - A&B work days only (4D-4Off), C&D work nights only (4N-4Off), 8-day cycle #}
 {#   2025-10-06: Added weekly rotation - 16-day cycle: 4D, 4Off, 4N, 4Off #}
 {#   2025-10-06: Rewrote 4-on-4-off fast rotation to use simple 8-day cycle: 2D, 2N, 4Off #}
-{#   Each crew offset by 14 days (starting in odd weeks), creating the rotation effect #}
 
 {% extends "base.html" %}
 {% block title %}{{ pattern_config.name }} Schedule Pattern{% endblock %}
@@ -584,6 +588,71 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 return assignment;
             }
+            else if (rotation === 'modified') {
+                // Modified: 4-on-4-off with weekend optimization to eliminate split weekends
+                // Crew A starts in Week 1, Crew B starts in Week 5 (28 days offset)
+                // Built directly from the provided table
+                
+                // Define the full 8-week pattern for one crew (56 days)
+                // Array index = day of cycle (0=Sun Week1, 1=Mon Week1, ... 55=Sat Week8)
+                // 'X' = working, 'O' = off
+                const modifiedPattern = [
+                    // Week 1: Sun, Mon, Tue, Wed, Thu, Fri, Sat (from table: Mon-Thu=12, Fri-Sun=off)
+                    'O', 'X', 'X', 'X', 'X', 'O', 'O',
+                    // Week 2: Sun, Mon, Tue, Wed, Thu, Fri, Sat (from table: Mon=off, Tue-Fri=12, Sat-Sun=off)
+                    'O', 'O', 'X', 'X', 'X', 'X', 'O',
+                    // Week 3: Sun, Mon, Tue, Wed, Thu, Fri, Sat (from table: Mon-Tue=off, Wed-Fri=12, Sat-Sun=off)
+                    'O', 'O', 'O', 'X', 'X', 'X', 'O',
+                    // Week 4: Sun, Mon, Tue, Wed, Thu, Fri, Sat (from table: Mon-Wed=off, Thu-Sat=12, Sun=off)
+                    'O', 'O', 'O', 'O', 'X', 'X', 'X',
+                    // Week 5: Sun, Mon, Tue, Wed, Thu, Fri, Sat (from table: Sun=12, Mon-Thu=off, Fri-Sat=12)
+                    'X', 'O', 'O', 'O', 'O', 'X', 'X',
+                    // Week 6: Sun, Mon, Tue, Wed, Thu, Fri, Sat (from table: Sun=12, Mon=12, Tue-Fri=off, Sat=12)
+                    'X', 'X', 'O', 'O', 'O', 'O', 'X',
+                    // Week 7: Sun, Mon, Tue, Wed, Thu, Fri, Sat (from table: Sun=12, Mon-Tue=12, Wed-Fri=off, Sat=12)
+                    'X', 'X', 'X', 'O', 'O', 'O', 'X',
+                    // Week 8: Sun, Mon, Tue, Wed, Thu, Fri, Sat (from table: Sun=off, Mon-Wed=12, Thu-Sat=off)
+                    'O', 'X', 'X', 'X', 'O', 'O', 'O'
+                ];
+                
+                const crewOffsets = {
+                    'A': 0,   // Day crew, starts Week 1
+                    'B': 28,  // Day crew, starts Week 5 (4 weeks = 28 days offset)
+                    'C': 0,   // Night crew, starts Week 1
+                    'D': 28   // Night crew, starts Week 5 (4 weeks = 28 days offset)
+                };
+                
+                let dayCrews = [];
+                let nightCrews = [];
+                
+                for (const [crew, startOffset] of Object.entries(crewOffsets)) {
+                    // Calculate position in the 56-day pattern
+                    const cyclePosition = (dayOfCycle + startOffset) % 56;
+                    const shift = modifiedPattern[cyclePosition];
+                    
+                    if (shift === 'X') {  // Working
+                        if (crew === 'A' || crew === 'B') {
+                            dayCrews.push(crew);
+                        } else {  // C or D
+                            nightCrews.push(crew);
+                        }
+                    }
+                }
+                
+                if (dayCrews.length > 0 || nightCrews.length > 0) {
+                    let display = [];
+                    if (dayCrews.length > 0) {
+                        display.push(`Day: ${dayCrews.join('+')}`);
+                    }
+                    if (nightCrews.length > 0) {
+                        display.push(`Night: ${nightCrews.join('+')}`);
+                    }
+                    assignment.crews = display.join('\n');
+                    assignment.cssClass = dayCrews.length > 0 ? 'shift-day' : 'shift-night';
+                }
+                
+                return assignment;
+            }
             else if (rotation === 'fast') {
                 // Fast Rotation: 8-day cycle - 2 Days, 2 Nights, 4 Off
                 const eightDayPattern = ['D', 'D', 'N', 'N', 'O', 'O', 'O', 'O'];
@@ -848,14 +917,12 @@ document.addEventListener('DOMContentLoaded', function() {
         } else if (pattern === 'dupont') {
             weeksToShow = 4;
         } else if (pattern === 'four_on_four_off') {
-            if (rotation === 'fast') {
-                weeksToShow = 8;  // 8-day cycle shown over 8 weeks
-            } else if (rotation === 'weekly') {
-                weeksToShow = 8;  // 16-day cycle shown over 8 weeks
-            } else if (rotation === 'fixed_simple') {
-                weeksToShow = 2;  // 8-day cycle shown over 2 weeks
-            } else {
-                weeksToShow = 4;
+            switch(rotation) {
+                case 'fast': weeksToShow = 8; break;
+                case 'weekly': weeksToShow = 8; break;
+                case 'fixed_simple': weeksToShow = 2; break;
+                case 'modified': weeksToShow = 8; break;
+                default: weeksToShow = 4; break;
             }
         } else if (pattern === 'three_on_three_off') {
             weeksToShow = rotation === 'fixed' ? 2 : 3;
