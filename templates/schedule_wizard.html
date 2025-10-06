@@ -591,52 +591,53 @@ document.addEventListener('DOMContentLoaded', function() {
             else if (rotation === 'modified') {
                 // Modified: 4-on-4-off with weekend optimization to eliminate split weekends
                 // Crew A starts in Week 1, Crew B starts in Week 5 (28 days offset)
-                // Built directly from the provided table (Monday-Sunday weeks)
+                // 
+                // CRITICAL: Display grid uses Sun-Sat (day 0-6), but table shows Mon-Sun weeks
+                // So we need to map the table's Mon-Sun pattern to display's Sun-Sat grid
+                //
+                // Table Week 1 = Mon-Sun of that work week
+                // Display Week 1 = Sun (from previous week) + Mon-Sat of work week
                 
-                // Define the full 8-week pattern for one crew (56 days)
-                // Array organized for display: Sun, Mon, Tue, Wed, Thu, Fri, Sat
-                // But table shows: Mon, Tue, Wed, Thu, Fri, Sat, Sun
-                // Need to map correctly!
-                
-                // Week in table = Mon-Sun, but display grid = Sun-Sat
-                // So table's Sunday column is the LAST day of that week
                 const modifiedPattern = [
-                    // Week 1: Display order: Sun(last of prev), Mon, Tue, Wed, Thu, Fri, Sat
-                    // Table shows: Mon-Thu=12, Fri-Sun=off
-                    // But Sun shown is end of week, so: Sun=off, Mon-Thu=X, Fri-Sat=O
+                    // Week 1 Display (day 0-6): Sun, Mon, Tue, Wed, Thu, Fri, Sat
+                    // Table Week 1: Mon-Thu=12, Fri-Sat=off, Sun=off
+                    // Display starts with Sunday (end of previous cycle - off), then Mon-Thu work, Fri-Sat off
                     'O', 'X', 'X', 'X', 'X', 'O', 'O',
                     
-                    // Week 2: Table shows: Mon=off, Tue-Fri=12, Sat-Sun=off
-                    // Sun at end=off, Mon=off, Tue-Fri=X, Sat=O
+                    // Week 2 Display (day 7-13): Sun, Mon, Tue, Wed, Thu, Fri, Sat  
+                    // Table Week 2: Mon=off, Tue-Fri=12, Sat-Sun=off
+                    // Sun(end of wk1)=off, Mon=off, Tue-Fri=work, Sat=off
                     'O', 'O', 'X', 'X', 'X', 'X', 'O',
                     
-                    // Week 3: Table shows: Mon-Tue=off, Wed-Fri=12, Sat-Sun=off
-                    // Sun at end=off, Mon-Tue=off, Wed-Fri=X, Sat=O
+                    // Week 3 Display (day 14-20): Sun, Mon, Tue, Wed, Thu, Fri, Sat
+                    // Table Week 3: Mon-Tue=off, Wed-Fri=12, Sat-Sun=off  
+                    // Sun(end of wk2)=off, Mon-Tue=off, Wed-Fri=work, Sat=off
                     'O', 'O', 'O', 'X', 'X', 'X', 'O',
                     
-                    // Week 4: Table shows: Mon-Wed=off, Thu-Sat=12, Sun=off
-                    // But this Sun is LAST day of week 4, so next array position
-                    // Week 4 starts with Sun from previous pattern
-                    // Looking at pattern: after Week 3 Sat=off, Week 4 should continue
-                    // Week 4: Sun=X (continuing from Thu-Sat work), Mon-Wed=O, Thu-Sat=X
-                    'X', 'O', 'O', 'O', 'X', 'X', 'X',
+                    // Week 4 Display (day 21-27): Sun, Mon, Tue, Wed, Thu, Fri, Sat
+                    // Table Week 4: Mon-Wed=off, Thu-Sat=12, Sun=off
+                    // Sun(end of wk3)=off, Mon-Wed=off, Thu-Sat=work
+                    // BUT the work continues into next week's Sunday (table's Week 4 ends, Week 5 starts)
+                    'O', 'O', 'O', 'O', 'X', 'X', 'X',
                     
-                    // Week 5: Table shows: Mon-Thu=off, Fri-Sat=12, Sun=12
-                    // Sun at start of week 5 in display, but end of week 5 in table
-                    // Week 5: Sun=off (end of week 4), Mon-Thu=O, Fri-Sat=X
-                    'O', 'O', 'O', 'O', 'O', 'X', 'X',
+                    // Week 5 Display (day 28-34): Sun, Mon, Tue, Wed, Thu, Fri, Sat
+                    // Table Week 5: Mon-Thu=off, Fri-Sat=12, Sun=12
+                    // Sun(carries from wk4 Thu-Sat)=work, Mon-Thu=off, Fri-Sat=work
+                    'X', 'O', 'O', 'O', 'O', 'X', 'X',
                     
-                    // Week 6: Table shows: Mon=12, Tue-Fri=off, Sat=12, Sun=12
-                    // Week 6: Sun=X (from week 5), Mon=X, Tue-Fri=O, Sat=X
+                    // Week 6 Display (day 35-41): Sun, Mon, Tue, Wed, Thu, Fri, Sat
+                    // Table Week 6: Mon=12, Tue-Fri=off, Sat=12, Sun=12
+                    // Sun(end of wk5, from table)=work, Mon=work, Tue-Fri=off, Sat=work  
                     'X', 'X', 'O', 'O', 'O', 'O', 'X',
                     
-                    // Week 7: Table shows: Mon-Tue=12, Wed-Fri=off, Sat=12, Sun=12
-                    // Week 7: Sun=X (from week 6), Mon-Tue=X, Wed-Fri=O, Sat=X
+                    // Week 7 Display (day 42-48): Sun, Mon, Tue, Wed, Thu, Fri, Sat
+                    // Table Week 7: Mon-Tue=12, Wed-Fri=off, Sat=12, Sun=12
+                    // Sun(end of wk6)=work, Mon-Tue=work, Wed-Fri=off, Sat=work
                     'X', 'X', 'X', 'O', 'O', 'O', 'X',
                     
-                    // Week 8: Table shows: Mon-Wed=12, Thu-Sat=off, Sun=off
-                    // Week 8: Sun=X (from week 7), Mon-Wed=X, Thu-Sat=O
-                    // And Sun at end of week 8 = O (shown in table)
+                    // Week 8 Display (day 49-55): Sun, Mon, Tue, Wed, Thu, Fri, Sat
+                    // Table Week 8: Mon-Wed=12, Thu-Sat=off, Sun=off
+                    // Sun(end of wk7, from table)=work, Mon-Wed=work, Thu-Sat=off
                     'X', 'X', 'X', 'X', 'O', 'O', 'O'
                 ];
                 
