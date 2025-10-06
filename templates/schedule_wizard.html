@@ -1,7 +1,8 @@
 {# templates/schedule_wizard.html #}
-{# Schedule Pattern Wizard - 4-on-4-off Fast Rotation FIXED #}
-{# Last Modified: 10/06/2025 - Fixed Week 2 Saturday showing B+C instead of OFF #}
-{# Change Log: Corrected fastPattern array to match the actual 8-week rotation table #}
+{# Schedule Pattern Wizard - 4-on-4-off Fast Rotation COMPLETELY FIXED #}
+{# Last Modified: 10/06/2025 - Fixed to use correct 8-day repeating pattern #}
+{# Change Log: Rewrote 4-on-4-off fast rotation to use simple 8-day cycle: 2D, 2N, 4Off #}
+{# Each crew offset by 14 days, creating the rotation effect #}
 
 {% extends "base.html" %}
 {% block title %}{{ pattern_config.name }} Schedule Pattern{% endblock %}
@@ -106,9 +107,6 @@
                                 <option value="fast">Fast Rotation</option>
                                 <option value="weekly">Weekly Rotation</option>
                             </select>
-                            <div class="form-text mt-2">
-                                <small>Debug: Pattern = {{ pattern }}</small>
-                            </div>
                         </div>
                         {% elif pattern == 'three_on_three_off' %}
                         <!-- 3-on-3-off Configuration -->
@@ -500,13 +498,13 @@ document.addEventListener('DOMContentLoaded', function() {
             explanation: 'Southern Swing: Rotate through days→evenings→nights over 4 weeks.'
         },
         'four_on_four_off': {
-            cycle: '8 weeks (fast rotation)',
+            cycle: '8 days (fast rotation)',
             avgHours: '42 hours/week',
-            maxConsecutive: '4 days',
+            maxConsecutive: '2 days per shift type',
             weekendsOff: 'Varies by rotation',
-            advantages: ['Simple and predictable', 'Equal work and rest days', 'Good recovery time', 'Multiple rotation options'],
-            considerations: ['Weekend coverage varies', 'Fast rotation alternates day/night frequently', 'Modified version has irregular stretches'],
-            explanation: '4-on-4-off: Work 4 days, then off 4 days. Fast rotation alternates between day and night shifts over 8-week cycle.'
+            advantages: ['Simple repeating pattern', '2 days/2 nights/4 off cycle', 'Good recovery time', 'Predictable rotation'],
+            considerations: ['Short work stretches', 'Frequent shift changes', 'Weekend coverage rotates'],
+            explanation: '4-on-4-off Fast: Each crew follows 2 day shifts, 2 night shifts, 4 days off, repeating every 8 days. Crews start at different points creating continuous coverage.'
         },
         'three_on_three_off': {
             cycle: '6 days',
@@ -527,77 +525,65 @@ document.addEventListener('DOMContentLoaded', function() {
             cssClass: 'shift-off'
         };
         
-        // Normalize pattern name - remove underscores, hyphens, and spaces
+        // Normalize pattern name
         let normalizedPattern = pattern.toLowerCase().replace(/_/g, '').replace(/-/g, '').replace(/\s+/g, '');
         
-        // Special handling for four_on_four_off to ensure it works
-        if (pattern === 'four_on_four_off' || normalizedPattern === 'fouronfourooff') {
-            if (rotation === 'fast') {
-                // CORRECTED 8-week pattern for 4-on-4-off Fast Rotation
-                // Pattern arranged Sunday-Saturday to match the display grid
-                // Based on the actual table provided
-                const fastPattern = [
-                    // Week 1: Sun(off), Mon(D12), Tue(D12), Wed(N12), Thu(N12), Fri(off), Sat(off)
-                    'O', 'D', 'D', 'N', 'N', 'O', 'O',
-                    // Week 2: Sun(off), Mon(off), Tue(D12), Wed(D12), Thu(N12), Fri(N12), Sat(off) ← FIXED!
-                    'O', 'O', 'D', 'D', 'N', 'N', 'O',
-                    // Week 3: Sun(off), Mon(off), Tue(off), Wed(D12), Thu(D12), Fri(N12), Sat(N12)
-                    'O', 'O', 'O', 'D', 'D', 'N', 'N',
-                    // Week 4: Sun(N12), Mon(off), Tue(off), Wed(off), Thu(off), Fri(off), Sat(D12)
-                    'N', 'O', 'O', 'O', 'O', 'O', 'D',
-                    // Week 5: Sun(N12), Mon(off), Tue(off), Wed(off), Thu(off), Fri(D12), Sat(D12)
-                    'N', 'O', 'O', 'O', 'O', 'D', 'D',
-                    // Week 6: Sun(D12), Mon(N12), Tue(off), Wed(off), Thu(off), Fri(off), Sat(D12)
-                    'D', 'N', 'O', 'O', 'O', 'O', 'D',
-                    // Week 7: Sun(D12), Mon(N12), Tue(N12), Wed(off), Thu(off), Fri(off), Sat(off)
-                    'D', 'N', 'N', 'O', 'O', 'O', 'O',
-                    // Week 8: Sun(off), Mon(D12), Tue(off), Wed(N12), Thu(off), Fri(off), Sat(off)
-                    'O', 'D', 'O', 'N', 'O', 'O', 'O'
-                ];
+        // Special handling for four_on_four_off fast rotation
+        if ((pattern === 'four_on_four_off' || normalizedPattern === 'fouronfourooff') && rotation === 'fast') {
+            // Simple 8-day repeating pattern: 2 Days, 2 Nights, 4 Off
+            // Pattern positions: 0-1=Day, 2-3=Night, 4-7=Off
+            const eightDayPattern = ['D', 'D', 'N', 'N', 'O', 'O', 'O', 'O'];
+            
+            // Crew offsets (they start at different odd weeks)
+            // Crew A: starts Week 1 (day 0) -> offset 0
+            // Crew B: starts Week 3 (day 14) -> offset 14
+            // Crew C: starts Week 5 (day 28) -> offset 28  
+            // Crew D: starts Week 7 (day 42) -> offset 42
+            const crewOffsets = {
+                'A': 0,
+                'B': 14,
+                'C': 28,
+                'D': 42
+            };
+            
+            let dayCrews = [];
+            let nightCrews = [];
+            
+            // For each crew, calculate where they are in their 8-day cycle
+            for (const [crew, startOffset] of Object.entries(crewOffsets)) {
+                // Calculate days since this crew started
+                const daysSinceStart = dayOfCycle - startOffset;
                 
-                // Crews start at different weeks (odd weeks only)
-                // Crew A starts Week 1 (day 0)
-                // Crew B starts Week 3 (day 14)
-                // Crew C starts Week 5 (day 28)
-                // Crew D starts Week 7 (day 42)
-                const crewOffsets = {
-                    'A': 0,
-                    'B': 14,
-                    'C': 28,
-                    'D': 42
-                };
+                // Find position in 8-day cycle
+                // Use modulo to handle negative numbers correctly
+                const cyclePosition = ((daysSinceStart % 8) + 8) % 8;
                 
-                let fourDayCrews = [];
-                let fourNightCrews = [];
+                const shift = eightDayPattern[cyclePosition];
                 
-                for (const [crew, offset] of Object.entries(crewOffsets)) {
-                    const crewDay = (dayOfCycle + offset) % 56;
-                    const shift = fastPattern[crewDay];
-                    
-                    if (shift === 'D') {
-                        fourDayCrews.push(crew);
-                    } else if (shift === 'N') {
-                        fourNightCrews.push(crew);
-                    }
+                if (shift === 'D') {
+                    dayCrews.push(crew);
+                } else if (shift === 'N') {
+                    nightCrews.push(crew);
                 }
-                
-                if (fourDayCrews.length > 0 || fourNightCrews.length > 0) {
-                    let display = [];
-                    if (fourDayCrews.length > 0) {
-                        display.push(`Day: ${fourDayCrews.join('+')}`);
-                    }
-                    if (fourNightCrews.length > 0) {
-                        display.push(`Night: ${fourNightCrews.join('+')}`);
-                    }
-                    assignment.crews = display.join('\n');
-                    assignment.cssClass = fourDayCrews.length > 0 ? 'shift-day' : 'shift-night';
-                }
-                
-                // Skip the switch statement since we handled it
-                return assignment;
             }
+            
+            // Build the display
+            if (dayCrews.length > 0 || nightCrews.length > 0) {
+                let display = [];
+                if (dayCrews.length > 0) {
+                    display.push(`Day: ${dayCrews.join('+')}`);
+                }
+                if (nightCrews.length > 0) {
+                    display.push(`Night: ${nightCrews.join('+')}`);
+                }
+                assignment.crews = display.join('\n');
+                assignment.cssClass = dayCrews.length > 0 ? 'shift-day' : 'shift-night';
+            }
+            
+            return assignment;
         }
         
+        // Handle other patterns
         switch(normalizedPattern) {
             case 'pitman':
                 const pitmanBase = [
@@ -720,16 +706,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     assignment.crews = display.join('\n');
                     assignment.cssClass = dupontDayCrews.length > 0 ? 'shift-day' : 'shift-night';
                 }
-                break;
-                
-            case 'fouronfourooff':
-                if (rotation === 'fast') {
-                    // Already handled above before switch statement
-                }
-                break;
-            
-            default:
-                console.log('WARNING: Pattern not matched:', normalizedPattern);
                 break;
         }
         
