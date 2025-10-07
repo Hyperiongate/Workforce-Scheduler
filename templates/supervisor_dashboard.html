@@ -2,424 +2,424 @@
 {% block title %}Supervisor Dashboard{% endblock %}
 
 {% block content %}
-<div class="container-fluid">
-    <!-- Header with Crew Filter Buttons -->
+<div class="container-fluid py-4">
+    <!-- Simple Header -->
     <div class="row mb-4">
-        <div class="col-md-8">
-            <h1 class="h2">Supervisor Dashboard</h1>
-            <p class="text-muted">Welcome back, {{ current_user.name }}!</p>
+        <div class="col-12 text-center">
+            <h1 class="display-4 mb-2">What do you want to do?</h1>
+            <p class="lead text-muted">Welcome back, {{ current_user.name }}!</p>
         </div>
-        <div class="col-md-4 text-end">
-            <div class="btn-group" role="group" aria-label="Crew Filter">
+    </div>
+
+    <!-- Crew Filter - Simple centered buttons -->
+    <div class="row mb-5">
+        <div class="col-12 text-center">
+            <p class="text-muted mb-2">Filter by crew:</p>
+            <div class="btn-group btn-group-lg" role="group">
                 <a href="{{ url_for('supervisor.dashboard', crew='all') }}" 
-                   class="btn btn-sm {% if selected_crew == 'all' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                   class="btn {% if selected_crew == 'all' %}btn-primary{% else %}btn-outline-primary{% endif %}">
                     All Crews
                 </a>
                 <a href="{{ url_for('supervisor.dashboard', crew='A') }}" 
-                   class="btn btn-sm {% if selected_crew == 'A' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                   class="btn {% if selected_crew == 'A' %}btn-primary{% else %}btn-outline-primary{% endif %}">
                     Crew A
                 </a>
                 <a href="{{ url_for('supervisor.dashboard', crew='B') }}" 
-                   class="btn btn-sm {% if selected_crew == 'B' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                   class="btn {% if selected_crew == 'B' %}btn-primary{% else %}btn-outline-primary{% endif %}">
                     Crew B
                 </a>
                 <a href="{{ url_for('supervisor.dashboard', crew='C') }}" 
-                   class="btn btn-sm {% if selected_crew == 'C' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                   class="btn {% if selected_crew == 'C' %}btn-primary{% else %}btn-outline-primary{% endif %}">
                     Crew C
                 </a>
                 <a href="{{ url_for('supervisor.dashboard', crew='D') }}" 
-                   class="btn btn-sm {% if selected_crew == 'D' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                   class="btn {% if selected_crew == 'D' %}btn-primary{% else %}btn-outline-primary{% endif %}">
                     Crew D
                 </a>
             </div>
-            <div class="mt-1">
-                <small class="text-muted">Viewing: 
-                    {% if selected_crew == 'all' %}
-                        All Crews
-                    {% else %}
-                        Crew {{ selected_crew }}
-                    {% endif %}
+            <div class="mt-2">
+                <small class="text-muted">Currently viewing: 
+                    <strong>
+                        {% if selected_crew == 'all' %}
+                            All Crews
+                        {% else %}
+                            Crew {{ selected_crew }}
+                        {% endif %}
+                    </strong>
                 </small>
             </div>
         </div>
     </div>
 
-    <!-- Statistics Row -->
-    <div class="row mb-4">
-        <div class="col-md-3">
-            <div class="card stat-card">
-                <div class="card-body">
-                    <h6 class="text-muted">Pending Time Off</h6>
-                    <h3>{{ pending_time_off or 0 }}</h3>
-                    <small class="text-muted">
-                        {% if selected_crew != 'all' %}
-                            Crew {{ selected_crew }} requests
-                        {% else %}
-                            All crews
-                        {% endif %}
-                    </small>
+    <!-- EMPLOYEE MANAGEMENT -->
+    <div class="row mb-5">
+        <div class="col-12">
+            <h2 class="section-header">
+                <i class="bi bi-people-fill"></i> Employee Management
+            </h2>
+        </div>
+        
+        <div class="col-lg-4 col-md-6 mb-4">
+            <a href="{{ url_for('supervisor.employees', crew=selected_crew) }}" class="big-action-card">
+                <div class="card-icon">
+                    <i class="bi bi-person-lines-fill"></i>
                 </div>
-            </div>
+                <h3>View Employees</h3>
+                <p class="text-muted">
+                    {% if selected_crew != 'all' %}
+                        View all Crew {{ selected_crew }} members
+                    {% else %}
+                        View all employees across all crews
+                    {% endif %}
+                </p>
+            </a>
         </div>
-        <div class="col-md-3">
-            <div class="card stat-card">
-                <div class="card-body">
-                    <h6 class="text-muted">Pending Swaps</h6>
-                    <h3>{{ pending_swaps or 0 }}</h3>
-                    <small class="text-muted">
-                        {% if selected_crew != 'all' %}
-                            Crew {{ selected_crew }} swaps
-                        {% else %}
-                            All crews
-                        {% endif %}
-                    </small>
+
+        <div class="col-lg-4 col-md-6 mb-4">
+            <a href="{{ url_for('supervisor.employee_management', crew=selected_crew) }}" class="big-action-card">
+                <div class="card-icon">
+                    <i class="bi bi-person-gear"></i>
                 </div>
-            </div>
+                <h3>Employee Management</h3>
+                <p class="text-muted">Edit employee details and information</p>
+            </a>
         </div>
-        <div class="col-md-3">
-            <div class="card stat-card">
-                <div class="card-body">
-                    <h6 class="text-muted">Pending Communications</h6>
-                    <h3>{{ pending_communications or 0 }}</h3>
-                    <small class="text-muted">
-                        {% if selected_crew != 'all' %}
-                            Crew {{ selected_crew }} messages
-                        {% else %}
-                            All messages
-                        {% endif %}
-                    </small>
+
+        <div class="col-lg-4 col-md-6 mb-4">
+            <a href="{{ url_for('supervisor.crew_management', crew=selected_crew) }}" class="big-action-card">
+                <div class="card-icon">
+                    <i class="bi bi-diagram-3-fill"></i>
                 </div>
-            </div>
+                <h3>Crew Management</h3>
+                <p class="text-muted">Organize crew assignments and skills</p>
+            </a>
         </div>
-        <div class="col-md-3">
-            <div class="card stat-card">
-                <div class="card-body">
-                    <h6 class="text-muted">Coverage Gaps</h6>
-                    <h3>{{ coverage_gaps or 0 }}</h3>
-                    <small class="text-muted">
-                        {% if selected_crew != 'all' %}
-                            Crew {{ selected_crew }} gaps
-                        {% else %}
-                            All positions
-                        {% endif %}
-                    </small>
+    </div>
+
+    <!-- REQUESTS & APPROVALS -->
+    <div class="row mb-5">
+        <div class="col-12">
+            <h2 class="section-header">
+                <i class="bi bi-check-circle-fill"></i> Requests & Approvals
+            </h2>
+        </div>
+        
+        <div class="col-lg-4 col-md-6 mb-4">
+            <a href="{{ url_for('supervisor.time_off_requests', crew=selected_crew) }}" class="big-action-card">
+                <div class="card-icon">
+                    <i class="bi bi-calendar-x-fill"></i>
                 </div>
-            </div>
+                <h3>View Time Off Requests</h3>
+                {% if pending_time_off %}
+                    <div class="badge-alert badge-danger">{{ pending_time_off }} PENDING</div>
+                {% endif %}
+                <p class="text-muted">Approve or deny time off requests</p>
+            </a>
         </div>
-    </div>
 
-    <!-- Coverage Gaps - MOVED TO TOP -->
-    <div class="row mb-4">
-        <div class="col-12">
-            <h2 class="h4 mb-3">Coverage Gaps</h2>
-        </div>
-        <div class="col-md-6 mb-3">
-            <a href="{{ url_for('supervisor.coverage_gaps', crew=selected_crew) }}" class="action-card">
-                <i class="bi bi-exclamation-triangle action-icon"></i>
-                <h5>Coverage Gaps</h5>
-                <p class="text-muted mb-0">
-                    {% if selected_crew != 'all' %}
-                        Identify Crew {{ selected_crew }} gaps
-                    {% else %}
-                        Identify all gaps
-                    {% endif %}
-                </p>
+        <div class="col-lg-4 col-md-6 mb-4">
+            <a href="{{ url_for('supervisor.shift_swaps', crew=selected_crew) }}" class="big-action-card">
+                <div class="card-icon">
+                    <i class="bi bi-arrow-left-right"></i>
+                </div>
+                <h3>View Shift Swap Requests</h3>
+                {% if pending_swaps %}
+                    <div class="badge-alert badge-warning">{{ pending_swaps }} PENDING</div>
+                {% endif %}
+                <p class="text-muted">Approve or deny shift swap requests</p>
             </a>
         </div>
-        <div class="col-md-6 mb-3">
-            <a href="{{ url_for('supervisor.coverage_needs', crew=selected_crew) }}" class="action-card">
-                <i class="bi bi-shield-check action-icon"></i>
-                <h5>Coverage Needs</h5>
-                <p class="text-muted mb-0">
-                    {% if selected_crew != 'all' %}
-                        Crew {{ selected_crew }} requirements
-                    {% else %}
-                        All requirements
-                    {% endif %}
-                </p>
-            </a>
-        </div>
-    </div>
 
-    <!-- Employee Requests - MOVED TO TOP -->
-    <div class="row mb-4">
-        <div class="col-12">
-            <h2 class="h4 mb-3">Employee Requests</h2>
-        </div>
-        <div class="col-md-6 mb-3">
-            <a href="{{ url_for('supervisor.time_off_requests', crew=selected_crew) }}" class="action-card">
-                <i class="bi bi-calendar-x action-icon"></i>
-                <h5>Time Off Requests</h5>
-                <p class="text-muted mb-0">
-                    {% if pending_time_off %}
-                        <span class="badge bg-danger">{{ pending_time_off }} pending</span>
-                        {% if selected_crew != 'all' %}
-                            - Crew {{ selected_crew }}
-                        {% endif %}
-                    {% else %}
-                        No pending requests
-                    {% endif %}
-                </p>
-            </a>
-        </div>
-        <div class="col-md-6 mb-3">
-            <a href="{{ url_for('supervisor.shift_swaps', crew=selected_crew) }}" class="action-card">
-                <i class="bi bi-arrow-left-right action-icon"></i>
-                <h5>Shift Swaps</h5>
-                <p class="text-muted mb-0">
-                    {% if pending_swaps %}
-                        <span class="badge bg-warning">{{ pending_swaps }} pending</span>
-                        {% if selected_crew != 'all' %}
-                            - Crew {{ selected_crew }}
-                        {% endif %}
-                    {% else %}
-                        No pending swaps
-                    {% endif %}
-                </p>
+        <div class="col-lg-4 col-md-6 mb-4">
+            <a href="{{ url_for('supervisor.time_off_requests', crew=selected_crew) }}" class="big-action-card">
+                <div class="card-icon">
+                    <i class="bi bi-inbox-fill"></i>
+                </div>
+                <h3>View Employee Requests</h3>
+                {% if pending_time_off or pending_swaps %}
+                    <div class="badge-alert badge-info">{{ (pending_time_off or 0) + (pending_swaps or 0) }} TOTAL</div>
+                {% endif %}
+                <p class="text-muted">Combined view of all requests</p>
             </a>
         </div>
     </div>
 
-    <!-- Workforce Management and Scheduling -->
-    <div class="row mb-4">
+    <!-- SCHEDULE MANAGEMENT -->
+    <div class="row mb-5">
         <div class="col-12">
-            <h2 class="h4 mb-3">Workforce Management and Scheduling</h2>
+            <h2 class="section-header">
+                <i class="bi bi-calendar3"></i> Schedule Management
+            </h2>
         </div>
-        <div class="col-md-3 mb-3">
-            <a href="{{ url_for('supervisor.time_off_requests', crew=selected_crew) }}" class="action-card text-center">
-                <i class="bi bi-calendar-check action-icon"></i>
-                <h5>Time Off Requests</h5>
-                <p class="text-muted mb-0">Review and approve</p>
+        
+        <div class="col-lg-3 col-md-6 mb-4">
+            <a href="{{ url_for('schedule.view_schedules', crew=selected_crew) }}" class="big-action-card">
+                <div class="card-icon">
+                    <i class="bi bi-calendar-week-fill"></i>
+                </div>
+                <h3>View Schedules</h3>
+                <p class="text-muted">Current week schedules</p>
             </a>
         </div>
-        <div class="col-md-3 mb-3">
-            <a href="{{ url_for('supervisor.shift_swaps', crew=selected_crew) }}" class="action-card text-center">
-                <i class="bi bi-shuffle action-icon"></i>
-                <h5>Shift Swaps</h5>
-                <p class="text-muted mb-0">Manage swap requests</p>
+
+        <div class="col-lg-3 col-md-6 mb-4">
+            <a href="/schedule/select" class="big-action-card">
+                <div class="card-icon">
+                    <i class="bi bi-calendar-plus-fill"></i>
+                </div>
+                <h3>Create Schedule</h3>
+                <p class="text-muted">Pattern-based scheduler</p>
             </a>
         </div>
-        <div class="col-md-3 mb-3">
-            <a href="{{ url_for('schedule.view_schedules', crew=selected_crew) }}" class="action-card text-center">
-                <i class="bi bi-calendar3 action-icon"></i>
-                <h5>View Schedule</h5>
-                <p class="text-muted mb-0">Current schedules</p>
+
+        <div class="col-lg-3 col-md-6 mb-4">
+            <a href="{{ url_for('supervisor.time_off_requests', crew=selected_crew) }}" class="big-action-card">
+                <div class="card-icon">
+                    <i class="bi bi-calendar-heart-fill"></i>
+                </div>
+                <h3>Vacation Calendar</h3>
+                <p class="text-muted">View all time off</p>
             </a>
         </div>
-        <div class="col-md-3 mb-3">
-            <!-- FIXED: Hard-coded URL -->
-            <a href="/upload-employees" class="action-card text-center">
-                <i class="bi bi-upload action-icon"></i>
-                <h5>Upload Data</h5>
-                <p class="text-muted mb-0">Import employees</p>
+
+        <div class="col-lg-3 col-md-6 mb-4">
+            <a href="{{ url_for('supervisor.coverage_gaps', crew=selected_crew) }}" class="big-action-card">
+                <div class="card-icon">
+                    <i class="bi bi-exclamation-triangle-fill"></i>
+                </div>
+                <h3>Coverage Gaps</h3>
+                {% if coverage_gaps %}
+                    <div class="badge-alert badge-danger">{{ coverage_gaps }} GAPS</div>
+                {% endif %}
+                <p class="text-muted">Identify staffing issues</p>
             </a>
         </div>
     </div>
 
-    <!-- Schedule Management - FIXED SECTION -->
-    <div class="row mb-4">
+    <!-- OVERTIME MANAGEMENT -->
+    <div class="row mb-5">
         <div class="col-12">
-            <h2 class="h4 mb-3">Schedule Management</h2>
+            <h2 class="section-header">
+                <i class="bi bi-clock-fill"></i> Overtime Management
+            </h2>
         </div>
-        <div class="col-md-4 mb-3">
-            <a href="{{ url_for('schedule.view_schedules', crew=selected_crew) }}" class="action-card">
-                <i class="bi bi-calendar-week action-icon"></i>
-                <h5>View Schedule</h5>
-                <p class="text-muted mb-0">
-                    {% if selected_crew != 'all' %}
-                        Crew {{ selected_crew }} schedule
-                    {% else %}
-                        All schedules
-                    {% endif %}
-                </p>
+        
+        <div class="col-lg-3 col-md-6 mb-4">
+            <a href="{{ url_for('main.overtime_management', crew=selected_crew) }}" class="big-action-card">
+                <div class="card-icon">
+                    <i class="bi bi-graph-up-arrow"></i>
+                </div>
+                <h3>View Overtime Needs</h3>
+                <p class="text-muted">Current overtime requirements</p>
             </a>
         </div>
-        <div class="col-md-4 mb-3">
-            <!-- FIXED: Direct link to working route -->
-            <a href="/schedule/select" class="action-card">
-                <i class="bi bi-calendar-plus action-icon"></i>
-                <h5>Create Schedule</h5>
-                <p class="text-muted mb-0">Pattern-based scheduler</p>
+
+        <div class="col-lg-3 col-md-6 mb-4">
+            <a href="{{ url_for('main.overtime_management', crew=selected_crew) }}" class="big-action-card">
+                <div class="card-icon">
+                    <i class="bi bi-clipboard-data-fill"></i>
+                </div>
+                <h3>Overtime Management</h3>
+                <p class="text-muted">View and manage OT</p>
             </a>
         </div>
-        <div class="col-md-4 mb-3">
-            <!-- Temporarily point to dashboard if vacation_calendar doesn't exist -->
-            <a href="{{ url_for('supervisor.dashboard', crew=selected_crew) }}" class="action-card">
-                <i class="bi bi-calendar-heart action-icon"></i>
-                <h5>Vacation Calendar</h5>
-                <p class="text-muted mb-0">
-                    {% if selected_crew != 'all' %}
-                        Crew {{ selected_crew }} time off
-                    {% else %}
-                        All time off
-                    {% endif %}
-                </p>
+
+        <div class="col-lg-3 col-md-6 mb-4">
+            <a href="{{ url_for('main.overtime_management', crew=selected_crew) }}" class="big-action-card">
+                <div class="card-icon">
+                    <i class="bi bi-clock-history"></i>
+                </div>
+                <h3>View Overtime History</h3>
+                <p class="text-muted">Historical overtime data</p>
+            </a>
+        </div>
+
+        <div class="col-lg-3 col-md-6 mb-4">
+            <a href="{{ url_for('main.overtime_management', crew=selected_crew) }}" class="big-action-card">
+                <div class="card-icon">
+                    <i class="bi bi-megaphone-fill"></i>
+                </div>
+                <h3>Post Overtime Opportunities</h3>
+                <p class="text-muted">Announce OT availability</p>
             </a>
         </div>
     </div>
 
-    <!-- Data Management -->
-    <div class="row mb-4">
+    <!-- DATA MANAGEMENT -->
+    <div class="row mb-5">
         <div class="col-12">
-            <h2 class="h4 mb-3">Data Management</h2>
+            <h2 class="section-header">
+                <i class="bi bi-database-fill"></i> Data Management
+            </h2>
         </div>
-        <div class="col-md-4 mb-3">
-            <!-- FIXED: Hard-coded URL -->
-            <a href="/upload-employees" class="action-card">
-                <i class="bi bi-file-earmark-excel action-icon"></i>
-                <h5>Import Employees</h5>
-                <p class="text-muted mb-0">Upload Excel files</p>
+        
+        <div class="col-lg-6 col-md-6 mb-4">
+            <a href="/upload-employees" class="big-action-card">
+                <div class="card-icon">
+                    <i class="bi bi-file-earmark-excel-fill"></i>
+                </div>
+                <h3>Import Employee Data</h3>
+                <p class="text-muted">Upload employee Excel files</p>
             </a>
         </div>
-        <div class="col-md-4 mb-3">
-            <!-- FIXED: Hard-coded URL -->
-            <a href="/upload-overtime" class="action-card">
-                <i class="bi bi-clock-history action-icon"></i>
-                <h5>Import Overtime</h5>
-                <p class="text-muted mb-0">13-week history</p>
-            </a>
-        </div>
-        <div class="col-md-4 mb-3">
-            <!-- FIXED: Hard-coded URL -->
-            <a href="/upload-history" class="action-card">
-                <i class="bi bi-clock-fill action-icon"></i>
-                <h5>Upload History</h5>
-                <p class="text-muted mb-0">View past uploads</p>
+
+        <div class="col-lg-6 col-md-6 mb-4">
+            <a href="/download-employee-template" class="big-action-card">
+                <div class="card-icon">
+                    <i class="bi bi-download"></i>
+                </div>
+                <h3>Download Employee Template</h3>
+                <p class="text-muted">Get Excel template for imports</p>
             </a>
         </div>
     </div>
 
-    <!-- Employee Management -->
-    <div class="row mb-4">
-        <div class="col-12">
-            <h2 class="h4 mb-3">Employee Management</h2>
-        </div>
-        <div class="col-md-3 mb-3">
-            <a href="{{ url_for('main.view_crews', crew=selected_crew) }}" class="action-card">
-                <i class="bi bi-people action-icon"></i>
-                <h5>View All Crews</h5>
-                <p class="text-muted mb-0">
-                    {% if selected_crew != 'all' %}
-                        Focus on Crew {{ selected_crew }}
-                    {% else %}
-                        All crew assignments
-                    {% endif %}
-                </p>
-            </a>
-        </div>
-        <div class="col-md-3 mb-3">
-            <a href="{{ url_for('supervisor.crew_management', crew=selected_crew) }}" class="action-card">
-                <i class="bi bi-people-fill action-icon"></i>
-                <h5>Crew Management</h5>
-                <p class="text-muted mb-0">
-                    {% if selected_crew != 'all' %}
-                        Manage Crew {{ selected_crew }}
-                    {% else %}
-                        Manage all assignments
-                    {% endif %}
-                </p>
-            </a>
-        </div>
-        <div class="col-md-3 mb-3">
-            <a href="{{ url_for('supervisor.employee_management', crew=selected_crew) }}" class="action-card">
-                <i class="bi bi-person-badge action-icon"></i>
-                <h5>Employee List</h5>
-                <p class="text-muted mb-0">
-                    {% if selected_crew != 'all' %}
-                        Crew {{ selected_crew }} employees
-                    {% else %}
-                        All employees
-                    {% endif %}
-                </p>
-            </a>
-        </div>
-        <div class="col-md-3 mb-3">
-            <a href="{{ url_for('main.overtime_management', crew=selected_crew) }}" class="action-card">
-                <i class="bi bi-graph-up action-icon"></i>
-                <h5>Overtime</h5>
-                <p class="text-muted mb-0">
-                    {% if selected_crew != 'all' %}
-                        Crew {{ selected_crew }} OT
-                    {% else %}
-                        Track all overtime
-                    {% endif %}
-                </p>
+    <!-- Logout Button -->
+    <div class="row mt-5 mb-4">
+        <div class="col-12 text-center">
+            <a href="{{ url_for('auth.logout') }}" class="btn btn-lg btn-outline-danger">
+                <i class="bi bi-box-arrow-right"></i> Logout
             </a>
         </div>
     </div>
 </div>
 
 <style>
-.stat-card {
-    background: linear-gradient(135deg, #4e73df 0%, #224abe 100%);
-    color: white;
-    border: none;
-    transition: transform 0.2s;
+/* Clean, modern styling */
+body {
+    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    min-height: 100vh;
 }
 
-.stat-card .card-body h6,
-.stat-card .card-body h3,
-.stat-card .card-body small {
-    color: white !important;
+.section-header {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: #2d3748;
+    margin-bottom: 1.5rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 3px solid #4299e1;
 }
 
-.stat-card:hover {
-    transform: translateY(-2px);
+.section-header i {
+    color: #4299e1;
+    margin-right: 0.5rem;
 }
 
-.stat-card h3 {
-    font-size: 2.5rem;
+.big-action-card {
+    display: block;
+    background: white;
+    border-radius: 16px;
+    padding: 2rem;
+    text-align: center;
+    text-decoration: none;
+    color: inherit;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.07);
+    height: 100%;
+    border: 2px solid transparent;
+    position: relative;
+}
+
+.big-action-card:hover {
+    transform: translateY(-8px);
+    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.15);
+    border-color: #4299e1;
+    text-decoration: none;
+    color: inherit;
+}
+
+.big-action-card .card-icon {
+    font-size: 4rem;
+    color: #4299e1;
+    margin-bottom: 1rem;
+}
+
+.big-action-card h3 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #2d3748;
+    margin-bottom: 0.75rem;
+}
+
+.big-action-card p {
+    font-size: 1rem;
+    color: #718096;
     margin-bottom: 0;
 }
 
-.action-card {
-    display: block;
-    padding: 1.5rem;
-    background: white;
-    border-radius: 8px;
-    text-decoration: none;
-    color: inherit;
-    transition: all 0.3s;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-    height: 100%;
-}
-
-.action-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    text-decoration: none;
-    color: inherit;
-}
-
-.action-icon {
-    font-size: 2rem;
-    color: #667eea;
-    margin-bottom: 1rem;
-    display: block;
-}
-
-.action-card h5 {
-    color: #333;
-    margin-bottom: 0.5rem;
-}
-
-.action-card p {
-    color: #6c757d;
+.badge-alert {
+    display: inline-block;
+    padding: 0.5rem 1rem;
+    border-radius: 50px;
+    font-weight: 700;
     font-size: 0.9rem;
+    margin-bottom: 0.75rem;
+    letter-spacing: 0.5px;
 }
 
-.btn-group .btn {
-    border-radius: 0;
+.badge-danger {
+    background: linear-gradient(135deg, #f56565 0%, #c53030 100%);
+    color: white;
 }
 
-.btn-group .btn:first-child {
-    border-top-left-radius: .375rem;
-    border-bottom-left-radius: .375rem;
+.badge-warning {
+    background: linear-gradient(135deg, #ed8936 0%, #dd6b20 100%);
+    color: white;
 }
 
-.btn-group .btn:last-child {
-    border-top-right-radius: .375rem;
-    border-bottom-right-radius: .375rem;
+.badge-info {
+    background: linear-gradient(135deg, #4299e1 0%, #3182ce 100%);
+    color: white;
+}
+
+/* Crew filter buttons */
+.btn-group-lg .btn {
+    padding: 0.75rem 1.5rem;
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+
+.btn-outline-primary {
+    border-width: 2px;
+}
+
+.btn-outline-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(66, 153, 225, 0.3);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .big-action-card {
+        padding: 1.5rem;
+    }
+    
+    .big-action-card .card-icon {
+        font-size: 3rem;
+    }
+    
+    .big-action-card h3 {
+        font-size: 1.25rem;
+    }
+    
+    .section-header {
+        font-size: 1.5rem;
+    }
+    
+    .btn-group-lg {
+        flex-direction: column;
+        width: 100%;
+    }
+    
+    .btn-group-lg .btn {
+        border-radius: 0.375rem !important;
+        margin-bottom: 0.5rem;
+    }
+}
+
+/* Remove any navbar from base.html if present */
+nav.navbar {
+    display: none !important;
 }
 </style>
 {% endblock %}
