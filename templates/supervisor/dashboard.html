@@ -1,15 +1,10 @@
 {# templates/supervisor/dashboard.html #}
 {# Supervisor Dashboard - Simple Idiot-Proof Version #}
-{# Last Modified: 2025-10-07 - Complete redesign to simple "What do you want to do?" layout #}
+{# Last Modified: 2025-10-07 - FINAL FIX - Removed ALL overtime references #}
 {# Change Log: #}
+{#   2025-10-07: FINAL FIX - Completely removed all overtime management references #}
+{#   2025-10-07: Fixed redirect loop by removing broken route references #}
 {#   2025-10-07: Complete redesign - removed navigation menu, created simple action card layout #}
-{#              Organized into 5 clear sections: Employee Management, Requests & Approvals, #}
-{#              Schedule Management, Overtime Management, and Data Management #}
-{#              All existing routes preserved, no functionality lost #}
-{#              Added large action cards with icons for easy navigation #}
-{#              Crew filter maintained at top of page #}
-{#              Removed complex statistics cards for simplicity #}
-{#              Added logout button at bottom #}
 
 {% extends "base.html" %}
 {% block title %}Supervisor Dashboard{% endblock %}
@@ -176,7 +171,7 @@
         </div>
 
         <div class="col-lg-3 col-md-6 mb-4">
-            <a href="/schedule/select" class="big-action-card">
+            <a href="{{ url_for('schedule.schedule_select') }}" class="big-action-card">
                 <div class="card-icon">
                     <i class="bi bi-calendar-plus-fill"></i>
                 </div>
@@ -208,58 +203,6 @@
             </a>
         </div>
     </div>
-
-    <!-- OVERTIME MANAGEMENT - TEMPORARILY DISABLED -->
-    <!-- TODO: Uncomment when main.overtime_management route is created -->
-    <!--
-    <div class="row mb-5">
-        <div class="col-12">
-            <h2 class="section-header">
-                <i class="bi bi-clock-fill"></i> Overtime Management
-            </h2>
-        </div>
-        
-        <div class="col-lg-3 col-md-6 mb-4">
-            <a href="{{ url_for('main.overtime_management', crew=selected_crew) }}" class="big-action-card">
-                <div class="card-icon">
-                    <i class="bi bi-graph-up-arrow"></i>
-                </div>
-                <h3>View Overtime Needs</h3>
-                <p class="text-muted">Current overtime requirements</p>
-            </a>
-        </div>
-
-        <div class="col-lg-3 col-md-6 mb-4">
-            <a href="{{ url_for('main.overtime_management', crew=selected_crew) }}" class="big-action-card">
-                <div class="card-icon">
-                    <i class="bi bi-clipboard-data-fill"></i>
-                </div>
-                <h3>Overtime Management</h3>
-                <p class="text-muted">View and manage OT</p>
-            </a>
-        </div>
-
-        <div class="col-lg-3 col-md-6 mb-4">
-            <a href="{{ url_for('main.overtime_management', crew=selected_crew) }}" class="big-action-card">
-                <div class="card-icon">
-                    <i class="bi bi-clock-history"></i>
-                </div>
-                <h3>View Overtime History</h3>
-                <p class="text-muted">Historical overtime data</p>
-            </a>
-        </div>
-
-        <div class="col-lg-3 col-md-6 mb-4">
-            <a href="{{ url_for('main.overtime_management', crew=selected_crew) }}" class="big-action-card">
-                <div class="card-icon">
-                    <i class="bi bi-megaphone-fill"></i>
-                </div>
-                <h3>Post Overtime Opportunities</h3>
-                <p class="text-muted">Announce OT availability</p>
-            </a>
-        </div>
-    </div>
-    -->
 
     <!-- DATA MANAGEMENT -->
     <div class="row mb-5">
