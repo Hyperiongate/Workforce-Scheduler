@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """
 Main application file for Workforce Scheduler
-COMPLETE FILE with PITMAN SCHEDULE ROUTES and SCHEDULE PREFERENCES
-UPDATED: 2025-09-05 - Added Schedule Preferences blueprint integration
+COMPLETE FILE - FIXED REDIRECT LOOP ISSUE
+Last Updated: 2025-10-07 - Fixed context processor causing redirect loop
+Change Log:
+  - 2025-10-07: Fixed inject_pending_counts() to use raw SQL for shift swaps
+  - 2025-10-07: Added comprehensive error handling to prevent template failures
+  - 2025-10-07: Ensured context processors never cause page load failures
 """
 
 from flask import Flask, render_template, redirect, url_for, flash, jsonify, request
@@ -403,7 +407,7 @@ def allowed_file(filename):
            filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
 
 # ==========================================
-# CONTEXT PROCESSORS
+# CONTEXT PROCESSORS - FIXED TO PREVENT REDIRECT LOOPS
 # ==========================================
 
 @app.context_processor
@@ -416,20 +420,32 @@ def inject_user_permissions():
 
 @app.context_processor
 def inject_pending_counts():
-    """Inject pending counts into all templates for navbar"""
+    """
+    Inject pending counts into all templates for navbar
+    FIXED: 2025-10-07 - Use raw SQL to avoid ORM column issues that cause redirect loops
+    """
     pending_time_off = 0
     pending_swaps = 0
     
     if current_user.is_authenticated and current_user.is_supervisor:
+        # Get time off requests - this should always work
         try:
             pending_time_off = TimeOffRequest.query.filter_by(status='pending').count()
         except Exception as e:
             logger.warning(f"Could not get pending time off count: {e}")
+            pending_time_off = 0
             
+        # Get shift swap requests using raw SQL to avoid ORM issues
         try:
-            pending_swaps = ShiftSwapRequest.query.filter_by(status='pending').count()
+            result = db.session.execute(text("""
+                SELECT COUNT(*) 
+                FROM shift_swap_request 
+                WHERE COALESCE(status, 'pending') = 'pending'
+            """))
+            pending_swaps = result.scalar() or 0
         except Exception as e:
             logger.warning(f"Could not get pending swaps count: {e}")
+            pending_swaps = 0
     
     return dict(
         pending_time_off=pending_time_off,
@@ -492,15 +508,11 @@ with app.app_context():
         print("The app will continue but some features may not work correctly")
 
 # ==========================================
-# RUN APPLICATION
+# AUTOMATIC DATABASE FIX
 # ==========================================
 
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    debug = os.environ.get('FLASK_ENV') == 'development'
-    app.run(host='0.0.0.0', port=port, debug=debug)
-# AUTOMATIC DATABASE FIX - Add at bottom of app.py
 def auto_fix_database():
+    """Auto-fix database columns that cause issues"""
     try:
         from sqlalchemy import text, inspect
         print("Auto-fixing database...")
@@ -530,7 +542,17 @@ def auto_fix_database():
         
     except Exception as e:
         print(f"Auto-fix error: {e}")
+        db.session.rollback()
 
 # Run the auto-fix
 with app.app_context():
     auto_fix_database()
+
+# ==========================================
+# RUN APPLICATION
+# ==========================================
+
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 5000))
+    debug = os.environ.get('FLASK_ENV') == 'development'
+    app.run(host='0.0.0.0', port=port, debug=debug)
