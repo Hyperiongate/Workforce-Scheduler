@@ -1,11 +1,11 @@
 {# templates/schedule_wizard.html #}
 {# Schedule Pattern Wizard - 4-on-4-off Fast & Weekly Rotation COMPLETE #}
-{# Last Modified: 2025-10-06 - Added modified 4-on-4-off with full weekends #}
+{# Last Modified: 2025-10-07 - FIXED Weekly Rotation to match 16-week cycle #}
 {# Change Log: #}
-{#   2025-10-06: Added 'modified' pattern - 4-on-4-off with weekend swaps to eliminate split weekends #}
-{#              Crew A/C start Week 1, Crew B/D start Week 5 (28-day offset), 56-day full cycle #}
-{#              Week 3: Sat taken off (3 work, 5 off, full weekend off) #}
-{#              Week 7: Sat added to work (3 off, 5 work, full weekend work) #}
+{#   2025-10-07: FIXED weekly rotation - now uses correct 16-week (112-day) pattern #}
+{#              Pattern matches table: Week 1 Mon-Thu D12, Week 2 Tue-Fri N12, etc. #}
+{#              Crews offset by 28 days (4 weeks): A=0, B=28, C=56, D=84 #}
+{#   2025-10-06: Added modified 4-on-4-off with full weekends #}
 {#   2025-10-06: Removed 'basic' and 'fixed complex' options - streamlined to 4 variations #}
 {#   2025-10-06: Added fixed_simple - A&B work days only (4D-4Off), C&D work nights only (4N-4Off), 8-day cycle #}
 {#   2025-10-06: Added weekly rotation - 16-day cycle: 4D, 4Off, 4N, 4Off #}
@@ -115,7 +115,7 @@
                             </select>
                             <div class="form-text mt-2">
                                 <small><strong>Fast:</strong> All crews rotate, 8-day cycle with 2 day, 2 night, 4 off</small><br>
-                                <small><strong>Weekly:</strong> All crews rotate, 16-day cycle with 4 day, 4 off, 4 night, 4 off</small><br>
+                                <small><strong>Weekly:</strong> All crews rotate, 16-week cycle with 4 day, 4 off, 4 night pattern</small><br>
                                 <small><strong>Fixed:</strong> A&B work days only, C&D work nights only (8-day cycle)</small><br>
                                 <small><strong>Modified:</strong> 4-on-4-off with weekend swaps to eliminate split weekends</small>
                             </div>
@@ -510,13 +510,13 @@ document.addEventListener('DOMContentLoaded', function() {
             explanation: 'Southern Swing: Rotate through days→evenings→nights over 4 weeks.'
         },
         'four_on_four_off': {
-            cycle: '8 or 16 days depending on variation',
+            cycle: '8 to 16 weeks depending on variation',
             avgHours: '42 hours/week',
             maxConsecutive: '4 days per shift type',
             weekendsOff: 'Varies by rotation',
             advantages: ['Simple repeating pattern', 'Good recovery time', 'Predictable rotation', 'Multiple variations available'],
             considerations: ['Weekend coverage rotates', 'Frequent shift changes in fast rotation', 'Longer stretches in weekly rotation'],
-            explanation: '4-on-4-off: Multiple variations available. Fast rotation uses 2D-2N-4Off (8-day cycle). Weekly rotation uses 4D-4Off-4N-4Off (16-day cycle).'
+            explanation: '4-on-4-off: Multiple variations available. Fast rotation uses 2D-2N-4Off (8-day cycle). Weekly rotation uses true weekly pattern over 16-week cycle with crews offset by 4 weeks.'
         },
         'three_on_three_off': {
             cycle: '6 days',
@@ -590,54 +590,29 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             else if (rotation === 'modified') {
                 // Modified: 4-on-4-off with weekend optimization to eliminate split weekends
-                // Crew A starts in Week 1, Crew B starts in Week 5 (28 days offset)
-                // 
-                // CRITICAL: Display grid uses Sun-Sat (day 0-6), but table shows Mon-Sun weeks
-                // So we need to map the table's Mon-Sun pattern to display's Sun-Sat grid
-                //
-                // Table Week 1 = Mon-Sun of that work week
-                // Display Week 1 = Sun (from previous week) + Mon-Sat of work week
-                
                 const modifiedPattern = [
                     // Week 1 Display (day 0-6): Sun, Mon, Tue, Wed, Thu, Fri, Sat
-                    // Table Week 1: Mon-Thu=12, Fri-Sat=off, Sun=off
-                    // Display starts with Sunday (end of previous cycle - off), then Mon-Thu work, Fri-Sat off
                     'O', 'X', 'X', 'X', 'X', 'O', 'O',
                     
                     // Week 2 Display (day 7-13): Sun, Mon, Tue, Wed, Thu, Fri, Sat  
-                    // Table Week 2: Mon=off, Tue-Fri=12, Sat-Sun=off
-                    // Sun(end of wk1)=off, Mon=off, Tue-Fri=work, Sat=off
                     'O', 'O', 'X', 'X', 'X', 'X', 'O',
                     
                     // Week 3 Display (day 14-20): Sun, Mon, Tue, Wed, Thu, Fri, Sat
-                    // Table Week 3: Mon-Tue=off, Wed-Fri=12, Sat-Sun=off  
-                    // Sun(end of wk2)=off, Mon-Tue=off, Wed-Fri=work, Sat=off
                     'O', 'O', 'O', 'X', 'X', 'X', 'O',
                     
                     // Week 4 Display (day 21-27): Sun, Mon, Tue, Wed, Thu, Fri, Sat
-                    // Table Week 4: Mon-Wed=off, Thu-Sat=12, Sun=off
-                    // Sun(end of wk3)=off, Mon-Wed=off, Thu-Sat=work
-                    // BUT the work continues into next week's Sunday (table's Week 4 ends, Week 5 starts)
                     'O', 'O', 'O', 'O', 'X', 'X', 'X',
                     
                     // Week 5 Display (day 28-34): Sun, Mon, Tue, Wed, Thu, Fri, Sat
-                    // Table Week 5: Mon-Thu=off, Fri-Sat=12, Sun=12
-                    // Sun(carries from wk4 Thu-Sat)=work, Mon-Thu=off, Fri-Sat=work
                     'X', 'O', 'O', 'O', 'O', 'X', 'X',
                     
                     // Week 6 Display (day 35-41): Sun, Mon, Tue, Wed, Thu, Fri, Sat
-                    // Table Week 6: Mon=12, Tue-Fri=off, Sat=12, Sun=12
-                    // Sun(end of wk5, from table)=work, Mon=work, Tue-Fri=off, Sat=work  
                     'X', 'X', 'O', 'O', 'O', 'O', 'X',
                     
                     // Week 7 Display (day 42-48): Sun, Mon, Tue, Wed, Thu, Fri, Sat
-                    // Table Week 7: Mon-Tue=12, Wed-Fri=off, Sat=12, Sun=12
-                    // Sun(end of wk6)=work, Mon-Tue=work, Wed-Fri=off, Sat=work
                     'X', 'X', 'X', 'O', 'O', 'O', 'X',
                     
                     // Week 8 Display (day 49-55): Sun, Mon, Tue, Wed, Thu, Fri, Sat
-                    // Table Week 8: Mon-Wed=12, Thu-Sat=off, Sun=off
-                    // Sun(end of wk7, from table)=work, Mon-Wed=work, Thu-Sat=off
                     'X', 'X', 'X', 'X', 'O', 'O', 'O'
                 ];
                 
@@ -720,28 +695,84 @@ document.addEventListener('DOMContentLoaded', function() {
                 return assignment;
             }
             else if (rotation === 'weekly') {
-                // Weekly Rotation: 16-day cycle - 4 Days, 4 Off, 4 Nights, 4 Off
-                const sixteenDayPattern = [
-                    'D', 'D', 'D', 'D',  // Days 0-3: Day shifts
-                    'O', 'O', 'O', 'O',  // Days 4-7: Off
-                    'N', 'N', 'N', 'N',  // Days 8-11: Night shifts
-                    'O', 'O', 'O', 'O'   // Days 12-15: Off
+                // Weekly Rotation: TRUE 16-week cycle matching the provided table
+                // Grid shows Sunday-Saturday, but table shows Monday-Sunday weeks
+                // We need to convert table's Monday-start to grid's Sunday-start
+                
+                // Pattern for ONE crew over 16 weeks (112 days)
+                // This is Crew A's pattern starting Week 1
+                // Day 0 = Sunday of Week 1, Day 1 = Monday of Week 1, etc.
+                
+                const weeklyPattern = [
+                    // Week 1: Mon-Thu=D12, Fri-Sun=off
+                    // Sunday is actually end of previous cycle (off)
+                    'O', 'D', 'D', 'D', 'D', 'O', 'O',
+                    
+                    // Week 2: Mon=off, Tue-Fri=N12, Sat-Sun=off
+                    'O', 'O', 'N', 'N', 'N', 'N', 'O',
+                    
+                    // Week 3: Mon-Tue=off, Wed-Sat=D12, Sun=off
+                    'O', 'O', 'O', 'D', 'D', 'D', 'D',
+                    
+                    // Week 4: Mon-Thu=off, Fri-Sun=N12 (continues to Week 5 Mon)
+                    'O', 'O', 'O', 'O', 'O', 'N', 'N',
+                    
+                    // Week 5: Mon=N12, Tue-Thu=off, Fri-Sun=D12 (continues to Week 6 Mon)
+                    'N', 'N', 'O', 'O', 'O', 'O', 'D',
+                    
+                    // Week 6: Mon=D12, Tue-Fri=off, Sat-Sun=N12 (continues to Week 7 Mon)
+                    'D', 'D', 'O', 'O', 'O', 'O', 'O',
+                    
+                    // Week 7: Mon-Tue=N12, Wed-Fri=off, Sat-Sun=D12 (continues to Week 8 Mon)
+                    'N', 'N', 'N', 'O', 'O', 'O', 'O',
+                    
+                    // Week 8: Mon-Wed=D12, Thu-Sun=off
+                    'D', 'D', 'D', 'D', 'O', 'O', 'O',
+                    
+                    // Week 9: Mon-Thu=N12, Fri-Sun=off
+                    'O', 'N', 'N', 'N', 'N', 'O', 'O',
+                    
+                    // Week 10: Mon=off, Tue-Fri=D12, Sat-Sun=off
+                    'O', 'O', 'D', 'D', 'D', 'D', 'O',
+                    
+                    // Week 11: Mon-Tue=off, Wed-Sat=N12, Sun=off
+                    'O', 'O', 'O', 'N', 'N', 'N', 'N',
+                    
+                    // Week 12: Mon-Wed=off, Thu-Sun=D12 (continues to Week 13 Mon)
+                    'O', 'O', 'O', 'O', 'D', 'D', 'D',
+                    
+                    // Week 13: Mon=D12, Tue-Thu=off, Fri-Sun=N12 (continues to Week 14 Mon)
+                    'D', 'O', 'O', 'O', 'O', 'N', 'N',
+                    
+                    // Week 14: Mon-Tue=N12, Wed-Fri=off, Sat=D12, Sun=D12
+                    'N', 'N', 'O', 'O', 'O', 'O', 'D',
+                    
+                    // Week 15: Mon=D12, Tue=D12, Wed-Fri=off, Sat-Sun=N12 (continues to Week 16 Mon)
+                    'D', 'D', 'D', 'O', 'O', 'O', 'O',
+                    
+                    // Week 16: Mon-Wed=N12, Thu-Sun=off
+                    'N', 'N', 'N', 'N', 'O', 'O', 'O'
                 ];
                 
+                // Crew offsets: Each crew starts 4 weeks (28 days) after the previous
                 const crewOffsets = {
-                    'A': 0,   // Starts Week 1 (day 0)
-                    'B': 14,  // Starts Week 3 (day 14)
-                    'C': 28,  // Starts Week 5 (day 28)
-                    'D': 42   // Starts Week 7 (day 42)
+                    'A': 0,    // Starts Week 1 (day 0)
+                    'B': 28,   // Starts Week 5 (day 28) 
+                    'C': 56,   // Starts Week 9 (day 56)
+                    'D': 84    // Starts Week 13 (day 84)
                 };
                 
                 let dayCrews = [];
                 let nightCrews = [];
                 
                 for (const [crew, startOffset] of Object.entries(crewOffsets)) {
+                    // Calculate days since this crew's start in the pattern
                     const daysSinceStart = dayOfCycle - startOffset;
-                    const cyclePosition = ((daysSinceStart % 16) + 16) % 16;
-                    const shift = sixteenDayPattern[cyclePosition];
+                    
+                    // Map to position in 112-day cycle (16 weeks * 7 days)
+                    const cyclePosition = ((daysSinceStart % 112) + 112) % 112;
+                    
+                    const shift = weeklyPattern[cyclePosition];
                     
                     if (shift === 'D') {
                         dayCrews.push(crew);
@@ -766,7 +797,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
         
-        // Handle other patterns
+        // Handle other patterns (Pitman, DuPont, etc.)
         switch(normalizedPattern) {
             case 'pitman':
                 const pitmanBase = [
@@ -945,7 +976,7 @@ document.addEventListener('DOMContentLoaded', function() {
         } else if (pattern === 'four_on_four_off') {
             switch(rotation) {
                 case 'fast': weeksToShow = 8; break;
-                case 'weekly': weeksToShow = 8; break;
+                case 'weekly': weeksToShow = 16; break;  // FIXED: Show full 16-week cycle
                 case 'fixed_simple': weeksToShow = 2; break;
                 case 'modified': weeksToShow = 8; break;
                 default: weeksToShow = 4; break;
@@ -969,7 +1000,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     <h4 class="preview-title">
                         <i class="bi bi-calendar-range"></i> ${patternConfig.name || pattern} Schedule Timeline
                     </h4>
-                    <p class="preview-subtitle">${pattern === 'dupont' ? 'Rotating' : rotation === 'fixed' ? 'Fixed' : 'Rotating'} ${weeksToShow}-Week Cycle • Continuous 24/7 Coverage</p>
+                    <p class="preview-subtitle">${pattern === 'dupont' ? 'Rotating' : rotation === 'fixed' || rotation === 'fixed_simple' ? 'Fixed' : 'Rotating'} ${weeksToShow}-Week Cycle • Continuous 24/7 Coverage</p>
                 </div>
                 
                 <div class="pattern-stats">
