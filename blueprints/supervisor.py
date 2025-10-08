@@ -1,8 +1,9 @@
-# blueprints/supervisor.py - COMPLETE FIXED VERSION WITH API ROUTES
+# blueprints/supervisor.py - COMPLETE FIXED VERSION WITH COVERAGE NEEDS
 """
 Supervisor blueprint with comprehensive error handling and ALL ROUTE FIXES
 INCLUDES EMPLOYEE API ENDPOINTS FOR EDIT FUNCTIONALITY
-COMPLETE DEPLOYMENT-READY VERSION - UPDATED 2025-09-30
+COMPLETE DEPLOYMENT-READY VERSION
+Last Updated: 2025-10-07 - Fixed coverage_needs route to render proper template
 """
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, session
@@ -746,7 +747,7 @@ def overtime_management():
         return redirect(url_for('supervisor.dashboard'))
 
 # ==========================================
-# COVERAGE MANAGEMENT
+# COVERAGE MANAGEMENT - FIXED COVERAGE NEEDS ROUTE
 # ==========================================
 
 @supervisor_bp.route('/supervisor/coverage-gaps')
@@ -785,32 +786,162 @@ def coverage_gaps():
 @login_required
 @supervisor_required
 def coverage_needs():
-    """Coverage needs analysis"""
+    """Coverage needs - Set staffing requirements by position for each crew"""
     try:
-        crew = request.args.get('crew', session.get('selected_crew', 'all'))
-        session['selected_crew'] = crew
+        # Get all positions
+        positions = Position.query.order_by(Position.name).all()
         
-        return f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Coverage Needs</title>
-            <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-        </head>
-        <body>
-            <div class="container mt-4">
-                <h2>Coverage Needs Analysis</h2>
-                <p>Current staffing levels meet operational requirements for {crew if crew != 'all' else 'all crews'}.</p>
-                <a href="/supervisor/dashboard" class="btn btn-primary">Back to Dashboard</a>
-            </div>
-        </body>
-        </html>
-        """
+        # Get current employee counts by crew
+        crew_totals = {
+            'A': Employee.query.filter_by(crew='A', is_active=True).count(),
+            'B': Employee.query.filter_by(crew='B', is_active=True).count(),
+            'C': Employee.query.filter_by(crew='C', is_active=True).count(),
+            'D': Employee.query.filter_by(crew='D', is_active=True).count()
+        }
+        
+        # Get current coverage by position and crew
+        current_coverage = {
+            'A': {},
+            'B': {},
+            'C': {},
+            'D': {}
+        }
+        
+        for crew in ['A', 'B', 'C', 'D']:
+            for position in positions:
+                count = Employee.query.filter_by(
+                    crew=crew,
+                    position_id=position.id,
+                    is_active=True
+                ).count()
+                current_coverage[crew][position.id] = count
+        
+        # Calculate total current staff across all crews
+        total_current_staff = sum(crew_totals.values())
+        
+        # Try to render the template, fallback if it doesn't exist
+        try:
+            return render_template('coverage_needs.html',
+                                 positions=positions,
+                                 crew_totals=crew_totals,
+                                 current_coverage=current_coverage,
+                                 total_current_staff=total_current_staff)
+        except Exception as template_error:
+            # Fallback if template doesn't exist yet
+            logger.warning(f"coverage_needs.html template not found: {template_error}")
+            return _generate_coverage_needs_fallback(positions, crew_totals, current_coverage, total_current_staff)
     
     except Exception as e:
         logger.error(f"Error loading coverage needs: {e}")
         flash('Error loading coverage needs.', 'danger')
         return redirect(url_for('supervisor.dashboard'))
+
+def _generate_coverage_needs_fallback(positions, crew_totals, current_coverage, total_current_staff):
+    """Generate fallback HTML if template doesn't exist"""
+    
+    def generate_positions_table():
+        if not positions:
+            return "<div class='alert alert-warning'>No positions found. Upload employee data to create positions.</div>"
+        
+        html = "<table class='table table-striped table-hover'>"
+        html += "<thead class='table-dark'><tr><th>Position</th><th>Crew A</th><th>Crew B</th><th>Crew C</th><th>Crew D</th><th>Total</th></tr></thead>"
+        html += "<tbody>"
+        
+        for position in positions:
+            crew_a = current_coverage['A'].get(position.id, 0)
+            crew_b = current_coverage['B'].get(position.id, 0)
+            crew_c = current_coverage['C'].get(position.id, 0)
+            crew_d = current_coverage['D'].get(position.id, 0)
+            total = crew_a + crew_b + crew_c + crew_d
+            
+            html += f"<tr>"
+            html += f"<td><strong>{position.name}</strong></td>"
+            html += f"<td><span class='badge bg-primary'>{crew_a}</span></td>"
+            html += f"<td><span class='badge bg-secondary'>{crew_b}</span></td>"
+            html += f"<td><span class='badge bg-success'>{crew_c}</span></td>"
+            html += f"<td><span class='badge bg-info'>{crew_d}</span></td>"
+            html += f"<td><strong class='text-primary'>{total}</strong></td>"
+            html += f"</tr>"
+        
+        html += "</tbody></table>"
+        return html
+    
+    return f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Coverage Needs</title>
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
+        <style>
+            body {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 2rem; }}
+            .container {{ background: white; border-radius: 20px; padding: 2rem; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }}
+            .stat-card {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 1.5rem; border-radius: 15px; text-align: center; }}
+            .stat-card h3 {{ font-size: 2.5rem; font-weight: 700; margin: 0; }}
+            .stat-card p {{ margin: 0; opacity: 0.9; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h1><i class="bi bi-people-fill text-primary"></i> Coverage Requirements</h1>
+                    <p class="text-muted">Set staffing levels by position for each crew</p>
+                </div>
+                <a href="/supervisor/dashboard" class="btn btn-outline-primary">
+                    <i class="bi bi-arrow-left"></i> Back to Dashboard
+                </a>
+            </div>
+            
+            <div class="row mb-4">
+                <div class="col-md-3">
+                    <div class="stat-card">
+                        <h3>{crew_totals['A']}</h3>
+                        <p>Crew A</p>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="stat-card" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                        <h3>{crew_totals['B']}</h3>
+                        <p>Crew B</p>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="stat-card" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+                        <h3>{crew_totals['C']}</h3>
+                        <p>Crew C</p>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="stat-card" style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);">
+                        <h3>{crew_totals['D']}</h3>
+                        <p>Crew D</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="alert alert-info mb-4">
+                <i class="bi bi-info-circle"></i> 
+                <strong>Total Current Staff:</strong> {total_current_staff} active employees
+            </div>
+            
+            <div class="card shadow">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="bi bi-table"></i> Current Staffing by Position</h5>
+                </div>
+                <div class="card-body">
+                    {generate_positions_table()}
+                </div>
+            </div>
+            
+            <div class="alert alert-success mt-4">
+                <i class="bi bi-lightbulb"></i> 
+                <strong>Coming Soon:</strong> Interactive tools to set minimum requirements per position and receive alerts when understaffed.
+            </div>
+        </div>
+    </body>
+    </html>
+    """
 
 # ==========================================
 # SCHEDULES MANAGEMENT
