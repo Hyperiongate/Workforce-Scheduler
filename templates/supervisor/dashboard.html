@@ -1,6 +1,7 @@
-{# templates/supervisor/dashboard.html #}
+{# FILE LOCATION: templates/supervisor/dashboard.html #}
+{# IMPORTANT: Make sure this file is saved to templates/supervisor/dashboard.html NOT templates/supervisor_dashboard.html #}
 {# Supervisor Dashboard - Simple Idiot-Proof Version #}
-{# Last Modified: 2025-10-07 - FINAL FIX - Removed ALL overtime references #}
+{# Last Modified: 2025-10-08 - Fixed Crew Management button to link to coverage_needs #}
 {# Change Log: #}
 {#   2025-10-07: FINAL FIX - Completely removed all overtime management references #}
 {#   2025-10-07: Fixed redirect loop by removing broken route references #}
@@ -94,12 +95,12 @@
         </div>
 
         <div class="col-lg-4 col-md-6 mb-4">
-            <a href="{{ url_for('supervisor.crew_management', crew=selected_crew) }}" class="big-action-card">
+            <a href="{{ url_for('supervisor.coverage_needs', crew=selected_crew) }}" class="big-action-card">
                 <div class="card-icon">
                     <i class="bi bi-diagram-3-fill"></i>
                 </div>
                 <h3>Crew Management</h3>
-                <p class="text-muted">Organize crew assignments and skills</p>
+                <p class="text-muted">Set staffing requirements by position</p>
             </a>
         </div>
     </div>
