@@ -903,32 +903,115 @@ document.addEventListener('DOMContentLoaded', function() {
                 return assignment;
             }
             else if (rotation === 'modified') {
-                const modifiedPattern = [
-                    'O', 'X', 'X', 'X', 'X', 'O', 'O',
-                    'O', 'O', 'X', 'X', 'X', 'X', 'O',
-                    'O', 'O', 'O', 'X', 'X', 'X', 'O',
-                    'O', 'O', 'O', 'O', 'X', 'X', 'X',
-                    'X', 'O', 'O', 'O', 'O', 'X', 'X',
-                    'X', 'X', 'O', 'O', 'O', 'O', 'X',
-                    'X', 'X', 'X', 'O', 'O', 'O', 'X',
-                    'X', 'X', 'X', 'X', 'O', 'O', 'O'
+                // Modified 4-on-4-off: 8-week pattern (56 days)
+                // Based on user's table - Monday start
+                
+                // Build 8-week patterns for each crew (56 days, Mon-Sun format)
+                const crewAPattern = [
+                    // Week 1: Mon-Thu D, Fri-Sun O
+                    'D', 'D', 'D', 'D', 'O', 'O', 'O',
+                    // Week 2: Mon O, Tue-Thu D, Fri-Sun O
+                    'O', 'D', 'D', 'D', 'O', 'O', 'O',
+                    // Week 3: Mon-Tue O, Wed-Fri D, Sat-Sun O
+                    'O', 'O', 'D', 'D', 'D', 'O', 'O',
+                    // Week 4: Mon-Wed O, Thu D, Fri-Sun O
+                    'O', 'O', 'O', 'D', 'O', 'O', 'O',
+                    // Week 5: Mon-Thu O, Fri D, Sat-Sun O
+                    'O', 'O', 'O', 'O', 'D', 'O', 'O',
+                    // Week 6: Mon-Fri O, Sat D, Sun O
+                    'O', 'O', 'O', 'O', 'O', 'D', 'O',
+                    // Week 7: Mon-Sat O, Sun D
+                    'O', 'O', 'O', 'O', 'O', 'O', 'D',
+                    // Week 8: Mon D, Tue-Sun O
+                    'D', 'O', 'O', 'O', 'O', 'O', 'O'
                 ];
                 
-                const crewOffsets = {'A': 0, 'B': 28, 'C': 0, 'D': 28};
+                const crewBPattern = [
+                    // Week 1: Mon-Thu O, Fri-Sun D
+                    'O', 'O', 'O', 'O', 'D', 'D', 'D',
+                    // Week 2: Mon D, Tue-Thu O, Fri-Sun D
+                    'D', 'O', 'O', 'O', 'D', 'D', 'D',
+                    // Week 3: Mon-Tue D, Wed-Fri O, Sat-Sun D
+                    'D', 'D', 'O', 'O', 'O', 'D', 'D',
+                    // Week 4: Mon-Wed D, Thu O, Fri-Sun D
+                    'D', 'D', 'D', 'O', 'D', 'D', 'D',
+                    // Week 5: Mon-Thu D, Fri O, Sat-Sun D
+                    'D', 'D', 'D', 'D', 'O', 'D', 'D',
+                    // Week 6: Mon-Fri D, Sat O, Sun D
+                    'D', 'D', 'D', 'D', 'D', 'O', 'D',
+                    // Week 7: Mon-Sat D, Sun O
+                    'D', 'D', 'D', 'D', 'D', 'D', 'O',
+                    // Week 8: Mon O, Tue-Sun D
+                    'O', 'D', 'D', 'D', 'D', 'D', 'D'
+                ];
+                
+                const crewCPattern = [
+                    // Week 1: Mon-Thu N, Fri-Sun O
+                    'N', 'N', 'N', 'N', 'O', 'O', 'O',
+                    // Week 2: Mon O, Tue-Thu N, Fri-Sun O
+                    'O', 'N', 'N', 'N', 'O', 'O', 'O',
+                    // Week 3: Mon-Tue O, Wed-Fri N, Sat-Sun O
+                    'O', 'O', 'N', 'N', 'N', 'O', 'O',
+                    // Week 4: Mon-Wed O, Thu N, Fri-Sun O
+                    'O', 'O', 'O', 'N', 'O', 'O', 'O',
+                    // Week 5: Mon-Thu O, Fri N, Sat-Sun O
+                    'O', 'O', 'O', 'O', 'N', 'O', 'O',
+                    // Week 6: Mon-Fri O, Sat N, Sun O
+                    'O', 'O', 'O', 'O', 'O', 'N', 'O',
+                    // Week 7: Mon-Sat O, Sun N
+                    'O', 'O', 'O', 'O', 'O', 'O', 'N',
+                    // Week 8: Mon N, Tue-Sun O
+                    'N', 'O', 'O', 'O', 'O', 'O', 'O'
+                ];
+                
+                const crewDPattern = [
+                    // Week 1: Mon-Thu O, Fri-Sun N
+                    'O', 'O', 'O', 'O', 'N', 'N', 'N',
+                    // Week 2: Mon N, Tue-Thu O, Fri-Sun N
+                    'N', 'O', 'O', 'O', 'N', 'N', 'N',
+                    // Week 3: Mon-Tue N, Wed-Fri O, Sat-Sun N
+                    'N', 'N', 'O', 'O', 'O', 'N', 'N',
+                    // Week 4: Mon-Wed N, Thu O, Fri-Sun N
+                    'N', 'N', 'N', 'O', 'N', 'N', 'N',
+                    // Week 5: Mon-Thu N, Fri O, Sat-Sun N
+                    'N', 'N', 'N', 'N', 'O', 'N', 'N',
+                    // Week 6: Mon-Fri N, Sat O, Sun N
+                    'N', 'N', 'N', 'N', 'N', 'O', 'N',
+                    // Week 7: Mon-Sat N, Sun O
+                    'N', 'N', 'N', 'N', 'N', 'N', 'O',
+                    // Week 8: Mon O, Tue-Sun N
+                    'O', 'N', 'N', 'N', 'N', 'N', 'N'
+                ];
+                
+                const modifiedPatterns = {
+                    'A': crewAPattern,
+                    'B': crewBPattern,
+                    'C': crewCPattern,
+                    'D': crewDPattern
+                };
                 
                 let dayCrews = [];
                 let nightCrews = [];
                 
-                for (const [crew, startOffset] of Object.entries(crewOffsets)) {
-                    const cyclePosition = (dayOfCycle + startOffset) % 56;
-                    const shift = modifiedPattern[cyclePosition];
-                    
-                    if (shift === 'X') {
-                        if (crew === 'A' || crew === 'B') {
-                            dayCrews.push(crew);
-                        } else {
-                            nightCrews.push(crew);
-                        }
+                // Convert day index to Monday-start week day
+                let weekDay;
+                if (day === 0) {
+                    weekDay = 6; // Sunday is last day of week
+                } else {
+                    weekDay = day - 1; // Mon=0, Tue=1, etc.
+                }
+                
+                // Calculate absolute day in 8-week cycle (56 days)
+                const absoluteDay = (week - 1) * 7 + weekDay;
+                const cycleDay = absoluteDay % 56; // 8 weeks * 7 days = 56
+                
+                // Check each crew's pattern at this cycle day
+                for (const [crew, pattern] of Object.entries(modifiedPatterns)) {
+                    const shift = pattern[cycleDay];
+                    if (shift === 'D') {
+                        dayCrews.push(crew);
+                    } else if (shift === 'N') {
+                        nightCrews.push(crew);
                     }
                 }
                 
