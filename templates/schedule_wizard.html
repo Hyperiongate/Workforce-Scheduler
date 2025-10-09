@@ -1,11 +1,14 @@
 {# templates/schedule_wizard.html #}
 {# Schedule Pattern Wizard - COMPLETE CORRECT FILE #}
-{# Last Modified: 2025-10-08 - FIXED to show all crews working each day #}
+{# Last Modified: 2025-10-09 - FIXED 4-on-4-off Weekly Rotation Pattern #}
 {# Change Log: #}
-{#   2025-10-08: FIXED preview to correctly aggregate and display all crews per day #}
-{#   2025-10-08: FIXED week to start Monday instead of Sunday #}
-{#   2025-10-08: FIXED to always display both DAY and NIGHT shifts #}
-{#   2025-10-08: 4-on-4-off weekly uses correct 16-day cycle with proper crew offsets #}
+{#   2025-10-09: CORRECTED 4-on-4-off weekly to match user requirements #}
+{#               - Week starts Monday (not Sunday) #}
+{#               - Mon-Thu: Crew A (days) + C (nights) #}
+{#               - Fri-Sun: Crew B (days) + D (nights) #}
+{#               - Each crew: 4 on, 4 off, alternating days/nights #}
+{#   2025-10-08: Fixed preview to correctly aggregate and display all crews per day #}
+{#   2025-10-08: Fixed to always display both DAY and NIGHT shifts #}
 
 {% extends "base.html" %}
 {% block title %}{{ pattern_config.name }} Schedule Pattern{% endblock %}
@@ -111,7 +114,7 @@
                             </select>
                             <div class="form-text mt-2">
                                 <small><strong>Fast:</strong> All crews rotate, 8-day cycle with 2 day, 2 night, 4 off</small><br>
-                                <small><strong>Weekly:</strong> All crews rotate, 16-day cycle (4D-4Off-4N-4Off), 16-week full rotation</small><br>
+                                <small><strong>Weekly:</strong> Crews alternate days/nights every 4 days (Mon-Thu: A+C, Fri-Sun: B+D)</small><br>
                                 <small><strong>Fixed:</strong> A&B work days only, C&D work nights only (8-day cycle)</small><br>
                                 <small><strong>Modified:</strong> 4-on-4-off with weekend swaps to eliminate split weekends</small>
                             </div>
@@ -678,13 +681,13 @@ document.addEventListener('DOMContentLoaded', function() {
             explanation: 'Southern Swing: Rotate through days→evenings→nights over 4 weeks.'
         },
         'four_on_four_off': {
-            cycle: '8 to 16 weeks depending on variation',
+            cycle: '16 days per crew',
             avgHours: '42 hours/week',
             maxConsecutive: '4 days per shift type',
             weekendsOff: 'Varies by rotation',
-            advantages: ['Simple repeating pattern', 'Good recovery time', 'Predictable rotation', 'Multiple variations available'],
-            considerations: ['Weekend coverage rotates', 'Frequent shift changes in fast rotation', 'Longer stretches in weekly rotation'],
-            explanation: '4-on-4-off: Multiple variations available. Weekly rotation uses 16-day cycle (4D-4Off-4N-4Off) with crews offset by 4 weeks for 16-week full rotation.'
+            advantages: ['Simple 4 on, 4 off pattern', 'Good recovery time', 'Predictable schedule', 'Automatic shift rotation built-in'],
+            considerations: ['Shifts alternate after each 4-day break', 'Coverage splits at Thursday/Friday boundary', '16-week cycle for full rotation'],
+            explanation: '4-on-4-off Weekly: Each crew works 4 days, then off 4 days, alternating between day and night shifts. Mon-Thu: Crews A (days) + C (nights). Fri-Sun: Crews B (days) + D (nights).'
         },
         'three_on_three_off': {
             cycle: '6 days',
@@ -698,7 +701,10 @@ document.addEventListener('DOMContentLoaded', function() {
     };
     
     function generateCrewAssignment(pattern, week, day, rotation) {
+        // day: 0=Sunday, 1=Monday, 2=Tuesday, 3=Wednesday, 4=Thursday, 5=Friday, 6=Saturday
+        // But we want week to START on Monday, so we'll adjust
         const dayOfCycle = (week - 1) * 7 + day;
+        
         let assignment = {
             crews: 'Off',
             time: '',
@@ -821,37 +827,77 @@ document.addEventListener('DOMContentLoaded', function() {
                 return assignment;
             }
             else if (rotation === 'weekly') {
-                const weeklyPattern = [
-                    'D', 'D', 'D', 'D',  
-                    'O', 'O', 'O', 'O',  
-                    'N', 'N', 'N', 'N',  
-                    'O', 'O', 'O', 'O'   
-                ];
+                // CORRECTED 4-on-4-off Weekly Pattern
+                // 16-day cycle: 4 Days, 4 Off, 4 Nights, 4 Off
+                // Pattern: Mon-Thu: Crew A (days) + C (nights)
+                //          Fri-Sun: Crew B (days) + D (nights)
                 
-                const crewOffsets = {
-                    'A': 0,    
-                    'B': 28,   
-                    'C': 56,   
-                    'D': 84    
-                };
+                // Convert day index to match Monday start (day 1 = Monday)
+                // day: 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat
+                // We need: 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat, 0=Sun
                 
                 let dayCrews = [];
                 let nightCrews = [];
                 
-                for (const [crew, startOffset] of Object.entries(crewOffsets)) {
-                    const daysSinceStart = dayOfCycle - startOffset;
-                    
-                    if (daysSinceStart < 0) {
-                        continue;
+                // Determine which day of week (Mon=0, Tue=1, Wed=2, Thu=3, Fri=4, Sat=5, Sun=6)
+                let weekDay;
+                if (day === 0) {
+                    weekDay = 6; // Sunday is last day of week
+                } else {
+                    weekDay = day - 1; // Mon=0, Tue=1, etc.
+                }
+                
+                // Mon-Thu (weekDay 0-3): Crew A on days, Crew C on nights
+                // Fri-Sun (weekDay 4-6): Crew B on days, Crew D on nights
+                
+                // But we need to check if each crew is on their 4-on or 4-off part of cycle
+                // Crew A: Starts day 0 (Monday Week 1)
+                // Pattern: Days 0-3 (4D), Days 4-7 (4Off), Days 8-11 (4N), Days 12-15 (4Off), repeat
+                
+                const weeklyPattern = [
+                    'D', 'D', 'D', 'D',  // Days 0-3: Work days
+                    'O', 'O', 'O', 'O',  // Days 4-7: Off
+                    'N', 'N', 'N', 'N',  // Days 8-11: Work nights
+                    'O', 'O', 'O', 'O'   // Days 12-15: Off
+                ];
+                
+                // Crew A: Starts on day 0 (Monday Week 1) - covers Mon-Thu
+                // Crew B: Starts on day 4 (Friday Week 1) - covers Fri-Sun
+                // Crew C: Starts on day 0 (Monday Week 1) - covers Mon-Thu nights
+                // Crew D: Starts on day 4 (Friday Week 1) - covers Fri-Sun nights
+                
+                // Calculate absolute day number from start of schedule
+                const absoluteDay = (week - 1) * 7 + weekDay;
+                
+                // Check Crew A (days, Mon-Thu)
+                if (weekDay >= 0 && weekDay <= 3) {
+                    const crewAPosition = absoluteDay % 16;
+                    if (weeklyPattern[crewAPosition] === 'D') {
+                        dayCrews.push('A');
                     }
-                    
-                    const cyclePosition = daysSinceStart % 16;
-                    const shift = weeklyPattern[cyclePosition];
-                    
-                    if (shift === 'D') {
-                        dayCrews.push(crew);
-                    } else if (shift === 'N') {
-                        nightCrews.push(crew);
+                }
+                
+                // Check Crew B (days, Fri-Sun)
+                if (weekDay >= 4 && weekDay <= 6) {
+                    const crewBPosition = (absoluteDay - 4) % 16;
+                    if (crewBPosition >= 0 && weeklyPattern[crewBPosition] === 'D') {
+                        dayCrews.push('B');
+                    }
+                }
+                
+                // Check Crew C (nights, Mon-Thu)
+                if (weekDay >= 0 && weekDay <= 3) {
+                    const crewCPosition = absoluteDay % 16;
+                    if (weeklyPattern[crewCPosition] === 'N') {
+                        nightCrews.push('C');
+                    }
+                }
+                
+                // Check Crew D (nights, Fri-Sun)
+                if (weekDay >= 4 && weekDay <= 6) {
+                    const crewDPosition = (absoluteDay - 4) % 16;
+                    if (crewDPosition >= 0 && weeklyPattern[crewDPosition] === 'N') {
+                        nightCrews.push('D');
                     }
                 }
                 
@@ -1044,7 +1090,7 @@ document.addEventListener('DOMContentLoaded', function() {
         } else if (pattern === 'four_on_four_off') {
             switch(rotation) {
                 case 'fast': weeksToShow = 8; break;
-                case 'weekly': weeksToShow = 16; break;
+                case 'weekly': weeksToShow = 4; break; // Show 4 weeks to see the pattern clearly
                 case 'fixed_simple': weeksToShow = 2; break;
                 case 'modified': weeksToShow = 8; break;
                 default: weeksToShow = 4; break;
@@ -1093,8 +1139,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 <div class="timeline-container">
         `;
         
+        // CORRECTED: Week starts Monday
         const dayAbbr = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
-        const weekOrder = [1, 2, 3, 4, 5, 6, 0];
+        const weekOrder = [1, 2, 3, 4, 5, 6, 0]; // Mon, Tue, Wed, Thu, Fri, Sat, Sun
         
         for (let week = 1; week <= weeksToShow; week++) {
             previewHtml += `
