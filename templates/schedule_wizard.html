@@ -1,12 +1,11 @@
 {# templates/schedule_wizard.html #}
-{# Schedule Pattern Wizard - COMPLETE FILE #}
-{# Last Modified: 2025-10-08 - FIXED to show all crews and start on Monday #}
+{# Schedule Pattern Wizard - COMPLETE CORRECT FILE #}
+{# Last Modified: 2025-10-08 - FIXED to show all crews working each day #}
 {# Change Log: #}
-{#   2025-10-08: FIXED preview to show all crews working (not just Crew A) #}
+{#   2025-10-08: FIXED preview to correctly aggregate and display all crews per day #}
 {#   2025-10-08: FIXED week to start Monday instead of Sunday #}
 {#   2025-10-08: FIXED to always display both DAY and NIGHT shifts #}
-{#   2025-10-08: Previous - 4-on-4-off weekly uses correct 16-day cycle #}
-{#   2025-10-08: Previous - Wired Create Schedule button to API #}
+{#   2025-10-08: 4-on-4-off weekly uses correct 16-day cycle with proper crew offsets #}
 
 {% extends "base.html" %}
 {% block title %}{{ pattern_config.name }} Schedule Pattern{% endblock %}
@@ -472,7 +471,6 @@
 // ===== MODAL AND CREATE FUNCTIONS - MUST BE FIRST =====
 
 function showScheduleCreationModal(config) {
-    // Create modal HTML
     const modalHtml = `
         <div class="modal fade" id="scheduleCreationModal" tabindex="-1">
             <div class="modal-dialog">
@@ -543,20 +541,16 @@ function showScheduleCreationModal(config) {
         </div>
     `;
     
-    // Remove existing modal if present
     const existingModal = document.getElementById('scheduleCreationModal');
     if (existingModal) {
         existingModal.remove();
     }
     
-    // Add modal to page
     document.body.insertAdjacentHTML('beforeend', modalHtml);
     
-    // Show modal
     const modal = new bootstrap.Modal(document.getElementById('scheduleCreationModal'));
     modal.show();
     
-    // Wire up confirm button
     document.getElementById('confirmCreateBtn').addEventListener('click', function() {
         createScheduleNow(config, modal);
     });
@@ -570,20 +564,17 @@ function createScheduleNow(config, modal) {
     const progressDiv = document.getElementById('creationProgress');
     const errorDiv = document.getElementById('creationError');
     
-    // Validate
     if (!startDateInput.value) {
         errorDiv.textContent = 'Please select a start date';
         errorDiv.style.display = 'block';
         return;
     }
     
-    // Calculate end date
     const startDate = new Date(startDateInput.value);
     const weeks = parseInt(weeksSelect.value);
     const endDate = new Date(startDate);
     endDate.setDate(endDate.getDate() + (weeks * 7) - 1);
     
-    // Disable form
     startDateInput.disabled = true;
     weeksSelect.disabled = true;
     replaceCheckbox.disabled = true;
@@ -591,7 +582,6 @@ function createScheduleNow(config, modal) {
     progressDiv.style.display = 'block';
     errorDiv.style.display = 'none';
     
-    // Prepare request
     const requestData = {
         pattern: config.pattern,
         variation: config.rotation,
@@ -602,7 +592,6 @@ function createScheduleNow(config, modal) {
     
     console.log('Creating schedule:', requestData);
     
-    // Call API
     fetch('/schedule/api/create-pattern', {
         method: 'POST',
         headers: {
@@ -613,7 +602,6 @@ function createScheduleNow(config, modal) {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            // Success!
             progressDiv.innerHTML = `
                 <div class="alert alert-success">
                     <i class="bi bi-check-circle"></i> 
@@ -623,17 +611,14 @@ function createScheduleNow(config, modal) {
                 </div>
             `;
             
-            // Redirect after 2 seconds
             setTimeout(() => {
                 window.location.href = data.redirect;
             }, 2000);
         } else {
-            // Error
             progressDiv.style.display = 'none';
             errorDiv.textContent = data.error || 'Unknown error occurred';
             errorDiv.style.display = 'block';
             
-            // Re-enable form
             startDateInput.disabled = false;
             weeksSelect.disabled = false;
             replaceCheckbox.disabled = false;
@@ -646,7 +631,6 @@ function createScheduleNow(config, modal) {
         errorDiv.textContent = 'Network error: ' + error.message;
         errorDiv.style.display = 'block';
         
-        // Re-enable form
         startDateInput.disabled = false;
         weeksSelect.disabled = false;
         replaceCheckbox.disabled = false;
@@ -721,24 +705,13 @@ document.addEventListener('DOMContentLoaded', function() {
             cssClass: 'shift-off'
         };
         
-        // Normalize pattern name
         let normalizedPattern = pattern.toLowerCase().replace(/_/g, '').replace(/-/g, '').replace(/\s+/g, '');
         
-        // Special handling for four_on_four_off rotations
         if ((pattern === 'four_on_four_off' || normalizedPattern === 'fouronfourooff')) {
             
             if (rotation === 'fixed_simple') {
-                // Fixed Simple: 8-day cycle - A&B work days only, C&D work nights only
-                // Pattern: 4 shifts, 4 off
                 const eightDayPattern = ['X', 'X', 'X', 'X', 'O', 'O', 'O', 'O'];
-                
-                // Crew offsets for staggered start
-                const crewOffsets = {
-                    'A': 0,
-                    'B': 4,
-                    'C': 0,
-                    'D': 4
-                };
+                const crewOffsets = {'A': 0, 'B': 4, 'C': 0, 'D': 4};
                 
                 let dayCrews = [];
                 let nightCrews = [];
@@ -771,7 +744,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 return assignment;
             }
             else if (rotation === 'modified') {
-                // Modified: 4-on-4-off with weekend optimization
                 const modifiedPattern = [
                     'O', 'X', 'X', 'X', 'X', 'O', 'O',
                     'O', 'O', 'X', 'X', 'X', 'X', 'O',
@@ -783,12 +755,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     'X', 'X', 'X', 'X', 'O', 'O', 'O'
                 ];
                 
-                const crewOffsets = {
-                    'A': 0,
-                    'B': 28,
-                    'C': 0,
-                    'D': 28
-                };
+                const crewOffsets = {'A': 0, 'B': 28, 'C': 0, 'D': 28};
                 
                 let dayCrews = [];
                 let nightCrews = [];
@@ -821,15 +788,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 return assignment;
             }
             else if (rotation === 'fast') {
-                // Fast Rotation: 8-day cycle - 2 Days, 2 Nights, 4 Off
                 const eightDayPattern = ['D', 'D', 'N', 'N', 'O', 'O', 'O', 'O'];
-                
-                const crewOffsets = {
-                    'A': 0,
-                    'B': 14,
-                    'C': 28,
-                    'D': 42
-                };
+                const crewOffsets = {'A': 0, 'B': 14, 'C': 28, 'D': 42};
                 
                 let dayCrews = [];
                 let nightCrews = [];
@@ -861,39 +821,31 @@ document.addEventListener('DOMContentLoaded', function() {
                 return assignment;
             }
             else if (rotation === 'weekly') {
-                // ===== CORRECTED 4-on-4-off WEEKLY ROTATION =====
-                // Simple 16-day cycle: 4D, 4Off, 4N, 4Off
-                
                 const weeklyPattern = [
-                    'D', 'D', 'D', 'D',  // Days 0-3: Work days
-                    'O', 'O', 'O', 'O',  // Days 4-7: Off
-                    'N', 'N', 'N', 'N',  // Days 8-11: Work nights
-                    'O', 'O', 'O', 'O'   // Days 12-15: Off
+                    'D', 'D', 'D', 'D',  
+                    'O', 'O', 'O', 'O',  
+                    'N', 'N', 'N', 'N',  
+                    'O', 'O', 'O', 'O'   
                 ];
                 
-                // Crew offsets: Each crew starts 4 weeks (28 days) after the previous
                 const crewOffsets = {
-                    'A': 0,    // Starts Week 1 (day 0)
-                    'B': 28,   // Starts Week 5 (day 28) 
-                    'C': 56,   // Starts Week 9 (day 56)
-                    'D': 84    // Starts Week 13 (day 84)
+                    'A': 0,    
+                    'B': 28,   
+                    'C': 56,   
+                    'D': 84    
                 };
                 
                 let dayCrews = [];
                 let nightCrews = [];
                 
                 for (const [crew, startOffset] of Object.entries(crewOffsets)) {
-                    // Calculate days since this crew's start in the pattern
                     const daysSinceStart = dayOfCycle - startOffset;
                     
-                    // If before this crew's start, skip
                     if (daysSinceStart < 0) {
                         continue;
                     }
                     
-                    // Map to position in 16-day cycle
                     const cyclePosition = daysSinceStart % 16;
-                    
                     const shift = weeklyPattern[cyclePosition];
                     
                     if (shift === 'D') {
@@ -919,7 +871,6 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
         
-        // Handle other patterns (Pitman, DuPont, etc.)
         switch(normalizedPattern) {
             case 'pitman':
                 const pitmanBase = [
@@ -1009,12 +960,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     'O', 'N', 'N', 'N', 'O', 'O', 'N'
                 ];
                 
-                const dupontOffsets = {
-                    'A': 0,
-                    'B': 21,
-                    'C': 14,
-                    'D': 7
-                };
+                const dupontOffsets = {'A': 0, 'B': 21, 'C': 14, 'D': 7};
                 
                 let dupontDayCrews = [];
                 let dupontNightCrews = [];
@@ -1147,9 +1093,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 <div class="timeline-container">
         `;
         
-        // ===== FIXED: Start week on Monday (day index 1) instead of Sunday (0) =====
         const dayAbbr = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
-        const weekOrder = [1, 2, 3, 4, 5, 6, 0]; // Monday through Sunday
+        const weekOrder = [1, 2, 3, 4, 5, 6, 0];
         
         for (let week = 1; week <= weeksToShow; week++) {
             previewHtml += `
@@ -1162,9 +1107,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     <div class="days-grid">
             `;
             
-            // ===== FIXED: Loop through days Mon-Sun instead of Sun-Sat =====
             for (let dayIdx of weekOrder) {
-                // ===== FIXED: Get assignments for ALL crews for this day =====
                 const assignment = generateCrewAssignment(pattern, week, dayIdx, rotation);
                 
                 let dayCrews = [];
@@ -1188,8 +1131,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         <div class="day-label ${isWeekend ? 'weekend' : ''}">${dayAbbr[dayIdx]}</div>
                 `;
                 
-                // ===== FIXED: ALWAYS show both day and night shifts =====
-                // Day shift
                 if (dayCrews.length > 0) {
                     previewHtml += `
                         <div class="shift-block shift-day">
@@ -1206,7 +1147,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     `;
                 }
                 
-                // Night shift
                 if (nightCrews.length > 0) {
                     previewHtml += `
                         <div class="shift-block shift-night">
@@ -1373,7 +1313,6 @@ document.addEventListener('DOMContentLoaded', function() {
             setTimeout(generateSchedulePreview, 100);
         }
         
-        // ===== WIRE CREATE SCHEDULE BUTTON =====
         const createBtn = document.getElementById('createScheduleBtn');
         if (createBtn) {
             createBtn.addEventListener('click', function() {
@@ -1392,7 +1331,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     return;
                 }
                 
-                // Show modal for date selection
                 showScheduleCreationModal(config);
             });
         }
