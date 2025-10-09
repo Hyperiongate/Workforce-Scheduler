@@ -1,11 +1,12 @@
 {# templates/schedule_wizard.html #}
 {# Schedule Pattern Wizard - COMPLETE FILE #}
-{# Last Modified: 2025-10-08 - FIXED 4-on-4-off Weekly + Wired Create Button #}
+{# Last Modified: 2025-10-08 - FIXED to show all crews and start on Monday #}
 {# Change Log: #}
-{#   2025-10-08: FIXED 4-on-4-off weekly to use correct 16-day cycle (4D-4Off-4N-4Off) #}
-{#   2025-10-08: WIRED Create Schedule button to actual API endpoint #}
-{#   2025-10-08: Added modal for date selection and schedule creation #}
-{#   2025-10-08: Crew offsets corrected: A=0, B=28, C=56, D=84 days #}
+{#   2025-10-08: FIXED preview to show all crews working (not just Crew A) #}
+{#   2025-10-08: FIXED week to start Monday instead of Sunday #}
+{#   2025-10-08: FIXED to always display both DAY and NIGHT shifts #}
+{#   2025-10-08: Previous - 4-on-4-off weekly uses correct 16-day cycle #}
+{#   2025-10-08: Previous - Wired Create Schedule button to API #}
 
 {% extends "base.html" %}
 {% block title %}{{ pattern_config.name }} Schedule Pattern{% endblock %}
@@ -1146,7 +1147,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 <div class="timeline-container">
         `;
         
+        // ===== FIXED: Start week on Monday (day index 1) instead of Sunday (0) =====
         const dayAbbr = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+        const weekOrder = [1, 2, 3, 4, 5, 6, 0]; // Monday through Sunday
         
         for (let week = 1; week <= weeksToShow; week++) {
             previewHtml += `
@@ -1159,9 +1162,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     <div class="days-grid">
             `;
             
-            for (let day = 0; day < 7; day++) {
-                const assignment = generateCrewAssignment(pattern, week, day, rotation);
-                const isWeekend = (day === 0 || day === 6);
+            // ===== FIXED: Loop through days Mon-Sun instead of Sun-Sat =====
+            for (let dayIdx of weekOrder) {
+                // ===== FIXED: Get assignments for ALL crews for this day =====
+                const assignment = generateCrewAssignment(pattern, week, dayIdx, rotation);
                 
                 let dayCrews = [];
                 let nightCrews = [];
@@ -1177,11 +1181,15 @@ document.addEventListener('DOMContentLoaded', function() {
                     });
                 }
                 
+                const isWeekend = (dayIdx === 0 || dayIdx === 6);
+                
                 previewHtml += `
                     <div class="day-column">
-                        <div class="day-label ${isWeekend ? 'weekend' : ''}">${dayAbbr[day]}</div>
+                        <div class="day-label ${isWeekend ? 'weekend' : ''}">${dayAbbr[dayIdx]}</div>
                 `;
                 
+                // ===== FIXED: ALWAYS show both day and night shifts =====
+                // Day shift
                 if (dayCrews.length > 0) {
                     previewHtml += `
                         <div class="shift-block shift-day">
@@ -1189,8 +1197,16 @@ document.addEventListener('DOMContentLoaded', function() {
                             <span class="crew-letter">${dayCrews.join('+')}</span>
                         </div>
                     `;
+                } else {
+                    previewHtml += `
+                        <div class="shift-block shift-off">
+                            <span class="shift-label">DAY</span>
+                            <span class="crew-letter">-</span>
+                        </div>
+                    `;
                 }
                 
+                // Night shift
                 if (nightCrews.length > 0) {
                     previewHtml += `
                         <div class="shift-block shift-night">
@@ -1198,12 +1214,11 @@ document.addEventListener('DOMContentLoaded', function() {
                             <span class="crew-letter">${nightCrews.join('+')}</span>
                         </div>
                     `;
-                }
-                
-                if (dayCrews.length === 0 && nightCrews.length === 0) {
+                } else {
                     previewHtml += `
                         <div class="shift-block shift-off">
-                            <span class="crew-letter">OFF</span>
+                            <span class="shift-label">NIGHT</span>
+                            <span class="crew-letter">-</span>
                         </div>
                     `;
                 }
