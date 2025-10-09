@@ -1,12 +1,11 @@
 {# templates/schedule_wizard.html #}
 {# Schedule Pattern Wizard - COMPLETE CORRECT FILE #}
-{# Last Modified: 2025-10-09 - FIXED 4-on-4-off Weekly Rotation Pattern #}
+{# Last Modified: 2025-10-09 - FINAL FIX with complete 16-week pattern from user table #}
 {# Change Log: #}
-{#   2025-10-09: CORRECTED 4-on-4-off weekly to match user requirements #}
-{#               - Week starts Monday (not Sunday) #}
-{#               - Mon-Thu: Crew A (days) + C (nights) #}
-{#               - Fri-Sun: Crew B (days) + D (nights) #}
-{#               - Each crew: 4 on, 4 off, alternating days/nights #}
+{#   2025-10-09: FINAL CORRECTION - Implemented complete 16-week pattern from user's table #}
+{#               - 112-day cycle (16 weeks * 7 days) #}
+{#               - Week starts Monday #}
+{#               - Each crew has unique pattern following 4-on-4-off with shift rotation #}
 {#   2025-10-08: Fixed preview to correctly aggregate and display all crews per day #}
 {#   2025-10-08: Fixed to always display both DAY and NIGHT shifts #}
 
@@ -114,7 +113,7 @@
                             </select>
                             <div class="form-text mt-2">
                                 <small><strong>Fast:</strong> All crews rotate, 8-day cycle with 2 day, 2 night, 4 off</small><br>
-                                <small><strong>Weekly:</strong> Crews alternate days/nights every 4 days (Mon-Thu: A+C, Fri-Sun: B+D)</small><br>
+                                <small><strong>Weekly:</strong> 16-week cycle, crews rotate days/nights after each 4-day set</small><br>
                                 <small><strong>Fixed:</strong> A&B work days only, C&D work nights only (8-day cycle)</small><br>
                                 <small><strong>Modified:</strong> 4-on-4-off with weekend swaps to eliminate split weekends</small>
                             </div>
@@ -641,6 +640,161 @@ function createScheduleNow(config, modal) {
     });
 }
 
+// ===== BUILD 16-WEEK PATTERN FUNCTION =====
+
+function build16WeekPatterns() {
+    // Complete 16-week pattern (112 days) for each crew based on user's table
+    // Format: 'D' = Day shift, 'N' = Night shift, 'O' = Off
+    // Each array is ordered Monday-Sunday for each week
+    
+    const crewAPattern = [
+        // Week 1: Mon-Thu D, Fri-Sun O
+        'D', 'D', 'D', 'D', 'O', 'O', 'O',
+        // Week 2: Mon O, Tue-Fri N, Sat-Sun O
+        'O', 'N', 'N', 'N', 'N', 'O', 'O',
+        // Week 3: Mon-Tue O, Wed-Sat D, Sun O
+        'O', 'O', 'D', 'D', 'D', 'D', 'O',
+        // Week 4: Mon-Wed O, Thu-Sun N
+        'O', 'O', 'O', 'N', 'N', 'N', 'N',
+        // Week 5: Mon O, Tue-Fri D, Sat-Sun O
+        'O', 'D', 'D', 'D', 'D', 'O', 'O',
+        // Week 6: Mon-Tue O, Wed-Sat N, Sun O
+        'O', 'O', 'N', 'N', 'N', 'N', 'O',
+        // Week 7: Mon-Wed O, Thu-Sun D
+        'O', 'O', 'O', 'D', 'D', 'D', 'D',
+        // Week 8: Mon O, Tue-Fri N, Sat-Sun O
+        'O', 'N', 'N', 'N', 'N', 'O', 'O',
+        // Week 9: Mon-Tue O, Wed-Sat D, Sun O
+        'O', 'O', 'D', 'D', 'D', 'D', 'O',
+        // Week 10: Mon-Wed O, Thu-Sun N
+        'O', 'O', 'O', 'N', 'N', 'N', 'N',
+        // Week 11: Mon O, Tue-Fri D, Sat-Sun O
+        'O', 'D', 'D', 'D', 'D', 'O', 'O',
+        // Week 12: Mon-Tue O, Wed-Sat N, Sun O
+        'O', 'O', 'N', 'N', 'N', 'N', 'O',
+        // Week 13: Mon-Wed O, Thu-Sun D
+        'O', 'O', 'O', 'D', 'D', 'D', 'D',
+        // Week 14: Mon O, Tue-Fri N, Sat-Sun O
+        'O', 'N', 'N', 'N', 'N', 'O', 'O',
+        // Week 15: Mon-Tue O, Wed-Sat D, Sun O
+        'O', 'O', 'D', 'D', 'D', 'D', 'O',
+        // Week 16: Mon-Wed O, Thu-Sun N
+        'O', 'O', 'O', 'N', 'N', 'N', 'N'
+    ];
+    
+    const crewBPattern = [
+        // Week 1: Mon-Thu O, Fri-Sun D, Mon(wk2) D
+        'O', 'O', 'O', 'O', 'D', 'D', 'D',
+        // Week 2: Mon D, Tue-Fri O, Sat-Sun N, Mon(wk3) N
+        'D', 'O', 'O', 'O', 'O', 'N', 'N',
+        // Week 3: Mon N, Tue-Fri N, Sat-Sun O
+        'N', 'N', 'O', 'O', 'O', 'O', 'D',
+        // Week 4: Mon-Wed D, Thu-Sun O
+        'D', 'D', 'D', 'O', 'O', 'O', 'O',
+        // Week 5: Mon N, Tue-Fri O, Sat-Sun D, Mon(wk6) D
+        'N', 'O', 'O', 'O', 'O', 'D', 'D',
+        // Week 6: Mon D, Tue D, Wed-Sat O, Sun N
+        'D', 'D', 'O', 'O', 'O', 'O', 'N',
+        // Week 7: Mon-Wed N, Thu-Sun O
+        'N', 'N', 'N', 'O', 'O', 'O', 'O',
+        // Week 8: Mon D, Tue-Fri O, Sat-Sun N, Mon(wk9) N
+        'D', 'O', 'O', 'O', 'O', 'N', 'N',
+        // Week 9: Mon N, Tue N, Wed-Sat O, Sun D
+        'N', 'N', 'O', 'O', 'O', 'O', 'D',
+        // Week 10: Mon-Wed D, Thu-Sun O
+        'D', 'D', 'D', 'O', 'O', 'O', 'O',
+        // Week 11: Mon N, Tue-Fri O, Sat-Sun D, Mon(wk12) D
+        'N', 'O', 'O', 'O', 'O', 'D', 'D',
+        // Week 12: Mon D, Tue D, Wed-Sat O, Sun N
+        'D', 'D', 'O', 'O', 'O', 'O', 'N',
+        // Week 13: Mon-Wed N, Thu-Sun O
+        'N', 'N', 'N', 'O', 'O', 'O', 'O',
+        // Week 14: Mon D, Tue-Fri O, Sat-Sun N, Mon(wk15) N
+        'D', 'O', 'O', 'O', 'O', 'N', 'N',
+        // Week 15: Mon N, Tue N, Wed-Sat O, Sun D
+        'N', 'N', 'O', 'O', 'O', 'O', 'D',
+        // Week 16: Mon-Wed D, Thu-Sun O
+        'D', 'D', 'D', 'O', 'O', 'O', 'O'
+    ];
+    
+    const crewCPattern = [
+        // Week 1: Mon-Thu N, Fri-Sun O
+        'N', 'N', 'N', 'N', 'O', 'O', 'O',
+        // Week 2: Mon O, Tue-Fri D, Sat-Sun O
+        'O', 'D', 'D', 'D', 'D', 'O', 'O',
+        // Week 3: Mon-Tue O, Wed-Sat N, Sun O
+        'O', 'O', 'N', 'N', 'N', 'N', 'O',
+        // Week 4: Mon-Wed O, Thu-Sun D
+        'O', 'O', 'O', 'D', 'D', 'D', 'D',
+        // Week 5: Mon O, Tue-Fri N, Sat-Sun O
+        'O', 'N', 'N', 'N', 'N', 'O', 'O',
+        // Week 6: Mon-Tue O, Wed-Sat D, Sun O
+        'O', 'O', 'D', 'D', 'D', 'D', 'O',
+        // Week 7: Mon-Wed O, Thu-Sun N
+        'O', 'O', 'O', 'N', 'N', 'N', 'N',
+        // Week 8: Mon O, Tue-Fri D, Sat-Sun O
+        'O', 'D', 'D', 'D', 'D', 'O', 'O',
+        // Week 9: Mon-Tue O, Wed-Sat N, Sun O
+        'O', 'O', 'N', 'N', 'N', 'N', 'O',
+        // Week 10: Mon-Wed O, Thu-Sun D
+        'O', 'O', 'O', 'D', 'D', 'D', 'D',
+        // Week 11: Mon O, Tue-Fri N, Sat-Sun O
+        'O', 'N', 'N', 'N', 'N', 'O', 'O',
+        // Week 12: Mon-Tue O, Wed-Sat D, Sun O
+        'O', 'O', 'D', 'D', 'D', 'D', 'O',
+        // Week 13: Mon-Wed O, Thu-Sun N
+        'O', 'O', 'O', 'N', 'N', 'N', 'N',
+        // Week 14: Mon O, Tue-Fri D, Sat-Sun O
+        'O', 'D', 'D', 'D', 'D', 'O', 'O',
+        // Week 15: Mon-Tue O, Wed-Sat N, Sun O
+        'O', 'O', 'N', 'N', 'N', 'N', 'O',
+        // Week 16: Mon-Wed O, Thu-Sun D
+        'O', 'O', 'O', 'D', 'D', 'D', 'D'
+    ];
+    
+    const crewDPattern = [
+        // Week 1: Mon-Thu O, Fri-Sun N, Mon(wk2) N
+        'O', 'O', 'O', 'O', 'N', 'N', 'N',
+        // Week 2: Mon N, Tue-Fri O, Sat-Sun D, Mon(wk3) D
+        'N', 'O', 'O', 'O', 'O', 'D', 'D',
+        // Week 3: Mon D, Tue D, Wed-Sat O, Sun N
+        'D', 'D', 'O', 'O', 'O', 'O', 'N',
+        // Week 4: Mon-Wed N, Thu-Sun O
+        'N', 'N', 'N', 'O', 'O', 'O', 'O',
+        // Week 5: Mon D, Tue-Fri O, Sat-Sun N, Mon(wk6) N
+        'D', 'O', 'O', 'O', 'O', 'N', 'N',
+        // Week 6: Mon N, Tue N, Wed-Sat O, Sun D
+        'N', 'N', 'O', 'O', 'O', 'O', 'D',
+        // Week 7: Mon-Wed D, Thu-Sun O
+        'D', 'D', 'D', 'O', 'O', 'O', 'O',
+        // Week 8: Mon N, Tue-Fri O, Sat-Sun D, Mon(wk9) D
+        'N', 'O', 'O', 'O', 'O', 'D', 'D',
+        // Week 9: Mon D, Tue D, Wed-Sat O, Sun N
+        'D', 'D', 'O', 'O', 'O', 'O', 'N',
+        // Week 10: Mon-Wed N, Thu-Sun O
+        'N', 'N', 'N', 'O', 'O', 'O', 'O',
+        // Week 11: Mon D, Tue-Fri O, Sat-Sun N, Mon(wk12) N
+        'D', 'O', 'O', 'O', 'O', 'N', 'N',
+        // Week 12: Mon N, Tue N, Wed-Sat O, Sun D
+        'N', 'N', 'O', 'O', 'O', 'O', 'D',
+        // Week 13: Mon-Wed D, Thu-Sun O
+        'D', 'D', 'D', 'O', 'O', 'O', 'O',
+        // Week 14: Mon N, Tue-Fri O, Sat-Sun D, Mon(wk15) D
+        'N', 'O', 'O', 'O', 'O', 'D', 'D',
+        // Week 15: Mon D, Tue D, Wed-Sat O, Sun N
+        'D', 'D', 'O', 'O', 'O', 'O', 'N',
+        // Week 16: Mon-Wed N, Thu-Sun O
+        'N', 'N', 'N', 'O', 'O', 'O', 'O'
+    ];
+    
+    return {
+        'A': crewAPattern,
+        'B': crewBPattern,
+        'C': crewCPattern,
+        'D': crewDPattern
+    };
+}
+
 // ===== MAIN SCRIPT STARTS HERE =====
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -681,13 +835,13 @@ document.addEventListener('DOMContentLoaded', function() {
             explanation: 'Southern Swing: Rotate through days→evenings→nights over 4 weeks.'
         },
         'four_on_four_off': {
-            cycle: '16 days per crew',
+            cycle: '112 days (16 weeks)',
             avgHours: '42 hours/week',
             maxConsecutive: '4 days per shift type',
-            weekendsOff: 'Varies by rotation',
-            advantages: ['Simple 4 on, 4 off pattern', 'Good recovery time', 'Predictable schedule', 'Automatic shift rotation built-in'],
-            considerations: ['Shifts alternate after each 4-day break', 'Coverage splits at Thursday/Friday boundary', '16-week cycle for full rotation'],
-            explanation: '4-on-4-off Weekly: Each crew works 4 days, then off 4 days, alternating between day and night shifts. Mon-Thu: Crews A (days) + C (nights). Fri-Sun: Crews B (days) + D (nights).'
+            weekendsOff: 'Varies throughout cycle',
+            advantages: ['4 on, 4 off pattern', 'Good recovery time', 'Automatic shift rotation', 'Balanced days and nights'],
+            considerations: ['16-week cycle to complete full rotation', 'Complex pattern across weeks', 'Shift changes after each 4-day set'],
+            explanation: '4-on-4-off Weekly: 16-week cycle where crews work 4 days, off 4 days, alternating between day and night shifts. Crews stagger to maintain 24/7 coverage.'
         },
         'three_on_three_off': {
             cycle: '6 days',
@@ -702,7 +856,6 @@ document.addEventListener('DOMContentLoaded', function() {
     
     function generateCrewAssignment(pattern, week, day, rotation) {
         // day: 0=Sunday, 1=Monday, 2=Tuesday, 3=Wednesday, 4=Thursday, 5=Friday, 6=Saturday
-        // But we want week to START on Monday, so we'll adjust
         const dayOfCycle = (week - 1) * 7 + day;
         
         let assignment = {
@@ -827,19 +980,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 return assignment;
             }
             else if (rotation === 'weekly') {
-                // CORRECTED 4-on-4-off Weekly Pattern
-                // 16-day cycle: 4 Days, 4 Off, 4 Nights, 4 Off
-                // Pattern: Mon-Thu: Crew A (days) + C (nights)
-                //          Fri-Sun: Crew B (days) + D (nights)
+                // CORRECTED: Use the complete 16-week pattern from user's table
+                const patterns = build16WeekPatterns();
                 
-                // Convert day index to match Monday start (day 1 = Monday)
-                // day: 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat
-                // We need: 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat, 0=Sun
-                
-                let dayCrews = [];
-                let nightCrews = [];
-                
-                // Determine which day of week (Mon=0, Tue=1, Wed=2, Thu=3, Fri=4, Sat=5, Sun=6)
+                // Convert day index to Monday-start week day
                 let weekDay;
                 if (day === 0) {
                     weekDay = 6; // Sunday is last day of week
@@ -847,57 +991,20 @@ document.addEventListener('DOMContentLoaded', function() {
                     weekDay = day - 1; // Mon=0, Tue=1, etc.
                 }
                 
-                // Mon-Thu (weekDay 0-3): Crew A on days, Crew C on nights
-                // Fri-Sun (weekDay 4-6): Crew B on days, Crew D on nights
-                
-                // But we need to check if each crew is on their 4-on or 4-off part of cycle
-                // Crew A: Starts day 0 (Monday Week 1)
-                // Pattern: Days 0-3 (4D), Days 4-7 (4Off), Days 8-11 (4N), Days 12-15 (4Off), repeat
-                
-                const weeklyPattern = [
-                    'D', 'D', 'D', 'D',  // Days 0-3: Work days
-                    'O', 'O', 'O', 'O',  // Days 4-7: Off
-                    'N', 'N', 'N', 'N',  // Days 8-11: Work nights
-                    'O', 'O', 'O', 'O'   // Days 12-15: Off
-                ];
-                
-                // Crew A: Starts on day 0 (Monday Week 1) - covers Mon-Thu
-                // Crew B: Starts on day 4 (Friday Week 1) - covers Fri-Sun
-                // Crew C: Starts on day 0 (Monday Week 1) - covers Mon-Thu nights
-                // Crew D: Starts on day 4 (Friday Week 1) - covers Fri-Sun nights
-                
-                // Calculate absolute day number from start of schedule
+                // Calculate absolute day in 16-week cycle (112 days)
                 const absoluteDay = (week - 1) * 7 + weekDay;
+                const cycleDay = absoluteDay % 112; // 16 weeks * 7 days = 112
                 
-                // Check Crew A (days, Mon-Thu)
-                if (weekDay >= 0 && weekDay <= 3) {
-                    const crewAPosition = absoluteDay % 16;
-                    if (weeklyPattern[crewAPosition] === 'D') {
-                        dayCrews.push('A');
-                    }
-                }
+                let dayCrews = [];
+                let nightCrews = [];
                 
-                // Check Crew B (days, Fri-Sun)
-                if (weekDay >= 4 && weekDay <= 6) {
-                    const crewBPosition = (absoluteDay - 4) % 16;
-                    if (crewBPosition >= 0 && weeklyPattern[crewBPosition] === 'D') {
-                        dayCrews.push('B');
-                    }
-                }
-                
-                // Check Crew C (nights, Mon-Thu)
-                if (weekDay >= 0 && weekDay <= 3) {
-                    const crewCPosition = absoluteDay % 16;
-                    if (weeklyPattern[crewCPosition] === 'N') {
-                        nightCrews.push('C');
-                    }
-                }
-                
-                // Check Crew D (nights, Fri-Sun)
-                if (weekDay >= 4 && weekDay <= 6) {
-                    const crewDPosition = (absoluteDay - 4) % 16;
-                    if (crewDPosition >= 0 && weeklyPattern[crewDPosition] === 'N') {
-                        nightCrews.push('D');
+                // Check each crew's pattern at this cycle day
+                for (const [crew, pattern] of Object.entries(patterns)) {
+                    const shift = pattern[cycleDay];
+                    if (shift === 'D') {
+                        dayCrews.push(crew);
+                    } else if (shift === 'N') {
+                        nightCrews.push(crew);
                     }
                 }
                 
@@ -1090,7 +1197,7 @@ document.addEventListener('DOMContentLoaded', function() {
         } else if (pattern === 'four_on_four_off') {
             switch(rotation) {
                 case 'fast': weeksToShow = 8; break;
-                case 'weekly': weeksToShow = 4; break; // Show 4 weeks to see the pattern clearly
+                case 'weekly': weeksToShow = 16; break; // Show full 16-week cycle
                 case 'fixed_simple': weeksToShow = 2; break;
                 case 'modified': weeksToShow = 8; break;
                 default: weeksToShow = 4; break;
@@ -1139,7 +1246,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 <div class="timeline-container">
         `;
         
-        // CORRECTED: Week starts Monday
+        // Week starts Monday
         const dayAbbr = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
         const weekOrder = [1, 2, 3, 4, 5, 6, 0]; // Mon, Tue, Wed, Thu, Fri, Sat, Sun
         
