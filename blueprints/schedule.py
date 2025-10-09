@@ -1,6 +1,6 @@
 # blueprints/schedule.py
-# COMPLETE FILE - DuPont Fixed Option Removed
-# Last Updated: October 1, 2025
+# COMPLETE FILE - Pattern Generation Now Working
+# Last Updated: 2025-10-08
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, current_app
 from flask_login import login_required, current_user
@@ -118,139 +118,6 @@ def schedule_wizard(pattern):
                 'allows_rotating': False,
                 'rotation_options': []
             },
-            'pitman_fixed': {
-                'name': 'Fixed Pitman',
-                'shift_hours': 12,
-                'allows_fixed': True,
-                'allows_rotating': False,
-                'rotation_options': []
-            },
-            'pitman_rapid': {
-                'name': 'Rapid Rotation Pitman',
-                'shift_hours': 12,
-                'allows_fixed': False,
-                'allows_rotating': True,
-                'rotation_options': ['Rapid Rotation']
-            },
-            'pitman_2week': {
-                'name': '2-Week Rotation Pitman',
-                'shift_hours': 12,
-                'allows_fixed': False,
-                'allows_rotating': True,
-                'rotation_options': ['2-Week Rotation']
-            },
-            'pitman_4week': {
-                'name': '4-Week Rotation Pitman',
-                'shift_hours': 12,
-                'allows_fixed': False,
-                'allows_rotating': True,
-                'rotation_options': ['4-Week Rotation']
-            },
-            'four_on_four_off_fixed': {
-                'name': 'Fixed 4-on-4-off',
-                'shift_hours': 12,
-                'allows_fixed': True,
-                'allows_rotating': False,
-                'rotation_options': []
-            },
-            'four_on_four_off_modified': {
-                'name': 'Modified 4-on-4-off',
-                'shift_hours': 12,
-                'allows_fixed': True,
-                'allows_rotating': True,
-                'rotation_options': ['Modified for Full Weekends']
-            },
-            'four_on_four_off_fast': {
-                'name': 'Fast Rotation 4-on-4-off',
-                'shift_hours': 12,
-                'allows_fixed': False,
-                'allows_rotating': True,
-                'rotation_options': ['Fast Rotation']
-            },
-            'four_on_four_off_weekly': {
-                'name': 'Weekly Rotation 4-on-4-off',
-                'shift_hours': 12,
-                'allows_fixed': False,
-                'allows_rotating': True,
-                'rotation_options': ['Weekly Rotation']
-            },
-            'three_on_three_off': {
-                'name': 'Basic 3-on-3-off',
-                'shift_hours': 12,
-                'allows_fixed': True,
-                'allows_rotating': True,
-                'rotation_options': ['Standard']
-            },
-            'three_on_three_off_fixed': {
-                'name': 'Fixed Complex 3-on-3-off',
-                'shift_hours': 12,
-                'allows_fixed': True,
-                'allows_rotating': False,
-                'rotation_options': []
-            },
-            'three_on_three_off_weekly': {
-                'name': 'Weekly Rotation 3-on-3-off',
-                'shift_hours': 12,
-                'allows_fixed': False,
-                'allows_rotating': True,
-                'rotation_options': ['Weekly Rotation']
-            },
-            'three_on_three_off_6week': {
-                'name': '6-Week Rotation 3-on-3-off',
-                'shift_hours': 12,
-                'allows_fixed': False,
-                'allows_rotating': True,
-                'rotation_options': ['6-Week Rotation']
-            },
-            'panama': {
-                'name': 'Panama (2-3-2)',
-                'shift_hours': 12,
-                'allows_fixed': True,
-                'allows_rotating': True,
-                'rotation_options': ['Fixed', 'Rotating']
-            },
-            'fixed_five_two_12': {
-                'name': 'Fixed 5&2 12-Hour',
-                'shift_hours': 12,
-                'allows_fixed': True,
-                'allows_rotating': False,
-                'rotation_options': []
-            },
-            'fixed_four_three': {
-                'name': 'Fixed 4/3',
-                'shift_hours': 12,
-                'allows_fixed': True,
-                'allows_rotating': False,
-                'rotation_options': []
-            },
-            'southern_swing_ccw': {
-                'name': 'Southern Swing Counter-clockwise',
-                'shift_hours': 8,
-                'allows_fixed': False,
-                'allows_rotating': True,
-                'rotation_options': ['Counter-clockwise']
-            },
-            'southern_swing_fixed': {
-                'name': 'Southern Swing Fixed',
-                'shift_hours': 8,
-                'allows_fixed': True,
-                'allows_rotating': False,
-                'rotation_options': []
-            },
-            'fixed_five_two_8': {
-                'name': 'Fixed 5&2 8-Hour',
-                'shift_hours': 8,
-                'allows_fixed': True,
-                'allows_rotating': False,
-                'rotation_options': []
-            },
-            'continental': {
-                'name': 'Continental',
-                'shift_hours': 8,
-                'allows_fixed': False,
-                'allows_rotating': True,
-                'rotation_options': ['Standard']
-            }
         }
         
         return render_template('schedule_wizard.html',
@@ -363,6 +230,9 @@ def view_schedules():
 @schedule_bp.route('/schedule/api/create-pattern', methods=['POST'])
 @login_required
 def create_pattern_schedule():
+    """
+    UPDATED: Now actually creates schedules using pattern generators
+    """
     if not current_user.is_supervisor:
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
     
@@ -370,20 +240,79 @@ def create_pattern_schedule():
         data = request.get_json()
         
         pattern = data.get('pattern')
-        start_date = datetime.strptime(data.get('start_date'), '%Y-%m-%d').date()
-        end_date = datetime.strptime(data.get('end_date'), '%Y-%m-%d').date()
+        variation = data.get('variation')
+        start_date_str = data.get('start_date')
+        end_date_str = data.get('end_date')
+        replace_existing = data.get('replace_existing', True)
         
+        # Validate required fields
+        if not pattern:
+            return jsonify({'success': False, 'error': 'Pattern is required'})
+        
+        if not start_date_str or not end_date_str:
+            return jsonify({'success': False, 'error': 'Start and end dates are required'})
+        
+        # Parse dates
+        try:
+            start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+            end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+        except ValueError:
+            return jsonify({'success': False, 'error': 'Invalid date format. Use YYYY-MM-DD'})
+        
+        # Validate date range
         if start_date > end_date:
             return jsonify({'success': False, 'error': 'Start date must be before end date'})
         
         if (end_date - start_date).days > 365:
             return jsonify({'success': False, 'error': 'Schedule period cannot exceed 1 year'})
         
-        return jsonify({
-            'success': True,
-            'message': f'Schedule creation for {pattern} pattern initiated',
-            'redirect': url_for('schedule.view_schedules')
-        })
+        # Import pattern generator
+        try:
+            from utils.pattern_generators import get_pattern_generator
+        except ImportError as e:
+            logger.error(f"Could not import pattern generators: {e}")
+            return jsonify({
+                'success': False,
+                'error': 'Pattern generation system not available'
+            }), 500
+        
+        # Get appropriate generator
+        generator = get_pattern_generator(pattern, variation)
+        
+        if not generator:
+            return jsonify({
+                'success': False,
+                'error': f'Pattern "{pattern}" with variation "{variation}" is not yet implemented'
+            })
+        
+        # Generate schedules
+        logger.info(f"Creating {pattern} ({variation}) schedule from {start_date} to {end_date}")
+        
+        result = generator.generate(
+            start_date=start_date,
+            end_date=end_date,
+            created_by_id=current_user.id,
+            replace_existing=replace_existing
+        )
+        
+        if result['success']:
+            logger.info(f"Successfully created {result['schedules_saved']} schedules")
+            return jsonify({
+                'success': True,
+                'message': f'Successfully created {result["schedules_saved"]} schedule entries',
+                'schedules_created': result['schedules_saved'],
+                'date_range': result['date_range'],
+                'statistics': result.get('statistics', {}),
+                'redirect': url_for('schedule.view_schedules', 
+                                   start_date=start_date.isoformat(),
+                                   end_date=end_date.isoformat())
+            })
+        else:
+            logger.error(f"Schedule generation failed: {result.get('error')}")
+            return jsonify({
+                'success': False,
+                'error': result.get('error', 'Unknown error occurred')
+            })
         
     except Exception as e:
         logger.error(f"Error creating pattern schedule: {str(e)}")
