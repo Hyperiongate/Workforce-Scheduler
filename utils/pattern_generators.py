@@ -1,14 +1,14 @@
 # utils/pattern_generators.py
 # COMPLETE FILE - Pattern Generators for Workforce Scheduler
-# Last Updated: 2025-10-10 - FIXED Modified 4-on-4-off pattern for proper 24/7 coverage
+# Last Updated: 2025-10-10 - CORRECT Modified 4-on-4-off with Saturday swaps
 # 
 # Change Log:
-#   2025-10-10: CRITICAL FIX - Corrected Modified 4-on-4-off crew patterns
-#               - Analyzed user's screenshot showing coverage gaps and overlaps
-#               - Redesigned crew patterns to ensure 24/7 coverage
-#               - Crews A&B cover days with proper offset
-#               - Crews C&D cover nights with proper offset
-#               - Verified no gaps, no overlaps in 8-week cycle
+#   2025-10-10: FINAL FIX - Correct Modified 4-on-4-off pattern
+#               - Start with standard 4-on-4-off (4 work, 4 off repeating)
+#               - Week 3: Crew A gives Saturday to Crew B (3-day work, full weekend off)
+#               - Week 7: Crew B gives Saturday to Crew A (3-day work, full weekend off)
+#               - Result: 4 full weekends off for each crew over 8 weeks
+#               - Perfect 24/7 coverage verified
 #   2025-10-09: Added FourOnFourOffModified class with 8-week (56-day) cycle
 #   2025-10-09: Updated get_pattern_generator to include 'modified' variation
 
@@ -391,18 +391,26 @@ class FourOnFourOffFixed(PatternGenerator):
 
 class FourOnFourOffModified(PatternGenerator):
     """
-    4-on-4-off Modified Pattern - Full Weekends Off
+    4-on-4-off Modified Pattern - Full Weekends Off via Saturday Swaps
     
-    8-week cycle (56 days) with proper 24/7 coverage
+    8-week cycle (56 days) - CORRECT IMPLEMENTATION
     
-    CRITICAL FIX 2025-10-10:
-    - Crews A & B work DAY shifts with 28-day offset (4 weeks)
-    - Crews C & D work NIGHT shifts with 28-day offset (4 weeks)
-    - This ensures ONE day crew and ONE night crew working at all times
-    - Pattern designed to maximize full weekends off
-    - No coverage gaps, no overlaps
+    Logic:
+    1. Start with standard 4-on-4-off pattern (work 4, off 4, repeating every 8 days)
+    2. Apply strategic Saturday swaps:
+       - Week 3: Crew A gives Saturday to Crew B
+         Result: Crew A works only 3 days (Wed-Fri), gets FULL WEEKEND OFF
+                 Crew B takes Saturday, starts 5-day stretch
+       - Week 7: Crew B gives Saturday to Crew A  
+         Result: Crew B works only 3 days, gets FULL WEEKEND OFF
+                 Crew A takes Saturday, starts 5-day stretch
+    3. Same logic for Crews C & D on night shifts
     
-    Pattern starts on MONDAY (ISO week format)
+    Benefits:
+    - Eliminates split weekends (working Sat but off Sun, or vice versa)
+    - Each crew gets 4 full weekends off in 8 weeks
+    - Creates predictable full weekend patterns
+    - Maintains 24/7 coverage with exactly 1 day crew + 1 night crew at all times
     """
     
     def __init__(self):
@@ -411,7 +419,7 @@ class FourOnFourOffModified(PatternGenerator):
         self.cycle_days = 56  # 8 weeks
     
     def generate(self, start_date, end_date, created_by_id=None, replace_existing=False):
-        """Generate modified 4-on-4-off schedule with full weekends"""
+        """Generate modified 4-on-4-off schedule with Saturday swaps for full weekends"""
         logger.info(f"Generating 4-on-4-off Modified: {start_date} to {end_date}")
         
         self.validate_date_range(start_date, end_date)
@@ -421,58 +429,40 @@ class FourOnFourOffModified(PatternGenerator):
         if replace_existing:
             self.clear_existing_schedules(start_date, end_date, crews)
         
-        # CORRECTED 8-week patterns (Monday-Sunday format, 56 days total)
+        # CORRECT Modified Pattern with Saturday Swaps
         # 'X' = Work, 'O' = Off
-        # These patterns are designed to:
-        # 1. Ensure 24/7 coverage (one day crew + one night crew at all times)
-        # 2. Maximize full weekends off
-        # 3. Eliminate split weekends where possible
+        # Monday-Sunday format, 56 days total (8 weeks)
         
-        # CREW A - DAY SHIFT ONLY
+        # CREW A - DAY SHIFT
+        # Standard 4-on-4-off with Week 3 Sat given to B, Week 7 Sat taken from B
         crew_a_pattern = [
-            # Week 1: Mon-Thu work, Fri-Sun off
-            'X', 'X', 'X', 'X', 'O', 'O', 'O',
-            # Week 2: Mon off, Tue-Fri work, Sat-Sun off
-            'O', 'X', 'X', 'X', 'X', 'O', 'O',
-            # Week 3: Mon-Tue off, Wed-Sat work, Sun off
-            'O', 'O', 'X', 'X', 'X', 'X', 'O',
-            # Week 4: Mon-Wed off, Thu-Sun work
-            'O', 'O', 'O', 'X', 'X', 'X', 'X',
-            # Week 5: Mon-Thu work, Fri-Sun off
-            'X', 'X', 'X', 'X', 'O', 'O', 'O',
-            # Week 6: Mon off, Tue-Fri work, Sat-Sun off
-            'O', 'X', 'X', 'X', 'X', 'O', 'O',
-            # Week 7: Mon-Tue off, Wed-Sat work, Sun off
-            'O', 'O', 'X', 'X', 'X', 'X', 'O',
-            # Week 8: Mon-Wed off, Thu-Sun work
-            'O', 'O', 'O', 'X', 'X', 'X', 'X'
+            'X', 'X', 'X', 'X', 'O', 'O', 'O',  # Week 1: Mon-Thu work, Fri-Sun off
+            'O', 'X', 'X', 'X', 'X', 'O', 'O',  # Week 2: Mon off, Tue-Fri work, Sat-Sun off
+            'O', 'O', 'X', 'X', 'X', 'O', 'O',  # Week 3: Wed-Fri work (gave Sat), Sat-Sun off (FULL WEEKEND!)
+            'O', 'O', 'O', 'X', 'X', 'X', 'X',  # Week 4: Thu-Sun work
+            'O', 'O', 'O', 'O', 'X', 'X', 'X',  # Week 5: Fri-Sun work
+            'X', 'O', 'O', 'O', 'O', 'X', 'X',  # Week 6: Mon work, Sat-Sun work
+            'X', 'X', 'O', 'O', 'O', 'X', 'X',  # Week 7: Mon-Tue work, Sat-Sun work (took Sat from B)
+            'X', 'X', 'X', 'O', 'O', 'O', 'O',  # Week 8: Mon-Wed work, Thu-Sun off
         ]
         
-        # CREW B - DAY SHIFT ONLY (28-day offset from Crew A)
-        # When Crew A is off, Crew B works (and vice versa)
+        # CREW B - DAY SHIFT
+        # Standard 4-on-4-off (4-day offset) with Week 3 Sat taken from A, Week 7 Sat given to A
         crew_b_pattern = [
-            # Week 1: Mon-Thu off, Fri-Sun work
-            'O', 'O', 'O', 'O', 'X', 'X', 'X',
-            # Week 2: Mon work, Tue-Fri off, Sat-Sun work
-            'X', 'O', 'O', 'O', 'O', 'X', 'X',
-            # Week 3: Mon-Tue work, Wed-Sat off, Sun work
-            'X', 'X', 'O', 'O', 'O', 'O', 'X',
-            # Week 4: Mon-Wed work, Thu-Sun off
-            'X', 'X', 'X', 'O', 'O', 'O', 'O',
-            # Week 5: Mon-Thu off, Fri-Sun work
-            'O', 'O', 'O', 'O', 'X', 'X', 'X',
-            # Week 6: Mon work, Tue-Fri off, Sat-Sun work
-            'X', 'O', 'O', 'O', 'O', 'X', 'X',
-            # Week 7: Mon-Tue work, Wed-Sat off, Sun work
-            'X', 'X', 'O', 'O', 'O', 'O', 'X',
-            # Week 8: Mon-Wed work, Thu-Sun off
-            'X', 'X', 'X', 'O', 'O', 'O', 'O'
+            'O', 'O', 'O', 'O', 'X', 'X', 'X',  # Week 1: Fri-Sun work
+            'X', 'O', 'O', 'O', 'O', 'X', 'X',  # Week 2: Mon work, Sat-Sun work
+            'X', 'X', 'O', 'O', 'O', 'X', 'X',  # Week 3: Mon-Tue work, Sat-Sun work (took Sat from A)
+            'X', 'X', 'X', 'O', 'O', 'O', 'O',  # Week 4: Mon-Wed work, Thu-Sun off (FULL WEEKEND!)
+            'X', 'X', 'X', 'X', 'O', 'O', 'O',  # Week 5: Mon-Thu work, Fri-Sun off (FULL WEEKEND!)
+            'O', 'X', 'X', 'X', 'X', 'O', 'O',  # Week 6: Tue-Fri work, Sat-Sun off (FULL WEEKEND!)
+            'O', 'O', 'X', 'X', 'X', 'O', 'O',  # Week 7: Wed-Fri work (gave Sat), Sat-Sun off (FULL WEEKEND!)
+            'O', 'O', 'O', 'X', 'X', 'X', 'X',  # Week 8: Thu-Sun work
         ]
         
-        # CREW C - NIGHT SHIFT ONLY (same pattern as Crew A but nights)
+        # CREW C - NIGHT SHIFT (same pattern as Crew A)
         crew_c_pattern = crew_a_pattern.copy()
         
-        # CREW D - NIGHT SHIFT ONLY (same pattern as Crew B but nights)
+        # CREW D - NIGHT SHIFT (same pattern as Crew B)
         crew_d_pattern = crew_b_pattern.copy()
         
         crew_patterns = {
@@ -546,7 +536,8 @@ class FourOnFourOffModified(PatternGenerator):
             'date_range_days': (end_date - start_date).days + 1,
             'pattern_name': self.pattern_name,
             'cycle_length': f"{self.cycle_days} days (8 weeks)",
-            'crews_scheduled': [crew for crew, emps in crews.items() if emps]
+            'crews_scheduled': [crew for crew, emps in crews.items() if emps],
+            'full_weekends_per_crew': '4 out of 8 weeks'
         }
         
         return result
