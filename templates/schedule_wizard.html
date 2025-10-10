@@ -144,20 +144,7 @@
                         <!-- DuPont Configuration - SIMPLIFIED: Rotating Only -->
                         <div class="alert alert-info">
                             <i class="bi bi-info-circle"></i> DuPont is a rotating schedule pattern only.
-                            <p class="mb-0"><small>Look for the red-bordered card in the left column</small></p>
-            </div>
-        `;
-    } else {
-        setTimeout(generateSchedulePreview, 100);
-    }
-    
-    window.generateSchedulePreview = generateSchedulePreview;
-    window.generateCrewAssignment = generateCrewAssignment;
-    
-    console.log('===== Initialization Complete =====');
-});
-</script>
-{% endblock %}-0 mt-2"><small>All 4 crews rotate through the 4-week cycle, experiencing both day and night shifts with the famous 7-day break.</small></p>
+                            <p class="mb-0 mt-2"><small>All 4 crews rotate through the 4-week cycle, experiencing both day and night shifts with the famous 7-day break.</small></p>
                         </div>
                         <input type="hidden" id="dupontVariation" name="dupont_variation" value="rotating">
                         {% else %}
@@ -861,7 +848,65 @@ document.addEventListener('DOMContentLoaded', function() {
                     
                     if (shift === 'D') {
                         dayCrews.push(crew);
-                    } else if (shift === 'N') {
+                    } else if (pattern === 'dupont' || pattern) {
+            setTimeout(generateSchedulePreview, 100);
+        }
+        
+        const createBtn = document.getElementById('createScheduleBtn');
+        if (createBtn) {
+            createBtn.addEventListener('click', function() {
+                let config = {
+                    pattern: pattern,
+                    rotation: pattern === 'dupont' ? 'rotating' : 'fixed'
+                };
+                
+                const currentSelector = variationSelectors[pattern];
+                if (currentSelector) {
+                    config.rotation = currentSelector.value;
+                }
+                
+                if (currentSelector && !config.rotation) {
+                    alert('Please select a pattern configuration first.');
+                    return;
+                }
+                
+                showScheduleCreationModal(config);
+            });
+        }
+    }
+    
+    console.log('Starting initialization...');
+    
+    populatePatternInfo();
+    setupEventListeners();
+    
+    const variationSelectors = {
+        'pitman': document.getElementById('pitmanVariation'),
+        'four_on_four_off': document.getElementById('fourVariation'),
+        'three_on_three_off': document.getElementById('threeVariation'),
+        'southern_swing': document.getElementById('swingVariation')
+    };
+    
+    if (variationSelectors[pattern]) {
+        document.getElementById('schedulePreview').innerHTML = `
+            <div class="alert alert-danger text-center">
+                <i class="bi bi-exclamation-triangle fs-1"></i>
+                <h5 class="mt-2 text-danger">Select Your Pattern Configuration</h5>
+                <p>Please select an option from the <strong class="text-danger">Pattern Configuration</strong> section.</p>
+                <p class="mb-0"><small>Look for the red-bordered card in the left column</small></p>
+            </div>
+        `;
+    } else {
+        setTimeout(generateSchedulePreview, 100);
+    }
+    
+    window.generateSchedulePreview = generateSchedulePreview;
+    window.generateCrewAssignment = generateCrewAssignment;
+    
+    console.log('===== Initialization Complete =====');
+});
+</script>
+{% endblock %}shift === 'N') {
                         nightCrews.push(crew);
                     }
                 }
@@ -1371,49 +1416,4 @@ document.addEventListener('DOMContentLoaded', function() {
                     `;
                 }
             });
-        } else if (pattern === 'dupont' || pattern) {
-            setTimeout(generateSchedulePreview, 100);
-        }
-        
-        const createBtn = document.getElementById('createScheduleBtn');
-        if (createBtn) {
-            createBtn.addEventListener('click', function() {
-                let config = {
-                    pattern: pattern,
-                    rotation: pattern === 'dupont' ? 'rotating' : 'fixed'
-                };
-                
-                const currentSelector = variationSelectors[pattern];
-                if (currentSelector) {
-                    config.rotation = currentSelector.value;
-                }
-                
-                if (currentSelector && !config.rotation) {
-                    alert('Please select a pattern configuration first.');
-                    return;
-                }
-                
-                showScheduleCreationModal(config);
-            });
-        }
-    }
-    
-    console.log('Starting initialization...');
-    
-    populatePatternInfo();
-    setupEventListeners();
-    
-    const variationSelectors = {
-        'pitman': document.getElementById('pitmanVariation'),
-        'four_on_four_off': document.getElementById('fourVariation'),
-        'three_on_three_off': document.getElementById('threeVariation'),
-        'southern_swing': document.getElementById('swingVariation')
-    };
-    
-    if (variationSelectors[pattern]) {
-        document.getElementById('schedulePreview').innerHTML = `
-            <div class="alert alert-danger text-center">
-                <i class="bi bi-exclamation-triangle fs-1"></i>
-                <h5 class="mt-2 text-danger">Select Your Pattern Configuration</h5>
-                <p>Please select an option from the <strong class="text-danger">Pattern Configuration</strong> section.</p>
-                <p class="mb
+        } else if (
