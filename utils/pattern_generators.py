@@ -420,81 +420,81 @@ class FourOnFourOffModified(PatternGenerator):
             self.clear_existing_schedules(start_date, end_date, crews)
         
         # Define 8-week patterns for each crew (Monday-Sunday format)
-        # COPIED EXACTLY from working schedule_wizard.html frontend
+        # EXTRACTED EXACTLY from user's working screenshot
         # D=Day shift, N=Night shift, O=Off
         
         crew_patterns = {
             'A': [
-                # Week 1: Mon-Thu D, Fri-Sun O
-                'D', 'D', 'D', 'D', 'O', 'O', 'O',
-                # Week 2: Mon O, Tue-Thu D, Fri-Sun O
-                'O', 'D', 'D', 'D', 'O', 'O', 'O',
-                # Week 3: Mon-Tue O, Wed-Fri D, Sat-Sun O
-                'O', 'O', 'D', 'D', 'D', 'O', 'O',
-                # Week 4: Mon-Wed O, Thu D, Fri-Sun O
-                'O', 'O', 'O', 'D', 'O', 'O', 'O',
-                # Week 5: Mon-Thu O, Fri D, Sat-Sun O
-                'O', 'O', 'O', 'O', 'D', 'O', 'O',
-                # Week 6: Mon-Fri O, Sat D, Sun O
-                'O', 'O', 'O', 'O', 'O', 'D', 'O',
-                # Week 7: Mon-Sat O, Sun D
-                'O', 'O', 'O', 'O', 'O', 'O', 'D',
-                # Week 8: Mon D, Tue-Sun O
-                'D', 'O', 'O', 'O', 'O', 'O', 'O'
-            ],
-            'B': [
                 # Week 1: Mon-Thu O, Fri-Sun D
                 'O', 'O', 'O', 'O', 'D', 'D', 'D',
-                # Week 2: Mon D, Tue-Thu O, Fri-Sun D
+                # Week 2: Mon D, Tue-Thu O, Fri-Sun D  
                 'D', 'O', 'O', 'O', 'D', 'D', 'D',
-                # Week 3: Mon-Tue D, Wed-Fri O, Sat-Sun D
-                'D', 'D', 'O', 'O', 'O', 'D', 'D',
-                # Week 4: Mon-Wed D, Thu O, Fri-Sun D
-                'D', 'D', 'D', 'O', 'D', 'D', 'D',
-                # Week 5: Mon-Thu D, Fri O, Sat-Sun D
-                'D', 'D', 'D', 'D', 'O', 'D', 'D',
-                # Week 6: Mon-Fri D, Sat O, Sun D
-                'D', 'D', 'D', 'D', 'D', 'O', 'D',
-                # Week 7: Mon-Sat D, Sun O
-                'D', 'D', 'D', 'D', 'D', 'D', 'O',
-                # Week 8: Mon O, Tue-Sun D
-                'O', 'D', 'D', 'D', 'D', 'D', 'D'
+                # Week 3: Mon-Tue O, Wed-Fri D, Sat-Sun O
+                'O', 'O', 'D', 'D', 'D', 'O', 'O',
+                # Week 4: Mon-Thu D, Fri-Sun O
+                'D', 'D', 'D', 'D', 'O', 'O', 'O',
+                # Week 5: Mon O, Tue-Fri D, Sat-Sun O
+                'O', 'D', 'D', 'D', 'D', 'O', 'O',
+                # Week 6: Mon-Tue D, Wed-Sat O, Sun D
+                'D', 'D', 'O', 'O', 'O', 'O', 'D',
+                # Week 7: Mon-Wed O, Thu-Sun D
+                'O', 'O', 'O', 'D', 'D', 'D', 'D',
+                # Week 8: Mon-Thu D, Fri-Sun O (completes, cycles back to week 1)
+                'D', 'D', 'D', 'D', 'O', 'O', 'O'
+            ],
+            'B': [
+                # Week 1: Mon-Thu D, Fri-Sun O
+                'D', 'D', 'D', 'D', 'O', 'O', 'O',
+                # Week 2: Mon O, Tue-Fri D, Sat-Sun O
+                'O', 'D', 'D', 'D', 'O', 'O', 'O',
+                # Week 3: Mon-Tue D, Wed-Sat O, Sun D
+                'D', 'D', 'O', 'O', 'O', 'O', 'D',
+                # Week 4: Mon-Wed O, Thu-Sun D
+                'O', 'O', 'O', 'D', 'D', 'D', 'D',
+                # Week 5: Mon-Thu D, Fri-Sun O
+                'D', 'D', 'D', 'D', 'O', 'O', 'O',
+                # Week 6: Mon O, Tue-Fri D, Sat-Sun O
+                'O', 'D', 'D', 'D', 'D', 'O', 'O',
+                # Week 7: Mon-Tue O, Wed-Sat D, Sun O
+                'O', 'O', 'D', 'D', 'D', 'D', 'O',
+                # Week 8: Mon-Wed O, Thu-Sun D
+                'O', 'O', 'O', 'D', 'D', 'D', 'D'
             ],
             'C': [
                 # Week 1: Mon-Thu N, Fri-Sun O
                 'N', 'N', 'N', 'N', 'O', 'O', 'O',
-                # Week 2: Mon O, Tue-Thu N, Fri-Sun O
-                'O', 'N', 'N', 'N', 'O', 'O', 'O',
+                # Week 2: Mon N, Tue-Thu O, Fri N, Sat-Sun O
+                'N', 'O', 'O', 'O', 'N', 'O', 'O',
                 # Week 3: Mon-Tue O, Wed-Fri N, Sat-Sun O
                 'O', 'O', 'N', 'N', 'N', 'O', 'O',
-                # Week 4: Mon-Wed O, Thu N, Fri-Sun O
-                'O', 'O', 'O', 'N', 'O', 'O', 'O',
-                # Week 5: Mon-Thu O, Fri N, Sat-Sun O
-                'O', 'O', 'O', 'O', 'N', 'O', 'O',
-                # Week 6: Mon-Fri O, Sat N, Sun O
-                'O', 'O', 'O', 'O', 'O', 'N', 'O',
-                # Week 7: Mon-Sat O, Sun N
-                'O', 'O', 'O', 'O', 'O', 'O', 'N',
-                # Week 8: Mon N, Tue-Sun O
-                'N', 'O', 'O', 'O', 'O', 'O', 'O'
+                # Week 4: Mon-Thu O, Fri-Sun N
+                'O', 'O', 'O', 'O', 'N', 'N', 'N',
+                # Week 5: Mon N, Tue-Fri O, Sat-Sun N
+                'N', 'O', 'O', 'O', 'O', 'N', 'N',
+                # Week 6: Mon-Tue N, Wed-Sat O, Sun N
+                'N', 'N', 'O', 'O', 'O', 'O', 'N',
+                # Week 7: Mon-Wed O, Thu-Sun N
+                'O', 'O', 'O', 'N', 'N', 'N', 'N',
+                # Week 8: Mon-Thu N, Fri-Sun O
+                'N', 'N', 'N', 'N', 'O', 'O', 'O'
             ],
             'D': [
                 # Week 1: Mon-Thu O, Fri-Sun N
                 'O', 'O', 'O', 'O', 'N', 'N', 'N',
                 # Week 2: Mon N, Tue-Thu O, Fri-Sun N
-                'N', 'O', 'O', 'O', 'N', 'N', 'N',
-                # Week 3: Mon-Tue N, Wed-Fri O, Sat-Sun N
-                'N', 'N', 'O', 'O', 'O', 'N', 'N',
-                # Week 4: Mon-Wed N, Thu O, Fri-Sun N
-                'N', 'N', 'N', 'O', 'N', 'N', 'N',
-                # Week 5: Mon-Thu N, Fri O, Sat-Sun N
-                'N', 'N', 'N', 'N', 'O', 'N', 'N',
-                # Week 6: Mon-Fri N, Sat O, Sun N
-                'N', 'N', 'N', 'N', 'N', 'O', 'N',
-                # Week 7: Mon-Sat N, Sun O
-                'N', 'N', 'N', 'N', 'N', 'N', 'O',
-                # Week 8: Mon O, Tue-Sun N
-                'O', 'N', 'N', 'N', 'N', 'N', 'N'
+                'N', 'O', 'O', 'O', 'O', 'N', 'N',
+                # Week 3: Mon-Tue O, Wed-Fri O, Sat-Sun N
+                'O', 'O', 'O', 'O', 'O', 'N', 'N',
+                # Week 4: Mon-Thu O, Fri-Sun N
+                'O', 'O', 'O', 'O', 'N', 'N', 'N',
+                # Week 5: Mon-Thu O, Fri-Sun N
+                'O', 'O', 'O', 'O', 'N', 'N', 'N',
+                # Week 6: Mon-Tue N, Wed-Sat O, Sun N
+                'N', 'N', 'O', 'O', 'O', 'O', 'N',
+                # Week 7: Mon-Wed O, Thu-Sun N
+                'O', 'O', 'O', 'N', 'N', 'N', 'N',
+                # Week 8: Mon-Thu O, Fri-Sun N
+                'O', 'O', 'O', 'O', 'N', 'N', 'N'
             ]
         }
         
