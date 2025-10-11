@@ -1,7 +1,8 @@
 {# templates/schedule_wizard.html #}
 {# Schedule Pattern Wizard - COMPLETE CORRECT FINAL #}
-{# Last Modified: 2025-10-10 - CORRECT Modified 4-on-4-off with Saturday swaps #}
+{# Last Modified: 2025-10-11 - COMPLETE FILE with all functions #}
 {# Change Log: #}
+{#   2025-10-11: COMPLETE FIX - Added all missing functions and closing tags #}
 {#   2025-10-10: FINAL CORRECT FIX - Modified pattern with Saturday swap logic #}
 {#               - Week 3: Crew A gives Saturday to Crew B (3 work days, full weekend) #}
 {#               - Week 7: Crew B gives Saturday to Crew A (3 work days, full weekend) #}
@@ -469,7 +470,64 @@
 </style>
 
 <script>
-// ===== MODAL AND CREATE FUNCTIONS - MUST BE FIRST =====
+// ===== GLOBAL VARIABLES =====
+const pattern = '{{ pattern }}';
+const patternConfig = {{ pattern_config | tojson }};
+
+console.log('===== Schedule Wizard Initialization =====');
+console.log('Pattern:', pattern);
+console.log('Pattern Config:', patternConfig);
+
+// ===== PATTERN DATA =====
+const patternData = {
+    'pitman': {
+        cycle: '14 days',
+        avgHours: '42 hours/week',
+        maxConsecutive: '3 days (but 7 across weeks)',
+        weekendsOff: 'Every other weekend',
+        advantages: ['Every other weekend off', 'Never more than 3 consecutive shifts', 'Well-balanced coverage', 'Proven 24/7 pattern'],
+        considerations: ['Can work 7 days across week boundaries', 'Must start on Sunday to minimize OT', 'Short stretches of nights difficult to adjust to', 'Longest break is only 3 days'],
+        explanation: 'Pitman (2-2-3): Work 2, off 2, work 3, off 2, work 2, off 3. 14-day cycle with every other weekend off.'
+    },
+    'dupont': {
+        cycle: '28 days',
+        avgHours: '42 hours/week',
+        maxConsecutive: '4 days',
+        weekendsOff: 'One 7-day break per cycle',
+        advantages: ['7 consecutive days off every cycle', 'Built-in recovery periods', 'Popular in industry', 'Good work-life balance'],
+        considerations: ['Complex pattern to learn', 'Long work stretches before break', 'Must rotate - all crews work both day and night shifts'],
+        explanation: 'DuPont: 4 days, 3 off, 3 nights, 1 off, 3 days, 3 off, 4 nights, 7 off. All crews rotate through the 28-day cycle.'
+    },
+    'southern_swing': {
+        cycle: '28 days',
+        avgHours: '40 hours/week',
+        maxConsecutive: '7 days',
+        weekendsOff: '1 per month',
+        advantages: ['Experience all shift types', 'Forward rotation (healthier)', 'Traditional 8-hour shifts', '273 work days/year'],
+        considerations: ['Only 1 weekend off per month', 'Constant shift rotation', 'More work days than 12-hour'],
+        explanation: 'Southern Swing: Rotate through days→evenings→nights over 4 weeks.'
+    },
+    'four_on_four_off': {
+        cycle: '56 days (8 weeks) for modified, 112 days (16 weeks) for weekly',
+        avgHours: '42 hours/week',
+        maxConsecutive: '4 days per shift type',
+        weekendsOff: 'Varies throughout cycle',
+        advantages: ['4 on, 4 off pattern', 'Good recovery time', 'Automatic shift rotation', 'Balanced days and nights'],
+        considerations: ['Complex pattern across weeks', 'Shift changes after each 4-day set'],
+        explanation: '4-on-4-off: Work 4 days, off 4 days. Modified version uses Saturday swaps to create full weekends off over 8-week cycle.'
+    },
+    'three_on_three_off': {
+        cycle: '6 days',
+        avgHours: '42 hours/week',
+        maxConsecutive: '3 days (4 in modified)',
+        weekendsOff: '3 full weekends/6 weeks (modified)',
+        advantages: ['Shorter work stretches', 'Regular pattern', '3 full weekends off/6 weeks (modified)', 'Good for fatigue management'],
+        considerations: ['Split weekends in basic version', 'Modified creates 2 and 4-day stretches', '6-week full rotation'],
+        explanation: '3-on-3-off: Work 3 days, then off 3 days. Shorter work stretches.'
+    }
+};
+
+// ===== MODAL AND CREATE FUNCTIONS =====
 
 function showScheduleCreationModal(config) {
     const modalHtml = `
@@ -641,240 +699,687 @@ function createScheduleNow(config, modal) {
     });
 }
 
-// ===== MAIN SCRIPT STARTS HERE =====
+// ===== CREW ASSIGNMENT FUNCTION =====
 
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('===== Schedule Wizard Initialization =====');
+function generateCrewAssignment(pattern, week, day, rotation) {
+    // day: 0=Sunday, 1=Monday, 2=Tuesday, 3=Wednesday, 4=Thursday, 5=Friday, 6=Saturday
+    const dayOfCycle = (week - 1) * 7 + day;
     
-    const pattern = '{{ pattern }}';
-    const patternConfig = {{ pattern_config | tojson }};
-    
-    console.log('Pattern:', pattern);
-    console.log('Pattern Config:', patternConfig);
-    
-    const patternData = {
-        'pitman': {
-            cycle: '14 days',
-            avgHours: '42 hours/week',
-            maxConsecutive: '3 days (but 7 across weeks)',
-            weekendsOff: 'Every other weekend',
-            advantages: ['Every other weekend off', 'Never more than 3 consecutive shifts', 'Well-balanced coverage', 'Proven 24/7 pattern'],
-            considerations: ['Can work 7 days across week boundaries', 'Must start on Sunday to minimize OT', 'Short stretches of nights difficult to adjust to', 'Longest break is only 3 days'],
-            explanation: 'Pitman (2-2-3): Work 2, off 2, work 3, off 2, work 2, off 3. 14-day cycle with every other weekend off.'
-        },
-        'dupont': {
-            cycle: '28 days',
-            avgHours: '42 hours/week',
-            maxConsecutive: '4 days',
-            weekendsOff: 'One 7-day break per cycle',
-            advantages: ['7 consecutive days off every cycle', 'Built-in recovery periods', 'Popular in industry', 'Good work-life balance'],
-            considerations: ['Complex pattern to learn', 'Long work stretches before break', 'Must rotate - all crews work both day and night shifts'],
-            explanation: 'DuPont: 4 days, 3 off, 3 nights, 1 off, 3 days, 3 off, 4 nights, 7 off. All crews rotate through the 28-day cycle.'
-        },
-        'southern_swing': {
-            cycle: '28 days',
-            avgHours: '40 hours/week',
-            maxConsecutive: '7 days',
-            weekendsOff: '1 per month',
-            advantages: ['Experience all shift types', 'Forward rotation (healthier)', 'Traditional 8-hour shifts', '273 work days/year'],
-            considerations: ['Only 1 weekend off per month', 'Constant shift rotation', 'More work days than 12-hour'],
-            explanation: 'Southern Swing: Rotate through days→evenings→nights over 4 weeks.'
-        },
-        'four_on_four_off': {
-            cycle: '56 days (8 weeks) for modified, 112 days (16 weeks) for weekly',
-            avgHours: '42 hours/week',
-            maxConsecutive: '4 days per shift type',
-            weekendsOff: 'Varies throughout cycle',
-            advantages: ['4 on, 4 off pattern', 'Good recovery time', 'Automatic shift rotation', 'Balanced days and nights'],
-            considerations: ['Complex pattern across weeks', 'Shift changes after each 4-day set'],
-            explanation: '4-on-4-off: Work 4 days, off 4 days. Modified version uses Saturday swaps to create full weekends off over 8-week cycle.'
-        },
-        'three_on_three_off': {
-            cycle: '6 days',
-            avgHours: '42 hours/week',
-            maxConsecutive: '3 days (4 in modified)',
-            weekendsOff: '3 full weekends/6 weeks (modified)',
-            advantages: ['Shorter work stretches', 'Regular pattern', '3 full weekends off/6 weeks (modified)', 'Good for fatigue management'],
-            considerations: ['Split weekends in basic version', 'Modified creates 2 and 4-day stretches', '6-week full rotation'],
-            explanation: '3-on-3-off: Work 3 days, then off 3 days. Shorter work stretches.'
-        }
+    let assignment = {
+        crews: 'Off',
+        time: '',
+        cssClass: 'shift-off'
     };
     
-    function generateCrewAssignment(pattern, week, day, rotation) {
-        // day: 0=Sunday, 1=Monday, 2=Tuesday, 3=Wednesday, 4=Thursday, 5=Friday, 6=Saturday
-        const dayOfCycle = (week - 1) * 7 + day;
+    let normalizedPattern = pattern.toLowerCase().replace(/_/g, '').replace(/-/g, '').replace(/\s+/g, '');
+    
+    if ((pattern === 'four_on_four_off' || normalizedPattern === 'fouronfourooff')) {
         
-        let assignment = {
-            crews: 'Off',
-            time: '',
-            cssClass: 'shift-off'
-        };
-        
-        let normalizedPattern = pattern.toLowerCase().replace(/_/g, '').replace(/-/g, '').replace(/\s+/g, '');
-        
-        if ((pattern === 'four_on_four_off' || normalizedPattern === 'fouronfourooff')) {
+        if (rotation === 'fixed_simple') {
+            const eightDayPattern = ['X', 'X', 'X', 'X', 'O', 'O', 'O', 'O'];
+            const crewOffsets = {'A': 0, 'B': 4, 'C': 0, 'D': 4};
             
-            if (rotation === 'fixed_simple') {
-                const eightDayPattern = ['X', 'X', 'X', 'X', 'O', 'O', 'O', 'O'];
-                const crewOffsets = {'A': 0, 'B': 4, 'C': 0, 'D': 4};
+            let dayCrews = [];
+            let nightCrews = [];
+            
+            for (const [crew, startOffset] of Object.entries(crewOffsets)) {
+                const cyclePosition = (dayOfCycle + startOffset) % 8;
+                const shift = eightDayPattern[cyclePosition];
                 
-                let dayCrews = [];
-                let nightCrews = [];
-                
-                for (const [crew, startOffset] of Object.entries(crewOffsets)) {
-                    const cyclePosition = (dayOfCycle + startOffset) % 8;
-                    const shift = eightDayPattern[cyclePosition];
-                    
-                    if (shift === 'X') {
-                        if (crew === 'A' || crew === 'B') {
-                            dayCrews.push(crew);
-                        } else {
-                            nightCrews.push(crew);
-                        }
-                    }
-                }
-                
-                if (dayCrews.length > 0 || nightCrews.length > 0) {
-                    let display = [];
-                    if (dayCrews.length > 0) {
-                        display.push(`Day: ${dayCrews.join('+')}`);
-                    }
-                    if (nightCrews.length > 0) {
-                        display.push(`Night: ${nightCrews.join('+')}`);
-                    }
-                    assignment.crews = display.join('\n');
-                    assignment.cssClass = dayCrews.length > 0 ? 'shift-day' : 'shift-night';
-                }
-                
-                return assignment;
-            }
-            else if (rotation === 'modified') {
-                // CORRECT Modified 4-on-4-off: Saturday Swap Logic
-                // Start with standard 4-on-4-off, apply Saturday swaps
-                // Week 3: Crew A gives Saturday to Crew B (full weekend off for A)
-                // Week 7: Crew B gives Saturday to Crew A (full weekend off for B)
-                
-                const crewAPattern = [
-                    'X', 'X', 'X', 'X', 'O', 'O', 'O',  // Week 1
-                    'O', 'X', 'X', 'X', 'X', 'O', 'O',  // Week 2
-                    'O', 'O', 'X', 'X', 'X', 'O', 'O',  // Week 3 (gave Sat, full weekend off!)
-                    'O', 'O', 'O', 'X', 'X', 'X', 'X',  // Week 4
-                    'O', 'O', 'O', 'O', 'X', 'X', 'X',  // Week 5
-                    'X', 'O', 'O', 'O', 'O', 'X', 'X',  // Week 6
-                    'X', 'X', 'O', 'O', 'O', 'X', 'X',  // Week 7 (took Sat from B)
-                    'X', 'X', 'X', 'O', 'O', 'O', 'O',  // Week 8
-                ];
-                
-                const crewBPattern = [
-                    'O', 'O', 'O', 'O', 'X', 'X', 'X',  // Week 1
-                    'X', 'O', 'O', 'O', 'O', 'X', 'X',  // Week 2
-                    'X', 'X', 'O', 'O', 'O', 'X', 'X',  // Week 3 (took Sat from A)
-                    'X', 'X', 'X', 'O', 'O', 'O', 'O',  // Week 4 (full weekend off!)
-                    'X', 'X', 'X', 'X', 'O', 'O', 'O',  // Week 5 (full weekend off!)
-                    'O', 'X', 'X', 'X', 'X', 'O', 'O',  // Week 6 (full weekend off!)
-                    'O', 'O', 'X', 'X', 'X', 'O', 'O',  // Week 7 (gave Sat, full weekend off!)
-                    'O', 'O', 'O', 'X', 'X', 'X', 'X',  // Week 8
-                ];
-                
-                // C and D use same patterns as A and B respectively, but nights
-                const crewCPattern = crewAPattern.slice();
-                const crewDPattern = crewBPattern.slice();
-                
-                const modifiedPatterns = {
-                    'A': crewAPattern,
-                    'B': crewBPattern,
-                    'C': crewCPattern,
-                    'D': crewDPattern
-                };
-                
-                let dayCrews = [];
-                let nightCrews = [];
-                
-                // Calculate cycle day (0-55 for 56-day cycle)
-                // day parameter: 0=Sunday, 1=Monday, 2=Tuesday, etc.
-                // We need to convert to Monday-start week
-                let mondayBasedDay;
-                if (day === 0) {
-                    // Sunday is the last day of the week
-                    mondayBasedDay = 6;
-                } else {
-                    // Monday=0, Tuesday=1, etc.
-                    mondayBasedDay = day - 1;
-                }
-                
-                // Calculate absolute day in the cycle
-                const absoluteDay = (week - 1) * 7 + mondayBasedDay;
-                const cycleDay = absoluteDay % 56; // 56-day cycle (8 weeks)
-                
-                // Check each crew's pattern at this cycle day
-                for (const [crew, pattern] of Object.entries(modifiedPatterns)) {
-                    const shift = pattern[cycleDay];
-                    
-                    if (shift === 'X') {
-                        // A and B work days, C and D work nights
-                        if (crew === 'A' || crew === 'B') {
-                            dayCrews.push(crew);
-                        } else {
-                            nightCrews.push(crew);
-                        }
-                    }
-                }
-                
-                if (dayCrews.length > 0 || nightCrews.length > 0) {
-                    let display = [];
-                    if (dayCrews.length > 0) {
-                        display.push(`Day: ${dayCrews.join('+')}`);
-                    }
-                    if (nightCrews.length > 0) {
-                        display.push(`Night: ${nightCrews.join('+')}`);
-                    }
-                    assignment.crews = display.join('\n');
-                    assignment.cssClass = dayCrews.length > 0 ? 'shift-day' : 'shift-night';
-                }
-                
-                return assignment;
-            }
-            else if (rotation === 'fast') {
-                const eightDayPattern = ['D', 'D', 'N', 'N', 'O', 'O', 'O', 'O'];
-                const crewOffsets = {'A': 0, 'B': 14, 'C': 28, 'D': 42};
-                
-                let dayCrews = [];
-                let nightCrews = [];
-                
-                for (const [crew, startOffset] of Object.entries(crewOffsets)) {
-                    const daysSinceStart = dayOfCycle - startOffset;
-                    const cyclePosition = ((daysSinceStart % 8) + 8) % 8;
-                    const shift = eightDayPattern[cyclePosition];
-                    
-                    if (shift === 'D') {
+                if (shift === 'X') {
+                    if (crew === 'A' || crew === 'B') {
                         dayCrews.push(crew);
-                    } else if (pattern === 'dupont' || pattern) {
-            setTimeout(generateSchedulePreview, 100);
+                    } else {
+                        nightCrews.push(crew);
+                    }
+                }
+            }
+            
+            if (dayCrews.length > 0 || nightCrews.length > 0) {
+                let display = [];
+                if (dayCrews.length > 0) {
+                    display.push(`Day: ${dayCrews.join('+')}`);
+                }
+                if (nightCrews.length > 0) {
+                    display.push(`Night: ${nightCrews.join('+')}`);
+                }
+                assignment.crews = display.join('\n');
+                assignment.cssClass = dayCrews.length > 0 ? 'shift-day' : 'shift-night';
+            }
+            
+            return assignment;
         }
-        
-        const createBtn = document.getElementById('createScheduleBtn');
-        if (createBtn) {
-            createBtn.addEventListener('click', function() {
-                let config = {
-                    pattern: pattern,
-                    rotation: pattern === 'dupont' ? 'rotating' : 'fixed'
-                };
+        else if (rotation === 'modified') {
+            // CORRECT Modified 4-on-4-off: Saturday Swap Logic
+            const crewAPattern = [
+                'X', 'X', 'X', 'X', 'O', 'O', 'O',  // Week 1
+                'O', 'X', 'X', 'X', 'X', 'O', 'O',  // Week 2
+                'O', 'O', 'X', 'X', 'X', 'O', 'O',  // Week 3 (gave Sat)
+                'O', 'O', 'O', 'X', 'X', 'X', 'X',  // Week 4
+                'O', 'O', 'O', 'O', 'X', 'X', 'X',  // Week 5
+                'X', 'O', 'O', 'O', 'O', 'X', 'X',  // Week 6
+                'X', 'X', 'O', 'O', 'O', 'X', 'X',  // Week 7 (took Sat)
+                'X', 'X', 'X', 'O', 'O', 'O', 'O',  // Week 8
+            ];
+            
+            const crewBPattern = [
+                'O', 'O', 'O', 'O', 'X', 'X', 'X',  // Week 1
+                'X', 'O', 'O', 'O', 'O', 'X', 'X',  // Week 2
+                'X', 'X', 'O', 'O', 'O', 'X', 'X',  // Week 3 (took Sat)
+                'X', 'X', 'X', 'O', 'O', 'O', 'O',  // Week 4
+                'X', 'X', 'X', 'X', 'O', 'O', 'O',  // Week 5
+                'O', 'X', 'X', 'X', 'X', 'O', 'O',  // Week 6
+                'O', 'O', 'X', 'X', 'X', 'O', 'O',  // Week 7 (gave Sat)
+                'O', 'O', 'O', 'X', 'X', 'X', 'X',  // Week 8
+            ];
+            
+            const crewCPattern = crewAPattern.slice();
+            const crewDPattern = crewBPattern.slice();
+            
+            const modifiedPatterns = {
+                'A': crewAPattern,
+                'B': crewBPattern,
+                'C': crewCPattern,
+                'D': crewDPattern
+            };
+            
+            let dayCrews = [];
+            let nightCrews = [];
+            
+            let mondayBasedDay;
+            if (day === 0) {
+                mondayBasedDay = 6;
+            } else {
+                mondayBasedDay = day - 1;
+            }
+            
+            const absoluteDay = (week - 1) * 7 + mondayBasedDay;
+            const cycleDay = absoluteDay % 56;
+            
+            for (const [crew, pattern] of Object.entries(modifiedPatterns)) {
+                const shift = pattern[cycleDay];
                 
-                const currentSelector = variationSelectors[pattern];
-                if (currentSelector) {
-                    config.rotation = currentSelector.value;
+                if (shift === 'X') {
+                    if (crew === 'A' || crew === 'B') {
+                        dayCrews.push(crew);
+                    } else {
+                        nightCrews.push(crew);
+                    }
+                }
+            }
+            
+            if (dayCrews.length > 0 || nightCrews.length > 0) {
+                let display = [];
+                if (dayCrews.length > 0) {
+                    display.push(`Day: ${dayCrews.join('+')}`);
+                }
+                if (nightCrews.length > 0) {
+                    display.push(`Night: ${nightCrews.join('+')}`);
+                }
+                assignment.crews = display.join('\n');
+                assignment.cssClass = dayCrews.length > 0 ? 'shift-day' : 'shift-night';
+            }
+            
+            return assignment;
+        }
+        else if (rotation === 'fast') {
+            const eightDayPattern = ['D', 'D', 'N', 'N', 'O', 'O', 'O', 'O'];
+            const crewOffsets = {'A': 0, 'B': 14, 'C': 28, 'D': 42};
+            
+            let dayCrews = [];
+            let nightCrews = [];
+            
+            for (const [crew, startOffset] of Object.entries(crewOffsets)) {
+                const daysSinceStart = dayOfCycle - startOffset;
+                const cyclePosition = ((daysSinceStart % 8) + 8) % 8;
+                const shift = eightDayPattern[cyclePosition];
+                
+                if (shift === 'D') {
+                    dayCrews.push(crew);
+                } else if (shift === 'N') {
+                    nightCrews.push(crew);
+                }
+            }
+            
+            if (dayCrews.length > 0 || nightCrews.length > 0) {
+                let display = [];
+                if (dayCrews.length > 0) {
+                    display.push(`Day: ${dayCrews.join('+')}`);
+                }
+                if (nightCrews.length > 0) {
+                    display.push(`Night: ${nightCrews.join('+')}`);
+                }
+                assignment.crews = display.join('\n');
+                assignment.cssClass = dayCrews.length > 0 ? 'shift-day' : 'shift-night';
+            }
+            
+            return assignment;
+        }
+        else if (rotation === 'weekly') {
+            const pattern = [
+                'D', 'D', 'D', 'D',
+                'O', 'O', 'O', 'O',
+                'N', 'N', 'N', 'N',
+                'O', 'O', 'O', 'O'
+            ];
+            
+            const crew_offsets = {
+                'A': 0,
+                'B': 28,
+                'C': 56,
+                'D': 84
+            };
+            
+            let dayCrews = [];
+            let nightCrews = [];
+            
+            for (const [crew, offset] of Object.entries(crew_offsets)) {
+                const days_since_crew_start = dayOfCycle - offset;
+                
+                if (days_since_crew_start < 0) {
+                    continue;
                 }
                 
-                if (currentSelector && !config.rotation) {
-                    alert('Please select a pattern configuration first.');
-                    return;
-                }
+                const cycle_position = days_since_crew_start % 16;
+                const shift_code = pattern[cycle_position];
                 
-                showScheduleCreationModal(config);
-            });
+                if (shift_code === 'D') {
+                    dayCrews.push(crew);
+                } else if (shift_code === 'N') {
+                    nightCrews.push(crew);
+                }
+            }
+            
+            if (dayCrews.length > 0 || nightCrews.length > 0) {
+                let display = [];
+                if (dayCrews.length > 0) {
+                    display.push(`Day: ${dayCrews.join('+')}`);
+                }
+                if (nightCrews.length > 0) {
+                    display.push(`Night: ${nightCrews.join('+')}`);
+                }
+                assignment.crews = display.join('\n');
+                assignment.cssClass = dayCrews.length > 0 ? 'shift-day' : 'shift-night';
+            }
+            
+            return assignment;
         }
     }
     
+    switch(normalizedPattern) {
+        case 'pitman':
+            const pitmanBase = [
+                1, 0, 0, 1, 1, 0, 0,
+                0, 1, 1, 0, 0, 1, 1
+            ];
+            
+            const crewADay = dayOfCycle % 14;
+            const crewBDay = (dayOfCycle + 7) % 14;
+            const crewCDay = dayOfCycle % 14;
+            const crewDDay = (dayOfCycle + 7) % 14;
+            
+            const aWorks = pitmanBase[crewADay];
+            const bWorks = pitmanBase[crewBDay];
+            const cWorks = pitmanBase[crewCDay];
+            const dWorks = pitmanBase[crewDDay];
+            
+            let dayShiftCrews = [];
+            let nightShiftCrews = [];
+            
+            const rotationType = rotation || 'fixed';
+            
+            if (rotationType === 'fixed') {
+                if (aWorks) dayShiftCrews.push('A');
+                if (bWorks) dayShiftCrews.push('B');
+                if (cWorks) nightShiftCrews.push('C');
+                if (dWorks) nightShiftCrews.push('D');
+            } else if (rotationType === 'fast') {
+                const setNumber = Math.floor(dayOfCycle / 3) % 4;
+                if (setNumber % 2 === 0) {
+                    if (aWorks) dayShiftCrews.push('A');
+                    if (bWorks) dayShiftCrews.push('B');
+                    if (cWorks) nightShiftCrews.push('C');
+                    if (dWorks) nightShiftCrews.push('D');
+                } else {
+                    if (aWorks) nightShiftCrews.push('A');
+                    if (bWorks) nightShiftCrews.push('B');
+                    if (cWorks) dayShiftCrews.push('C');
+                    if (dWorks) dayShiftCrews.push('D');
+                }
+            } else if (rotationType === 'medium') {
+                const cycleWeek = Math.floor(dayOfCycle / 14) % 2;
+                if (cycleWeek === 0) {
+                    if (aWorks) dayShiftCrews.push('A');
+                    if (bWorks) dayShiftCrews.push('B');
+                    if (cWorks) nightShiftCrews.push('C');
+                    if (dWorks) nightShiftCrews.push('D');
+                } else {
+                    if (aWorks) nightShiftCrews.push('A');
+                    if (bWorks) nightShiftCrews.push('B');
+                    if (cWorks) dayShiftCrews.push('C');
+                    if (dWorks) dayShiftCrews.push('D');
+                }
+            } else if (rotationType === 'slow') {
+                const monthCycle = Math.floor(dayOfCycle / 28) % 2;
+                if (monthCycle === 0) {
+                    if (aWorks) dayShiftCrews.push('A');
+                    if (bWorks) dayShiftCrews.push('B');
+                    if (cWorks) nightShiftCrews.push('C');
+                    if (dWorks) nightShiftCrews.push('D');
+                } else {
+                    if (aWorks) nightShiftCrews.push('A');
+                    if (bWorks) nightShiftCrews.push('B');
+                    if (cWorks) dayShiftCrews.push('C');
+                    if (dWorks) dayShiftCrews.push('D');
+                }
+            }
+            
+            if (dayShiftCrews.length > 0 || nightShiftCrews.length > 0) {
+                let display = [];
+                if (dayShiftCrews.length > 0) {
+                    display.push(`Day: ${dayShiftCrews.join('+')}`);
+                }
+                if (nightShiftCrews.length > 0) {
+                    display.push(`Night: ${nightShiftCrews.join('+')}`);
+                }
+                assignment.crews = display.join('\n');
+                assignment.cssClass = dayShiftCrews.length > 0 ? 'shift-day' : 'shift-night';
+            }
+            break;
+            
+        case 'dupont':
+            const dupontPattern = [
+                'D', 'D', 'D', 'D', 'O', 'O', 'O',
+                'O', 'O', 'O', 'O', 'N', 'N', 'N',
+                'N', 'O', 'O', 'O', 'D', 'D', 'D',
+                'O', 'N', 'N', 'N', 'O', 'O', 'N'
+            ];
+            
+            const dupontOffsets = {'A': 0, 'B': 21, 'C': 14, 'D': 7};
+            
+            let dupontDayCrews = [];
+            let dupontNightCrews = [];
+            
+            const adjustedDay = dayOfCycle === 0 ? 6 : dayOfCycle - 1;
+            
+            for (const [crew, offset] of Object.entries(dupontOffsets)) {
+                const scheduleDay = (adjustedDay + offset) % 28;
+                const shift = dupontPattern[scheduleDay];
+                if (shift === 'D') {
+                    dupontDayCrews.push(crew);
+                } else if (shift === 'N') {
+                    dupontNightCrews.push(crew);
+                }
+            }
+            
+            if (dupontDayCrews.length > 0 || dupontNightCrews.length > 0) {
+                let display = [];
+                if (dupontDayCrews.length > 0) {
+                    display.push(`Day: ${dupontDayCrews.join('+')}`);
+                }
+                if (dupontNightCrews.length > 0) {
+                    display.push(`Night: ${dupontNightCrews.join('+')}`);
+                }
+                assignment.crews = display.join('\n');
+                assignment.cssClass = dupontDayCrews.length > 0 ? 'shift-day' : 'shift-night';
+            }
+            break;
+    }
+    
+    return assignment;
+}
+
+// ===== SCHEDULE PREVIEW FUNCTION =====
+
+function generateSchedulePreview() {
+    console.log('===== Generating Schedule Preview =====');
+    
+    let rotation;
+    
+    const variationSelectors = {
+        'pitman': document.getElementById('pitmanVariation'),
+        'four_on_four_off': document.getElementById('fourVariation'),
+        'three_on_three_off': document.getElementById('threeVariation'),
+        'southern_swing': document.getElementById('swingVariation'),
+        'dupont': document.getElementById('dupontVariation')
+    };
+    
+    const currentSelector = variationSelectors[pattern];
+    if (currentSelector) {
+        rotation = currentSelector.value;
+        console.log(`${pattern} rotation selected:`, rotation);
+        
+        if (pattern === 'dupont') {
+            rotation = 'rotating';
+        }
+        
+        if (!rotation && pattern !== 'dupont') {
+            document.getElementById('schedulePreview').innerHTML = `
+                <div class="alert alert-danger text-center">
+                    <i class="bi bi-exclamation-triangle fs-1"></i>
+                    <h5 class="mt-2 text-danger">Select Your Pattern Configuration</h5>
+                    <p>Please select an option from the <strong class="text-danger">Pattern Configuration</strong> section.</p>
+                    <p class="mb-0"><small>Look for the red-bordered card in the left column</small></p>
+                </div>
+            `;
+            return;
+        }
+    } else {
+        rotation = 'fixed';
+    }
+    
+    let weeksToShow = 4;
+    if (pattern === 'pitman') {
+        switch(rotation) {
+            case 'fixed': weeksToShow = 2; break;
+            case 'fast':
+            case 'medium': weeksToShow = 4; break;
+            case 'slow': weeksToShow = 8; break;
+        }
+    } else if (pattern === 'dupont') {
+        weeksToShow = 4;
+    } else if (pattern === 'four_on_four_off') {
+        switch(rotation) {
+            case 'fast': weeksToShow = 8; break;
+            case 'weekly': weeksToShow = 16; break;
+            case 'fixed_simple': weeksToShow = 2; break;
+            case 'modified': weeksToShow = 8; break;
+            default: weeksToShow = 4; break;
+        }
+    } else if (pattern === 'three_on_three_off') {
+        weeksToShow = rotation === 'fixed' ? 2 : 3;
+    }
+    
+    const patternInfo = patternData[pattern] || {
+        cycle: '14 days',
+        avgHours: '42 hours/week',
+        maxConsecutive: '3 days',
+        weekendsOff: 'Every other'
+    };
+    
+    console.log('Generating preview for', weeksToShow, 'weeks');
+    
+    let previewHtml = `
+        <div class="schedule-preview-container">
+            <div class="preview-header">
+                <h4 class="preview-title">
+                    <i class="bi bi-calendar-range"></i> ${patternConfig.name || pattern} Schedule Timeline
+                </h4>
+                <p class="preview-subtitle">${pattern === 'dupont' ? 'Rotating' : rotation === 'fixed' || rotation === 'fixed_simple' ? 'Fixed' : 'Rotating'} ${weeksToShow}-Week Cycle • Continuous 24/7 Coverage</p>
+            </div>
+            
+            <div class="pattern-stats">
+                <div class="stat-item">
+                    <div class="stat-value">${patternInfo.cycle.split(' ')[0]}</div>
+                    <div class="stat-label">Day Cycle</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">${patternInfo.avgHours.split(' ')[0]}</div>
+                    <div class="stat-label">Hours/Week</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">${patternInfo.maxConsecutive.split(' ')[0]}</div>
+                    <div class="stat-label">Max Days</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">${patternInfo.weekendsOff.includes('Every') ? '50%' : patternInfo.weekendsOff}</div>
+                    <div class="stat-label">Weekends Off</div>
+                </div>
+            </div>
+            
+            <div class="timeline-container">
+    `;
+    
+    const dayAbbr = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+    const weekOrder = [1, 2, 3, 4, 5, 6, 0];
+    
+    for (let week = 1; week <= weeksToShow; week++) {
+        previewHtml += `
+            <div class="week-timeline">
+                <div class="week-header">
+                    <span class="week-number">Week ${week}</span>
+                    <span class="week-info">${week === 1 ? 'Pattern begins' : week === weeksToShow ? 'Cycle completes' : 'Pattern continues'}</span>
+                </div>
+                
+                <div class="days-grid">
+        `;
+        
+        for (let dayIdx of weekOrder) {
+            const assignment = generateCrewAssignment(pattern, week, dayIdx, rotation);
+            
+            let dayCrews = [];
+            let nightCrews = [];
+            
+            if (assignment.crews && assignment.crews !== 'Off') {
+                const lines = assignment.crews.split('\n');
+                lines.forEach(line => {
+                    if (line.includes('Day:')) {
+                        dayCrews = line.replace('Day:', '').trim().split('+');
+                    } else if (line.includes('Night:')) {
+                        nightCrews = line.replace('Night:', '').trim().split('+');
+                    }
+                });
+            }
+            
+            const isWeekend = (dayIdx === 0 || dayIdx === 6);
+            
+            previewHtml += `
+                <div class="day-column">
+                    <div class="day-label ${isWeekend ? 'weekend' : ''}">${dayAbbr[dayIdx]}</div>
+            `;
+            
+            if (dayCrews.length > 0) {
+                previewHtml += `
+                    <div class="shift-block shift-day">
+                        <span class="shift-label">DAY</span>
+                        <span class="crew-letter">${dayCrews.join('+')}</span>
+                    </div>
+                `;
+            } else {
+                previewHtml += `
+                    <div class="shift-block shift-off">
+                        <span class="shift-label">DAY</span>
+                        <span class="crew-letter">-</span>
+                    </div>
+                `;
+            }
+            
+            if (nightCrews.length > 0) {
+                previewHtml += `
+                    <div class="shift-block shift-night">
+                        <span class="shift-label">NIGHT</span>
+                        <span class="crew-letter">${nightCrews.join('+')}</span>
+                    </div>
+                `;
+            } else {
+                previewHtml += `
+                    <div class="shift-block shift-off">
+                        <span class="shift-label">NIGHT</span>
+                        <span class="crew-letter">-</span>
+                    </div>
+                `;
+            }
+            
+            previewHtml += `</div>`;
+        }
+        
+        previewHtml += `
+                </div>
+            </div>
+        `;
+    }
+    
+    previewHtml += `
+            </div>
+            
+            <div class="legend-strip">
+                <div class="legend-item">
+                    <div class="legend-box shift-day"></div>
+                    <span>Day Shift (06:00-18:00)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-box shift-night"></div>
+                    <span>Night Shift (18:00-06:00)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-box shift-off"></div>
+                    <span>Off Day</span>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.getElementById('schedulePreview').innerHTML = previewHtml;
+    console.log('Preview HTML inserted into DOM');
+}
+
+// ===== POPULATE PATTERN INFO FUNCTION =====
+
+function populatePatternInfo() {
+    const patternInfo = patternData[pattern] || {
+        cycle: 'Custom',
+        avgHours: '40-42 hours/week',
+        maxConsecutive: 'Varies',
+        weekendsOff: 'Varies',
+        advantages: ['Pattern specific'],
+        considerations: ['Pattern specific'],
+        explanation: `${patternConfig.name || pattern} pattern implementation`
+    };
+    
+    const infoHtml = `
+        <div class="info-item">
+            <span>Cycle Length:</span>
+            <strong>${patternInfo.cycle}</strong>
+        </div>
+        <div class="info-item">
+            <span>Average Hours:</span>
+            <strong>${patternInfo.avgHours}</strong>
+        </div>
+        <div class="info-item">
+            <span>Max Consecutive:</span>
+            <strong>${patternInfo.maxConsecutive}</strong>
+        </div>
+        <div class="info-item">
+            <span>Weekends Off:</span>
+            <strong>${patternInfo.weekendsOff}</strong>
+        </div>
+        <div class="mt-3">
+            <h6 class="text-success">Advantages:</h6>
+            <ul class="list-unstyled">
+                ${(patternInfo.advantages || []).map(item => `<li class="text-success"><i class="bi bi-check-circle"></i> ${item}</li>`).join('')}
+            </ul>
+        </div>
+        <div class="mt-3">
+            <h6 class="text-warning">Considerations:</h6>
+            <ul class="list-unstyled">
+                ${(patternInfo.considerations || []).map(item => `<li class="text-warning"><i class="bi bi-exclamation-triangle"></i> ${item}</li>`).join('')}
+            </ul>
+        </div>
+    `;
+    
+    document.getElementById('patternInfo').innerHTML = infoHtml;
+    document.getElementById('patternExplanation').innerHTML = `<p>${patternInfo.explanation}</p>`;
+}
+
+// ===== SETUP EVENT LISTENERS FUNCTION =====
+
+function setupEventListeners() {
+    console.log('Setting up event listeners...');
+    
+    const generateBtn = document.getElementById('generatePreviewBtn');
+    if (generateBtn) {
+        console.log('Generate button found');
+        generateBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            console.log('Generate button clicked!');
+            generateSchedulePreview();
+        });
+    }
+    
+    const refreshBtn = document.getElementById('refreshPreview');
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            generateSchedulePreview();
+        });
+    }
+    
+    const variationSelectors = {
+        'pitman': document.getElementById('pitmanVariation'),
+        'four_on_four_off': document.getElementById('fourVariation'),
+        'three_on_three_off': document.getElementById('threeVariation'),
+        'southern_swing': document.getElementById('swingVariation')
+    };
+    
+    const currentSelector = variationSelectors[pattern];
+    if (currentSelector) {
+        console.log(`Setting up ${pattern} variation selector`);
+        
+        currentSelector.addEventListener('change', function() {
+            console.log(`${pattern} variation changed to:`, this.value);
+            
+            const btn = document.getElementById('generatePreviewBtn');
+            if (!btn) {
+                console.error('Button not found!');
+                return;
+            }
+            
+            if (this.value) {
+                btn.style.display = 'block';
+                const selectedText = this.options[this.selectedIndex].text.split('(')[0].trim();
+                btn.innerHTML = `<i class="bi bi-calendar-check"></i> Generate ${selectedText} Preview`;
+                console.log('Button shown');
+                
+                btn.onclick = function(e) {
+                    e.preventDefault();
+                    console.log('Preview button clicked via onclick');
+                    generateSchedulePreview();
+                };
+                
+                setTimeout(generateSchedulePreview, 100);
+            } else {
+                btn.style.display = 'none';
+                
+                document.getElementById('schedulePreview').innerHTML = `
+                    <div class="alert alert-danger text-center">
+                        <i class="bi bi-exclamation-triangle fs-1"></i>
+                        <h5 class="mt-2 text-danger">Select Your Pattern Configuration</h5>
+                        <p>Please select a configuration option from the <strong class="text-danger">Pattern Configuration</strong> section.</p>
+                        <p class="mb-0"><small>The configuration card with the red border contains the options for this pattern.</small></p>
+                    </div>
+                `;
+            }
+        });
+    } else if (pattern === 'dupont') {
+        setTimeout(generateSchedulePreview, 100);
+    }
+    
+    const createBtn = document.getElementById('createScheduleBtn');
+    if (createBtn) {
+        createBtn.addEventListener('click', function() {
+            let config = {
+                pattern: pattern,
+                rotation: pattern === 'dupont' ? 'rotating' : 'fixed'
+            };
+            
+            const currentSelector = variationSelectors[pattern];
+            if (currentSelector) {
+                config.rotation = currentSelector.value;
+            }
+            
+            if (currentSelector && !config.rotation) {
+                alert('Please select a pattern configuration first.');
+                return;
+            }
+            
+            showScheduleCreationModal(config);
+        });
+    }
+}
+
+// ===== MAIN INITIALIZATION =====
+
+document.addEventListener('DOMContentLoaded', function() {
     console.log('Starting initialization...');
     
     populatePatternInfo();
@@ -906,514 +1411,4 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('===== Initialization Complete =====');
 });
 </script>
-{% endblock %}shift === 'N') {
-                        nightCrews.push(crew);
-                    }
-                }
-                
-                if (dayCrews.length > 0 || nightCrews.length > 0) {
-                    let display = [];
-                    if (dayCrews.length > 0) {
-                        display.push(`Day: ${dayCrews.join('+')}`);
-                    }
-                    if (nightCrews.length > 0) {
-                        display.push(`Night: ${nightCrews.join('+')}`);
-                    }
-                    assignment.crews = display.join('\n');
-                    assignment.cssClass = dayCrews.length > 0 ? 'shift-day' : 'shift-night';
-                }
-                
-                return assignment;
-            }
-            else if (rotation === 'weekly') {
-                // 16-week pattern - simplified
-                const pattern = [
-                    'D', 'D', 'D', 'D',  // Days 0-3: Work days
-                    'O', 'O', 'O', 'O',  // Days 4-7: Off
-                    'N', 'N', 'N', 'N',  // Days 8-11: Work nights
-                    'O', 'O', 'O', 'O'   // Days 12-15: Off
-                ];
-                
-                const crew_offsets = {
-                    'A': 0,
-                    'B': 28,
-                    'C': 56,
-                    'D': 84
-                };
-                
-                let dayCrews = [];
-                let nightCrews = [];
-                
-                for (const [crew, offset] of Object.entries(crew_offsets)) {
-                    const days_since_crew_start = dayOfCycle - offset;
-                    
-                    if (days_since_crew_start < 0) {
-                        continue;
-                    }
-                    
-                    const cycle_position = days_since_crew_start % 16;
-                    const shift_code = pattern[cycle_position];
-                    
-                    if (shift_code === 'D') {
-                        dayCrews.push(crew);
-                    } else if (shift_code === 'N') {
-                        nightCrews.push(crew);
-                    }
-                }
-                
-                if (dayCrews.length > 0 || nightCrews.length > 0) {
-                    let display = [];
-                    if (dayCrews.length > 0) {
-                        display.push(`Day: ${dayCrews.join('+')}`);
-                    }
-                    if (nightCrews.length > 0) {
-                        display.push(`Night: ${nightCrews.join('+')}`);
-                    }
-                    assignment.crews = display.join('\n');
-                    assignment.cssClass = dayCrews.length > 0 ? 'shift-day' : 'shift-night';
-                }
-                
-                return assignment;
-            }
-        }
-        
-        switch(normalizedPattern) {
-            case 'pitman':
-                const pitmanBase = [
-                    1, 0, 0, 1, 1, 0, 0,
-                    0, 1, 1, 0, 0, 1, 1
-                ];
-                
-                const crewADay = dayOfCycle % 14;
-                const crewBDay = (dayOfCycle + 7) % 14;
-                const crewCDay = dayOfCycle % 14;
-                const crewDDay = (dayOfCycle + 7) % 14;
-                
-                const aWorks = pitmanBase[crewADay];
-                const bWorks = pitmanBase[crewBDay];
-                const cWorks = pitmanBase[crewCDay];
-                const dWorks = pitmanBase[crewDDay];
-                
-                let dayShiftCrews = [];
-                let nightShiftCrews = [];
-                
-                const rotationType = rotation || 'fixed';
-                
-                if (rotationType === 'fixed') {
-                    if (aWorks) dayShiftCrews.push('A');
-                    if (bWorks) dayShiftCrews.push('B');
-                    if (cWorks) nightShiftCrews.push('C');
-                    if (dWorks) nightShiftCrews.push('D');
-                } else if (rotationType === 'fast') {
-                    const setNumber = Math.floor(dayOfCycle / 3) % 4;
-                    if (setNumber % 2 === 0) {
-                        if (aWorks) dayShiftCrews.push('A');
-                        if (bWorks) dayShiftCrews.push('B');
-                        if (cWorks) nightShiftCrews.push('C');
-                        if (dWorks) nightShiftCrews.push('D');
-                    } else {
-                        if (aWorks) nightShiftCrews.push('A');
-                        if (bWorks) nightShiftCrews.push('B');
-                        if (cWorks) dayShiftCrews.push('C');
-                        if (dWorks) dayShiftCrews.push('D');
-                    }
-                } else if (rotationType === 'medium') {
-                    const cycleWeek = Math.floor(dayOfCycle / 14) % 2;
-                    if (cycleWeek === 0) {
-                        if (aWorks) dayShiftCrews.push('A');
-                        if (bWorks) dayShiftCrews.push('B');
-                        if (cWorks) nightShiftCrews.push('C');
-                        if (dWorks) nightShiftCrews.push('D');
-                    } else {
-                        if (aWorks) nightShiftCrews.push('A');
-                        if (bWorks) nightShiftCrews.push('B');
-                        if (cWorks) dayShiftCrews.push('C');
-                        if (dWorks) dayShiftCrews.push('D');
-                    }
-                } else if (rotationType === 'slow') {
-                    const monthCycle = Math.floor(dayOfCycle / 28) % 2;
-                    if (monthCycle === 0) {
-                        if (aWorks) dayShiftCrews.push('A');
-                        if (bWorks) dayShiftCrews.push('B');
-                        if (cWorks) nightShiftCrews.push('C');
-                        if (dWorks) nightShiftCrews.push('D');
-                    } else {
-                        if (aWorks) nightShiftCrews.push('A');
-                        if (bWorks) nightShiftCrews.push('B');
-                        if (cWorks) dayShiftCrews.push('C');
-                        if (dWorks) dayShiftCrews.push('D');
-                    }
-                }
-                
-                if (dayShiftCrews.length > 0 || nightShiftCrews.length > 0) {
-                    let display = [];
-                    if (dayShiftCrews.length > 0) {
-                        display.push(`Day: ${dayShiftCrews.join('+')}`);
-                    }
-                    if (nightShiftCrews.length > 0) {
-                        display.push(`Night: ${nightShiftCrews.join('+')}`);
-                    }
-                    assignment.crews = display.join('\n');
-                    assignment.cssClass = dayShiftCrews.length > 0 ? 'shift-day' : 'shift-night';
-                }
-                break;
-                
-            case 'dupont':
-                const dupontPattern = [
-                    'D', 'D', 'D', 'D', 'O', 'O', 'O',
-                    'O', 'O', 'O', 'O', 'N', 'N', 'N',
-                    'N', 'O', 'O', 'O', 'D', 'D', 'D',
-                    'O', 'N', 'N', 'N', 'O', 'O', 'N'
-                ];
-                
-                const dupontOffsets = {'A': 0, 'B': 21, 'C': 14, 'D': 7};
-                
-                let dupontDayCrews = [];
-                let dupontNightCrews = [];
-                
-                const adjustedDay = dayOfCycle === 0 ? 6 : dayOfCycle - 1;
-                
-                for (const [crew, offset] of Object.entries(dupontOffsets)) {
-                    const scheduleDay = (adjustedDay + offset) % 28;
-                    const shift = dupontPattern[scheduleDay];
-                    if (shift === 'D') {
-                        dupontDayCrews.push(crew);
-                    } else if (shift === 'N') {
-                        dupontNightCrews.push(crew);
-                    }
-                }
-                
-                if (dupontDayCrews.length > 0 || dupontNightCrews.length > 0) {
-                    let display = [];
-                    if (dupontDayCrews.length > 0) {
-                        display.push(`Day: ${dupontDayCrews.join('+')}`);
-                    }
-                    if (dupontNightCrews.length > 0) {
-                        display.push(`Night: ${dupontNightCrews.join('+')}`);
-                    }
-                    assignment.crews = display.join('\n');
-                    assignment.cssClass = dupontDayCrews.length > 0 ? 'shift-day' : 'shift-night';
-                }
-                break;
-        }
-        
-        return assignment;
-    }
-    
-    function generateSchedulePreview() {
-        console.log('===== Generating Schedule Preview =====');
-        
-        let rotation;
-        
-        const variationSelectors = {
-            'pitman': document.getElementById('pitmanVariation'),
-            'four_on_four_off': document.getElementById('fourVariation'),
-            'three_on_three_off': document.getElementById('threeVariation'),
-            'southern_swing': document.getElementById('swingVariation'),
-            'dupont': document.getElementById('dupontVariation')
-        };
-        
-        const currentSelector = variationSelectors[pattern];
-        if (currentSelector) {
-            rotation = currentSelector.value;
-            console.log(`${pattern} rotation selected:`, rotation);
-            
-            if (pattern === 'dupont') {
-                rotation = 'rotating';
-            }
-            
-            if (!rotation && pattern !== 'dupont') {
-                document.getElementById('schedulePreview').innerHTML = `
-                    <div class="alert alert-danger text-center">
-                        <i class="bi bi-exclamation-triangle fs-1"></i>
-                        <h5 class="mt-2 text-danger">Select Your Pattern Configuration</h5>
-                        <p>Please select an option from the <strong class="text-danger">Pattern Configuration</strong> section.</p>
-                        <p class="mb-0"><small>Look for the red-bordered card in the left column</small></p>
-                    </div>
-                `;
-                return;
-            }
-        } else {
-            rotation = 'fixed';
-        }
-        
-        let weeksToShow = 4;
-        if (pattern === 'pitman') {
-            switch(rotation) {
-                case 'fixed': weeksToShow = 2; break;
-                case 'fast':
-                case 'medium': weeksToShow = 4; break;
-                case 'slow': weeksToShow = 8; break;
-            }
-        } else if (pattern === 'dupont') {
-            weeksToShow = 4;
-        } else if (pattern === 'four_on_four_off') {
-            switch(rotation) {
-                case 'fast': weeksToShow = 8; break;
-                case 'weekly': weeksToShow = 16; break;
-                case 'fixed_simple': weeksToShow = 2; break;
-                case 'modified': weeksToShow = 8; break;
-                default: weeksToShow = 4; break;
-            }
-        } else if (pattern === 'three_on_three_off') {
-            weeksToShow = rotation === 'fixed' ? 2 : 3;
-        }
-        
-        const patternInfo = patternData[pattern] || {
-            cycle: '14 days',
-            avgHours: '42 hours/week',
-            maxConsecutive: '3 days',
-            weekendsOff: 'Every other'
-        };
-        
-        console.log('Generating preview for', weeksToShow, 'weeks');
-        
-        let previewHtml = `
-            <div class="schedule-preview-container">
-                <div class="preview-header">
-                    <h4 class="preview-title">
-                        <i class="bi bi-calendar-range"></i> ${patternConfig.name || pattern} Schedule Timeline
-                    </h4>
-                    <p class="preview-subtitle">${pattern === 'dupont' ? 'Rotating' : rotation === 'fixed' || rotation === 'fixed_simple' ? 'Fixed' : 'Rotating'} ${weeksToShow}-Week Cycle • Continuous 24/7 Coverage</p>
-                </div>
-                
-                <div class="pattern-stats">
-                    <div class="stat-item">
-                        <div class="stat-value">${patternInfo.cycle.split(' ')[0]}</div>
-                        <div class="stat-label">Day Cycle</div>
-                    </div>
-                    <div class="stat-item">
-                        <div class="stat-value">${patternInfo.avgHours.split(' ')[0]}</div>
-                        <div class="stat-label">Hours/Week</div>
-                    </div>
-                    <div class="stat-item">
-                        <div class="stat-value">${patternInfo.maxConsecutive.split(' ')[0]}</div>
-                        <div class="stat-label">Max Days</div>
-                    </div>
-                    <div class="stat-item">
-                        <div class="stat-value">${patternInfo.weekendsOff.includes('Every') ? '50%' : patternInfo.weekendsOff}</div>
-                        <div class="stat-label">Weekends Off</div>
-                    </div>
-                </div>
-                
-                <div class="timeline-container">
-        `;
-        
-        // Week starts Monday
-        const dayAbbr = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
-        const weekOrder = [1, 2, 3, 4, 5, 6, 0]; // Mon, Tue, Wed, Thu, Fri, Sat, Sun
-        
-        for (let week = 1; week <= weeksToShow; week++) {
-            previewHtml += `
-                <div class="week-timeline">
-                    <div class="week-header">
-                        <span class="week-number">Week ${week}</span>
-                        <span class="week-info">${week === 1 ? 'Pattern begins' : week === weeksToShow ? 'Cycle completes' : 'Pattern continues'}</span>
-                    </div>
-                    
-                    <div class="days-grid">
-            `;
-            
-            for (let dayIdx of weekOrder) {
-                const assignment = generateCrewAssignment(pattern, week, dayIdx, rotation);
-                
-                let dayCrews = [];
-                let nightCrews = [];
-                
-                if (assignment.crews && assignment.crews !== 'Off') {
-                    const lines = assignment.crews.split('\n');
-                    lines.forEach(line => {
-                        if (line.includes('Day:')) {
-                            dayCrews = line.replace('Day:', '').trim().split('+');
-                        } else if (line.includes('Night:')) {
-                            nightCrews = line.replace('Night:', '').trim().split('+');
-                        }
-                    });
-                }
-                
-                const isWeekend = (dayIdx === 0 || dayIdx === 6);
-                
-                previewHtml += `
-                    <div class="day-column">
-                        <div class="day-label ${isWeekend ? 'weekend' : ''}">${dayAbbr[dayIdx]}</div>
-                `;
-                
-                if (dayCrews.length > 0) {
-                    previewHtml += `
-                        <div class="shift-block shift-day">
-                            <span class="shift-label">DAY</span>
-                            <span class="crew-letter">${dayCrews.join('+')}</span>
-                        </div>
-                    `;
-                } else {
-                    previewHtml += `
-                        <div class="shift-block shift-off">
-                            <span class="shift-label">DAY</span>
-                            <span class="crew-letter">-</span>
-                        </div>
-                    `;
-                }
-                
-                if (nightCrews.length > 0) {
-                    previewHtml += `
-                        <div class="shift-block shift-night">
-                            <span class="shift-label">NIGHT</span>
-                            <span class="crew-letter">${nightCrews.join('+')}</span>
-                        </div>
-                    `;
-                } else {
-                    previewHtml += `
-                        <div class="shift-block shift-off">
-                            <span class="shift-label">NIGHT</span>
-                            <span class="crew-letter">-</span>
-                        </div>
-                    `;
-                }
-                
-                previewHtml += `</div>`;
-            }
-            
-            previewHtml += `
-                    </div>
-                </div>
-            `;
-        }
-        
-        previewHtml += `
-                </div>
-                
-                <div class="legend-strip">
-                    <div class="legend-item">
-                        <div class="legend-box shift-day"></div>
-                        <span>Day Shift (06:00-18:00)</span>
-                    </div>
-                    <div class="legend-item">
-                        <div class="legend-box shift-night"></div>
-                        <span>Night Shift (18:00-06:00)</span>
-                    </div>
-                    <div class="legend-item">
-                        <div class="legend-box shift-off"></div>
-                        <span>Off Day</span>
-                    </div>
-                </div>
-            </div>
-        `;
-        
-        document.getElementById('schedulePreview').innerHTML = previewHtml;
-        console.log('Preview HTML inserted into DOM');
-    }
-    
-    function populatePatternInfo() {
-        const patternInfo = patternData[pattern] || {
-            cycle: 'Custom',
-            avgHours: '40-42 hours/week',
-            maxConsecutive: 'Varies',
-            weekendsOff: 'Varies',
-            advantages: ['Pattern specific'],
-            considerations: ['Pattern specific'],
-            explanation: `${patternConfig.name || pattern} pattern implementation`
-        };
-        
-        const infoHtml = `
-            <div class="info-item">
-                <span>Cycle Length:</span>
-                <strong>${patternInfo.cycle}</strong>
-            </div>
-            <div class="info-item">
-                <span>Average Hours:</span>
-                <strong>${patternInfo.avgHours}</strong>
-            </div>
-            <div class="info-item">
-                <span>Max Consecutive:</span>
-                <strong>${patternInfo.maxConsecutive}</strong>
-            </div>
-            <div class="info-item">
-                <span>Weekends Off:</span>
-                <strong>${patternInfo.weekendsOff}</strong>
-            </div>
-            <div class="mt-3">
-                <h6 class="text-success">Advantages:</h6>
-                <ul class="list-unstyled">
-                    ${(patternInfo.advantages || []).map(item => `<li class="text-success"><i class="bi bi-check-circle"></i> ${item}</li>`).join('')}
-                </ul>
-            </div>
-            <div class="mt-3">
-                <h6 class="text-warning">Considerations:</h6>
-                <ul class="list-unstyled">
-                    ${(patternInfo.considerations || []).map(item => `<li class="text-warning"><i class="bi bi-exclamation-triangle"></i> ${item}</li>`).join('')}
-                </ul>
-            </div>
-        `;
-        
-        document.getElementById('patternInfo').innerHTML = infoHtml;
-        document.getElementById('patternExplanation').innerHTML = `<p>${patternInfo.explanation}</p>`;
-    }
-    
-    function setupEventListeners() {
-        console.log('Setting up event listeners...');
-        
-        const generateBtn = document.getElementById('generatePreviewBtn');
-        if (generateBtn) {
-            console.log('Generate button found');
-            generateBtn.addEventListener('click', function(e) {
-                e.preventDefault();
-                console.log('Generate button clicked!');
-                generateSchedulePreview();
-            });
-        }
-        
-        const refreshBtn = document.getElementById('refreshPreview');
-        if (refreshBtn) {
-            refreshBtn.addEventListener('click', function(e) {
-                e.preventDefault();
-                generateSchedulePreview();
-            });
-        }
-        
-        const variationSelectors = {
-            'pitman': document.getElementById('pitmanVariation'),
-            'four_on_four_off': document.getElementById('fourVariation'),
-            'three_on_three_off': document.getElementById('threeVariation'),
-            'southern_swing': document.getElementById('swingVariation')
-        };
-        
-        const currentSelector = variationSelectors[pattern];
-        if (currentSelector) {
-            console.log(`Setting up ${pattern} variation selector`);
-            
-            currentSelector.addEventListener('change', function() {
-                console.log(`${pattern} variation changed to:`, this.value);
-                
-                const btn = document.getElementById('generatePreviewBtn');
-                if (!btn) {
-                    console.error('Button not found!');
-                    return;
-                }
-                
-                if (this.value) {
-                    btn.style.display = 'block';
-                    const selectedText = this.options[this.selectedIndex].text.split('(')[0].trim();
-                    btn.innerHTML = `<i class="bi bi-calendar-check"></i> Generate ${selectedText} Preview`;
-                    console.log('Button shown');
-                    
-                    btn.onclick = function(e) {
-                        e.preventDefault();
-                        console.log('Preview button clicked via onclick');
-                        generateSchedulePreview();
-                    };
-                    
-                    setTimeout(generateSchedulePreview, 100);
-                } else {
-                    btn.style.display = 'none';
-                    
-                    document.getElementById('schedulePreview').innerHTML = `
-                        <div class="alert alert-danger text-center">
-                            <i class="bi bi-exclamation-triangle fs-1"></i>
-                            <h5 class="mt-2 text-danger">Select Your Pattern Configuration</h5>
-                            <p>Please select a configuration option from the <strong class="text-danger">Pattern Configuration</strong> section.</p>
-                            <p class="mb-0"><small>The configuration card with the red border contains the options for this pattern.</small></p>
-                        </div>
-                    `;
-                }
-            });
-        } else if (
+{% endblock %}
