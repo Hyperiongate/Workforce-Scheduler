@@ -1,21 +1,17 @@
 # utils/pattern_generators.py
 # COMPLETE FILE - Pattern Generators for Workforce Scheduler
-# Last Updated: 2025-10-11 - Added 3-on-3-off pattern variations
+# Last Updated: 2025-10-13 - FIXED 3-on-3-off Fast Rotation with 12-week pattern
 # 
 # Change Log:
-#   2025-10-11: Added ThreeOnThreeOffFast, ThreeOnThreeOffSlow, ThreeOnThreeOffFixed, ThreeOnThreeOffModified
-#               - Fast: 12-day rotation (3D-3N-3Off repeating)
-#               - Slow: 42-day rotation (3 weeks days, 3 weeks nights)
-#               - Fixed: 6-day cycle, A&B days only, C&D nights only
-#               - Modified: 42-day cycle with weekend swaps for full weekends
+#   2025-10-13: CORRECTED ThreeOnThreeOffFast to use full 12-week (84-day) pattern
+#               - Each crew follows same 84-day pattern
+#               - Crew A starts Week 1 (day 0)
+#               - Crew B starts Week 4 (day 21)
+#               - Crew C starts Week 7 (day 42)
+#               - Crew D starts Week 10 (day 63)
+#   2025-10-11: Added 3-on-3-off pattern variations
 #   2025-10-10: FINAL FIX - Correct Modified 4-on-4-off pattern
-#               - Start with standard 4-on-4-off (4 work, 4 off repeating)
-#               - Week 3: Crew A gives Saturday to Crew B (3-day work, full weekend off)
-#               - Week 7: Crew B gives Saturday to Crew A (3-day work, full weekend off)
-#               - Result: 4 full weekends off for each crew over 8 weeks
-#               - Perfect 24/7 coverage verified
 #   2025-10-09: Added FourOnFourOffModified class with 8-week (56-day) cycle
-#   2025-10-09: Updated get_pattern_generator to include 'modified' variation
 
 from models import db, Employee, Schedule, ShiftType
 from datetime import datetime, date, timedelta, time
@@ -535,32 +531,32 @@ class FourOnFourOffModified(PatternGenerator):
 
 class ThreeOnThreeOffFast(PatternGenerator):
     """
-    3-on-3-off Fast Rotation Pattern
+    3-on-3-off Fast Rotation Pattern - CORRECTED 12-WEEK PATTERN
     
-    12-day cycle: 3 days, 3 nights, 3 off, 3 days (repeating)
-    All crews rotate through day/night/off shifts every 3 days
+    84-day (12-week) cycle where each crew follows the same pattern
+    but starts at a different point:
+    - Crew A: Starts Week 1 (day 0)
+    - Crew B: Starts Week 4 (day 21) 
+    - Crew C: Starts Week 7 (day 42)
+    - Crew D: Starts Week 10 (day 63)
+    
+    The pattern repeats every 12 weeks, aligning to the same weekday.
     
     Benefits:
     - Shorter work stretches (3 days max)
     - Quick rotation provides variety
     - Regular pattern, easy to remember
     - Good work-life balance
-    
-    Crew Offsets:
-    - Crew A: starts at day 0
-    - Crew B: starts at day 3 (offset to cover A's nights)
-    - Crew C: starts at day 6 (offset to cover B's nights)
-    - Crew D: starts at day 9 (offset to cover C's nights)
     """
     
     def __init__(self):
         super().__init__()
         self.pattern_name = "3-on-3-off Fast Rotation"
-        self.cycle_days = 12
+        self.cycle_days = 84  # 12 weeks
     
     def generate(self, start_date, end_date, created_by_id=None, replace_existing=False):
-        """Generate fast rotation 3-on-3-off schedule"""
-        logger.info(f"Generating 3-on-3-off Fast: {start_date} to {end_date}")
+        """Generate fast rotation 3-on-3-off schedule with 12-week pattern"""
+        logger.info(f"Generating 3-on-3-off Fast (12-week): {start_date} to {end_date}")
         
         self.validate_date_range(start_date, end_date)
         crews = self.get_crew_employees()
@@ -569,15 +565,41 @@ class ThreeOnThreeOffFast(PatternGenerator):
         if replace_existing:
             self.clear_existing_schedules(start_date, end_date, crews)
         
-        # 12-day pattern: D=Day, N=Night, O=Off
-        pattern = ['D', 'D', 'D', 'N', 'N', 'N', 'O', 'O', 'O', 'D', 'D', 'D']
+        # 84-day pattern (12 weeks × 7 days, Monday start)
+        # D=Day, N=Night, O=Off
+        full_pattern = [
+            # Week 1: Mon-Sun
+            'D', 'D', 'D', 'O', 'O', 'O', 'N',
+            # Week 2: Mon-Sun
+            'N', 'N', 'O', 'O', 'O', 'D', 'D',
+            # Week 3: Mon-Sun
+            'D', 'O', 'O', 'O', 'N', 'N', 'N',
+            # Week 4: Mon-Sun
+            'O', 'O', 'O', 'D', 'D', 'D', 'O',
+            # Week 5: Mon-Sun
+            'O', 'O', 'N', 'N', 'N', 'O', 'O',
+            # Week 6: Mon-Sun
+            'O', 'D', 'D', 'D', 'O', 'O', 'O',
+            # Week 7: Mon-Sun
+            'N', 'N', 'N', 'O', 'O', 'O', 'D',
+            # Week 8: Mon-Sun
+            'D', 'D', 'O', 'O', 'O', 'N', 'N',
+            # Week 9: Mon-Sun
+            'N', 'O', 'O', 'O', 'D', 'D', 'D',
+            # Week 10: Mon-Sun
+            'O', 'O', 'O', 'N', 'N', 'N', 'O',
+            # Week 11: Mon-Sun
+            'O', 'O', 'D', 'D', 'D', 'O', 'O',
+            # Week 12: Mon-Sun
+            'O', 'N', 'N', 'N', 'O', 'O', 'O'
+        ]
         
-        # Crew offsets - each crew starts 3 days after the previous
+        # Crew start offsets (when each crew begins in the pattern)
         crew_offsets = {
-            'A': 0,
-            'B': 3,
-            'C': 6,
-            'D': 9
+            'A': 0,   # Week 1 = day 0
+            'B': 21,  # Week 4 = day 21 (3 weeks × 7 days)
+            'C': 42,  # Week 7 = day 42 (6 weeks × 7 days)
+            'D': 63   # Week 10 = day 63 (9 weeks × 7 days)
         }
         
         # Shift times
@@ -595,9 +617,11 @@ class ThreeOnThreeOffFast(PatternGenerator):
                 if not employees:
                     continue
                 
+                # Calculate where this crew is in their pattern
                 crew_offset = crew_offsets[crew_letter]
-                cycle_position = (day_offset + crew_offset) % self.cycle_days
-                shift_code = pattern[cycle_position]
+                pattern_position = (day_offset + crew_offset) % self.cycle_days
+                
+                shift_code = full_pattern[pattern_position]
                 
                 # Skip off days
                 if shift_code == 'O':
@@ -633,8 +657,8 @@ class ThreeOnThreeOffFast(PatternGenerator):
         result['statistics'] = {
             'total_schedules': len(self.schedules),
             'pattern_name': self.pattern_name,
-            'cycle_length': f"{self.cycle_days} days",
-            'work_stretch': '3 consecutive days max'
+            'cycle_length': f"{self.cycle_days} days (12 weeks)",
+            'crew_offsets': 'A:Wk1, B:Wk4, C:Wk7, D:Wk10'
         }
         
         return result
