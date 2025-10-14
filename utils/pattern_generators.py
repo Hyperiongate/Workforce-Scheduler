@@ -666,36 +666,30 @@ class ThreeOnThreeOffFast(PatternGenerator):
 
 class ThreeOnThreeOffSlow(PatternGenerator):
     """
-    3-on-3-off Slow Rotation Pattern
+    3-on-3-off Slow Rotation Pattern - CORRECTED 12-WEEK PATTERN
     
-    42-day cycle (6 weeks): 3 weeks days, 3 weeks nights
-    Each crew works the same shift for 3 weeks before rotating
+    84-day cycle (12 weeks) with shift swap at week 7:
+    - Weeks 1-6: A&B work DAYS (alternating), C&D work NIGHTS (alternating)
+    - Weeks 7-12: C&D work DAYS (alternating), A&B work NIGHTS (alternating)
     
-    Pattern per crew:
-    - Weeks 1-3: Work 3 on, 3 off (day shift)
-    - Weeks 4-6: Work 3 on, 3 off (night shift)
+    Work pattern: 3 on, 3 off (repeating every 6 days)
+    Crew alternation: A alternates with B, C alternates with D
     
     Benefits:
-    - Body adjusts to one shift type (better circadian rhythm)
-    - Longer periods on same shift
-    - Still maintains 3-on-3-off work pattern
-    - Predictable schedule
-    
-    Crew Offsets:
-    - Crew A: Weeks 1-3 days, Weeks 4-6 nights
-    - Crew B: Weeks 1-3 nights, Weeks 4-6 days
-    - Crew C: Weeks 1-3 days, Weeks 4-6 nights
-    - Crew D: Weeks 1-3 nights, Weeks 4-6 days
+    - 6 weeks on same shift (better circadian adjustment)
+    - Still maintains short 3-day work stretches
+    - Predictable pattern
+    - All crews experience both shifts
     """
     
     def __init__(self):
         super().__init__()
         self.pattern_name = "3-on-3-off Slow Rotation"
-        self.cycle_days = 42  # 6 weeks
+        self.cycle_days = 84  # 12 weeks (changed from 42)
     
     def generate(self, start_date, end_date, created_by_id=None, replace_existing=False):
-        """Generate slow rotation 3-on-3-off schedule"""
-        logger.info(f"Generating 3-on-3-off Slow: {start_date} to {end_date}")
+        """Generate slow rotation 3-on-3-off schedule with 12-week cycle"""
+        logger.info(f"Generating 3-on-3-off Slow (12-week): {start_date} to {end_date}")
         
         self.validate_date_range(start_date, end_date)
         crews = self.get_crew_employees()
@@ -705,23 +699,16 @@ class ThreeOnThreeOffSlow(PatternGenerator):
             self.clear_existing_schedules(start_date, end_date, crews)
         
         # 6-day basic pattern: 3 on, 3 off
-        basic_pattern = ['X', 'X', 'X', 'O', 'O', 'O']
-        
-        # Crew configurations: which weeks they work days vs nights
-        # Format: {'crew': [(start_week, end_week, 'D' or 'N'), ...]}
-        crew_schedule = {
-            'A': [(0, 3, 'D'), (3, 6, 'N')],  # Weeks 1-3 days, 4-6 nights
-            'B': [(0, 3, 'N'), (3, 6, 'D')],  # Weeks 1-3 nights, 4-6 days
-            'C': [(0, 3, 'D'), (3, 6, 'N')],  # Weeks 1-3 days, 4-6 nights
-            'D': [(0, 3, 'N'), (3, 6, 'D')]   # Weeks 1-3 nights, 4-6 days
-        }
+        work_pattern = ['X', 'X', 'X', 'O', 'O', 'O']
         
         # Crew offsets for the 3-on-3-off pattern
+        # A and C: start at day 0
+        # B and D: start at day 3 (opposite of A and C)
         crew_offsets = {
             'A': 0,
-            'B': 3,  # B starts when A is off
-            'C': 0,  # C same as A (different shift)
-            'D': 3   # D same as B (different shift)
+            'B': 3,
+            'C': 0,
+            'D': 3
         }
         
         # Shift times
@@ -735,40 +722,43 @@ class ThreeOnThreeOffSlow(PatternGenerator):
         while current_date <= end_date:
             day_offset = (current_date - start_date).days
             cycle_day = day_offset % self.cycle_days
-            current_week = cycle_day // 7
-            day_in_week = cycle_day % 7
+            current_week = cycle_day // 7  # 0-11 for weeks 1-12
             
             for crew_letter, employees in crews.items():
                 if not employees:
                     continue
                 
-                # Determine if this crew works today and what shift
+                # Determine if this crew works today
                 crew_offset = crew_offsets[crew_letter]
-                pattern_position = (day_in_week + crew_offset) % 6
+                pattern_position = (day_offset + crew_offset) % 6
                 
                 # Check if working today based on 3-on-3-off pattern
-                if basic_pattern[pattern_position] == 'O':
+                if work_pattern[pattern_position] == 'O':
                     continue
                 
-                # Determine shift type based on current week
-                shift_code = None
-                for start_week, end_week, shift in crew_schedule[crew_letter]:
-                    if start_week <= current_week < end_week:
-                        shift_code = shift
-                        break
-                
-                if not shift_code:
-                    continue
-                
-                # Set shift type and times
-                if shift_code == 'D':
-                    shift_type = ShiftType.DAY
-                    start_time = day_start
-                    end_time = day_end
-                else:  # N
-                    shift_type = ShiftType.NIGHT
-                    start_time = night_start
-                    end_time = night_end
+                # Determine shift type based on crew and current week
+                # Weeks 0-5 (1-6): A&B on days, C&D on nights
+                # Weeks 6-11 (7-12): C&D on days, A&B on nights
+                if current_week < 6:
+                    # First 6 weeks
+                    if crew_letter in ['A', 'B']:
+                        shift_type = ShiftType.DAY
+                        start_time = day_start
+                        end_time = day_end
+                    else:  # C or D
+                        shift_type = ShiftType.NIGHT
+                        start_time = night_start
+                        end_time = night_end
+                else:
+                    # Last 6 weeks (shift swap)
+                    if crew_letter in ['C', 'D']:
+                        shift_type = ShiftType.DAY
+                        start_time = day_start
+                        end_time = day_end
+                    else:  # A or B
+                        shift_type = ShiftType.NIGHT
+                        start_time = night_start
+                        end_time = night_end
                 
                 # Create schedule for each employee
                 for employee in employees:
@@ -790,8 +780,9 @@ class ThreeOnThreeOffSlow(PatternGenerator):
         result['statistics'] = {
             'total_schedules': len(self.schedules),
             'pattern_name': self.pattern_name,
-            'cycle_length': f"{self.cycle_days} days (6 weeks)",
-            'rotation_frequency': '3 weeks per shift type'
+            'cycle_length': f"{self.cycle_days} days (12 weeks)",
+            'rotation_frequency': '6 weeks per shift type',
+            'shift_swap': 'Week 7 (crews swap day/night)'
         }
         
         return result
