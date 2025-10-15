@@ -1,740 +1,1058 @@
-/**
- * FILE: static/js/pdf-generator.js
- * VERSION: 10.0.0 - COMPLETE REBUILD - PROFESSIONAL SALES TOOL 
- * DATE: October 15, 2025
- * AUTHOR: TruthLens Development Team
- * 
- * COMPLETE REBUILD FROM SCRATCH
- * 
- * DESIGN PHILOSOPHY:
- * - Professional document that serves as a sales/credibility tool
- * - Clean, modern layout with meaningful data visualization
- * - Tells a story: Score → Executive Summary → Service Details → Insights
- * - Informative, educational, and engaging
- * - No thick borders around empty containers
- * - Real data from backend, no placeholders
- * 
- * SECTIONS:
- * 1. Cover Page - Bold trust score with visual grade
- * 2. Executive Summary - Article info, source, author, key findings
- * 3. Service Analysis - Each service with scores, findings, and insights
- * 4. Visual Dashboard - Charts and metrics
- * 5. Recommendations - Actionable insights
- * 
- * DATA SOURCE:
- * - window.lastAnalysisData (set by app after analysis)
- * - Real backend fields: trust_score, article_summary, source, author,
- *   findings_summary, detailed_analysis{}, word_count
- */
+# utils/pattern_generators.py
+# COMPLETE FILE - Pattern Generators for Workforce Scheduler
+# Last Updated: 2025-10-13 - FIXED 3-on-3-off Fast Rotation with 12-week pattern
+# 
+# Change Log:
+#   2025-10-13: CORRECTED ThreeOnThreeOffFast to use full 12-week (84-day) pattern
+#               - Each crew follows same 84-day pattern
+#               - Crew A starts Week 1 (day 0)
+#               - Crew B starts Week 4 (day 21)
+#               - Crew C starts Week 7 (day 42)
+#               - Crew D starts Week 10 (day 63)
+#   2025-10-11: Added 3-on-3-off pattern variations
+#   2025-10-10: FINAL FIX - Correct Modified 4-on-4-off pattern
+#   2025-10-09: Added FourOnFourOffModified class with 8-week (56-day) cycle
 
-// ============================================================================
-// MAIN ENTRY POINT
-// ============================================================================
+from models import db, Employee, Schedule, ShiftType
+from datetime import datetime, date, timedelta, time
+from sqlalchemy import and_
+import logging
 
-function downloadPDFReport() {
-    console.log('[PDF v10.0.0] Starting professional PDF generation...');
-    
-    // Validate jsPDF
-    if (typeof window.jspdf === 'undefined') {
-        alert('PDF library not loaded. Please refresh the page and try again.');
-        return;
-    }
-    
-    // Get analysis data
-    const data = window.lastAnalysisData;
-    if (!data) {
-        alert('No analysis data available. Please run an analysis first.');
-        return;
-    }
-    
-    console.log('[PDF v10.0.0] Generating report for:', data.source || 'Unknown source');
-    
-    try {
-        const { jsPDF } = window.jspdf;
-        const doc = new jsPDF({
-            orientation: 'portrait',
-            unit: 'mm',
-            format: 'a4'
-        });
-        
-        // Generate complete PDF
-        generateProfessionalPDF(doc, data);
-        
-        // Save with descriptive filename
-        const timestamp = new Date().toISOString().split('T')[0];
-        const sourceShort = (data.source || 'Report').substring(0, 30).replace(/[^a-zA-Z0-9]/g, '-');
-        const filename = `TruthLens-Report-${sourceShort}-${timestamp}.pdf`;
-        
-        doc.save(filename);
-        console.log('[PDF v10.0.0] ✓ PDF generated successfully:', filename);
-        
-    } catch (error) {
-        console.error('[PDF v10.0.0] Error generating PDF:', error);
-        alert('Error generating PDF. Please try again.');
-    }
-}
+logger = logging.getLogger(__name__)
 
-// ============================================================================
-// PDF GENERATION ORCHESTRATOR
-// ============================================================================
 
-function generateProfessionalPDF(doc, data) {
-    // Extract key data
-    const trustScore = Math.round(data.trust_score || 0);
-    const detailed = data.detailed_analysis || {};
+class PatternGenerator:
+    """Base class for all schedule pattern generators"""
     
-    // Color palette - professional, modern
-    const colors = {
-        primary: [59, 130, 246],      // Blue
-        success: [34, 197, 94],       // Green
-        warning: [251, 146, 60],      // Orange
-        danger: [239, 68, 68],        // Red
-        purple: [168, 85, 247],       // Purple
-        gray: [107, 114, 128],        // Gray
-        lightGray: [243, 244, 246],   // Light gray
-        darkGray: [31, 41, 55],       // Dark gray
-        white: [255, 255, 255]
-    };
+    def __init__(self):
+        self.schedules = []
+        self.pattern_name = "Base Pattern"
+        self.cycle_days = 14
     
-    // Determine score color
-    const scoreColor = trustScore >= 70 ? colors.success :
-                       trustScore >= 50 ? colors.warning : colors.danger;
-    
-    // Page 1: Cover Page
-    generateCoverPage(doc, data, trustScore, scoreColor, colors);
-    
-    // Page 2: Executive Summary
-    doc.addPage();
-    generateExecutiveSummary(doc, data, trustScore, scoreColor, colors);
-    
-    // Page 3+: Service Analysis Pages
-    const services = [
-        { key: 'source_credibility', title: 'Source Credibility', icon: '🏛️' },
-        { key: 'bias_detector', title: 'Bias Detection', icon: '⚖️' },
-        { key: 'fact_checker', title: 'Fact Verification', icon: '✓' },
-        { key: 'author_analyzer', title: 'Author Analysis', icon: '👤' },
-        { key: 'transparency_analyzer', title: 'Transparency', icon: '🔍' },
-        { key: 'content_analyzer', title: 'Content Quality', icon: '📄' }
-    ];
-    
-    services.forEach(service => {
-        if (detailed[service.key] && detailed[service.key].score !== undefined) {
-            doc.addPage();
-            generateServicePage(doc, service, detailed[service.key], colors);
-        }
-    });
-    
-    // Final Page: Recommendations
-    doc.addPage();
-    generateRecommendationsPage(doc, data, trustScore, scoreColor, colors);
-    
-    // Add page numbers to all pages except cover
-    const totalPages = doc.internal.getNumberOfPages();
-    for (let i = 2; i <= totalPages; i++) {
-        doc.setPage(i);
-        addPageFooter(doc, i, totalPages, colors);
-    }
-}
-
-// ============================================================================
-// PAGE 1: COVER PAGE
-// ============================================================================
-
-function generateCoverPage(doc, data, trustScore, scoreColor, colors) {
-    const pageWidth = 210;
-    const pageHeight = 297;
-    
-    // Header gradient bar
-    doc.setFillColor(...colors.primary);
-    doc.rect(0, 0, pageWidth, 60, 'F');
-    
-    // Title
-    doc.setFontSize(48);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(...colors.white);
-    doc.text('TruthLens', pageWidth / 2, 35, { align: 'center' });
-    
-    // Subtitle
-    doc.setFontSize(16);
-    doc.setFont('helvetica', 'normal');
-    doc.text('AI-Powered Credibility Analysis Report', pageWidth / 2, 48, { align: 'center' });
-    
-    // Large circular trust score
-    const centerX = pageWidth / 2;
-    const centerY = 135;
-    const radius = 45;
-    
-    // Outer circle
-    doc.setDrawColor(...scoreColor);
-    doc.setLineWidth(8);
-    doc.circle(centerX, centerY, radius, 'S');
-    
-    // Inner white circle
-    doc.setFillColor(...colors.white);
-    doc.circle(centerX, centerY, radius - 6, 'F');
-    
-    // Score number
-    doc.setFontSize(64);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(...scoreColor);
-    doc.text(trustScore.toString(), centerX, centerY + 8, { align: 'center' });
-    
-    // "/100" text
-    doc.setFontSize(20);
-    doc.setTextColor(...colors.gray);
-    doc.text('/100', centerX, centerY + 22, { align: 'center' });
-    
-    // Trust level label
-    const trustLabel = trustScore >= 80 ? 'HIGHLY TRUSTWORTHY' :
-                       trustScore >= 70 ? 'TRUSTWORTHY' :
-                       trustScore >= 60 ? 'MODERATELY RELIABLE' :
-                       trustScore >= 50 ? 'QUESTIONABLE' : 'UNRELIABLE';
-    
-    doc.setFontSize(18);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(...scoreColor);
-    doc.text(trustLabel, centerX, centerY + 60, { align: 'center' });
-    
-    // Article info card
-    const cardY = 210;
-    const cardHeight = 60;
-    
-    doc.setFillColor(...colors.lightGray);
-    doc.roundedRect(20, cardY, pageWidth - 40, cardHeight, 3, 3, 'F');
-    
-    let yPos = cardY + 12;
-    
-    // Source
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(...colors.darkGray);
-    doc.text('SOURCE:', 25, yPos);
-    
-    doc.setFont('helvetica', 'normal');
-    const sourceText = (data.source || 'Unknown Source').substring(0, 60);
-    doc.text(sourceText, 50, yPos);
-    
-    yPos += 10;
-    
-    // Author
-    doc.setFont('helvetica', 'bold');
-    doc.text('AUTHOR:', 25, yPos);
-    
-    doc.setFont('helvetica', 'normal');
-    const authorText = (data.author || 'Unknown Author').substring(0, 60);
-    doc.text(authorText, 50, yPos);
-    
-    yPos += 10;
-    
-    // Word count
-    doc.setFont('helvetica', 'bold');
-    doc.text('LENGTH:', 25, yPos);
-    
-    doc.setFont('helvetica', 'normal');
-    const wordCount = data.word_count || 0;
-    doc.text(`${wordCount} words`, 50, yPos);
-    
-    yPos += 10;
-    
-    // Analysis date
-    doc.setFont('helvetica', 'bold');
-    doc.text('ANALYZED:', 25, yPos);
-    
-    doc.setFont('helvetica', 'normal');
-    const dateStr = new Date().toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-    });
-    doc.text(dateStr, 50, yPos);
-    
-    // Footer tagline
-    doc.setFontSize(12);
-    doc.setFont('helvetica', 'italic');
-    doc.setTextColor(...colors.gray);
-    doc.text('Empowering truth through AI analysis', centerX, 285, { align: 'center' });
-}
-
-// ============================================================================
-// PAGE 2: EXECUTIVE SUMMARY
-// ============================================================================
-
-function generateExecutiveSummary(doc, data, trustScore, scoreColor, colors) {
-    // Page header
-    doc.setFillColor(...colors.primary);
-    doc.rect(0, 0, 210, 20, 'F');
-    
-    doc.setFontSize(20);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(...colors.white);
-    doc.text('Executive Summary', 105, 13, { align: 'center' });
-    
-    let yPos = 35;
-    
-    // Article Summary Section
-    doc.setFontSize(14);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(...colors.darkGray);
-    doc.text('Article Overview', 20, yPos);
-    
-    yPos += 8;
-    
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(...colors.darkGray);
-    
-    const summary = data.article_summary || 'No summary available.';
-    const summaryLines = doc.splitTextToSize(summary, 170);
-    doc.text(summaryLines.slice(0, 4), 20, yPos);
-    yPos += summaryLines.slice(0, 4).length * 5 + 10;
-    
-    // Key Findings Section
-    doc.setFontSize(14);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Key Findings', 20, yPos);
-    
-    yPos += 8;
-    
-    const findings = extractKeyFindings(data);
-    
-    findings.slice(0, 5).forEach(finding => {
-        // Bullet point
-        doc.setFillColor(...colors.primary);
-        doc.circle(23, yPos - 2, 1.5, 'F');
+    def validate_date_range(self, start_date, end_date):
+        """Validate date range is reasonable"""
+        if start_date > end_date:
+            raise ValueError("Start date must be before end date")
         
-        // Finding text
-        doc.setFontSize(10);
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(...colors.darkGray);
-        const lines = doc.splitTextToSize(finding, 165);
-        doc.text(lines[0], 28, yPos);
+        if (end_date - start_date).days > 365:
+            raise ValueError("Date range cannot exceed 365 days")
+    
+    def get_crew_employees(self):
+        """Get active employees organized by crew"""
+        employees = Employee.query.filter_by(is_active=True, is_supervisor=False).all()
         
-        yPos += 8;
-    });
-    
-    yPos += 5;
-    
-    // Trust Score Breakdown Section
-    doc.setFontSize(14);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(...colors.darkGray);
-    doc.text('Trust Score Breakdown', 20, yPos);
-    
-    yPos += 10;
-    
-    // Service scores with bars
-    const serviceScores = getServiceScores(data.detailed_analysis || {});
-    
-    serviceScores.forEach(service => {
-        // Service name
-        doc.setFontSize(9);
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(...colors.darkGray);
-        doc.text(service.name, 20, yPos);
+        crews = {'A': [], 'B': [], 'C': [], 'D': []}
+        for emp in employees:
+            if emp.crew in crews:
+                crews[emp.crew].append(emp)
         
-        // Score value
-        doc.setFontSize(10);
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(...service.color);
-        doc.text(`${service.score}`, 185, yPos, { align: 'right' });
+        return crews
+    
+    def validate_crews(self, crews):
+        """Ensure we have employees in crews"""
+        if not any(crews.values()):
+            raise ValueError("No active employees found in any crew")
+    
+    def clear_existing_schedules(self, start_date, end_date, crews):
+        """Remove existing schedules in date range for these crews"""
+        employee_ids = []
+        for crew_employees in crews.values():
+            employee_ids.extend([emp.id for emp in crew_employees])
         
-        yPos += 4;
-        
-        // Progress bar background
-        doc.setFillColor(...colors.lightGray);
-        doc.rect(20, yPos - 2, 165, 4, 'F');
-        
-        // Progress bar fill
-        const barWidth = (service.score / 100) * 165;
-        doc.setFillColor(...service.color);
-        doc.rect(20, yPos - 2, barWidth, 4, 'F');
-        
-        yPos += 10;
-    });
+        if employee_ids:
+            Schedule.query.filter(
+                and_(
+                    Schedule.employee_id.in_(employee_ids),
+                    Schedule.date >= start_date,
+                    Schedule.date <= end_date
+                )
+            ).delete(synchronize_session=False)
+            db.session.commit()
+            logger.info(f"Cleared existing schedules from {start_date} to {end_date}")
     
-    // Bottom line box
-    yPos = 250;
-    
-    doc.setFillColor(255, 249, 235);
-    doc.roundedRect(20, yPos, 170, 25, 2, 2, 'F');
-    
-    doc.setDrawColor(...colors.warning);
-    doc.setLineWidth(0.5);
-    doc.roundedRect(20, yPos, 170, 25, 2, 2, 'S');
-    
-    doc.setFontSize(11);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(...colors.darkGray);
-    doc.text('Bottom Line:', 25, yPos + 8);
-    
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'normal');
-    const bottomLine = data.findings_summary || generateBottomLine(trustScore);
-    const bottomLines = doc.splitTextToSize(bottomLine, 160);
-    doc.text(bottomLines.slice(0, 2), 25, yPos + 15);
-}
-
-// ============================================================================
-// PAGE 3+: SERVICE ANALYSIS PAGES
-// ============================================================================
-
-function generateServicePage(doc, service, serviceData, colors) {
-    // Page header with service title
-    doc.setFillColor(...colors.primary);
-    doc.rect(0, 0, 210, 20, 'F');
-    
-    doc.setFontSize(18);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(...colors.white);
-    doc.text(`${service.icon} ${service.title}`, 105, 13, { align: 'center' });
-    
-    let yPos = 35;
-    
-    // Score display card
-    const score = Math.round(serviceData.score || 0);
-    const scoreColor = score >= 70 ? colors.success :
-                       score >= 50 ? colors.warning : colors.danger;
-    
-    // Score box
-    doc.setFillColor(...colors.lightGray);
-    doc.roundedRect(20, yPos, 50, 35, 2, 2, 'F');
-    
-    doc.setFontSize(36);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(...scoreColor);
-    doc.text(score.toString(), 45, yPos + 20, { align: 'center' });
-    
-    doc.setFontSize(10);
-    doc.setTextColor(...colors.gray);
-    doc.text('/100', 45, yPos + 28, { align: 'center' });
-    
-    // Service interpretation
-    const interpretation = getServiceInterpretation(service.key, score, serviceData);
-    
-    doc.setFillColor(...colors.lightGray);
-    doc.roundedRect(75, yPos, 115, 35, 2, 2, 'F');
-    
-    doc.setFontSize(11);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(...colors.darkGray);
-    doc.text('Assessment:', 80, yPos + 8);
-    
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'normal');
-    const interpLines = doc.splitTextToSize(interpretation, 105);
-    doc.text(interpLines.slice(0, 3), 80, yPos + 15);
-    
-    yPos += 45;
-    
-    // Findings section
-    if (serviceData.findings && Array.isArray(serviceData.findings) && serviceData.findings.length > 0) {
-        doc.setFontSize(13);
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(...colors.darkGray);
-        doc.text('Key Findings:', 20, yPos);
-        
-        yPos += 8;
-        
-        serviceData.findings.slice(0, 6).forEach(finding => {
-            const findingText = typeof finding === 'string' ? finding :
-                              finding.text || finding.finding || '';
+    def save_schedules(self, replace_existing=False):
+        """Save all generated schedules to database"""
+        try:
+            db.session.add_all(self.schedules)
+            db.session.commit()
             
-            if (findingText && yPos < 250) {
-                // Checkmark bullet
-                doc.setFontSize(10);
-                doc.setTextColor(...colors.success);
-                doc.text('✓', 22, yPos);
-                
-                // Finding text
-                doc.setFontSize(9);
-                doc.setFont('helvetica', 'normal');
-                doc.setTextColor(...colors.darkGray);
-                const lines = doc.splitTextToSize(findingText.substring(0, 150), 165);
-                doc.text(lines[0], 28, yPos);
-                
-                yPos += 7;
+            logger.info(f"Successfully saved {len(self.schedules)} schedules")
+            
+            return {
+                'success': True,
+                'schedules_saved': len(self.schedules),
+                'date_range': {
+                    'start': min(s.date for s in self.schedules).isoformat(),
+                    'end': max(s.date for s in self.schedules).isoformat()
+                }
             }
-        });
-        
-        yPos += 5;
-    }
-    
-    // Service-specific insights
-    if (yPos < 240) {
-        addServiceSpecificInsights(doc, service.key, serviceData, yPos, colors);
-    }
-}
+            
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Error saving schedules: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'schedules_saved': 0
+            }
 
-// ============================================================================
-// FINAL PAGE: RECOMMENDATIONS
-// ============================================================================
 
-function generateRecommendationsPage(doc, data, trustScore, scoreColor, colors) {
-    // Page header
-    doc.setFillColor(...colors.purple);
-    doc.rect(0, 0, 210, 20, 'F');
+class FourOnFourOffWeekly(PatternGenerator):
+    """
+    4-on-4-off Weekly Rotation Pattern
     
-    doc.setFontSize(20);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(...colors.white);
-    doc.text('Recommendations & Next Steps', 105, 13, { align: 'center' });
+    16-day cycle per crew: 4D, 4Off, 4N, 4Off (repeats)
+    16-week full rotation (4 crews × 4 weeks offset)
     
-    let yPos = 40;
+    Crew offsets:
+    - Crew A: Week 1 (day 0)
+    - Crew B: Week 5 (day 28)
+    - Crew C: Week 9 (day 56)
+    - Crew D: Week 13 (day 84)
+    """
     
-    // Trust level explanation
-    doc.setFillColor(...scoreColor);
-    doc.roundedRect(20, yPos, 170, 25, 2, 2, 'F');
+    def __init__(self):
+        super().__init__()
+        self.pattern_name = "4-on-4-off Weekly Rotation"
+        self.cycle_days = 16  # Per crew cycle
+        self.full_rotation_days = 112  # 16 weeks
     
-    doc.setFontSize(14);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(...colors.white);
-    const trustLevel = trustScore >= 70 ? 'This content is generally trustworthy' :
-                       trustScore >= 50 ? 'This content requires verification' :
-                       'Exercise caution with this content';
-    doc.text(trustLevel, 105, yPos + 10, { align: 'center' });
-    
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-    const scoreRange = trustScore >= 70 ? 'Score: 70-100 (Reliable)' :
-                       trustScore >= 50 ? 'Score: 50-69 (Moderate)' :
-                       'Score: Below 50 (Questionable)';
-    doc.text(scoreRange, 105, yPos + 18, { align: 'center' });
-    
-    yPos += 35;
-    
-    // Recommendations
-    const recommendations = generateRecommendations(data, trustScore);
-    
-    recommendations.forEach((rec, index) => {
-        if (yPos > 240) return;
+    def generate(self, start_date, end_date, created_by_id=None, replace_existing=False):
+        """Generate 4-on-4-off weekly rotation schedule"""
+        logger.info(f"Generating 4-on-4-off Weekly: {start_date} to {end_date}")
         
-        // Number badge
-        doc.setFillColor(...colors.primary);
-        doc.circle(25, yPos + 2, 4, 'F');
+        # Validate inputs
+        self.validate_date_range(start_date, end_date)
         
-        doc.setFontSize(10);
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(...colors.white);
-        doc.text((index + 1).toString(), 25, yPos + 3, { align: 'center' });
+        # Get employees by crew
+        crews = self.get_crew_employees()
+        self.validate_crews(crews)
         
-        // Recommendation text
-        doc.setFontSize(10);
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(...colors.darkGray);
-        doc.text(rec.title, 33, yPos + 3);
+        # Clear existing if requested
+        if replace_existing:
+            self.clear_existing_schedules(start_date, end_date, crews)
         
-        doc.setFontSize(9);
-        doc.setFont('helvetica', 'normal');
-        const lines = doc.splitTextToSize(rec.text, 160);
-        doc.text(lines.slice(0, 2), 33, yPos + 9);
+        # Define the 16-day pattern for one crew
+        # D=Day, N=Night, O=Off
+        pattern = [
+            'D', 'D', 'D', 'D',  # Days 0-3: Work days
+            'O', 'O', 'O', 'O',  # Days 4-7: Off
+            'N', 'N', 'N', 'N',  # Days 8-11: Work nights
+            'O', 'O', 'O', 'O'   # Days 12-15: Off
+        ]
         
-        yPos += lines.slice(0, 2).length * 5 + 10;
-    });
-    
-    // Educational note
-    yPos = 250;
-    
-    doc.setFillColor(240, 249, 255);
-    doc.roundedRect(20, yPos, 170, 30, 2, 2, 'F');
-    
-    doc.setDrawColor(...colors.primary);
-    doc.setLineWidth(0.5);
-    doc.roundedRect(20, yPos, 170, 30, 2, 2, 'S');
-    
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(...colors.primary);
-    doc.text('💡 About TruthLens', 25, yPos + 8);
-    
-    doc.setFontSize(8);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(...colors.darkGray);
-    const aboutText = 'TruthLens uses advanced AI and multiple verification services to analyze content credibility. This report provides an objective assessment based on source reputation, author credentials, factual accuracy, bias detection, and content quality. Use this analysis as one tool in your media literacy toolkit.';
-    const aboutLines = doc.splitTextToSize(aboutText, 160);
-    doc.text(aboutLines, 25, yPos + 15);
-}
-
-// ============================================================================
-// HELPER FUNCTIONS - DATA EXTRACTION
-// ============================================================================
-
-function extractKeyFindings(data) {
-    const findings = [];
-    const detailed = data.detailed_analysis || {};
-    
-    // Extract from each service's findings array
-    Object.values(detailed).forEach(service => {
-        if (service && service.findings && Array.isArray(service.findings)) {
-            service.findings.forEach(f => {
-                const text = typeof f === 'string' ? f : f.text || f.finding || '';
-                if (text) findings.push(text);
-            });
+        # Crew start offsets (in days from schedule start)
+        crew_offsets = {
+            'A': 0,    # Starts Week 1
+            'B': 28,   # Starts Week 5 (4 weeks later)
+            'C': 56,   # Starts Week 9 (8 weeks later)
+            'D': 84    # Starts Week 13 (12 weeks later)
         }
-    });
-    
-    // If no findings, generate from score
-    if (findings.length === 0) {
-        const score = data.trust_score || 0;
-        findings.push(
-            score >= 70 ? 'Source demonstrates strong credibility and reputation' : 'Source credibility requires verification',
-            score >= 70 ? 'Content shows minimal bias and balanced reporting' : 'Some bias indicators detected in content',
-            score >= 70 ? 'Facts are well-sourced and verifiable' : 'Key claims should be independently verified'
-        );
-    }
-    
-    return findings;
-}
-
-function getServiceScores(detailed) {
-    const services = [
-        { key: 'source_credibility', name: 'Source Credibility', color: [79, 70, 229] },
-        { key: 'bias_detector', name: 'Bias Detection', color: [251, 146, 60] },
-        { key: 'fact_checker', name: 'Fact Verification', color: [34, 197, 94] },
-        { key: 'author_analyzer', name: 'Author Analysis', color: [59, 130, 246] },
-        { key: 'transparency_analyzer', name: 'Transparency', color: [168, 85, 247] },
-        { key: 'content_analyzer', name: 'Content Quality', color: [236, 72, 153] }
-    ];
-    
-    return services.map(s => ({
-        ...s,
-        score: Math.round(detailed[s.key]?.score || 0)
-    })).filter(s => s.score > 0);
-}
-
-function getServiceInterpretation(key, score, data) {
-    const interpretations = {
-        source_credibility: score >= 70 ? 
-            'This source has established credibility and a strong reputation for reliable journalism.' :
-            'This source has moderate credibility. Independent verification of key claims is recommended.',
         
-        bias_detector: score >= 70 ?
-            'Content demonstrates objectivity with minimal bias. Balanced perspectives are presented.' :
-            'Some bias elements detected. Consider seeking additional perspectives from diverse sources.',
+        # Shift times
+        day_start = time(6, 0)    # 06:00
+        day_end = time(18, 0)     # 18:00
+        night_start = time(18, 0)  # 18:00
+        night_end = time(6, 0)     # 06:00 (next day)
         
-        fact_checker: score >= 70 ?
-            'Claims are well-supported by evidence from reliable sources. Factual accuracy is strong.' :
-            'Some claims lack strong verification. Cross-reference important facts with authoritative sources.',
+        # Generate schedules
+        current_date = start_date
+        while current_date <= end_date:
+            day_offset = (current_date - start_date).days
+            
+            for crew_letter, employees in crews.items():
+                if not employees:
+                    continue
+                
+                crew_offset = crew_offsets[crew_letter]
+                days_since_crew_start = day_offset - crew_offset
+                
+                # Skip if this crew hasn't started yet
+                if days_since_crew_start < 0:
+                    continue
+                
+                # Determine position in 16-day cycle
+                cycle_position = days_since_crew_start % self.cycle_days
+                shift_code = pattern[cycle_position]
+                
+                # Skip off days
+                if shift_code == 'O':
+                    continue
+                
+                # Determine shift type and times
+                if shift_code == 'D':
+                    shift_type = ShiftType.DAY
+                    start_time = day_start
+                    end_time = day_end
+                else:  # N
+                    shift_type = ShiftType.NIGHT
+                    start_time = night_start
+                    end_time = night_end
+                
+                # Create schedule for each employee in this crew
+                for employee in employees:
+                    schedule = Schedule(
+                        employee_id=employee.id,
+                        date=current_date,
+                        shift_type=shift_type,
+                        start_time=start_time,
+                        end_time=end_time,
+                        hours=12.0,
+                        position_id=employee.position_id,
+                        created_by_id=created_by_id
+                    )
+                    self.schedules.append(schedule)
+            
+            current_date += timedelta(days=1)
         
-        author_analyzer: score >= 70 ?
-            'Author has strong credentials and demonstrated expertise in this subject area.' :
-            'Author credentials are unclear or limited. Verify author qualifications independently.',
+        result = self.save_schedules(replace_existing=replace_existing)
+        result['statistics'] = {
+            'total_schedules': len(self.schedules),
+            'pattern_name': self.pattern_name
+        }
         
-        transparency_analyzer: score >= 70 ?
-            'Content shows strong transparency with clear sourcing and proper attribution.' :
-            'Transparency is limited. Look for additional source information and citations.',
+        return result
+
+
+class FourOnFourOffFast(PatternGenerator):
+    """
+    4-on-4-off Fast Rotation Pattern (2-2-3 style)
+    8-day cycle: 2 days, 2 nights, 4 off (repeats)
+    All crews rotate through this pattern with offsets
+    """
+    
+    def __init__(self):
+        super().__init__()
+        self.pattern_name = "4-on-4-off Fast Rotation"
+        self.cycle_days = 8
+    
+    def generate(self, start_date, end_date, created_by_id=None, replace_existing=False):
+        """Generate fast rotation schedule"""
+        logger.info(f"Generating 4-on-4-off Fast: {start_date} to {end_date}")
         
-        content_analyzer: score >= 70 ?
-            'Content is well-written, properly structured, and maintains professional quality standards.' :
-            'Content quality has some issues. Verify information with higher-quality sources.'
-    };
-    
-    return interpretations[key] || 'Analysis completed successfully.';
-}
+        self.validate_date_range(start_date, end_date)
+        crews = self.get_crew_employees()
+        self.validate_crews(crews)
+        
+        if replace_existing:
+            self.clear_existing_schedules(start_date, end_date, crews)
+        
+        # 8-day pattern: D=Day, N=Night, O=Off
+        pattern = ['D', 'D', 'N', 'N', 'O', 'O', 'O', 'O']
+        
+        # Crew offsets
+        crew_offsets = {
+            'A': 0,
+            'B': 2,
+            'C': 4,
+            'D': 6
+        }
+        
+        current_date = start_date
+        while current_date <= end_date:
+            day_offset = (current_date - start_date).days
+            
+            for crew_letter, employees in crews.items():
+                if not employees:
+                    continue
+                
+                crew_offset = crew_offsets[crew_letter]
+                cycle_position = (day_offset + crew_offset) % self.cycle_days
+                shift_code = pattern[cycle_position]
+                
+                if shift_code == 'O':
+                    continue
+                
+                if shift_code == 'D':
+                    shift_type = ShiftType.DAY
+                    start_time = time(6, 0)
+                    end_time = time(18, 0)
+                else:  # N
+                    shift_type = ShiftType.NIGHT
+                    start_time = time(18, 0)
+                    end_time = time(6, 0)
+                
+                for employee in employees:
+                    schedule = Schedule(
+                        employee_id=employee.id,
+                        date=current_date,
+                        shift_type=shift_type,
+                        start_time=start_time,
+                        end_time=end_time,
+                        hours=12.0,
+                        position_id=employee.position_id,
+                        created_by_id=created_by_id
+                    )
+                    self.schedules.append(schedule)
+            
+            current_date += timedelta(days=1)
+        
+        result = self.save_schedules(replace_existing=replace_existing)
+        result['statistics'] = {
+            'total_schedules': len(self.schedules),
+            'pattern_name': self.pattern_name
+        }
+        
+        return result
 
-function generateBottomLine(score) {
-    if (score >= 80) {
-        return 'This content comes from a highly credible source with strong verification, minimal bias, and professional quality. You can rely on this information with confidence.';
-    } else if (score >= 60) {
-        return 'This content is generally reliable from a moderately credible source. Most information can be trusted, but verify critical claims with additional sources.';
-    } else {
-        return 'This content has credibility concerns. Exercise caution and independently verify all key claims before relying on this information.';
-    }
-}
 
-function generateRecommendations(data, score) {
-    const recommendations = [];
+class FourOnFourOffFixed(PatternGenerator):
+    """
+    4-on-4-off Fixed Simple
+    8-day cycle: 4 on, 4 off
+    Crews A&B work days only, C&D work nights only
+    """
     
-    if (score >= 70) {
-        recommendations.push({
-            title: 'Content Reliability',
-            text: 'This source meets high credibility standards. You can generally trust this information, though always maintain healthy skepticism.'
-        });
-        recommendations.push({
-            title: 'Continue Good Practices',
-            text: 'Keep consuming content from reputable sources like this. Build a diverse media diet with multiple trusted outlets.'
-        });
-    } else if (score >= 50) {
-        recommendations.push({
-            title: 'Verify Key Claims',
-            text: 'Cross-reference important facts with additional authoritative sources before sharing or acting on this information.'
-        });
-        recommendations.push({
-            title: 'Check Source History',
-            text: 'Research this source\'s track record for accuracy and corrections. Look for transparency in their reporting process.'
-        });
-    } else {
-        recommendations.push({
-            title: 'Exercise Caution',
-            text: 'This content has significant credibility concerns. Seek out high-quality sources before trusting this information.'
-        });
-        recommendations.push({
-            title: 'Find Better Sources',
-            text: 'Look for content from established news organizations with strong editorial standards and fact-checking processes.'
-        });
-    }
+    def __init__(self):
+        super().__init__()
+        self.pattern_name = "4-on-4-off Fixed Shifts"
+        self.cycle_days = 8
     
-    recommendations.push({
-        title: 'Practice Media Literacy',
-        text: 'Always question sources, look for evidence, consider author credentials, and seek diverse perspectives on important topics.'
-    });
-    
-    return recommendations;
-} 
+    def generate(self, start_date, end_date, created_by_id=None, replace_existing=False):
+        """Generate fixed shift schedule"""
+        logger.info(f"Generating 4-on-4-off Fixed: {start_date} to {end_date}")
+        
+        self.validate_date_range(start_date, end_date)
+        crews = self.get_crew_employees()
+        self.validate_crews(crews)
+        
+        if replace_existing:
+            self.clear_existing_schedules(start_date, end_date, crews)
+        
+        # 8-day pattern: 4 on, 4 off
+        pattern = ['X', 'X', 'X', 'X', 'O', 'O', 'O', 'O']
+        
+        # Crew offsets (B and D offset by 4 days)
+        crew_offsets = {
+            'A': 0,
+            'B': 4,
+            'C': 0,
+            'D': 4
+        }
+        
+        current_date = start_date
+        while current_date <= end_date:
+            day_offset = (current_date - start_date).days
+            
+            for crew_letter, employees in crews.items():
+                if not employees:
+                    continue
+                
+                crew_offset = crew_offsets[crew_letter]
+                cycle_position = (day_offset + crew_offset) % self.cycle_days
+                
+                if pattern[cycle_position] == 'O':
+                    continue
+                
+                # A and B work days, C and D work nights
+                if crew_letter in ['A', 'B']:
+                    shift_type = ShiftType.DAY
+                    start_time = time(6, 0)
+                    end_time = time(18, 0)
+                else:  # C or D
+                    shift_type = ShiftType.NIGHT
+                    start_time = time(18, 0)
+                    end_time = time(6, 0)
+                
+                for employee in employees:
+                    schedule = Schedule(
+                        employee_id=employee.id,
+                        date=current_date,
+                        shift_type=shift_type,
+                        start_time=start_time,
+                        end_time=end_time,
+                        hours=12.0,
+                        position_id=employee.position_id,
+                        created_by_id=created_by_id
+                    )
+                    self.schedules.append(schedule)
+            
+            current_date += timedelta(days=1)
+        
+        result = self.save_schedules(replace_existing=replace_existing)
+        result['statistics'] = {
+            'total_schedules': len(self.schedules),
+            'pattern_name': self.pattern_name
+        }
+        
+        return result
 
-function addServiceSpecificInsights(doc, key, data, yPos, colors) {
-    if (yPos > 240) return;
-    
-    doc.setFontSize(11);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(...colors.darkGray);
-    doc.text('Additional Details:', 20, yPos);
-    
-    yPos += 7;
-    
-    doc.setFontSize(8);
-    doc.setFont('helvetica', 'normal');
-    
-    // Service-specific details
-    const details = [];
-    
-    if (key === 'source_credibility') {
-        if (data.source_name) details.push(`Organization: ${data.source_name}`);
-        if (data.credibility_level) details.push(`Credibility Level: ${data.credibility_level}`);
-        if (data.reputation) details.push(`Reputation: ${data.reputation}`);
-    } else if (key === 'bias_detector') {
-        if (data.political_leaning) details.push(`Political Leaning: ${data.political_leaning}`);
-        if (data.objectivity_score) details.push(`Objectivity: ${data.objectivity_score}/100`);
-        if (data.sensationalism_level) details.push(`Sensationalism: ${data.sensationalism_level}`);
-    } else if (key === 'fact_checker') {
-        if (data.claims_verified) details.push(`Claims Verified: ${data.claims_verified}`);
-        if (data.accuracy_score) details.push(`Accuracy: ${data.accuracy_score}%`);
-    }
-    
-    details.slice(0, 4).forEach(detail => {
-        doc.text(`• ${detail}`, 22, yPos);
-        yPos += 5;
-    });
-}
 
-function addPageFooter(doc, pageNum, totalPages, colors) {
-    doc.setFontSize(8);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(...colors.gray);
+class FourOnFourOffModified(PatternGenerator):
+    """
+    4-on-4-off Modified Pattern - Full Weekends Off via Saturday Swaps
     
-    // Left: TruthLens branding
-    doc.text('TruthLens Analysis Report', 20, 287);
+    8-week cycle (56 days) - CORRECT IMPLEMENTATION
     
-    // Center: Date
-    const dateStr = new Date().toLocaleDateString('en-US');
-    doc.text(dateStr, 105, 287, { align: 'center' });
+    Logic:
+    1. Start with standard 4-on-4-off pattern (work 4, off 4, repeating every 8 days)
+    2. Apply strategic Saturday swaps:
+       - Week 3: Crew A gives Saturday to Crew B
+         Result: Crew A works only 3 days (Wed-Fri), gets FULL WEEKEND OFF
+                 Crew B takes Saturday, starts 5-day stretch
+       - Week 7: Crew B gives Saturday to Crew A  
+         Result: Crew B works only 3 days, gets FULL WEEKEND OFF
+                 Crew A takes Saturday, starts 5-day stretch
+    3. Same logic for Crews C & D on night shifts
     
-    // Right: Page number
-    doc.text(`Page ${pageNum} of ${totalPages}`, 190, 287, { align: 'right' });
-}
+    Benefits:
+    - Eliminates split weekends (working Sat but off Sun, or vice versa)
+    - Each crew gets 4 full weekends off in 8 weeks
+    - Creates predictable full weekend patterns
+    - Maintains 24/7 coverage with exactly 1 day crew + 1 night crew at all times
+    """
+    
+    def __init__(self):
+        super().__init__()
+        self.pattern_name = "4-on-4-off Modified (Full Weekends Off)"
+        self.cycle_days = 56  # 8 weeks
+    
+    def generate(self, start_date, end_date, created_by_id=None, replace_existing=False):
+        """Generate modified 4-on-4-off schedule with Saturday swaps for full weekends"""
+        logger.info(f"Generating 4-on-4-off Modified: {start_date} to {end_date}")
+        
+        self.validate_date_range(start_date, end_date)
+        crews = self.get_crew_employees()
+        self.validate_crews(crews)
+        
+        if replace_existing:
+            self.clear_existing_schedules(start_date, end_date, crews)
+        
+        # CORRECT Modified Pattern with Saturday Swaps
+        # 'X' = Work, 'O' = Off
+        # Monday-Sunday format, 56 days total (8 weeks)
+        
+        # CREW A - DAY SHIFT
+        # Standard 4-on-4-off with Week 3 Sat given to B, Week 7 Sat taken from B
+        crew_a_pattern = [
+            'X', 'X', 'X', 'X', 'O', 'O', 'O',  # Week 1: Mon-Thu work, Fri-Sun off
+            'O', 'X', 'X', 'X', 'X', 'O', 'O',  # Week 2: Mon off, Tue-Fri work, Sat-Sun off
+            'O', 'O', 'X', 'X', 'X', 'O', 'O',  # Week 3: Wed-Fri work (gave Sat), Sat-Sun off (FULL WEEKEND!)
+            'O', 'O', 'O', 'X', 'X', 'X', 'X',  # Week 4: Thu-Sun work, Mon off
+            'O', 'O', 'O', 'O', 'X', 'X', 'X',  # Week 5: Mon-Wed off, Thu-Sat work
+            'X', 'O', 'O', 'O', 'O', 'X', 'X',  # Week 6: Sun work, Mon-Thu off, Fri-Sat work
+            'X', 'X', 'O', 'O', 'O', 'X', 'X',  # Week 7: Mon-Tue work, Wed-Fri off, Sat-Sun work (took Sat)
+            'X', 'X', 'X', 'O', 'O', 'O', 'O',  # Week 8: Mon-Wed work, Thu-Sun off
+        ]
+        
+        # CREW B - DAY SHIFT
+        # Inverse of Crew A (offset by 4 days), takes Week 3 Sat, gives Week 7 Sat
+        crew_b_pattern = [
+            'O', 'O', 'O', 'O', 'X', 'X', 'X',  # Week 1
+            'X', 'O', 'O', 'O', 'O', 'X', 'X',  # Week 2
+            'X', 'X', 'O', 'O', 'O', 'X', 'X',  # Week 3: took Sat (5-day stretch)
+            'X', 'X', 'X', 'O', 'O', 'O', 'O',  # Week 4
+            'X', 'X', 'X', 'X', 'O', 'O', 'O',  # Week 5
+            'O', 'X', 'X', 'X', 'X', 'O', 'O',  # Week 6
+            'O', 'O', 'X', 'X', 'X', 'O', 'O',  # Week 7: gave Sat (FULL WEEKEND!)
+            'O', 'O', 'O', 'X', 'X', 'X', 'X',  # Week 8
+        ]
+        
+        # CREWS C & D - NIGHT SHIFT (same pattern as A & B)
+        crew_c_pattern = crew_a_pattern.copy()
+        crew_d_pattern = crew_b_pattern.copy()
+        
+        crew_patterns = {
+            'A': crew_a_pattern,
+            'B': crew_b_pattern,
+            'C': crew_c_pattern,
+            'D': crew_d_pattern
+        }
+        
+        # Shift times
+        day_start = time(6, 0)
+        day_end = time(18, 0)
+        night_start = time(18, 0)
+        night_end = time(6, 0)
+        
+        # Generate schedule
+        current_date = start_date
+        while current_date <= end_date:
+            day_offset = (current_date - start_date).days
+            cycle_day = day_offset % self.cycle_days
+            
+            for crew_letter, employees in crews.items():
+                if not employees:
+                    continue
+                
+                # Check if this crew works today
+                pattern = crew_patterns[crew_letter]
+                if pattern[cycle_day] == 'O':
+                    continue
+                
+                # Determine shift type based on crew
+                # A & B work DAYS, C & D work NIGHTS
+                if crew_letter in ['A', 'B']:
+                    shift_type = ShiftType.DAY
+                    start_time = day_start
+                    end_time = day_end
+                else:  # C or D
+                    shift_type = ShiftType.NIGHT
+                    start_time = night_start
+                    end_time = night_end
+                
+                # Create schedule for each employee in this crew
+                for employee in employees:
+                    schedule = Schedule(
+                        employee_id=employee.id,
+                        date=current_date,
+                        shift_type=shift_type,
+                        start_time=start_time,
+                        end_time=end_time,
+                        hours=12.0,
+                        position_id=employee.position_id,
+                        created_by_id=created_by_id
+                    )
+                    self.schedules.append(schedule)
+            
+            current_date += timedelta(days=1)
+        
+        logger.info(f"Generated {len(self.schedules)} schedule entries for Modified 4-on-4-off")
+        
+        # Save to database
+        result = self.save_schedules(replace_existing=replace_existing)
+        
+        # Add statistics
+        result['statistics'] = {
+            'total_schedules': len(self.schedules),
+            'date_range_days': (end_date - start_date).days + 1,
+            'pattern_name': self.pattern_name,
+            'cycle_length': f"{self.cycle_days} days (8 weeks)",
+            'crews_scheduled': [crew for crew, emps in crews.items() if emps],
+            'full_weekends_per_crew': '4 out of 8 weeks'
+        }
+        
+        return result
 
-// ============================================================================
-// INITIALIZATION
-// ============================================================================
 
-console.log('[PDF v10.0.0] Professional PDF generator loaded successfully');
-console.log('[PDF v10.0.0] Ready to generate comprehensive credibility reports');
+# ============================================================================
+# 3-ON-3-OFF PATTERN VARIATIONS
+# ============================================================================
+
+class ThreeOnThreeOffFast(PatternGenerator):
+    """
+    3-on-3-off Fast Rotation Pattern - CORRECTED 12-WEEK PATTERN
+    
+    84-day (12-week) cycle where each crew follows the same pattern
+    but starts at a different point:
+    - Crew A: Starts Week 1 (day 0)
+    - Crew B: Starts Week 4 (day 21) 
+    - Crew C: Starts Week 7 (day 42)
+    - Crew D: Starts Week 10 (day 63)
+    
+    The pattern repeats every 12 weeks, aligning to the same weekday.
+    
+    Benefits:
+    - Shorter work stretches (3 days max)
+    - Quick rotation provides variety
+    - Regular pattern, easy to remember
+    - Good work-life balance
+    """
+    
+    def __init__(self):
+        super().__init__()
+        self.pattern_name = "3-on-3-off Fast Rotation"
+        self.cycle_days = 84  # 12 weeks
+    
+    def generate(self, start_date, end_date, created_by_id=None, replace_existing=False):
+        """Generate fast rotation 3-on-3-off schedule with 12-week pattern"""
+        logger.info(f"Generating 3-on-3-off Fast (12-week): {start_date} to {end_date}")
+        
+        self.validate_date_range(start_date, end_date)
+        crews = self.get_crew_employees()
+        self.validate_crews(crews)
+        
+        if replace_existing:
+            self.clear_existing_schedules(start_date, end_date, crews)
+        
+        # 84-day pattern (12 weeks × 7 days, Monday start)
+        # D=Day, N=Night, O=Off
+        full_pattern = [
+            # Week 1: Mon-Sun
+            'D', 'D', 'D', 'O', 'O', 'O', 'N',
+            # Week 2: Mon-Sun
+            'N', 'N', 'O', 'O', 'O', 'D', 'D',
+            # Week 3: Mon-Sun
+            'D', 'O', 'O', 'O', 'N', 'N', 'N',
+            # Week 4: Mon-Sun
+            'O', 'O', 'O', 'D', 'D', 'D', 'O',
+            # Week 5: Mon-Sun
+            'O', 'O', 'N', 'N', 'N', 'O', 'O',
+            # Week 6: Mon-Sun
+            'O', 'D', 'D', 'D', 'O', 'O', 'O',
+            # Week 7: Mon-Sun
+            'N', 'N', 'N', 'O', 'O', 'O', 'D',
+            # Week 8: Mon-Sun
+            'D', 'D', 'O', 'O', 'O', 'N', 'N',
+            # Week 9: Mon-Sun
+            'N', 'O', 'O', 'O', 'D', 'D', 'D',
+            # Week 10: Mon-Sun
+            'O', 'O', 'O', 'N', 'N', 'N', 'O',
+            # Week 11: Mon-Sun
+            'O', 'O', 'D', 'D', 'D', 'O', 'O',
+            # Week 12: Mon-Sun
+            'O', 'N', 'N', 'N', 'O', 'O', 'O'
+        ]
+        
+        # Crew start offsets (when each crew begins in the pattern)
+        crew_offsets = {
+            'A': 0,   # Week 1 = day 0
+            'B': 21,  # Week 4 = day 21 (3 weeks × 7 days)
+            'C': 42,  # Week 7 = day 42 (6 weeks × 7 days)
+            'D': 63   # Week 10 = day 63 (9 weeks × 7 days)
+        }
+        
+        # Shift times
+        day_start = time(6, 0)
+        day_end = time(18, 0)
+        night_start = time(18, 0)
+        night_end = time(6, 0)
+        
+        # Generate schedules
+        current_date = start_date
+        while current_date <= end_date:
+            day_offset = (current_date - start_date).days
+            
+            for crew_letter, employees in crews.items():
+                if not employees:
+                    continue
+                
+                # Calculate where this crew is in their pattern
+                crew_offset = crew_offsets[crew_letter]
+                pattern_position = (day_offset + crew_offset) % self.cycle_days
+                
+                shift_code = full_pattern[pattern_position]
+                
+                # Skip off days
+                if shift_code == 'O':
+                    continue
+                
+                # Determine shift type
+                if shift_code == 'D':
+                    shift_type = ShiftType.DAY
+                    start_time = day_start
+                    end_time = day_end
+                else:  # N
+                    shift_type = ShiftType.NIGHT
+                    start_time = night_start
+                    end_time = night_end
+                
+                # Create schedule for each employee
+                for employee in employees:
+                    schedule = Schedule(
+                        employee_id=employee.id,
+                        date=current_date,
+                        shift_type=shift_type,
+                        start_time=start_time,
+                        end_time=end_time,
+                        hours=12.0,
+                        position_id=employee.position_id,
+                        created_by_id=created_by_id
+                    )
+                    self.schedules.append(schedule)
+            
+            current_date += timedelta(days=1)
+        
+        result = self.save_schedules(replace_existing=replace_existing)
+        result['statistics'] = {
+            'total_schedules': len(self.schedules),
+            'pattern_name': self.pattern_name,
+            'cycle_length': f"{self.cycle_days} days (12 weeks)",
+            'crew_offsets': 'A:Wk1, B:Wk4, C:Wk7, D:Wk10'
+        }
+        
+        return result
+
+
+class ThreeOnThreeOffSlow(PatternGenerator):
+    """
+    3-on-3-off Slow Rotation Pattern - CORRECTED 12-WEEK PATTERN
+    
+    84-day cycle (12 weeks) with shift swap at week 7:
+    - Weeks 1-6: A&B work DAYS (alternating), C&D work NIGHTS (alternating)
+    - Weeks 7-12: C&D work DAYS (alternating), A&B work NIGHTS (alternating)
+    
+    Work pattern: 3 on, 3 off (repeating every 6 days)
+    Crew alternation: A alternates with B, C alternates with D
+    
+    Benefits:
+    - 6 weeks on same shift (better circadian adjustment)
+    - Still maintains short 3-day work stretches
+    - Predictable pattern
+    - All crews experience both shifts
+    """
+    
+    def __init__(self):
+        super().__init__()
+        self.pattern_name = "3-on-3-off Slow Rotation"
+        self.cycle_days = 84  # 12 weeks (changed from 42)
+    
+    def generate(self, start_date, end_date, created_by_id=None, replace_existing=False):
+        """Generate slow rotation 3-on-3-off schedule with 12-week cycle"""
+        logger.info(f"Generating 3-on-3-off Slow (12-week): {start_date} to {end_date}")
+        
+        self.validate_date_range(start_date, end_date)
+        crews = self.get_crew_employees()
+        self.validate_crews(crews)
+        
+        if replace_existing:
+            self.clear_existing_schedules(start_date, end_date, crews)
+        
+        # 6-day basic pattern: 3 on, 3 off
+        work_pattern = ['X', 'X', 'X', 'O', 'O', 'O']
+        
+        # Crew offsets for the 3-on-3-off pattern
+        # A and C: start at day 0
+        # B and D: start at day 3 (opposite of A and C)
+        crew_offsets = {
+            'A': 0,
+            'B': 3,
+            'C': 0,
+            'D': 3
+        }
+        
+        # Shift times
+        day_start = time(6, 0)
+        day_end = time(18, 0)
+        night_start = time(18, 0)
+        night_end = time(6, 0)
+        
+        # Generate schedules
+        current_date = start_date
+        while current_date <= end_date:
+            day_offset = (current_date - start_date).days
+            cycle_day = day_offset % self.cycle_days
+            current_week = cycle_day // 7  # 0-11 for weeks 1-12
+            
+            for crew_letter, employees in crews.items():
+                if not employees:
+                    continue
+                
+                # Determine if this crew works today
+                crew_offset = crew_offsets[crew_letter]
+                pattern_position = (day_offset + crew_offset) % 6
+                
+                # Check if working today based on 3-on-3-off pattern
+                if work_pattern[pattern_position] == 'O':
+                    continue
+                
+                # Determine shift type based on crew and current week
+                # Weeks 0-5 (1-6): A&B on days, C&D on nights
+                # Weeks 6-11 (7-12): C&D on days, A&B on nights
+                if current_week < 6:
+                    # First 6 weeks
+                    if crew_letter in ['A', 'B']:
+                        shift_type = ShiftType.DAY
+                        start_time = day_start
+                        end_time = day_end
+                    else:  # C or D
+                        shift_type = ShiftType.NIGHT
+                        start_time = night_start
+                        end_time = night_end
+                else:
+                    # Last 6 weeks (shift swap)
+                    if crew_letter in ['C', 'D']:
+                        shift_type = ShiftType.DAY
+                        start_time = day_start
+                        end_time = day_end
+                    else:  # A or B
+                        shift_type = ShiftType.NIGHT
+                        start_time = night_start
+                        end_time = night_end
+                
+                # Create schedule for each employee
+                for employee in employees:
+                    schedule = Schedule(
+                        employee_id=employee.id,
+                        date=current_date,
+                        shift_type=shift_type,
+                        start_time=start_time,
+                        end_time=end_time,
+                        hours=12.0,
+                        position_id=employee.position_id,
+                        created_by_id=created_by_id
+                    )
+                    self.schedules.append(schedule)
+            
+            current_date += timedelta(days=1)
+        
+        result = self.save_schedules(replace_existing=replace_existing)
+        result['statistics'] = {
+            'total_schedules': len(self.schedules),
+            'pattern_name': self.pattern_name,
+            'cycle_length': f"{self.cycle_days} days (12 weeks)",
+            'rotation_frequency': '6 weeks per shift type',
+            'shift_swap': 'Week 7 (crews swap day/night)'
+        }
+        
+        return result
+
+
+class ThreeOnThreeOffFixed(PatternGenerator):
+    """
+    3-on-3-off Fixed Shifts Pattern
+    
+    6-day cycle: 3 on, 3 off
+    Crews A & B work days only, Crews C & D work nights only
+    Simple fixed shift assignment with 3-day work stretches
+    
+    Benefits:
+    - No shift rotation (better sleep patterns)
+    - Shorter work stretches than 4-on-4-off
+    - Simple, predictable schedule
+    - Good for those who prefer fixed shifts
+    
+    Pattern:
+    - Crew A: Days, starting Monday (3 on, 3 off)
+    - Crew B: Days, starting Thursday (3 on, 3 off)
+    - Crew C: Nights, starting Monday (3 on, 3 off)
+    - Crew D: Nights, starting Thursday (3 on, 3 off)
+    """
+    
+    def __init__(self):
+        super().__init__()
+        self.pattern_name = "3-on-3-off Fixed Shifts"
+        self.cycle_days = 6
+    
+    def generate(self, start_date, end_date, created_by_id=None, replace_existing=False):
+        """Generate fixed shift 3-on-3-off schedule"""
+        logger.info(f"Generating 3-on-3-off Fixed: {start_date} to {end_date}")
+        
+        self.validate_date_range(start_date, end_date)
+        crews = self.get_crew_employees()
+        self.validate_crews(crews)
+        
+        if replace_existing:
+            self.clear_existing_schedules(start_date, end_date, crews)
+        
+        # 6-day pattern: 3 on, 3 off
+        pattern = ['X', 'X', 'X', 'O', 'O', 'O']
+        
+        # Crew offsets - A & C start together, B & D start 3 days later
+        crew_offsets = {
+            'A': 0,
+            'B': 3,
+            'C': 0,
+            'D': 3
+        }
+        
+        # Shift times
+        day_start = time(6, 0)
+        day_end = time(18, 0)
+        night_start = time(18, 0)
+        night_end = time(6, 0)
+        
+        # Generate schedules
+        current_date = start_date
+        while current_date <= end_date:
+            day_offset = (current_date - start_date).days
+            
+            for crew_letter, employees in crews.items():
+                if not employees:
+                    continue
+                
+                crew_offset = crew_offsets[crew_letter]
+                cycle_position = (day_offset + crew_offset) % self.cycle_days
+                
+                # Skip off days
+                if pattern[cycle_position] == 'O':
+                    continue
+                
+                # A & B work days, C & D work nights (fixed)
+                if crew_letter in ['A', 'B']:
+                    shift_type = ShiftType.DAY
+                    start_time = day_start
+                    end_time = day_end
+                else:  # C or D
+                    shift_type = ShiftType.NIGHT
+                    start_time = night_start
+                    end_time = night_end
+                
+                # Create schedule for each employee
+                for employee in employees:
+                    schedule = Schedule(
+                        employee_id=employee.id,
+                        date=current_date,
+                        shift_type=shift_type,
+                        start_time=start_time,
+                        end_time=end_time,
+                        hours=12.0,
+                        position_id=employee.position_id,
+                        created_by_id=created_by_id
+                    )
+                    self.schedules.append(schedule)
+            
+            current_date += timedelta(days=1)
+        
+        result = self.save_schedules(replace_existing=replace_existing)
+        result['statistics'] = {
+            'total_schedules': len(self.schedules),
+            'pattern_name': self.pattern_name,
+            'cycle_length': f"{self.cycle_days} days",
+            'shift_assignment': 'A&B days, C&D nights (fixed)'
+        }
+        
+        return result
+
+
+class ThreeOnThreeOffModified(PatternGenerator):
+    """
+    3-on-3-off Modified Pattern - Full Weekends Off
+    
+    42-day cycle (6 weeks) with strategic swaps for full weekends
+    Similar concept to 4-on-4-off Modified but with 3-day work stretches
+    
+    Strategy:
+    - Base pattern: 3 on, 3 off
+    - Swap specific days to create full weekends off
+    - Each crew gets 3 full weekends off in the 6-week cycle
+    - Maintains 24/7 coverage
+    
+    Benefits:
+    - Shorter work stretches (3 days vs 4)
+    - Full weekends off (Sat & Sun together)
+    - More frequent time off
+    - Better work-life balance
+    """
+    
+    def __init__(self):
+        super().__init__()
+        self.pattern_name = "3-on-3-off Modified (Full Weekends)"
+        self.cycle_days = 42  # 6 weeks
+    
+    def generate(self, start_date, end_date, created_by_id=None, replace_existing=False):
+        """Generate modified 3-on-3-off with full weekends"""
+        logger.info(f"Generating 3-on-3-off Modified: {start_date} to {end_date}")
+        
+        self.validate_date_range(start_date, end_date)
+        crews = self.get_crew_employees()
+        self.validate_crews(crews)
+        
+        if replace_existing:
+            self.clear_existing_schedules(start_date, end_date, crews)
+        
+        # 42-day patterns with weekend swaps (Mon-Sun format)
+        # 'X' = Work, 'O' = Off
+        
+        # CREW A - DAY SHIFT
+        crew_a_pattern = [
+            'X', 'X', 'X', 'O', 'O', 'O', 'O',  # Week 1: Mon-Wed work, Thu-Sun off (FULL WEEKEND!)
+            'X', 'X', 'X', 'O', 'O', 'O', 'X',  # Week 2: Mon-Wed work, Sun work
+            'X', 'X', 'O', 'O', 'O', 'X', 'X',  # Week 3: Mon-Tue work, Sat-Sun work
+            'X', 'O', 'O', 'O', 'X', 'X', 'X',  # Week 4: Mon work, Fri-Sun work
+            'O', 'O', 'O', 'X', 'X', 'X', 'O',  # Week 5: Thu-Sat work
+            'O', 'X', 'X', 'X', 'O', 'O', 'O',  # Week 6: Tue-Thu work, Fri-Sun off (FULL WEEKEND!)
+        ]
+        
+        # CREW B - DAY SHIFT (offset to provide coverage)
+        crew_b_pattern = [
+            'O', 'O', 'O', 'X', 'X', 'X', 'O',  # Week 1
+            'O', 'O', 'O', 'X', 'X', 'X', 'O',  # Week 2
+            'O', 'O', 'X', 'X', 'X', 'O', 'O',  # Week 3: Fri-Sun off (FULL WEEKEND!)
+            'O', 'X', 'X', 'X', 'O', 'O', 'O',  # Week 4
+            'X', 'X', 'X', 'O', 'O', 'O', 'X',  # Week 5
+            'X', 'O', 'O', 'O', 'X', 'X', 'X',  # Week 6
+        ]
+        
+        # CREWS C & D - NIGHT SHIFT (same patterns as A & B)
+        crew_c_pattern = crew_a_pattern.copy()
+        crew_d_pattern = crew_b_pattern.copy()
+        
+        crew_patterns = {
+            'A': crew_a_pattern,
+            'B': crew_b_pattern,
+            'C': crew_c_pattern,
+            'D': crew_d_pattern
+        }
+        
+        # Shift times
+        day_start = time(6, 0)
+        day_end = time(18, 0)
+        night_start = time(18, 0)
+        night_end = time(6, 0)
+        
+        # Generate schedules
+        current_date = start_date
+        while current_date <= end_date:
+            day_offset = (current_date - start_date).days
+            cycle_day = day_offset % self.cycle_days
+            
+            for crew_letter, employees in crews.items():
+                if not employees:
+                    continue
+                
+                # Check if this crew works today
+                pattern = crew_patterns[crew_letter]
+                if pattern[cycle_day] == 'O':
+                    continue
+                
+                # A & B work days, C & D work nights
+                if crew_letter in ['A', 'B']:
+                    shift_type = ShiftType.DAY
+                    start_time = day_start
+                    end_time = day_end
+                else:  # C or D
+                    shift_type = ShiftType.NIGHT
+                    start_time = night_start
+                    end_time = night_end
+                
+                # Create schedule for each employee
+                for employee in employees:
+                    schedule = Schedule(
+                        employee_id=employee.id,
+                        date=current_date,
+                        shift_type=shift_type,
+                        start_time=start_time,
+                        end_time=end_time,
+                        hours=12.0,
+                        position_id=employee.position_id,
+                        created_by_id=created_by_id
+                    )
+                    self.schedules.append(schedule)
+            
+            current_date += timedelta(days=1)
+        
+        result = self.save_schedules(replace_existing=replace_existing)
+        result['statistics'] = {
+            'total_schedules': len(self.schedules),
+            'pattern_name': self.pattern_name,
+            'cycle_length': f"{self.cycle_days} days (6 weeks)",
+            'full_weekends_per_crew': '3 out of 6 weeks'
+        }
+        
+        return result
+
+
+# Factory function to get the right generator
+def get_pattern_generator(pattern, variation=None):
+    """
+    Get the appropriate pattern generator
+    
+    Args:
+        pattern: Base pattern name (e.g., 'four_on_four_off', 'three_on_three_off')
+        variation: Pattern variation (e.g., 'weekly', 'fast', 'fixed', 'modified', 'slow')
+    
+    Returns:
+        PatternGenerator instance or None if not found
+    """
+    if pattern == 'four_on_four_off':
+        if variation == 'weekly':
+            return FourOnFourOffWeekly()
+        elif variation == 'fast':
+            return FourOnFourOffFast()
+        elif variation == 'fixed_simple' or variation == 'fixed':
+            return FourOnFourOffFixed()
+        elif variation == 'modified':
+            return FourOnFourOffModified()
+    
+    elif pattern == 'three_on_three_off':
+        if variation == 'fast':
+            return ThreeOnThreeOffFast()
+        elif variation == 'slow' or variation == 'sixweek':
+            return ThreeOnThreeOffSlow()
+        elif variation == 'fixed':
+            return ThreeOnThreeOffFixed()
+        elif variation == 'modified':
+            return ThreeOnThreeOffModified()
+    
+    return None
