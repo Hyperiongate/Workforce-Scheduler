@@ -1,7 +1,11 @@
 {# templates/schedule_wizard.html #}
 {# Schedule Pattern Wizard - COMPLETE FILE #}
-{# Last Modified: 2025-10-15 - FIXED 3-on-3-off Fixed to show 6 weeks #}
+{# Last Modified: 2025-10-15 - FIXED 3-on-3-off Fixed pattern day calculation #}
 {# Change Log: #}
+{#   2025-10-15: FIXED Fixed pattern to correctly calculate Monday-based pattern days #}
+{#              - Crew A/C: Mon-Tue-Wed work, Thu-Fri-Sat off #}
+{#              - Crew B/D: Mon-Tue-Wed off, Thu-Fri-Sat work #}
+{#              - 6-day cycle repeating, aligns every 6 weeks (42 days) #}
 {#   2025-10-15: FIXED Fixed Shifts preview to show 6 weeks (was 2 weeks) #}
 {#   2025-10-15: CORRECTED dropdown text for Slow Rotation from "6-Week" to "12-Week" #}
 {#   2025-10-13: CORRECTED Fast rotation to use 12-week (84-day) pattern #}
@@ -114,7 +118,7 @@
                             <div class="form-text mt-2">
                                 <small><strong>Fast:</strong> 84-day (12-week) cycle - Crew A starts Week 1, B starts Week 4, C starts Week 7, D starts Week 10</small><br>
                                 <small><strong>Slow:</strong> 84-day (12-week) cycle - Weeks 1-6: A&B days/C&D nights, Weeks 7-12: swap shifts</small><br>
-                                <small><strong>Fixed:</strong> 6-week cycle - A&B days only, C&D nights only (3-on-3-off, never swap shifts)</small><br>
+                                <small><strong>Fixed:</strong> Simple 6-day repeating pattern - A&C: Mon-Wed work, B&D: Thu-Sat work (days/nights respectively)</small><br>
                                 <small><strong>Modified:</strong> 6-week cycle with strategic swaps for 3 full weekends off</small>
                             </div>
                         </div>
@@ -455,13 +459,13 @@ const patternData = {
         explanation: '4-on-4-off: Work 4 days, off 4 days. Modified version uses Saturday swaps to create full weekends off over 8-week cycle.'
     },
     'three_on_three_off': {
-        cycle: '84 days (12 weeks) for fast and slow, 42 days (6 weeks) for fixed',
+        cycle: '6 days (aligns every 6 weeks)',
         avgHours: '42 hours/week',
         maxConsecutive: '3 days',
-        weekendsOff: '3 full weekends/6 weeks (modified)',
-        advantages: ['Shorter work stretches', 'Regular pattern', 'Good for fatigue management', 'Flexible variations'],
-        considerations: ['Split weekends in basic version', 'Modified creates strategic swaps', 'Various cycle lengths'],
-        explanation: '3-on-3-off: Work 3 days, then off 3 days. Fast rotation uses 12-week cycle where crews start at different weeks. Slow rotation uses 12-week cycle with shift swap at week 7. Fixed keeps A&B on days, C&D on nights forever.'
+        weekendsOff: 'Varies - every other weekend typically',
+        advantages: ['Shorter work stretches', 'Simple repeating pattern', 'Good for fatigue management', 'Flexible variations'],
+        considerations: ['Split weekends in fixed version', 'Modified creates strategic swaps', 'Various cycle lengths'],
+        explanation: '3-on-3-off: Work 3 days, then off 3 days. Fast rotation uses 12-week cycle where crews start at different weeks. Slow rotation uses 12-week cycle with shift swap at week 7. Fixed: Crew A/C work Mon-Tue-Wed, Crew B/D work Thu-Fri-Sat, repeating every 6 days.'
     }
 };
 
@@ -721,17 +725,27 @@ function generateCrewAssignment(pattern, week, day, rotation) {
                 }
             }
             else if (rotation === 'fixed') {
-                // Fixed: 6-day cycle, A&B days, C&D nights
-                // This matches the first 6 weeks of Slow Rotation
-                const totalDays = (week - 1) * 7 + day;
+                // FIXED: 6-day cycle, A&B days, C&D nights
+                // Crew A/C: Mon-Tue-Wed WORK, Thu-Fri-Sat OFF
+                // Crew B/D: Mon-Tue-Wed OFF, Thu-Fri-Sat WORK
+                // Pattern repeats every 6 days, aligns every 6 weeks (42 days)
+                
+                // Convert display day to pattern day (Monday = 0)
+                let patternDay;
+                if (day === 0) {
+                    // Sunday is the last day of the week (day 6 in pattern)
+                    patternDay = (week - 1) * 7 + 6;
+                } else {
+                    // Monday-Saturday: display day 1-6 becomes pattern day 0-5
+                    patternDay = (week - 1) * 7 + (day - 1);
+                }
                 
                 let dayCrews = [];
                 let nightCrews = [];
                 
-                // A & C work together (offset 0)
-                // B & D work together (offset 3)
-                const crewAWorking = (totalDays % 6) < 3;
-                const crewBWorking = ((totalDays + 3) % 6) < 3;
+                // 6-day pattern: positions 0,1,2 = A/C work, positions 3,4,5 = B/D work
+                const crewAWorking = (patternDay % 6) < 3;
+                const crewBWorking = ((patternDay + 3) % 6) < 3;
                 
                 if (crewAWorking) {
                     dayCrews.push('A');
@@ -815,9 +829,9 @@ function generateSchedulePreview() {
         }
     } else if (pattern === 'three_on_three_off') {
         switch(rotation) {
-            case 'fast': weeksToShow = 12; break;  // CHANGED: Show full 12-week cycle
-            case 'slow': weeksToShow = 12; break;  // CHANGED: Show full 12-week cycle
-            case 'fixed': weeksToShow = 6; break;  // CHANGED: Show 6-week cycle
+            case 'fast': weeksToShow = 12; break;
+            case 'slow': weeksToShow = 12; break;
+            case 'fixed': weeksToShow = 6; break;
             case 'modified': weeksToShow = 6; break;
             default: weeksToShow = 4; break;
         }
