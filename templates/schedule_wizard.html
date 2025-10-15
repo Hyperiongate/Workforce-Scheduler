@@ -587,12 +587,13 @@ function generateCrewAssignment(pattern, week, day, rotation) {
             if (rotation === 'fast') {
                 // CORRECTED Fast rotation: 12-week (84-day) cycle
                 // Full 84-day pattern matching backend
+                // FIXED 2025-10-15: Pattern now starts with 3 working days (not 2)
                 const fullPattern = [
-                    // Week 1: Mon-Sun
+                    // Week 1: Mon-Sun (starts with 3 days work)
                     'D', 'D', 'D', 'O', 'O', 'O', 'N',
-                    // Week 2: Mon-Sun
+                    // Week 2: Mon-Sun (3 nights work)
                     'N', 'N', 'O', 'O', 'O', 'D', 'D',
-                    // Week 3: Mon-Sun
+                    // Week 3: Mon-Sun (3 days work)
                     'D', 'O', 'O', 'O', 'N', 'N', 'N',
                     // Week 4: Mon-Sun
                     'O', 'O', 'O', 'D', 'D', 'D', 'O',
@@ -660,21 +661,33 @@ function generateCrewAssignment(pattern, week, day, rotation) {
                 // CORRECTED Slow rotation: 12-week (84-day) cycle with shift swap
                 // Weeks 1-6: A&B days, C&D nights (alternating 3-on-3-off)
                 // Weeks 7-12: C&D days, A&B nights (alternating 3-on-3-off)
+                // FIXED: Adjusted for Sunday-based week display
                 
-                const totalDays = (week - 1) * 7 + day;
+                // Convert display week/day to absolute day number
+                // Week 1, day 0 (Sunday in display) = day -1 in our Monday-based calculation
+                // Week 1, day 1 (Monday in display) = day 0 in our calculation
+                let absoluteDay;
+                if (day === 0) {
+                    // Sunday - it's the last day of the previous week in our Monday-based system
+                    absoluteDay = (week - 1) * 7 + 6;
+                } else {
+                    // Monday-Saturday
+                    absoluteDay = (week - 1) * 7 + (day - 1);
+                }
+                
                 const workPattern = [true, true, true, false, false, false]; // 3 on, 3 off
                 
                 let dayCrews = [];
                 let nightCrews = [];
                 
-                // Crew offsets: A&C start day 0, B&D start day 3
+                // Crew offsets: A&C start day 0 (Monday), B&D start day 3 (Thursday)
                 const crewOffsets = {'A': 0, 'B': 3, 'C': 0, 'D': 3};
                 
                 // Determine current week in cycle (0-11 = weeks 1-12)
-                const currentWeek = Math.floor(totalDays / 7);
+                const currentWeek = Math.floor(absoluteDay / 7);
                 
                 for (const [crew, offset] of Object.entries(crewOffsets)) {
-                    const patternPosition = (totalDays + offset) % 6;
+                    const patternPosition = (absoluteDay + offset) % 6;
                     const isWorking = workPattern[patternPosition];
                     
                     if (isWorking) {
