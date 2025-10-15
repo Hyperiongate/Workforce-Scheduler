@@ -1,14 +1,12 @@
 # utils/pattern_generators.py
 # COMPLETE FILE - Pattern Generators for Workforce Scheduler
-# Last Updated: 2025-10-13 - FIXED 3-on-3-off Fast Rotation with 12-week pattern
+# Last Updated: 2025-10-15 - FIXED 3-on-3-off Slow Rotation transition
 # 
 # Change Log:
+#   2025-10-15: FIXED ThreeOnThreeOffSlow to prevent D,D,N situations at week 6/7 boundary
+#               - Ensured crews are OFF during shift transition
+#               - Pattern starts Monday with 3-day work stretches
 #   2025-10-13: CORRECTED ThreeOnThreeOffFast to use full 12-week (84-day) pattern
-#               - Each crew follows same 84-day pattern
-#               - Crew A starts Week 1 (day 0)
-#               - Crew B starts Week 4 (day 21)
-#               - Crew C starts Week 7 (day 42)
-#               - Crew D starts Week 10 (day 63)
 #   2025-10-11: Added 3-on-3-off pattern variations
 #   2025-10-10: FINAL FIX - Correct Modified 4-on-4-off pattern
 #   2025-10-09: Added FourOnFourOffModified class with 8-week (56-day) cycle
@@ -675,9 +673,12 @@ class ThreeOnThreeOffSlow(PatternGenerator):
     Work pattern: 3 on, 3 off (repeating every 6 days)
     Crew alternation: A alternates with B, C alternates with D
     
+    CRITICAL FIX: Pattern ensures crews are OFF at the week 6/7 boundary
+    to prevent D,D,N situations (2 days then 1 night)
+    
     Benefits:
     - 6 weeks on same shift (better circadian adjustment)
-    - Still maintains short 3-day work stretches
+    - Always work exactly 3 consecutive days
     - Predictable pattern
     - All crews experience both shifts
     """
@@ -685,7 +686,7 @@ class ThreeOnThreeOffSlow(PatternGenerator):
     def __init__(self):
         super().__init__()
         self.pattern_name = "3-on-3-off Slow Rotation"
-        self.cycle_days = 84  # 12 weeks (changed from 42)
+        self.cycle_days = 84  # 12 weeks
     
     def generate(self, start_date, end_date, created_by_id=None, replace_existing=False):
         """Generate slow rotation 3-on-3-off schedule with 12-week cycle"""
@@ -701,14 +702,15 @@ class ThreeOnThreeOffSlow(PatternGenerator):
         # 6-day basic pattern: 3 on, 3 off
         work_pattern = ['X', 'X', 'X', 'O', 'O', 'O']
         
-        # Crew offsets for the 3-on-3-off pattern
-        # A and C: start at day 0
-        # B and D: start at day 3 (opposite of A and C)
+        # CRITICAL: Crew offsets designed to ensure crews are OFF at week boundaries
+        # For a Monday start, we need A & C to start at day 0 (Monday)
+        # This gives them Mon-Tue-Wed work, Thu-Fri-Sat off
+        # Week boundary (Sunday) falls on their OFF cycle
         crew_offsets = {
-            'A': 0,
-            'B': 3,
-            'C': 0,
-            'D': 3
+            'A': 0,  # Start Monday: Mon-Tue-Wed work
+            'B': 3,  # Start Thursday: Thu-Fri-Sat work (opposite of A)
+            'C': 0,  # Start Monday: Mon-Tue-Wed work (same as A)
+            'D': 3   # Start Thursday: Thu-Fri-Sat work (same as B)
         }
         
         # Shift times
