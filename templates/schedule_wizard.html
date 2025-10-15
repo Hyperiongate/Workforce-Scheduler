@@ -1,7 +1,8 @@
 {# templates/schedule_wizard.html #}
 {# Schedule Pattern Wizard - COMPLETE FILE #}
-{# Last Modified: 2025-10-15 - FIXED Slow Rotation display text to 12-Week #}
+{# Last Modified: 2025-10-15 - FIXED 3-on-3-off Fixed to show 6 weeks #}
 {# Change Log: #}
+{#   2025-10-15: FIXED Fixed Shifts preview to show 6 weeks (was 2 weeks) #}
 {#   2025-10-15: CORRECTED dropdown text for Slow Rotation from "6-Week" to "12-Week" #}
 {#   2025-10-13: CORRECTED Fast rotation to use 12-week (84-day) pattern #}
 {#               - Matches backend pattern_generators.py exactly #}
@@ -107,13 +108,13 @@
                                 <option value="">-- Select Variation --</option>
                                 <option value="fast">Fast Rotation (12-Week Cycle)</option>
                                 <option value="slow">Slow Rotation (12-Week Cycle)</option>
-                                <option value="fixed">Fixed Shifts (3-on-3-off)</option>
+                                <option value="fixed">Fixed Shifts (6-Week Cycle)</option>
                                 <option value="modified">Modified (Full Weekends Off)</option>
                             </select>
                             <div class="form-text mt-2">
                                 <small><strong>Fast:</strong> 84-day (12-week) cycle - Crew A starts Week 1, B starts Week 4, C starts Week 7, D starts Week 10</small><br>
                                 <small><strong>Slow:</strong> 84-day (12-week) cycle - Weeks 1-6: A&B days/C&D nights, Weeks 7-12: swap shifts</small><br>
-                                <small><strong>Fixed:</strong> A&B days only, C&D nights only, 6-day cycle</small><br>
+                                <small><strong>Fixed:</strong> 6-week cycle - A&B days only, C&D nights only (3-on-3-off, never swap shifts)</small><br>
                                 <small><strong>Modified:</strong> 6-week cycle with strategic swaps for 3 full weekends off</small>
                             </div>
                         </div>
@@ -454,13 +455,13 @@ const patternData = {
         explanation: '4-on-4-off: Work 4 days, off 4 days. Modified version uses Saturday swaps to create full weekends off over 8-week cycle.'
     },
     'three_on_three_off': {
-        cycle: '84 days (12 weeks) for fast and slow, 6-42 days for other variations',
+        cycle: '84 days (12 weeks) for fast and slow, 42 days (6 weeks) for fixed',
         avgHours: '42 hours/week',
         maxConsecutive: '3 days',
         weekendsOff: '3 full weekends/6 weeks (modified)',
         advantages: ['Shorter work stretches', 'Regular pattern', 'Good for fatigue management', 'Flexible variations'],
         considerations: ['Split weekends in basic version', 'Modified creates strategic swaps', 'Various cycle lengths'],
-        explanation: '3-on-3-off: Work 3 days, then off 3 days. Fast rotation uses 12-week cycle where crews start at different weeks. Slow rotation uses 12-week cycle with shift swap at week 7.'
+        explanation: '3-on-3-off: Work 3 days, then off 3 days. Fast rotation uses 12-week cycle where crews start at different weeks. Slow rotation uses 12-week cycle with shift swap at week 7. Fixed keeps A&B on days, C&D on nights forever.'
     }
 };
 
@@ -721,6 +722,7 @@ function generateCrewAssignment(pattern, week, day, rotation) {
             }
             else if (rotation === 'fixed') {
                 // Fixed: 6-day cycle, A&B days, C&D nights
+                // This matches the first 6 weeks of Slow Rotation
                 const totalDays = (week - 1) * 7 + day;
                 
                 let dayCrews = [];
@@ -815,7 +817,7 @@ function generateSchedulePreview() {
         switch(rotation) {
             case 'fast': weeksToShow = 12; break;  // CHANGED: Show full 12-week cycle
             case 'slow': weeksToShow = 12; break;  // CHANGED: Show full 12-week cycle
-            case 'fixed': weeksToShow = 2; break;
+            case 'fixed': weeksToShow = 6; break;  // CHANGED: Show 6-week cycle
             case 'modified': weeksToShow = 6; break;
             default: weeksToShow = 4; break;
         }
@@ -1130,7 +1132,7 @@ function showScheduleCreationModal(config) {
                                 <label class="form-label fw-bold">Number of Weeks:</label>
                                 <select class="form-select" id="scheduleWeeks">
                                     <option value="4">4 weeks</option>
-                                    <option value="6" ${config.rotation === 'modified' && pattern === 'three_on_three_off' ? 'selected' : ''}>6 weeks (Full Cycle)</option>
+                                    <option value="6" ${(config.rotation === 'modified' || config.rotation === 'fixed') && pattern === 'three_on_three_off' ? 'selected' : ''}>6 weeks (Full Cycle)</option>
                                     <option value="8" ${config.rotation === 'modified' && pattern === 'four_on_four_off' ? 'selected' : ''}>8 weeks (Full Cycle)</option>
                                     <option value="12" ${(config.rotation === 'fast' || config.rotation === 'slow') && pattern === 'three_on_three_off' ? 'selected' : ''}>12 weeks (Full Cycle)</option>
                                     <option value="16" ${config.rotation === 'weekly' ? 'selected' : ''}>16 weeks (Full Cycle)</option>
