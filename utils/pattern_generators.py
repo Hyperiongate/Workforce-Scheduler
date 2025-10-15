@@ -1,6 +1,6 @@
 /**
  * FILE: static/js/pdf-generator.js
- * VERSION: 10.0.0 - COMPLETE REBUILD - PROFESSIONAL SALES TOOL
+ * VERSION: 10.0.0 - COMPLETE REBUILD - PROFESSIONAL SALES TOOL 
  * DATE: October 15, 2025
  * AUTHOR: TruthLens Development Team
  * 
