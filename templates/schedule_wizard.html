@@ -1,7 +1,8 @@
 {# templates/schedule_wizard.html #}
 {# Schedule Pattern Wizard - COMPLETE FILE #}
-{# Last Modified: 2025-10-13 - FIXED 3-on-3-off Fast with 12-week pattern #}
+{# Last Modified: 2025-10-15 - FIXED Slow Rotation display text to 12-Week #}
 {# Change Log: #}
+{#   2025-10-15: CORRECTED dropdown text for Slow Rotation from "6-Week" to "12-Week" #}
 {#   2025-10-13: CORRECTED Fast rotation to use 12-week (84-day) pattern #}
 {#               - Matches backend pattern_generators.py exactly #}
 {#               - Crew A: Week 1, Crew B: Week 4, Crew C: Week 7, Crew D: Week 10 #}
@@ -105,7 +106,7 @@
                             <select class="form-select form-select-lg" id="threeVariation" name="three_variation">
                                 <option value="">-- Select Variation --</option>
                                 <option value="fast">Fast Rotation (12-Week Cycle)</option>
-                                <option value="slow">Slow Rotation (6-Week Cycle)</option>
+                                <option value="slow">Slow Rotation (12-Week Cycle)</option>
                                 <option value="fixed">Fixed Shifts (3-on-3-off)</option>
                                 <option value="modified">Modified (Full Weekends Off)</option>
                             </select>
@@ -580,7 +581,7 @@ function generateCrewAssignment(pattern, week, day, rotation) {
                     assignment.cssClass = dayCrews.length > 0 ? 'shift-day' : 'shift-night';
                 }
             }
-            else if (rotation === 'fixed') {
+            break;
             
         case 'three_on_three_off':
             if (rotation === 'fast') {
@@ -705,6 +706,7 @@ function generateCrewAssignment(pattern, week, day, rotation) {
                     assignment.cssClass = dayCrews.length > 0 ? 'shift-day' : 'shift-night';
                 }
             }
+            else if (rotation === 'fixed') {
                 // Fixed: 6-day cycle, A&B days, C&D nights
                 const totalDays = (week - 1) * 7 + day;
                 
@@ -1115,7 +1117,7 @@ function showScheduleCreationModal(config) {
                                 <label class="form-label fw-bold">Number of Weeks:</label>
                                 <select class="form-select" id="scheduleWeeks">
                                     <option value="4">4 weeks</option>
-                                    <option value="6" ${config.rotation === 'modified' ? 'selected' : ''}>6 weeks (Full Cycle)</option>
+                                    <option value="6" ${config.rotation === 'modified' && pattern === 'three_on_three_off' ? 'selected' : ''}>6 weeks (Full Cycle)</option>
                                     <option value="8" ${config.rotation === 'modified' && pattern === 'four_on_four_off' ? 'selected' : ''}>8 weeks (Full Cycle)</option>
                                     <option value="12" ${(config.rotation === 'fast' || config.rotation === 'slow') && pattern === 'three_on_three_off' ? 'selected' : ''}>12 weeks (Full Cycle)</option>
                                     <option value="16" ${config.rotation === 'weekly' ? 'selected' : ''}>16 weeks (Full Cycle)</option>
