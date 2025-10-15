@@ -679,7 +679,7 @@ function generateRecommendations(data, score) {
     });
     
     return recommendations;
-}
+} 
 
 function addServiceSpecificInsights(doc, key, data, yPos, colors) {
     if (yPos > 240) return;
