@@ -1,8 +1,11 @@
 # utils/pattern_generators.py
 # COMPLETE FILE - Pattern Generators for Workforce Scheduler
-# Last Updated: 2025-10-15 - FIXED 3-on-3-off Slow Rotation transition
+# Last Updated: 2025-10-15 - FIXED 3-on-3-off Modified pattern
 # 
 # Change Log:
+#   2025-10-15: FIXED ThreeOnThreeOffModified to use optimized work/off distribution
+#               - Work 3, off 4, work 2, off 3, work 3, off 3, pattern
+#               - Crew A/B always days, C/D always nights (fixed shifts)
 #   2025-10-15: FIXED ThreeOnThreeOffSlow to prevent D,D,N situations at week 6/7 boundary
 #               - Ensured crews are OFF during shift transition
 #               - Pattern starts Monday with 3-day work stretches
@@ -899,31 +902,33 @@ class ThreeOnThreeOffFixed(PatternGenerator):
 
 class ThreeOnThreeOffModified(PatternGenerator):
     """
-    3-on-3-off Modified Pattern - Full Weekends Off
+    3-on-3-off Modified Pattern - Optimized Work/Off Distribution
     
-    42-day cycle (6 weeks) with strategic swaps for full weekends
-    Similar concept to 4-on-4-off Modified but with 3-day work stretches
+    6-week cycle (42 days) - FIXED IMPLEMENTATION
+    Fixed shifts: A&B always days, C&D always nights
     
-    Strategy:
-    - Base pattern: 3 on, 3 off
-    - Swap specific days to create full weekends off
-    - Each crew gets 3 full weekends off in the 6-week cycle
-    - Maintains 24/7 coverage
+    Pattern design:
+    - Crew A: Work 3, off 4, work 2, off 3, work 3, off 3, work 3, off 3, 
+              work 4, off 2, work 3, off 3, work 3, off 3
+    - Crew B: Opposite of A (when A works, B is off)
+    - Crew C: Same as A but nights
+    - Crew D: Same as B but nights
     
     Benefits:
-    - Shorter work stretches (3 days vs 4)
-    - Full weekends off (Sat & Sun together)
-    - More frequent time off
-    - Better work-life balance
+    - Strategic distribution of work/off days
+    - Better weekend patterns than basic 3-on-3-off
+    - More varied schedule than pure repetition
+    - 50% work, 50% off (21 days each over 6 weeks)
+    - Maintains 24/7 coverage with fixed shifts
     """
     
     def __init__(self):
         super().__init__()
-        self.pattern_name = "3-on-3-off Modified (Full Weekends)"
+        self.pattern_name = "3-on-3-off Modified (Optimized Distribution)"
         self.cycle_days = 42  # 6 weeks
     
     def generate(self, start_date, end_date, created_by_id=None, replace_existing=False):
-        """Generate modified 3-on-3-off with full weekends"""
+        """Generate modified 3-on-3-off with optimized distribution"""
         logger.info(f"Generating 3-on-3-off Modified: {start_date} to {end_date}")
         
         self.validate_date_range(start_date, end_date)
@@ -933,26 +938,28 @@ class ThreeOnThreeOffModified(PatternGenerator):
         if replace_existing:
             self.clear_existing_schedules(start_date, end_date, crews)
         
-        # 42-day patterns with weekend swaps (Mon-Sun format)
+        # 42-day patterns (Mon-Sun format, 6 weeks)
         # 'X' = Work, 'O' = Off
         
         # CREW A - DAY SHIFT
+        # Pattern: Work 3, off 4, work 2, off 3, work 3, off 3, work 3, off 3,
+        #          work 4, off 2, work 3, off 3, work 3, off 3
         crew_a_pattern = [
-            'X', 'X', 'X', 'O', 'O', 'O', 'O',  # Week 1: Mon-Wed work, Thu-Sun off (FULL WEEKEND!)
-            'X', 'X', 'X', 'O', 'O', 'O', 'X',  # Week 2: Mon-Wed work, Sun work
-            'X', 'X', 'O', 'O', 'O', 'X', 'X',  # Week 3: Mon-Tue work, Sat-Sun work
-            'X', 'O', 'O', 'O', 'X', 'X', 'X',  # Week 4: Mon work, Fri-Sun work
-            'O', 'O', 'O', 'X', 'X', 'X', 'O',  # Week 5: Thu-Sat work
-            'O', 'X', 'X', 'X', 'O', 'O', 'O',  # Week 6: Tue-Thu work, Fri-Sun off (FULL WEEKEND!)
+            'X', 'X', 'X', 'O', 'O', 'O', 'O',  # Week 1: Mon-Wed work, Thu-Sun off
+            'X', 'X', 'O', 'O', 'O', 'X', 'X',  # Week 2: Mon-Tue work, Wed-Fri off, Sat-Sun work
+            'X', 'O', 'O', 'O', 'X', 'X', 'X',  # Week 3: Mon work, Tue-Thu off, Fri-Sun work
+            'O', 'O', 'O', 'X', 'X', 'X', 'X',  # Week 4: Mon-Wed off, Thu-Sun work
+            'O', 'O', 'X', 'X', 'X', 'O', 'O',  # Week 5: Mon-Tue off, Wed-Fri work, Sat-Sun off
+            'O', 'X', 'X', 'X', 'O', 'O', 'O',  # Week 6: Mon off, Tue-Thu work, Fri-Sun off
         ]
         
-        # CREW B - DAY SHIFT (offset to provide coverage)
+        # CREW B - DAY SHIFT (opposite of A)
         crew_b_pattern = [
-            'O', 'O', 'O', 'X', 'X', 'X', 'O',  # Week 1
-            'O', 'O', 'O', 'X', 'X', 'X', 'O',  # Week 2
-            'O', 'O', 'X', 'X', 'X', 'O', 'O',  # Week 3: Fri-Sun off (FULL WEEKEND!)
-            'O', 'X', 'X', 'X', 'O', 'O', 'O',  # Week 4
-            'X', 'X', 'X', 'O', 'O', 'O', 'X',  # Week 5
+            'O', 'O', 'O', 'X', 'X', 'X', 'X',  # Week 1
+            'O', 'O', 'X', 'X', 'X', 'O', 'O',  # Week 2
+            'O', 'X', 'X', 'X', 'O', 'O', 'O',  # Week 3
+            'X', 'X', 'X', 'O', 'O', 'O', 'O',  # Week 4
+            'X', 'X', 'O', 'O', 'O', 'X', 'X',  # Week 5
             'X', 'O', 'O', 'O', 'X', 'X', 'X',  # Week 6
         ]
         
@@ -988,7 +995,8 @@ class ThreeOnThreeOffModified(PatternGenerator):
                 if pattern[cycle_day] == 'O':
                     continue
                 
-                # A & B work days, C & D work nights
+                # Determine shift type based on crew
+                # A & B work DAYS, C & D work NIGHTS
                 if crew_letter in ['A', 'B']:
                     shift_type = ShiftType.DAY
                     start_time = day_start
@@ -998,7 +1006,7 @@ class ThreeOnThreeOffModified(PatternGenerator):
                     start_time = night_start
                     end_time = night_end
                 
-                # Create schedule for each employee
+                # Create schedule for each employee in this crew
                 for employee in employees:
                     schedule = Schedule(
                         employee_id=employee.id,
@@ -1019,7 +1027,7 @@ class ThreeOnThreeOffModified(PatternGenerator):
             'total_schedules': len(self.schedules),
             'pattern_name': self.pattern_name,
             'cycle_length': f"{self.cycle_days} days (6 weeks)",
-            'full_weekends_per_crew': '3 out of 6 weeks'
+            'work_distribution': '21 days work, 21 days off per 6-week cycle'
         }
         
         return result
@@ -1058,3 +1066,5 @@ def get_pattern_generator(pattern, variation=None):
             return ThreeOnThreeOffModified()
     
     return None
+
+# This file is not truncated.
