@@ -1,18 +1,14 @@
 {# templates/schedule_wizard.html #}
 {# Schedule Pattern Wizard - COMPLETE FILE #}
-{# Last Modified: 2025-10-15 - FIXED 3-on-3-off Fixed pattern day calculation #}
+{# Last Modified: 2025-10-15 - FIXED 3-on-3-off Modified and Fixed patterns #}
 {# Change Log: #}
+{#   2025-10-15: FIXED Modified pattern - optimized work/off distribution #}
+{#              - Work 3, off 4, work 2, off 3, work 3, off 3, pattern #}
+{#              - A&B always days, C&D always nights (fixed shifts) #}
 {#   2025-10-15: FIXED Fixed pattern to correctly calculate Monday-based pattern days #}
 {#              - Crew A/C: Mon-Tue-Wed work, Thu-Fri-Sat off #}
 {#              - Crew B/D: Mon-Tue-Wed off, Thu-Fri-Sat work #}
 {#              - 6-day cycle repeating, aligns every 6 weeks (42 days) #}
-{#   2025-10-15: FIXED Fixed Shifts preview to show 6 weeks (was 2 weeks) #}
-{#   2025-10-15: CORRECTED dropdown text for Slow Rotation from "6-Week" to "12-Week" #}
-{#   2025-10-13: CORRECTED Fast rotation to use 12-week (84-day) pattern #}
-{#               - Matches backend pattern_generators.py exactly #}
-{#               - Crew A: Week 1, Crew B: Week 4, Crew C: Week 7, Crew D: Week 10 #}
-{#   2025-10-11: Added 3-on-3-off dropdown with fast/slow/fixed/modified options #}
-{#   2025-10-10: FINAL CORRECT FIX - Modified pattern with Saturday swap logic #}
 
 {% extends "base.html" %}
 {% block title %}{{ pattern_config.name }} Schedule Pattern{% endblock %}
@@ -113,13 +109,13 @@
                                 <option value="fast">Fast Rotation (12-Week Cycle)</option>
                                 <option value="slow">Slow Rotation (12-Week Cycle)</option>
                                 <option value="fixed">Fixed Shifts (6-Week Cycle)</option>
-                                <option value="modified">Modified (Full Weekends Off)</option>
+                                <option value="modified">Modified (Optimized 6-Week)</option>
                             </select>
                             <div class="form-text mt-2">
                                 <small><strong>Fast:</strong> 84-day (12-week) cycle - Crew A starts Week 1, B starts Week 4, C starts Week 7, D starts Week 10</small><br>
                                 <small><strong>Slow:</strong> 84-day (12-week) cycle - Weeks 1-6: A&B days/C&D nights, Weeks 7-12: swap shifts</small><br>
-                                <small><strong>Fixed:</strong> Simple 6-day repeating pattern - A&C: Mon-Wed work, B&D: Thu-Sat work (days/nights respectively)</small><br>
-                                <small><strong>Modified:</strong> 6-week cycle with strategic swaps for 3 full weekends off</small>
+                                <small><strong>Fixed:</strong> Simple 6-day repeating - A&C: Mon-Wed work, B&D: Thu-Sat work (days/nights)</small><br>
+                                <small><strong>Modified:</strong> 6-week cycle - Work 3, off 4, work 2, off 3, pattern (optimized distribution)</small>
                             </div>
                         </div>
                         {% elif pattern == 'southern_swing' %}
@@ -464,8 +460,8 @@ const patternData = {
         maxConsecutive: '3 days',
         weekendsOff: 'Varies - every other weekend typically',
         advantages: ['Shorter work stretches', 'Simple repeating pattern', 'Good for fatigue management', 'Flexible variations'],
-        considerations: ['Split weekends in fixed version', 'Modified creates strategic swaps', 'Various cycle lengths'],
-        explanation: '3-on-3-off: Work 3 days, then off 3 days. Fast rotation uses 12-week cycle where crews start at different weeks. Slow rotation uses 12-week cycle with shift swap at week 7. Fixed: Crew A/C work Mon-Tue-Wed, Crew B/D work Thu-Fri-Sat, repeating every 6 days.'
+        considerations: ['Split weekends in fixed version', 'Modified creates strategic distribution', 'Various cycle lengths'],
+        explanation: '3-on-3-off: Work 3 days, then off 3 days. Fast rotation uses 12-week cycle where crews start at different weeks. Slow rotation uses 12-week cycle with shift swap at week 7. Fixed: Crew A/C work Mon-Tue-Wed, Crew B/D work Thu-Fri-Sat, repeating every 6 days. Modified: 6-week optimized pattern (work 3, off 4, work 2, off 3, etc.) for better work-life balance.'
     }
 };
 
@@ -482,11 +478,11 @@ function generateCrewAssignment(pattern, week, day, rotation) {
     // Calculate based on pattern and rotation
     switch(pattern) {
         case 'pitman':
-            // Pitman logic (existing code)
+            // Pitman logic (existing code unchanged)
             break;
             
         case 'dupont':
-            // DuPont logic (existing code)
+            // DuPont logic (existing code unchanged)
             break;
             
         case 'four_on_four_off':
@@ -591,57 +587,37 @@ function generateCrewAssignment(pattern, week, day, rotation) {
         case 'three_on_three_off':
             if (rotation === 'fast') {
                 // CORRECTED Fast rotation: 12-week (84-day) cycle
-                // Full 84-day pattern matching backend
-                // FIXED 2025-10-15: Pattern now starts with 3 working days (not 2)
                 const fullPattern = [
-                    // Week 1: Mon-Sun (starts with 3 days work)
                     'D', 'D', 'D', 'O', 'O', 'O', 'N',
-                    // Week 2: Mon-Sun (3 nights work)
                     'N', 'N', 'O', 'O', 'O', 'D', 'D',
-                    // Week 3: Mon-Sun (3 days work)
                     'D', 'O', 'O', 'O', 'N', 'N', 'N',
-                    // Week 4: Mon-Sun
                     'O', 'O', 'O', 'D', 'D', 'D', 'O',
-                    // Week 5: Mon-Sun
                     'O', 'O', 'N', 'N', 'N', 'O', 'O',
-                    // Week 6: Mon-Sun
                     'O', 'D', 'D', 'D', 'O', 'O', 'O',
-                    // Week 7: Mon-Sun
                     'N', 'N', 'N', 'O', 'O', 'O', 'D',
-                    // Week 8: Mon-Sun
                     'D', 'D', 'O', 'O', 'O', 'N', 'N',
-                    // Week 9: Mon-Sun
                     'N', 'O', 'O', 'O', 'D', 'D', 'D',
-                    // Week 10: Mon-Sun
                     'O', 'O', 'O', 'N', 'N', 'N', 'O',
-                    // Week 11: Mon-Sun
                     'O', 'O', 'D', 'D', 'D', 'O', 'O',
-                    // Week 12: Mon-Sun
                     'O', 'N', 'N', 'N', 'O', 'O', 'O'
                 ];
                 
-                // Crew start offsets
                 const crewOffsets = {
-                    'A': 0,   // Week 1 = day 0
-                    'B': 21,  // Week 4 = day 21
-                    'C': 42,  // Week 7 = day 42
-                    'D': 63   // Week 10 = day 63
+                    'A': 0, 'B': 21, 'C': 42, 'D': 63
                 };
                 
                 let dayCrews = [];
                 let nightCrews = [];
                 
-                // Convert week/day to absolute day (Monday-based, day 0 = Monday)
                 let mondayBasedDay;
-                if (day === 0) {  // Sunday in display = day 6 in Mon-based
+                if (day === 0) {
                     mondayBasedDay = 6;
-                } else {  // Mon-Sat in display = day 0-5 in Mon-based
+                } else {
                     mondayBasedDay = day - 1;
                 }
                 
                 const absoluteDay = (week - 1) * 7 + mondayBasedDay;
                 
-                // Check each crew
                 for (const [crew, offset] of Object.entries(crewOffsets)) {
                     const patternPosition = (absoluteDay + offset) % 84;
                     const shift = fullPattern[patternPosition];
@@ -651,7 +627,6 @@ function generateCrewAssignment(pattern, week, day, rotation) {
                     } else if (shift === 'N') {
                         nightCrews.push(crew);
                     }
-                    // 'O' = off, do nothing
                 }
                 
                 if (dayCrews.length > 0 || nightCrews.length > 0) {
@@ -664,31 +639,19 @@ function generateCrewAssignment(pattern, week, day, rotation) {
             }
             else if (rotation === 'slow') {
                 // CORRECTED Slow rotation: 12-week (84-day) cycle with shift swap
-                // Weeks 1-6: A&B days, C&D nights (alternating 3-on-3-off)
-                // Weeks 7-12: C&D days, A&B nights (alternating 3-on-3-off)
-                // FIXED: Adjusted for Sunday-based week display
-                
-                // Convert display week/day to absolute day number
-                // Week 1, day 0 (Sunday in display) = day -1 in our Monday-based calculation
-                // Week 1, day 1 (Monday in display) = day 0 in our calculation
                 let absoluteDay;
                 if (day === 0) {
-                    // Sunday - it's the last day of the previous week in our Monday-based system
                     absoluteDay = (week - 1) * 7 + 6;
                 } else {
-                    // Monday-Saturday
                     absoluteDay = (week - 1) * 7 + (day - 1);
                 }
                 
-                const workPattern = [true, true, true, false, false, false]; // 3 on, 3 off
+                const workPattern = [true, true, true, false, false, false];
                 
                 let dayCrews = [];
                 let nightCrews = [];
                 
-                // Crew offsets: A&C start day 0 (Monday), B&D start day 3 (Thursday)
                 const crewOffsets = {'A': 0, 'B': 3, 'C': 0, 'D': 3};
-                
-                // Determine current week in cycle (0-11 = weeks 1-12)
                 const currentWeek = Math.floor(absoluteDay / 7);
                 
                 for (const [crew, offset] of Object.entries(crewOffsets)) {
@@ -696,17 +659,13 @@ function generateCrewAssignment(pattern, week, day, rotation) {
                     const isWorking = workPattern[patternPosition];
                     
                     if (isWorking) {
-                        // Weeks 0-5 (1-6): A&B days, C&D nights
-                        // Weeks 6-11 (7-12): C&D days, A&B nights
                         if (currentWeek < 6) {
-                            // First 6 weeks
                             if (crew === 'A' || crew === 'B') {
                                 dayCrews.push(crew);
                             } else {
                                 nightCrews.push(crew);
                             }
                         } else {
-                            // Last 6 weeks (shift swap)
                             if (crew === 'C' || crew === 'D') {
                                 dayCrews.push(crew);
                             } else {
@@ -728,22 +687,17 @@ function generateCrewAssignment(pattern, week, day, rotation) {
                 // FIXED: 6-day cycle, A&B days, C&D nights
                 // Crew A/C: Mon-Tue-Wed WORK, Thu-Fri-Sat OFF
                 // Crew B/D: Mon-Tue-Wed OFF, Thu-Fri-Sat WORK
-                // Pattern repeats every 6 days, aligns every 6 weeks (42 days)
                 
-                // Convert display day to pattern day (Monday = 0)
                 let patternDay;
                 if (day === 0) {
-                    // Sunday is the last day of the week (day 6 in pattern)
                     patternDay = (week - 1) * 7 + 6;
                 } else {
-                    // Monday-Saturday: display day 1-6 becomes pattern day 0-5
                     patternDay = (week - 1) * 7 + (day - 1);
                 }
                 
                 let dayCrews = [];
                 let nightCrews = [];
                 
-                // 6-day pattern: positions 0,1,2 = A/C work, positions 3,4,5 = B/D work
                 const crewAWorking = (patternDay % 6) < 3;
                 const crewBWorking = ((patternDay + 3) % 6) < 3;
                 
@@ -762,6 +716,74 @@ function generateCrewAssignment(pattern, week, day, rotation) {
                     if (nightCrews.length > 0) display.push(`Night: ${nightCrews.join('+')}`);
                     assignment.crews = display.join('\n');
                     assignment.cssClass = 'shift-day';
+                }
+            }
+            else if (rotation === 'modified') {
+                // 3-on-3-off Modified: Optimized work/off distribution
+                // 42-day (6-week) cycle - Fixed shifts: A&B days, C&D nights
+                // Pattern: Work 3, off 4, work 2, off 3, work 3, off 3, work 3, off 3,
+                //          work 4, off 2, work 3, off 3, work 3, off 3
+                
+                const crewAPattern = [
+                    'X', 'X', 'X', 'O', 'O', 'O', 'O',  // Week 1: Mon-Wed work, Thu-Sun off
+                    'X', 'X', 'O', 'O', 'O', 'X', 'X',  // Week 2: Mon-Tue work, Wed-Fri off, Sat-Sun work
+                    'X', 'O', 'O', 'O', 'X', 'X', 'X',  // Week 3: Mon work, Tue-Thu off, Fri-Sun work
+                    'O', 'O', 'O', 'X', 'X', 'X', 'X',  // Week 4: Mon-Wed off, Thu-Sun work
+                    'O', 'O', 'X', 'X', 'X', 'O', 'O',  // Week 5: Mon-Tue off, Wed-Fri work, Sat-Sun off
+                    'O', 'X', 'X', 'X', 'O', 'O', 'O',  // Week 6: Mon off, Tue-Thu work, Fri-Sun off
+                ];
+                
+                const crewBPattern = [
+                    'O', 'O', 'O', 'X', 'X', 'X', 'X',  // Week 1: opposite of A
+                    'O', 'O', 'X', 'X', 'X', 'O', 'O',  // Week 2
+                    'O', 'X', 'X', 'X', 'O', 'O', 'O',  // Week 3
+                    'X', 'X', 'X', 'O', 'O', 'O', 'O',  // Week 4
+                    'X', 'X', 'O', 'O', 'O', 'X', 'X',  // Week 5
+                    'X', 'O', 'O', 'O', 'X', 'X', 'X',  // Week 6
+                ];
+                
+                const modifiedPatterns = {
+                    'A': crewAPattern,
+                    'B': crewBPattern,
+                    'C': crewAPattern,  // Same as A but nights
+                    'D': crewBPattern   // Same as B but nights
+                };
+                
+                let dayCrews = [];
+                let nightCrews = [];
+                
+                let mondayBasedDay;
+                if (day === 0) {
+                    mondayBasedDay = 6;
+                } else {
+                    mondayBasedDay = day - 1;
+                }
+                
+                const absoluteDay = (week - 1) * 7 + mondayBasedDay;
+                const cycleDay = absoluteDay % 42;
+                
+                for (const [crew, pattern] of Object.entries(modifiedPatterns)) {
+                    const shift = pattern[cycleDay];
+                    
+                    if (shift === 'X') {
+                        if (crew === 'A' || crew === 'B') {
+                            dayCrews.push(crew);
+                        } else {
+                            nightCrews.push(crew);
+                        }
+                    }
+                }
+                
+                if (dayCrews.length > 0 || nightCrews.length > 0) {
+                    let display = [];
+                    if (dayCrews.length > 0) {
+                        display.push(`Day: ${dayCrews.join('+')}`);
+                    }
+                    if (nightCrews.length > 0) {
+                        display.push(`Night: ${nightCrews.join('+')}`);
+                    }
+                    assignment.crews = display.join('\n');
+                    assignment.cssClass = dayCrews.length > 0 ? 'shift-day' : 'shift-night';
                 }
             }
             break;
@@ -1306,3 +1328,5 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 {% endblock %}
+
+{# This file is not truncated. #}
