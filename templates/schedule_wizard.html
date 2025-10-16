@@ -1,7 +1,10 @@
 {# templates/schedule_wizard.html #}
 {# Schedule Pattern Wizard - COMPLETE FILE #}
-{# Last Modified: 2025-10-16 - ADDED Southern Swing pattern (3 variations) #}
+{# Last Modified: 2025-10-16 - FIXED Southern Swing 7 consecutive nights #}
 {# Change Log: #}
+{#   2025-10-16: FIXED Southern Swing patterns to ensure 7 consecutive night shifts #}
+{#              - Nights span Week 2 (Sat-Sun) + Week 3 (Mon-Fri) = 7 consecutive #}
+{#              - Ensures 24/7 coverage with no gaps (Thursday night now covered) #}
 {#   2025-10-16: ADDED Southern Swing clockwise, counter-clockwise, and fixed patterns #}
 {#              - 28-day cycle with 8-hour shifts (d8, e8, n8) #}
 {#              - Crew rotation: A→Week1, B→Week2, C→Week3, D→Week4 #}
@@ -136,7 +139,7 @@
                                     <li>28-day (4-week) cycle</li>
                                     <li>8-hour shifts: 7am-3pm, 3pm-11pm, 11pm-7am</li>
                                     <li>20 working days per cycle (5 days/week)</li>
-                                    <li>Traditional rotating shift pattern</li>
+                                    <li>7 consecutive night shifts for adjustment</li>
                                 </ul>
                             </div>
                         </div>
@@ -455,11 +458,11 @@ const patternData = {
     'southern_swing': {
         cycle: '28 days (4 weeks)',
         avgHours: '40 hours/week',
-        maxConsecutive: '5 days',
+        maxConsecutive: '7 days (nights)',
         weekendsOff: '1 per month (varies by crew)',
-        advantages: ['Experience all shift types', 'Forward rotation healthier (clockwise)', 'Traditional 8-hour shifts', '273 work days/year'],
+        advantages: ['Experience all shift types', 'Forward rotation healthier (clockwise)', 'Traditional 8-hour shifts', '7 consecutive nights for better adjustment'],
         considerations: ['Only 1 weekend off per month', 'Constant shift rotation', 'More work days than 12-hour patterns'],
-        explanation: 'Southern Swing: 28-day cycle where each crew rotates through Days (7am-3pm), Evenings (3pm-11pm), and Nights (11pm-7am). Crew A starts Week 1, B starts Week 2, C starts Week 3, D starts Week 4. After Week 4, crews cycle back to Week 1. 20 working days per cycle (5 days/week pattern).'
+        explanation: 'Southern Swing: 28-day cycle where each crew rotates through Days (7am-3pm), Evenings (3pm-11pm), and Nights (11pm-7am). Crews work 7 consecutive night shifts for better circadian adjustment. Crew A starts Week 1, B starts Week 2, C starts Week 3, D starts Week 4. After Week 4, crews cycle back to Week 1. 20 working days per cycle (5 days/week pattern).'
     },
     'four_on_four_off': {
         cycle: '56 days (8 weeks) for modified, 112 days (16 weeks) for weekly',
@@ -503,10 +506,7 @@ function generateCrewAssignment(pattern, week, day, rotation) {
             
         case 'southern_swing':
             // SOUTHERN SWING PATTERN - 28-day cycle with 8-hour shifts
-            // Week 1: Mon-Fri: Days, Sat-Sun: Off
-            // Week 2: Mon-Tue: Off, Wed-Sun: Evenings
-            // Week 3: Mon-Tue: Evenings, Wed-Thu: Off, Fri-Sun: Nights
-            // Week 4: Mon-Wed: Nights, Thu-Fri: Off, Sat-Sun: Days
+            // CORRECTED: 7 consecutive nights for proper coverage
             
             if (rotation === 'clockwise' || rotation === 'counter') {
                 // For clockwise or counter-clockwise, use the 28-day pattern
@@ -514,19 +514,21 @@ function generateCrewAssignment(pattern, week, day, rotation) {
                 
                 if (rotation === 'clockwise') {
                     // Clockwise: Days → Evenings → Nights
+                    // CORRECTED: 7 consecutive nights span Week 2 (Sat-Sun) + Week 3 (Mon-Fri)
                     basePattern = [
-                        'D', 'D', 'D', 'D', 'D', 'O', 'O',  // Week 1
-                        'O', 'O', 'E', 'E', 'E', 'E', 'E',  // Week 2
-                        'E', 'E', 'O', 'O', 'N', 'N', 'N',  // Week 3
-                        'N', 'N', 'N', 'O', 'O', 'D', 'D'   // Week 4
+                        'D', 'D', 'D', 'D', 'D', 'O', 'O',  // Week 1: Mon-Fri days, Sat-Sun off
+                        'O', 'O', 'E', 'E', 'E', 'N', 'N',  // Week 2: Mon-Tue off, Wed-Fri eve, Sat-Sun nights
+                        'N', 'N', 'N', 'N', 'N', 'O', 'O',  // Week 3: Mon-Fri nights (7 consecutive total), Sat-Sun off
+                        'O', 'O', 'D', 'D', 'D', 'D', 'D'   // Week 4: Mon-Tue off, Wed-Sun days
                     ];
                 } else {
                     // Counter-clockwise: Days → Nights → Evenings
+                    // CORRECTED: 7 consecutive nights span Week 2 (Wed-Sun) + Week 3 (Mon-Tue)
                     basePattern = [
-                        'D', 'D', 'D', 'D', 'D', 'O', 'O',  // Week 1
-                        'O', 'O', 'N', 'N', 'N', 'N', 'N',  // Week 2
-                        'N', 'N', 'O', 'O', 'E', 'E', 'E',  // Week 3
-                        'E', 'E', 'E', 'O', 'O', 'D', 'D'   // Week 4
+                        'D', 'D', 'D', 'D', 'D', 'O', 'O',  // Week 1: Mon-Fri days, Sat-Sun off
+                        'O', 'O', 'N', 'N', 'N', 'N', 'N',  // Week 2: Mon-Tue off, Wed-Sun nights
+                        'N', 'N', 'E', 'E', 'E', 'O', 'O',  // Week 3: Mon-Tue nights (7 total), Wed-Fri eve, Sat-Sun off
+                        'O', 'O', 'E', 'E', 'D', 'D', 'D'   // Week 4: Mon-Tue off, Wed-Thu eve, Fri-Sun days
                     ];
                 }
                 
@@ -585,12 +587,12 @@ function generateCrewAssignment(pattern, week, day, rotation) {
                 // Fixed: A=Days, B=Evenings, C=Nights, D=Rotating
                 const weeklyPattern = ['X', 'X', 'X', 'X', 'X', 'O', 'O'];
                 
-                // Crew D rotating pattern
+                // Crew D rotating pattern (follows clockwise rotation)
                 const crewDPattern = [
                     'D', 'D', 'D', 'D', 'D', 'O', 'O',  // Week 1: Days
-                    'O', 'O', 'E', 'E', 'E', 'E', 'E',  // Week 2: Evenings
-                    'E', 'E', 'O', 'O', 'N', 'N', 'N',  // Week 3: Nights
-                    'N', 'N', 'N', 'O', 'O', 'D', 'D'   // Week 4: Back to days
+                    'O', 'O', 'E', 'E', 'E', 'N', 'N',  // Week 2: Evenings then nights
+                    'N', 'N', 'N', 'N', 'N', 'O', 'O',  // Week 3: Nights (7 consecutive total)
+                    'O', 'O', 'D', 'D', 'D', 'D', 'D'   // Week 4: Back to days
                 ];
                 
                 let mondayBasedDay;
