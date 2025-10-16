@@ -1,8 +1,12 @@
 # utils/pattern_generators.py
 # COMPLETE FILE - Pattern Generators for Workforce Scheduler
-# Last Updated: 2025-10-16 - ADDED Southern Swing pattern (3 variations)
+# Last Updated: 2025-10-16 - FIXED Southern Swing 7 consecutive nights
 # 
 # Change Log:
+#   2025-10-16: FIXED Southern Swing patterns to ensure 7 consecutive night shifts
+#               - Nights now span Week 2 (Sat-Sun) + Week 3 (Mon-Fri) = 7 consecutive
+#               - Ensures proper 24/7 coverage with no gaps
+#               - Thursday night Week 1 now properly covered by Crew C (7th night)
 #   2025-10-16: ADDED SouthernSwingClockwise, SouthernSwingCounter, SouthernSwingFixed
 #               - 28-day cycle with 8-hour shifts (d8, e8, n8)
 #               - Crew rotation: A→Week1, B→Week2, C→Week3, D→Week4
@@ -1036,6 +1040,7 @@ class ThreeOnThreeOffModified(PatternGenerator):
 # ============================================================================
 # SOUTHERN SWING PATTERN VARIATIONS
 # ADDED: 2025-10-16 - Traditional 8-hour shift rotating pattern
+# FIXED: 2025-10-16 - 7 consecutive night shifts for proper coverage
 # ============================================================================
 
 class SouthernSwingClockwise(PatternGenerator):
@@ -1054,14 +1059,18 @@ class SouthernSwingClockwise(PatternGenerator):
     
     Weekly pattern (20 working days per 28-day cycle):
     Week 1: Mon-Fri: Days (d8), Sat-Sun: Off = 5 work days
-    Week 2: Mon-Tue: Off, Wed-Sun: Evenings (e8) = 5 work days
-    Week 3: Mon-Tue: Evenings (e8), Wed-Thu: Off, Fri-Sun: Nights (n8) = 5 work days
-    Week 4: Mon-Wed: Nights (n8), Thu-Fri: Off, Sat-Sun: Days (d8) = 5 work days
+    Week 2: Mon-Tue: Off, Wed-Fri: Evenings (e8), Sat-Sun: Nights (n8) = 5 work days
+    Week 3: Mon-Fri: Nights (n8), Sat-Sun: Off = 5 work days (7 consecutive nights total)
+    Week 4: Mon-Tue: Off, Wed-Sun: Days (d8) = 5 work days
     
     Shift times:
     - d8 (Days): 07:00 - 15:00 (8 hours)
     - e8 (Evenings): 15:00 - 23:00 (8 hours)
     - n8 (Nights): 23:00 - 07:00 (8 hours)
+    
+    Key Feature:
+    - 7 consecutive night shifts (Sat-Sun Week 2 + Mon-Fri Week 3) allows better
+      circadian rhythm adjustment during the night shift portion
     
     Benefits:
     - Forward rotation (healthier for circadian rhythm)
@@ -1088,15 +1097,16 @@ class SouthernSwingClockwise(PatternGenerator):
         
         # 28-day pattern (Mon-Sun format, 4 weeks)
         # D=Day (d8), E=Evening (e8), N=Night (n8), O=Off
+        # CORRECTED: 7 consecutive nights span Week 2 (Sat-Sun) + Week 3 (Mon-Fri)
         base_pattern = [
             # Week 1: Mon-Fri days, Sat-Sun off
             'D', 'D', 'D', 'D', 'D', 'O', 'O',
-            # Week 2: Mon-Tue off, Wed-Sun evenings
-            'O', 'O', 'E', 'E', 'E', 'E', 'E',
-            # Week 3: Mon-Tue evenings, Wed-Thu off, Fri-Sun nights
-            'E', 'E', 'O', 'O', 'N', 'N', 'N',
-            # Week 4: Mon-Wed nights, Thu-Fri off, Sat-Sun days
-            'N', 'N', 'N', 'O', 'O', 'D', 'D'
+            # Week 2: Mon-Tue off, Wed-Thu-Fri evenings, Sat-Sun nights (nights start)
+            'O', 'O', 'E', 'E', 'E', 'N', 'N',
+            # Week 3: Mon-Fri nights (7 consecutive total), Sat-Sun off
+            'N', 'N', 'N', 'N', 'N', 'O', 'O',
+            # Week 4: Mon-Tue off, Wed-Sun days
+            'O', 'O', 'D', 'D', 'D', 'D', 'D'
         ]
         
         # Crew offsets (each crew starts at a different week)
@@ -1170,7 +1180,8 @@ class SouthernSwingClockwise(PatternGenerator):
             'pattern_name': self.pattern_name,
             'cycle_length': f"{self.cycle_days} days (4 weeks)",
             'rotation_type': 'Forward (clockwise)',
-            'working_days_per_cycle': '20 days'
+            'working_days_per_cycle': '20 days',
+            'consecutive_nights': '7 nights (Week 2 Sat-Sun + Week 3 Mon-Fri)'
         }
         
         return result
@@ -1192,11 +1203,14 @@ class SouthernSwingCounter(PatternGenerator):
     - Crew C starts Week 3
     - Crew D starts Week 4
     
-    Pattern modified for counter-clockwise rotation:
-    Week 1: Mon-Fri: Days, Sat-Sun: Off
-    Week 2: Mon-Tue: Off, Wed-Sun: Nights
-    Week 3: Mon-Tue: Nights, Wed-Thu: Off, Fri-Sun: Evenings
-    Week 4: Mon-Wed: Evenings, Thu-Fri: Off, Sat-Sun: Days
+    Pattern (20 working days per 28-day cycle):
+    Week 1: Mon-Fri: Days, Sat-Sun: Off = 5 work days
+    Week 2: Mon-Tue: Off, Wed-Sun: Nights = 5 work days (nights start)
+    Week 3: Mon-Tue: Nights (7 consecutive total), Wed-Fri: Evenings, Sat-Sun: Off = 5 work days
+    Week 4: Mon-Tue: Off, Wed-Thu: Evenings, Fri-Sun: Days = 5 work days
+    
+    Key Feature:
+    - 7 consecutive night shifts (Wed-Sun Week 2 + Mon-Tue Week 3) for circadian adjustment
     """
     
     def __init__(self):
@@ -1217,15 +1231,16 @@ class SouthernSwingCounter(PatternGenerator):
         
         # 28-day pattern for counter-clockwise rotation
         # D=Day, E=Evening, N=Night, O=Off
+        # CORRECTED: 7 consecutive nights span Week 2 (Wed-Sun) + Week 3 (Mon-Tue)
         base_pattern = [
             # Week 1: Mon-Fri days, Sat-Sun off
             'D', 'D', 'D', 'D', 'D', 'O', 'O',
-            # Week 2: Mon-Tue off, Wed-Sun nights
+            # Week 2: Mon-Tue off, Wed-Sun nights (nights start)
             'O', 'O', 'N', 'N', 'N', 'N', 'N',
-            # Week 3: Mon-Tue nights, Wed-Thu off, Fri-Sun evenings
-            'N', 'N', 'O', 'O', 'E', 'E', 'E',
-            # Week 4: Mon-Wed evenings, Thu-Fri off, Sat-Sun days
-            'E', 'E', 'E', 'O', 'O', 'D', 'D'
+            # Week 3: Mon-Tue nights (7 consecutive total), Wed-Fri evenings, Sat-Sun off
+            'N', 'N', 'E', 'E', 'E', 'O', 'O',
+            # Week 4: Mon-Tue off, Wed-Thu evenings, Fri-Sun days
+            'O', 'O', 'E', 'E', 'D', 'D', 'D'
         ]
         
         # Crew offsets
@@ -1295,7 +1310,8 @@ class SouthernSwingCounter(PatternGenerator):
             'pattern_name': self.pattern_name,
             'cycle_length': f"{self.cycle_days} days (4 weeks)",
             'rotation_type': 'Backward (counter-clockwise)',
-            'working_days_per_cycle': '20 days'
+            'working_days_per_cycle': '20 days',
+            'consecutive_nights': '7 nights (Week 2 Wed-Sun + Week 3 Mon-Tue)'
         }
         
         return result
@@ -1337,11 +1353,12 @@ class SouthernSwingFixed(PatternGenerator):
         weekly_pattern = ['X', 'X', 'X', 'X', 'X', 'O', 'O']
         
         # Crew D follows the rotating pattern to provide coverage
+        # CORRECTED: Matches clockwise rotation with 7 consecutive nights
         crew_d_pattern = [
             'D', 'D', 'D', 'D', 'D', 'O', 'O',  # Week 1: Days
-            'O', 'O', 'E', 'E', 'E', 'E', 'E',  # Week 2: Evenings
-            'E', 'E', 'O', 'O', 'N', 'N', 'N',  # Week 3: Nights
-            'N', 'N', 'N', 'O', 'O', 'D', 'D'   # Week 4: Back to days
+            'O', 'O', 'E', 'E', 'E', 'N', 'N',  # Week 2: Evenings then nights
+            'N', 'N', 'N', 'N', 'N', 'O', 'O',  # Week 3: Nights (7 consecutive total)
+            'O', 'O', 'D', 'D', 'D', 'D', 'D'   # Week 4: Back to days
         ]
         
         # Shift assignments
