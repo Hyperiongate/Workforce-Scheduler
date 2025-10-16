@@ -1,14 +1,14 @@
 # utils/pattern_generators.py
 # COMPLETE FILE - Pattern Generators for Workforce Scheduler
-# Last Updated: 2025-10-15 - FIXED 3-on-3-off Modified pattern
+# Last Updated: 2025-10-16 - ADDED Southern Swing pattern (3 variations)
 # 
 # Change Log:
+#   2025-10-16: ADDED SouthernSwingClockwise, SouthernSwingCounter, SouthernSwingFixed
+#               - 28-day cycle with 8-hour shifts (d8, e8, n8)
+#               - Crew rotation: A→Week1, B→Week2, C→Week3, D→Week4
+#               - 20 working days per cycle (5 days/week pattern)
 #   2025-10-15: FIXED ThreeOnThreeOffModified to use optimized work/off distribution
-#               - Work 3, off 4, work 2, off 3, work 3, off 3, pattern
-#               - Crew A/B always days, C/D always nights (fixed shifts)
 #   2025-10-15: FIXED ThreeOnThreeOffSlow to prevent D,D,N situations at week 6/7 boundary
-#               - Ensured crews are OFF during shift transition
-#               - Pattern starts Monday with 3-day work stretches
 #   2025-10-13: CORRECTED ThreeOnThreeOffFast to use full 12-week (84-day) pattern
 #   2025-10-11: Added 3-on-3-off pattern variations
 #   2025-10-10: FINAL FIX - Correct Modified 4-on-4-off pattern
@@ -1033,14 +1033,415 @@ class ThreeOnThreeOffModified(PatternGenerator):
         return result
 
 
+# ============================================================================
+# SOUTHERN SWING PATTERN VARIATIONS
+# ADDED: 2025-10-16 - Traditional 8-hour shift rotating pattern
+# ============================================================================
+
+class SouthernSwingClockwise(PatternGenerator):
+    """
+    Southern Swing Clockwise (Forward Rotation) - HEALTHIER OPTION
+    
+    28-day cycle (4 weeks) with 8-hour shifts
+    Forward rotation: Days → Evenings → Nights → Off
+    
+    Crew rotation structure:
+    - Crew A starts Week 1
+    - Crew B starts Week 2
+    - Crew C starts Week 3
+    - Crew D starts Week 4
+    - After Week 4, crew cycles back to Week 1
+    
+    Weekly pattern (20 working days per 28-day cycle):
+    Week 1: Mon-Fri: Days (d8), Sat-Sun: Off = 5 work days
+    Week 2: Mon-Tue: Off, Wed-Sun: Evenings (e8) = 5 work days
+    Week 3: Mon-Tue: Evenings (e8), Wed-Thu: Off, Fri-Sun: Nights (n8) = 5 work days
+    Week 4: Mon-Wed: Nights (n8), Thu-Fri: Off, Sat-Sun: Days (d8) = 5 work days
+    
+    Shift times:
+    - d8 (Days): 07:00 - 15:00 (8 hours)
+    - e8 (Evenings): 15:00 - 23:00 (8 hours)
+    - n8 (Nights): 23:00 - 07:00 (8 hours)
+    
+    Benefits:
+    - Forward rotation (healthier for circadian rhythm)
+    - Experience all three shift types
+    - 273 working days per year
+    - Traditional 8-hour shifts
+    """
+    
+    def __init__(self):
+        super().__init__()
+        self.pattern_name = "Southern Swing Clockwise (Days→Evenings→Nights)"
+        self.cycle_days = 28  # 4 weeks
+    
+    def generate(self, start_date, end_date, created_by_id=None, replace_existing=False):
+        """Generate Southern Swing clockwise rotation schedule"""
+        logger.info(f"Generating Southern Swing Clockwise: {start_date} to {end_date}")
+        
+        self.validate_date_range(start_date, end_date)
+        crews = self.get_crew_employees()
+        self.validate_crews(crews)
+        
+        if replace_existing:
+            self.clear_existing_schedules(start_date, end_date, crews)
+        
+        # 28-day pattern (Mon-Sun format, 4 weeks)
+        # D=Day (d8), E=Evening (e8), N=Night (n8), O=Off
+        base_pattern = [
+            # Week 1: Mon-Fri days, Sat-Sun off
+            'D', 'D', 'D', 'D', 'D', 'O', 'O',
+            # Week 2: Mon-Tue off, Wed-Sun evenings
+            'O', 'O', 'E', 'E', 'E', 'E', 'E',
+            # Week 3: Mon-Tue evenings, Wed-Thu off, Fri-Sun nights
+            'E', 'E', 'O', 'O', 'N', 'N', 'N',
+            # Week 4: Mon-Wed nights, Thu-Fri off, Sat-Sun days
+            'N', 'N', 'N', 'O', 'O', 'D', 'D'
+        ]
+        
+        # Crew offsets (each crew starts at a different week)
+        crew_offsets = {
+            'A': 0,   # Starts Week 1 (day 0)
+            'B': 7,   # Starts Week 2 (day 7)
+            'C': 14,  # Starts Week 3 (day 14)
+            'D': 21   # Starts Week 4 (day 21)
+        }
+        
+        # Shift times (8-hour shifts)
+        day_start = time(7, 0)      # 07:00
+        day_end = time(15, 0)       # 15:00
+        evening_start = time(15, 0) # 15:00
+        evening_end = time(23, 0)   # 23:00
+        night_start = time(23, 0)   # 23:00
+        night_end = time(7, 0)      # 07:00 next day
+        
+        # Generate schedules
+        current_date = start_date
+        while current_date <= end_date:
+            day_offset = (current_date - start_date).days
+            
+            for crew_letter, employees in crews.items():
+                if not employees:
+                    continue
+                
+                # Calculate position in pattern for this crew
+                crew_offset = crew_offsets[crew_letter]
+                pattern_position = (day_offset + crew_offset) % self.cycle_days
+                
+                shift_code = base_pattern[pattern_position]
+                
+                # Skip off days
+                if shift_code == 'O':
+                    continue
+                
+                # Determine shift type and times
+                if shift_code == 'D':
+                    shift_type = ShiftType.DAY
+                    start_time = day_start
+                    end_time = day_end
+                elif shift_code == 'E':
+                    shift_type = ShiftType.EVENING
+                    start_time = evening_start
+                    end_time = evening_end
+                else:  # N
+                    shift_type = ShiftType.NIGHT
+                    start_time = night_start
+                    end_time = night_end
+                
+                # Create schedule for each employee in this crew
+                for employee in employees:
+                    schedule = Schedule(
+                        employee_id=employee.id,
+                        date=current_date,
+                        shift_type=shift_type,
+                        start_time=start_time,
+                        end_time=end_time,
+                        hours=8.0,  # 8-hour shifts
+                        position_id=employee.position_id,
+                        created_by_id=created_by_id
+                    )
+                    self.schedules.append(schedule)
+            
+            current_date += timedelta(days=1)
+        
+        result = self.save_schedules(replace_existing=replace_existing)
+        result['statistics'] = {
+            'total_schedules': len(self.schedules),
+            'pattern_name': self.pattern_name,
+            'cycle_length': f"{self.cycle_days} days (4 weeks)",
+            'rotation_type': 'Forward (clockwise)',
+            'working_days_per_cycle': '20 days'
+        }
+        
+        return result
+
+
+class SouthernSwingCounter(PatternGenerator):
+    """
+    Southern Swing Counter-Clockwise (Backward Rotation)
+    
+    28-day cycle (4 weeks) with 8-hour shifts
+    Backward rotation: Days → Nights → Evenings → Off
+    
+    Same structure as clockwise but rotation goes backward.
+    Less common, as backward rotation is harder on circadian rhythm.
+    
+    Crew rotation:
+    - Crew A starts Week 1
+    - Crew B starts Week 2
+    - Crew C starts Week 3
+    - Crew D starts Week 4
+    
+    Pattern modified for counter-clockwise rotation:
+    Week 1: Mon-Fri: Days, Sat-Sun: Off
+    Week 2: Mon-Tue: Off, Wed-Sun: Nights
+    Week 3: Mon-Tue: Nights, Wed-Thu: Off, Fri-Sun: Evenings
+    Week 4: Mon-Wed: Evenings, Thu-Fri: Off, Sat-Sun: Days
+    """
+    
+    def __init__(self):
+        super().__init__()
+        self.pattern_name = "Southern Swing Counter-Clockwise (Days→Nights→Evenings)"
+        self.cycle_days = 28  # 4 weeks
+    
+    def generate(self, start_date, end_date, created_by_id=None, replace_existing=False):
+        """Generate Southern Swing counter-clockwise rotation schedule"""
+        logger.info(f"Generating Southern Swing Counter-Clockwise: {start_date} to {end_date}")
+        
+        self.validate_date_range(start_date, end_date)
+        crews = self.get_crew_employees()
+        self.validate_crews(crews)
+        
+        if replace_existing:
+            self.clear_existing_schedules(start_date, end_date, crews)
+        
+        # 28-day pattern for counter-clockwise rotation
+        # D=Day, E=Evening, N=Night, O=Off
+        base_pattern = [
+            # Week 1: Mon-Fri days, Sat-Sun off
+            'D', 'D', 'D', 'D', 'D', 'O', 'O',
+            # Week 2: Mon-Tue off, Wed-Sun nights
+            'O', 'O', 'N', 'N', 'N', 'N', 'N',
+            # Week 3: Mon-Tue nights, Wed-Thu off, Fri-Sun evenings
+            'N', 'N', 'O', 'O', 'E', 'E', 'E',
+            # Week 4: Mon-Wed evenings, Thu-Fri off, Sat-Sun days
+            'E', 'E', 'E', 'O', 'O', 'D', 'D'
+        ]
+        
+        # Crew offsets
+        crew_offsets = {
+            'A': 0,   # Starts Week 1
+            'B': 7,   # Starts Week 2
+            'C': 14,  # Starts Week 3
+            'D': 21   # Starts Week 4
+        }
+        
+        # Shift times
+        day_start = time(7, 0)
+        day_end = time(15, 0)
+        evening_start = time(15, 0)
+        evening_end = time(23, 0)
+        night_start = time(23, 0)
+        night_end = time(7, 0)
+        
+        # Generate schedules
+        current_date = start_date
+        while current_date <= end_date:
+            day_offset = (current_date - start_date).days
+            
+            for crew_letter, employees in crews.items():
+                if not employees:
+                    continue
+                
+                crew_offset = crew_offsets[crew_letter]
+                pattern_position = (day_offset + crew_offset) % self.cycle_days
+                
+                shift_code = base_pattern[pattern_position]
+                
+                if shift_code == 'O':
+                    continue
+                
+                if shift_code == 'D':
+                    shift_type = ShiftType.DAY
+                    start_time = day_start
+                    end_time = day_end
+                elif shift_code == 'E':
+                    shift_type = ShiftType.EVENING
+                    start_time = evening_start
+                    end_time = evening_end
+                else:  # N
+                    shift_type = ShiftType.NIGHT
+                    start_time = night_start
+                    end_time = night_end
+                
+                for employee in employees:
+                    schedule = Schedule(
+                        employee_id=employee.id,
+                        date=current_date,
+                        shift_type=shift_type,
+                        start_time=start_time,
+                        end_time=end_time,
+                        hours=8.0,
+                        position_id=employee.position_id,
+                        created_by_id=created_by_id
+                    )
+                    self.schedules.append(schedule)
+            
+            current_date += timedelta(days=1)
+        
+        result = self.save_schedules(replace_existing=replace_existing)
+        result['statistics'] = {
+            'total_schedules': len(self.schedules),
+            'pattern_name': self.pattern_name,
+            'cycle_length': f"{self.cycle_days} days (4 weeks)",
+            'rotation_type': 'Backward (counter-clockwise)',
+            'working_days_per_cycle': '20 days'
+        }
+        
+        return result
+
+
+class SouthernSwingFixed(PatternGenerator):
+    """
+    Southern Swing Fixed Shifts (No Rotation)
+    
+    28-day cycle but crews stay on same shift type
+    - Crew A: Always DAYS
+    - Crew B: Always EVENINGS
+    - Crew C: Always NIGHTS
+    - Crew D: Rotating (provides coverage/relief)
+    
+    Each crew still follows the 5-on-2-off weekly pattern
+    but doesn't rotate through different shift types.
+    
+    Good for those who prefer fixed shifts and can't handle rotation.
+    """
+    
+    def __init__(self):
+        super().__init__()
+        self.pattern_name = "Southern Swing Fixed Shifts"
+        self.cycle_days = 28
+    
+    def generate(self, start_date, end_date, created_by_id=None, replace_existing=False):
+        """Generate Southern Swing fixed shifts schedule"""
+        logger.info(f"Generating Southern Swing Fixed: {start_date} to {end_date}")
+        
+        self.validate_date_range(start_date, end_date)
+        crews = self.get_crew_employees()
+        self.validate_crews(crews)
+        
+        if replace_existing:
+            self.clear_existing_schedules(start_date, end_date, crews)
+        
+        # Weekly pattern: Mon-Fri work, Sat-Sun off
+        weekly_pattern = ['X', 'X', 'X', 'X', 'X', 'O', 'O']
+        
+        # Crew D follows the rotating pattern to provide coverage
+        crew_d_pattern = [
+            'D', 'D', 'D', 'D', 'D', 'O', 'O',  # Week 1: Days
+            'O', 'O', 'E', 'E', 'E', 'E', 'E',  # Week 2: Evenings
+            'E', 'E', 'O', 'O', 'N', 'N', 'N',  # Week 3: Nights
+            'N', 'N', 'N', 'O', 'O', 'D', 'D'   # Week 4: Back to days
+        ]
+        
+        # Shift assignments
+        crew_shifts = {
+            'A': ShiftType.DAY,
+            'B': ShiftType.EVENING,
+            'C': ShiftType.NIGHT,
+            'D': None  # Special handling
+        }
+        
+        # Shift times
+        day_start = time(7, 0)
+        day_end = time(15, 0)
+        evening_start = time(15, 0)
+        evening_end = time(23, 0)
+        night_start = time(23, 0)
+        night_end = time(7, 0)
+        
+        # Generate schedules
+        current_date = start_date
+        while current_date <= end_date:
+            day_offset = (current_date - start_date).days
+            week_day = day_offset % 7
+            
+            for crew_letter, employees in crews.items():
+                if not employees:
+                    continue
+                
+                # Handle Crew D specially (rotating)
+                if crew_letter == 'D':
+                    cycle_position = day_offset % self.cycle_days
+                    shift_code = crew_d_pattern[cycle_position]
+                    
+                    if shift_code == 'O':
+                        continue
+                    
+                    if shift_code == 'D':
+                        shift_type = ShiftType.DAY
+                        start_time = day_start
+                        end_time = day_end
+                    elif shift_code == 'E':
+                        shift_type = ShiftType.EVENING
+                        start_time = evening_start
+                        end_time = evening_end
+                    else:  # N
+                        shift_type = ShiftType.NIGHT
+                        start_time = night_start
+                        end_time = night_end
+                else:
+                    # Crews A, B, C - fixed shifts, Mon-Fri only
+                    if weekly_pattern[week_day] == 'O':
+                        continue
+                    
+                    shift_type = crew_shifts[crew_letter]
+                    
+                    if shift_type == ShiftType.DAY:
+                        start_time = day_start
+                        end_time = day_end
+                    elif shift_type == ShiftType.EVENING:
+                        start_time = evening_start
+                        end_time = evening_end
+                    else:  # NIGHT
+                        start_time = night_start
+                        end_time = night_end
+                
+                for employee in employees:
+                    schedule = Schedule(
+                        employee_id=employee.id,
+                        date=current_date,
+                        shift_type=shift_type,
+                        start_time=start_time,
+                        end_time=end_time,
+                        hours=8.0,
+                        position_id=employee.position_id,
+                        created_by_id=created_by_id
+                    )
+                    self.schedules.append(schedule)
+            
+            current_date += timedelta(days=1)
+        
+        result = self.save_schedules(replace_existing=replace_existing)
+        result['statistics'] = {
+            'total_schedules': len(self.schedules),
+            'pattern_name': self.pattern_name,
+            'cycle_length': f"{self.cycle_days} days (4 weeks)",
+            'shift_assignment': 'A:Days, B:Evenings, C:Nights, D:Rotating',
+            'working_days_per_cycle': '20 days'
+        }
+        
+        return result
+
+
 # Factory function to get the right generator
 def get_pattern_generator(pattern, variation=None):
     """
     Get the appropriate pattern generator
     
     Args:
-        pattern: Base pattern name (e.g., 'four_on_four_off', 'three_on_three_off')
-        variation: Pattern variation (e.g., 'weekly', 'fast', 'fixed', 'modified', 'slow')
+        pattern: Base pattern name (e.g., 'four_on_four_off', 'three_on_three_off', 'southern_swing')
+        variation: Pattern variation (e.g., 'weekly', 'fast', 'fixed', 'modified', 'slow', 'clockwise', 'counter')
     
     Returns:
         PatternGenerator instance or None if not found
@@ -1064,6 +1465,14 @@ def get_pattern_generator(pattern, variation=None):
             return ThreeOnThreeOffFixed()
         elif variation == 'modified':
             return ThreeOnThreeOffModified()
+    
+    elif pattern == 'southern_swing':
+        if variation == 'clockwise':
+            return SouthernSwingClockwise()
+        elif variation == 'counter':
+            return SouthernSwingCounter()
+        elif variation == 'fixed':
+            return SouthernSwingFixed()
     
     return None
 
