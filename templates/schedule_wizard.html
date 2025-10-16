@@ -1,14 +1,12 @@
 {# templates/schedule_wizard.html #}
 {# Schedule Pattern Wizard - COMPLETE FILE #}
-{# Last Modified: 2025-10-15 - FIXED 3-on-3-off Modified and Fixed patterns #}
+{# Last Modified: 2025-10-16 - ADDED Southern Swing pattern (3 variations) #}
 {# Change Log: #}
+{#   2025-10-16: ADDED Southern Swing clockwise, counter-clockwise, and fixed patterns #}
+{#              - 28-day cycle with 8-hour shifts (d8, e8, n8) #}
+{#              - Crew rotation: A→Week1, B→Week2, C→Week3, D→Week4 #}
 {#   2025-10-15: FIXED Modified pattern - optimized work/off distribution #}
-{#              - Work 3, off 4, work 2, off 3, work 3, off 3, pattern #}
-{#              - A&B always days, C&D always nights (fixed shifts) #}
 {#   2025-10-15: FIXED Fixed pattern to correctly calculate Monday-based pattern days #}
-{#              - Crew A/C: Mon-Tue-Wed work, Thu-Fri-Sat off #}
-{#              - Crew B/D: Mon-Tue-Wed off, Thu-Fri-Sat work #}
-{#              - 6-day cycle repeating, aligns every 6 weeks (42 days) #}
 
 {% extends "base.html" %}
 {% block title %}{{ pattern_config.name }} Schedule Pattern{% endblock %}
@@ -128,6 +126,19 @@
                                 <option value="counter">Counter-clockwise (Days→Nights→Evenings)</option>
                                 <option value="fixed">Fixed Shifts</option>
                             </select>
+                            <div class="form-text mt-2">
+                                <small><strong>Clockwise:</strong> Forward rotation (healthier) - Days → Evenings → Nights → Off</small><br>
+                                <small><strong>Counter-clockwise:</strong> Backward rotation - Days → Nights → Evenings → Off</small><br>
+                                <small><strong>Fixed:</strong> A=Days, B=Evenings, C=Nights, D=Rotating</small>
+                            </div>
+                            <div class="alert alert-info mt-3">
+                                <ul class="mb-0">
+                                    <li>28-day (4-week) cycle</li>
+                                    <li>8-hour shifts: 7am-3pm, 3pm-11pm, 11pm-7am</li>
+                                    <li>20 working days per cycle (5 days/week)</li>
+                                    <li>Traditional rotating shift pattern</li>
+                                </ul>
+                            </div>
                         </div>
                         {% elif pattern == 'dupont' %}
                         <!-- DuPont Configuration - SIMPLIFIED: Rotating Only -->
@@ -351,6 +362,11 @@
     color: #744210;
 }
 
+.shift-evening {
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    color: white;
+}
+
 .shift-night {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
@@ -437,13 +453,13 @@ const patternData = {
         explanation: 'DuPont: 4-week rotating cycle with night shifts, day shifts, and a 7-day break. All crews rotate through the 28-day cycle.'
     },
     'southern_swing': {
-        cycle: '28 days',
+        cycle: '28 days (4 weeks)',
         avgHours: '40 hours/week',
-        maxConsecutive: '7 days',
-        weekendsOff: '1 per month',
-        advantages: ['Experience all shift types', 'Forward rotation (healthier)', 'Traditional 8-hour shifts', '273 work days/year'],
-        considerations: ['Only 1 weekend off per month', 'Constant shift rotation', 'More work days than 12-hour'],
-        explanation: 'Southern Swing: Rotate through days→evenings→nights over 4 weeks.'
+        maxConsecutive: '5 days',
+        weekendsOff: '1 per month (varies by crew)',
+        advantages: ['Experience all shift types', 'Forward rotation healthier (clockwise)', 'Traditional 8-hour shifts', '273 work days/year'],
+        considerations: ['Only 1 weekend off per month', 'Constant shift rotation', 'More work days than 12-hour patterns'],
+        explanation: 'Southern Swing: 28-day cycle where each crew rotates through Days (7am-3pm), Evenings (3pm-11pm), and Nights (11pm-7am). Crew A starts Week 1, B starts Week 2, C starts Week 3, D starts Week 4. After Week 4, crews cycle back to Week 1. 20 working days per cycle (5 days/week pattern).'
     },
     'four_on_four_off': {
         cycle: '56 days (8 weeks) for modified, 112 days (16 weeks) for weekly',
@@ -483,6 +499,157 @@ function generateCrewAssignment(pattern, week, day, rotation) {
             
         case 'dupont':
             // DuPont logic (existing code unchanged)
+            break;
+            
+        case 'southern_swing':
+            // SOUTHERN SWING PATTERN - 28-day cycle with 8-hour shifts
+            // Week 1: Mon-Fri: Days, Sat-Sun: Off
+            // Week 2: Mon-Tue: Off, Wed-Sun: Evenings
+            // Week 3: Mon-Tue: Evenings, Wed-Thu: Off, Fri-Sun: Nights
+            // Week 4: Mon-Wed: Nights, Thu-Fri: Off, Sat-Sun: Days
+            
+            if (rotation === 'clockwise' || rotation === 'counter') {
+                // For clockwise or counter-clockwise, use the 28-day pattern
+                let basePattern;
+                
+                if (rotation === 'clockwise') {
+                    // Clockwise: Days → Evenings → Nights
+                    basePattern = [
+                        'D', 'D', 'D', 'D', 'D', 'O', 'O',  // Week 1
+                        'O', 'O', 'E', 'E', 'E', 'E', 'E',  // Week 2
+                        'E', 'E', 'O', 'O', 'N', 'N', 'N',  // Week 3
+                        'N', 'N', 'N', 'O', 'O', 'D', 'D'   // Week 4
+                    ];
+                } else {
+                    // Counter-clockwise: Days → Nights → Evenings
+                    basePattern = [
+                        'D', 'D', 'D', 'D', 'D', 'O', 'O',  // Week 1
+                        'O', 'O', 'N', 'N', 'N', 'N', 'N',  // Week 2
+                        'N', 'N', 'O', 'O', 'E', 'E', 'E',  // Week 3
+                        'E', 'E', 'E', 'O', 'O', 'D', 'D'   // Week 4
+                    ];
+                }
+                
+                // Crew offsets
+                const crewOffsets = {
+                    'A': 0,   // Week 1
+                    'B': 7,   // Week 2
+                    'C': 14,  // Week 3
+                    'D': 21   // Week 4
+                };
+                
+                let dayCrews = [];
+                let eveningCrews = [];
+                let nightCrews = [];
+                
+                // Convert to Monday-based day
+                let mondayBasedDay;
+                if (day === 0) {
+                    mondayBasedDay = 6;
+                } else {
+                    mondayBasedDay = day - 1;
+                }
+                
+                const absoluteDay = (week - 1) * 7 + mondayBasedDay;
+                
+                for (const [crew, offset] of Object.entries(crewOffsets)) {
+                    const patternPosition = (absoluteDay + offset) % 28;
+                    const shift = basePattern[patternPosition];
+                    
+                    if (shift === 'D') {
+                        dayCrews.push(crew);
+                    } else if (shift === 'E') {
+                        eveningCrews.push(crew);
+                    } else if (shift === 'N') {
+                        nightCrews.push(crew);
+                    }
+                }
+                
+                if (dayCrews.length > 0 || eveningCrews.length > 0 || nightCrews.length > 0) {
+                    let display = [];
+                    if (dayCrews.length > 0) display.push(`Day: ${dayCrews.join('+')}`);
+                    if (eveningCrews.length > 0) display.push(`Eve: ${eveningCrews.join('+')}`);
+                    if (nightCrews.length > 0) display.push(`Night: ${nightCrews.join('+')}`);
+                    assignment.crews = display.join('\n');
+                    
+                    // Set CSS class based on primary shift
+                    if (dayCrews.length > 0) {
+                        assignment.cssClass = 'shift-day';
+                    } else if (eveningCrews.length > 0) {
+                        assignment.cssClass = 'shift-evening';
+                    } else {
+                        assignment.cssClass = 'shift-night';
+                    }
+                }
+            } else if (rotation === 'fixed') {
+                // Fixed: A=Days, B=Evenings, C=Nights, D=Rotating
+                const weeklyPattern = ['X', 'X', 'X', 'X', 'X', 'O', 'O'];
+                
+                // Crew D rotating pattern
+                const crewDPattern = [
+                    'D', 'D', 'D', 'D', 'D', 'O', 'O',  // Week 1: Days
+                    'O', 'O', 'E', 'E', 'E', 'E', 'E',  // Week 2: Evenings
+                    'E', 'E', 'O', 'O', 'N', 'N', 'N',  // Week 3: Nights
+                    'N', 'N', 'N', 'O', 'O', 'D', 'D'   // Week 4: Back to days
+                ];
+                
+                let mondayBasedDay;
+                if (day === 0) {
+                    mondayBasedDay = 6;
+                } else {
+                    mondayBasedDay = day - 1;
+                }
+                
+                const absoluteDay = (week - 1) * 7 + mondayBasedDay;
+                const weekDay = absoluteDay % 7;
+                
+                let dayCrews = [];
+                let eveningCrews = [];
+                let nightCrews = [];
+                
+                // Crew A: Always days, Mon-Fri
+                if (weeklyPattern[weekDay] === 'X') {
+                    dayCrews.push('A');
+                }
+                
+                // Crew B: Always evenings, Mon-Fri
+                if (weeklyPattern[weekDay] === 'X') {
+                    eveningCrews.push('B');
+                }
+                
+                // Crew C: Always nights, Mon-Fri
+                if (weeklyPattern[weekDay] === 'X') {
+                    nightCrews.push('C');
+                }
+                
+                // Crew D: Rotating
+                const cyclePosition = absoluteDay % 28;
+                const dShift = crewDPattern[cyclePosition];
+                
+                if (dShift === 'D') {
+                    dayCrews.push('D');
+                } else if (dShift === 'E') {
+                    eveningCrews.push('D');
+                } else if (dShift === 'N') {
+                    nightCrews.push('D');
+                }
+                
+                if (dayCrews.length > 0 || eveningCrews.length > 0 || nightCrews.length > 0) {
+                    let display = [];
+                    if (dayCrews.length > 0) display.push(`Day: ${dayCrews.join('+')}`);
+                    if (eveningCrews.length > 0) display.push(`Eve: ${eveningCrews.join('+')}`);
+                    if (nightCrews.length > 0) display.push(`Night: ${nightCrews.join('+')}`);
+                    assignment.crews = display.join('\n');
+                    
+                    if (dayCrews.length > 0) {
+                        assignment.cssClass = 'shift-day';
+                    } else if (eveningCrews.length > 0) {
+                        assignment.cssClass = 'shift-evening';
+                    } else {
+                        assignment.cssClass = 'shift-night';
+                    }
+                }
+            }
             break;
             
         case 'four_on_four_off':
@@ -685,9 +852,6 @@ function generateCrewAssignment(pattern, week, day, rotation) {
             }
             else if (rotation === 'fixed') {
                 // FIXED: 6-day cycle, A&B days, C&D nights
-                // Crew A/C: Mon-Tue-Wed WORK, Thu-Fri-Sat OFF
-                // Crew B/D: Mon-Tue-Wed OFF, Thu-Fri-Sat WORK
-                
                 let patternDay;
                 if (day === 0) {
                     patternDay = (week - 1) * 7 + 6;
@@ -720,21 +884,17 @@ function generateCrewAssignment(pattern, week, day, rotation) {
             }
             else if (rotation === 'modified') {
                 // 3-on-3-off Modified: Optimized work/off distribution
-                // 42-day (6-week) cycle - Fixed shifts: A&B days, C&D nights
-                // Pattern: Work 3, off 4, work 2, off 3, work 3, off 3, work 3, off 3,
-                //          work 4, off 2, work 3, off 3, work 3, off 3
-                
                 const crewAPattern = [
-                    'X', 'X', 'X', 'O', 'O', 'O', 'O',  // Week 1: Mon-Wed work, Thu-Sun off
-                    'X', 'X', 'O', 'O', 'O', 'X', 'X',  // Week 2: Mon-Tue work, Wed-Fri off, Sat-Sun work
-                    'X', 'O', 'O', 'O', 'X', 'X', 'X',  // Week 3: Mon work, Tue-Thu off, Fri-Sun work
-                    'O', 'O', 'O', 'X', 'X', 'X', 'X',  // Week 4: Mon-Wed off, Thu-Sun work
-                    'O', 'O', 'X', 'X', 'X', 'O', 'O',  // Week 5: Mon-Tue off, Wed-Fri work, Sat-Sun off
-                    'O', 'X', 'X', 'X', 'O', 'O', 'O',  // Week 6: Mon off, Tue-Thu work, Fri-Sun off
+                    'X', 'X', 'X', 'O', 'O', 'O', 'O',  // Week 1
+                    'X', 'X', 'O', 'O', 'O', 'X', 'X',  // Week 2
+                    'X', 'O', 'O', 'O', 'X', 'X', 'X',  // Week 3
+                    'O', 'O', 'O', 'X', 'X', 'X', 'X',  // Week 4
+                    'O', 'O', 'X', 'X', 'X', 'O', 'O',  // Week 5
+                    'O', 'X', 'X', 'X', 'O', 'O', 'O',  // Week 6
                 ];
                 
                 const crewBPattern = [
-                    'O', 'O', 'O', 'X', 'X', 'X', 'X',  // Week 1: opposite of A
+                    'O', 'O', 'O', 'X', 'X', 'X', 'X',  // Week 1
                     'O', 'O', 'X', 'X', 'X', 'O', 'O',  // Week 2
                     'O', 'X', 'X', 'X', 'O', 'O', 'O',  // Week 3
                     'X', 'X', 'X', 'O', 'O', 'O', 'O',  // Week 4
@@ -745,8 +905,8 @@ function generateCrewAssignment(pattern, week, day, rotation) {
                 const modifiedPatterns = {
                     'A': crewAPattern,
                     'B': crewBPattern,
-                    'C': crewAPattern,  // Same as A but nights
-                    'D': crewBPattern   // Same as B but nights
+                    'C': crewAPattern,
+                    'D': crewBPattern
                 };
                 
                 let dayCrews = [];
@@ -857,11 +1017,16 @@ function generateSchedulePreview() {
             case 'modified': weeksToShow = 6; break;
             default: weeksToShow = 4; break;
         }
+    } else if (pattern === 'southern_swing') {
+        weeksToShow = 4;  // Always show 4 weeks for Southern Swing
     }
     
     const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const dayAbbr = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
     const weekOrder = [1, 2, 3, 4, 5, 6, 0];
+    
+    // Determine shift length for display
+    const shiftLength = (pattern === 'southern_swing') ? '8 hrs' : '12 hrs';
     
     let previewHtml = `
         <div class="schedule-preview-container">
@@ -876,7 +1041,7 @@ function generateSchedulePreview() {
                     <div class="stat-label">Weeks Shown</div>
                 </div>
                 <div class="stat-item">
-                    <div class="stat-value">12 hrs</div>
+                    <div class="stat-value">${shiftLength}</div>
                     <div class="stat-label">Shift Length</div>
                 </div>
                 <div class="stat-item">
@@ -907,6 +1072,7 @@ function generateSchedulePreview() {
             const assignment = generateCrewAssignment(pattern, week, dayIdx, rotation);
             
             let dayCrews = [];
+            let eveningCrews = [];
             let nightCrews = [];
             
             if (assignment.crews && assignment.crews !== 'Off') {
@@ -914,6 +1080,8 @@ function generateSchedulePreview() {
                 lines.forEach(line => {
                     if (line.includes('Day:')) {
                         dayCrews = line.replace('Day:', '').trim().split('+');
+                    } else if (line.includes('Eve:')) {
+                        eveningCrews = line.replace('Eve:', '').trim().split('+');
                     } else if (line.includes('Night:')) {
                         nightCrews = line.replace('Night:', '').trim().split('+');
                     }
@@ -927,6 +1095,7 @@ function generateSchedulePreview() {
                     <div class="day-label ${isWeekend ? 'weekend' : ''}">${dayAbbr[dayIdx]}</div>
             `;
             
+            // Day shift
             if (dayCrews.length > 0) {
                 previewHtml += `
                     <div class="shift-block shift-day">
@@ -943,6 +1112,26 @@ function generateSchedulePreview() {
                 `;
             }
             
+            // Evening shift (for Southern Swing)
+            if (pattern === 'southern_swing') {
+                if (eveningCrews.length > 0) {
+                    previewHtml += `
+                        <div class="shift-block shift-evening">
+                            <span class="shift-label">EVE</span>
+                            <span class="crew-letter">${eveningCrews.join('+')}</span>
+                        </div>
+                    `;
+                } else {
+                    previewHtml += `
+                        <div class="shift-block shift-off">
+                            <span class="shift-label">EVE</span>
+                            <span class="crew-letter">-</span>
+                        </div>
+                    `;
+                }
+            }
+            
+            // Night shift
             if (nightCrews.length > 0) {
                 previewHtml += `
                     <div class="shift-block shift-night">
@@ -968,23 +1157,39 @@ function generateSchedulePreview() {
         `;
     }
     
+    // Build legend based on pattern
+    let legendHtml = `
+        <div class="legend-strip">
+            <div class="legend-item">
+                <div class="legend-box shift-day"></div>
+                <span>Day Shift (${pattern === 'southern_swing' ? '07:00-15:00' : '06:00-18:00'})</span>
+            </div>
+    `;
+    
+    if (pattern === 'southern_swing') {
+        legendHtml += `
+            <div class="legend-item">
+                <div class="legend-box shift-evening"></div>
+                <span>Evening Shift (15:00-23:00)</span>
+            </div>
+        `;
+    }
+    
+    legendHtml += `
+            <div class="legend-item">
+                <div class="legend-box shift-night"></div>
+                <span>Night Shift (${pattern === 'southern_swing' ? '23:00-07:00' : '18:00-06:00'})</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-box shift-off"></div>
+                <span>Off Day</span>
+            </div>
+        </div>
+    `;
+    
     previewHtml += `
             </div>
-            
-            <div class="legend-strip">
-                <div class="legend-item">
-                    <div class="legend-box shift-day"></div>
-                    <span>Day Shift (06:00-18:00)</span>
-                </div>
-                <div class="legend-item">
-                    <div class="legend-box shift-night"></div>
-                    <span>Night Shift (18:00-06:00)</span>
-                </div>
-                <div class="legend-item">
-                    <div class="legend-box shift-off"></div>
-                    <span>Off Day</span>
-                </div>
-            </div>
+            ${legendHtml}
         </div>
     `;
     
@@ -1167,11 +1372,11 @@ function showScheduleCreationModal(config) {
                             <div class="mb-3">
                                 <label class="form-label fw-bold">Number of Weeks:</label>
                                 <select class="form-select" id="scheduleWeeks">
-                                    <option value="4">4 weeks</option>
-                                    <option value="6" ${(config.rotation === 'modified' || config.rotation === 'fixed') && pattern === 'three_on_three_off' ? 'selected' : ''}>6 weeks (Full Cycle)</option>
-                                    <option value="8" ${config.rotation === 'modified' && pattern === 'four_on_four_off' ? 'selected' : ''}>8 weeks (Full Cycle)</option>
-                                    <option value="12" ${(config.rotation === 'fast' || config.rotation === 'slow') && pattern === 'three_on_three_off' ? 'selected' : ''}>12 weeks (Full Cycle)</option>
-                                    <option value="16" ${config.rotation === 'weekly' ? 'selected' : ''}>16 weeks (Full Cycle)</option>
+                                    <option value="4" ${pattern === 'southern_swing' ? 'selected' : ''}>4 weeks (Full Cycle for Southern Swing)</option>
+                                    <option value="6" ${(config.rotation === 'modified' || config.rotation === 'fixed') && pattern === 'three_on_three_off' ? 'selected' : ''}>6 weeks</option>
+                                    <option value="8" ${config.rotation === 'modified' && pattern === 'four_on_four_off' ? 'selected' : ''}>8 weeks</option>
+                                    <option value="12" ${(config.rotation === 'fast' || config.rotation === 'slow') && pattern === 'three_on_three_off' ? 'selected' : ''}>12 weeks</option>
+                                    <option value="16" ${config.rotation === 'weekly' ? 'selected' : ''}>16 weeks</option>
                                     <option value="26">26 weeks (6 months)</option>
                                     <option value="52">52 weeks (1 year)</option>
                                 </select>
