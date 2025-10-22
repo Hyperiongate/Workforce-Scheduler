@@ -1,8 +1,12 @@
 # utils/pattern_generators.py
 # COMPLETE FILE - Pattern Generators for Workforce Scheduler
-# Last Updated: 2025-10-22 - FIXED Southern Swing Clockwise pattern
+# Last Updated: 2025-10-22 - FIXED Southern Swing Clockwise AND Counter-Clockwise
 # 
 # Change Log:
+#   2025-10-22: FIXED Southern Swing Clockwise AND Counter-Clockwise patterns
+#               CLOCKWISE: Proper D→E→N rotation with 7-7-7 distribution
+#               COUNTER-CW: Proper D→N→E rotation with 7-7-7 distribution
+#               Both patterns now match user-provided tables exactly
 #   2025-10-22: FIXED Southern Swing Clockwise to match correct 28-day rotation
 #               - Week 1: 5 days work, 2 off
 #               - Week 2: 2 off, 5 evenings work
@@ -1238,16 +1242,16 @@ class SouthernSwingCounter(PatternGenerator):
         
         # 28-day pattern for counter-clockwise rotation
         # D=Day, E=Evening, N=Night, O=Off
-        # CORRECTED: 7 consecutive nights span Week 2 (Wed-Sun) + Week 3 (Mon-Tue)
+        # CORRECTED 2025-10-22: Fixed to match actual Southern Swing counter-clockwise rotation
         base_pattern = [
             # Week 1: Mon-Fri days, Sat-Sun off
             'D', 'D', 'D', 'D', 'D', 'O', 'O',
-            # Week 2: Mon-Tue off, Wed-Sun nights (nights start)
+            # Week 2: Mon-Tue off, Wed-Sun nights
             'O', 'O', 'N', 'N', 'N', 'N', 'N',
-            # Week 3: Mon-Tue nights (7 consecutive total), Wed-Fri evenings, Sat-Sun off
-            'N', 'N', 'E', 'E', 'E', 'O', 'O',
-            # Week 4: Mon-Tue off, Wed-Thu evenings, Fri-Sun days
-            'O', 'O', 'E', 'E', 'D', 'D', 'D'
+            # Week 3: Mon-Tue nights, Wed off, Thu-Sun evenings
+            'N', 'N', 'O', 'E', 'E', 'E', 'E',
+            # Week 4: Mon-Wed evenings, Thu-Fri off, Sat-Sun days
+            'E', 'E', 'E', 'O', 'O', 'D', 'D'
         ]
         
         # Crew offsets
