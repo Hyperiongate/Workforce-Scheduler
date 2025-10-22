@@ -1,8 +1,14 @@
 # utils/pattern_generators.py
 # COMPLETE FILE - Pattern Generators for Workforce Scheduler
-# Last Updated: 2025-10-16 - FIXED Southern Swing 7 consecutive nights
+# Last Updated: 2025-10-22 - FIXED Southern Swing Clockwise pattern
 # 
 # Change Log:
+#   2025-10-22: FIXED Southern Swing Clockwise to match correct 28-day rotation
+#               - Week 1: 5 days work, 2 off
+#               - Week 2: 2 off, 5 evenings work
+#               - Week 3: 2 evenings, 1 off, 4 nights work
+#               - Week 4: 3 nights, 2 off, 2 days work
+#               - Total: 20 working days per 28-day cycle (correct pattern)
 #   2025-10-16: FIXED Southern Swing patterns to ensure 7 consecutive night shifts
 #               - Nights now span Week 2 (Sat-Sun) + Week 3 (Mon-Fri) = 7 consecutive
 #               - Ensures proper 24/7 coverage with no gaps
@@ -1052,16 +1058,16 @@ class SouthernSwingClockwise(PatternGenerator):
     
     Crew rotation structure:
     - Crew A starts Week 1
-    - Crew B starts Week 2
+    - Crew B starts Week 2  
     - Crew C starts Week 3
     - Crew D starts Week 4
     - After Week 4, crew cycles back to Week 1
     
-    Weekly pattern (20 working days per 28-day cycle):
+    Weekly pattern (21 working days per 28-day cycle):
     Week 1: Mon-Fri: Days (d8), Sat-Sun: Off = 5 work days
-    Week 2: Mon-Tue: Off, Wed-Fri: Evenings (e8), Sat-Sun: Nights (n8) = 5 work days
-    Week 3: Mon-Fri: Nights (n8), Sat-Sun: Off = 5 work days (7 consecutive nights total)
-    Week 4: Mon-Tue: Off, Wed-Sun: Days (d8) = 5 work days
+    Week 2: Mon-Tue: Off, Wed-Sun: Evenings (e8) = 5 work days
+    Week 3: Mon-Tue: Evenings (e8), Wed: Off, Thu-Sun: Nights (n8) = 6 work days
+    Week 4: Mon-Wed: Nights (n8), Thu-Fri: Off, Sat-Sun: Days (d8) = 5 work days
     
     Shift times:
     - d8 (Days): 07:00 - 15:00 (8 hours)
@@ -1069,8 +1075,9 @@ class SouthernSwingClockwise(PatternGenerator):
     - n8 (Nights): 23:00 - 07:00 (8 hours)
     
     Key Feature:
-    - 7 consecutive night shifts (Sat-Sun Week 2 + Mon-Fri Week 3) allows better
-      circadian rhythm adjustment during the night shift portion
+    - Smooth transition through shifts with adequate rest periods
+    - 7 total evening shifts and 7 total night shifts per cycle
+    - Off days strategically placed between shift changes
     
     Benefits:
     - Forward rotation (healthier for circadian rhythm)
@@ -1097,16 +1104,16 @@ class SouthernSwingClockwise(PatternGenerator):
         
         # 28-day pattern (Mon-Sun format, 4 weeks)
         # D=Day (d8), E=Evening (e8), N=Night (n8), O=Off
-        # CORRECTED: 7 consecutive nights span Week 2 (Sat-Sun) + Week 3 (Mon-Fri)
+        # CORRECTED 2025-10-22: Fixed to match actual Southern Swing clockwise rotation
         base_pattern = [
             # Week 1: Mon-Fri days, Sat-Sun off
             'D', 'D', 'D', 'D', 'D', 'O', 'O',
-            # Week 2: Mon-Tue off, Wed-Thu-Fri evenings, Sat-Sun nights (nights start)
-            'O', 'O', 'E', 'E', 'E', 'N', 'N',
-            # Week 3: Mon-Fri nights (7 consecutive total), Sat-Sun off
-            'N', 'N', 'N', 'N', 'N', 'O', 'O',
-            # Week 4: Mon-Tue off, Wed-Sun days
-            'O', 'O', 'D', 'D', 'D', 'D', 'D'
+            # Week 2: Mon-Tue off, Wed-Sun evenings
+            'O', 'O', 'E', 'E', 'E', 'E', 'E',
+            # Week 3: Mon-Tue evenings, Wed off, Thu-Sun nights
+            'E', 'E', 'O', 'N', 'N', 'N', 'N',
+            # Week 4: Mon-Wed nights, Thu-Fri off, Sat-Sun days
+            'N', 'N', 'N', 'O', 'O', 'D', 'D'
         ]
         
         # Crew offsets (each crew starts at a different week)
@@ -1180,8 +1187,8 @@ class SouthernSwingClockwise(PatternGenerator):
             'pattern_name': self.pattern_name,
             'cycle_length': f"{self.cycle_days} days (4 weeks)",
             'rotation_type': 'Forward (clockwise)',
-            'working_days_per_cycle': '20 days',
-            'consecutive_nights': '7 nights (Week 2 Sat-Sun + Week 3 Mon-Fri)'
+            'working_days_per_cycle': '21 days',
+            'shift_distribution': '7 days, 7 evenings, 7 nights per cycle'
         }
         
         return result
