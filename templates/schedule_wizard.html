@@ -1,7 +1,14 @@
 {# templates/schedule_wizard.html #}
 {# Schedule Pattern Wizard - COMPLETE FILE #}
-{# Last Modified: 2025-10-16 - FIXED Southern Swing 7 consecutive nights #}
+{# Last Modified: 2025-10-22 - FIXED Southern Swing Clockwise pattern in JavaScript #}
 {# Change Log: #}
+{#   2025-10-22: FIXED Southern Swing Clockwise pattern in JavaScript preview #}
+{#              - Week 1: D D D D D O O (5 work, 2 off) #}
+{#              - Week 2: O O E E E E E (5 work, 2 off) #}
+{#              - Week 3: E E O N N N N (6 work, 1 off) #}
+{#              - Week 4: N N N O O D D (5 work, 2 off) #}
+{#              - Total: 7 days, 7 evenings, 7 nights per cycle (21 work days) #}
+{#              - Pattern now matches backend pattern_generators.py #}
 {#   2025-10-16: FIXED Southern Swing patterns to ensure 7 consecutive night shifts #}
 {#              - Nights span Week 2 (Sat-Sun) + Week 3 (Mon-Fri) = 7 consecutive #}
 {#              - Ensures 24/7 coverage with no gaps (Thursday night now covered) #}
@@ -514,12 +521,12 @@ function generateCrewAssignment(pattern, week, day, rotation) {
                 
                 if (rotation === 'clockwise') {
                     // Clockwise: Days → Evenings → Nights
-                    // CORRECTED: 7 consecutive nights span Week 2 (Sat-Sun) + Week 3 (Mon-Fri)
+                    // CORRECTED 2025-10-22: Fixed to match actual Southern Swing clockwise rotation
                     basePattern = [
                         'D', 'D', 'D', 'D', 'D', 'O', 'O',  // Week 1: Mon-Fri days, Sat-Sun off
-                        'O', 'O', 'E', 'E', 'E', 'N', 'N',  // Week 2: Mon-Tue off, Wed-Fri eve, Sat-Sun nights
-                        'N', 'N', 'N', 'N', 'N', 'O', 'O',  // Week 3: Mon-Fri nights (7 consecutive total), Sat-Sun off
-                        'O', 'O', 'D', 'D', 'D', 'D', 'D'   // Week 4: Mon-Tue off, Wed-Sun days
+                        'O', 'O', 'E', 'E', 'E', 'E', 'E',  // Week 2: Mon-Tue off, Wed-Sun evenings
+                        'E', 'E', 'O', 'N', 'N', 'N', 'N',  // Week 3: Mon-Tue evenings, Wed off, Thu-Sun nights
+                        'N', 'N', 'N', 'O', 'O', 'D', 'D'   // Week 4: Mon-Wed nights, Thu-Fri off, Sat-Sun days
                     ];
                 } else {
                     // Counter-clockwise: Days → Nights → Evenings
@@ -588,11 +595,12 @@ function generateCrewAssignment(pattern, week, day, rotation) {
                 const weeklyPattern = ['X', 'X', 'X', 'X', 'X', 'O', 'O'];
                 
                 // Crew D rotating pattern (follows clockwise rotation)
+                // CORRECTED 2025-10-22: Matches corrected clockwise pattern
                 const crewDPattern = [
                     'D', 'D', 'D', 'D', 'D', 'O', 'O',  // Week 1: Days
-                    'O', 'O', 'E', 'E', 'E', 'N', 'N',  // Week 2: Evenings then nights
-                    'N', 'N', 'N', 'N', 'N', 'O', 'O',  // Week 3: Nights (7 consecutive total)
-                    'O', 'O', 'D', 'D', 'D', 'D', 'D'   // Week 4: Back to days
+                    'O', 'O', 'E', 'E', 'E', 'E', 'E',  // Week 2: Evenings
+                    'E', 'E', 'O', 'N', 'N', 'N', 'N',  // Week 3: Evenings then nights
+                    'N', 'N', 'N', 'O', 'O', 'D', 'D'   // Week 4: Nights then back to days
                 ];
                 
                 let mondayBasedDay;
