@@ -1,7 +1,12 @@
 {# templates/schedule_wizard.html #}
 {# Schedule Pattern Wizard - COMPLETE FILE #}
-{# Last Modified: 2025-10-22 - FIXED Southern Swing patterns and removed fixed option #}
+{# Last Modified: 2025-10-22 - ADDED Fixed-Fixed pattern #}
 {# Change Log: #}
+{#   2025-10-22: ADDED Fixed-Fixed pattern with 2 variations #}
+{#              - 2-Week Rotation: 28-day cycle, rotates days/nights every 2 weeks #}
+{#              - Fixed Shifts: 14-day cycle, A&B days, C&D nights (no rotation) #}
+{#              - Work pattern: 4 on, 3 off / 3 on, 4 off (repeating) #}
+{#              - 12-hour shifts: 06:00-18:00 (days), 18:00-06:00 (nights) #}
 {#   2025-10-22: FIXED Southern Swing Clockwise AND Counter-Clockwise patterns #}
 {#              CLOCKWISE: D D D D D O O | O O E E E E E | E E O N N N N | N N N O O D D #}
 {#              COUNTER-CW: D D D D D O O | O O N N N N N | N N O E E E E | E E E O O D D #}
@@ -147,6 +152,28 @@
                                 </ul>
                             </div>
                         </div>
+                        {% elif pattern == 'fixed_fixed' %}
+                        <!-- Fixed-Fixed Configuration -->
+                        <div class="mb-3">
+                            <label for="fixedVariation" class="form-label fw-bold">Pattern Type:</label>
+                            <select class="form-select form-select-lg" id="fixedVariation" name="fixed_variation">
+                                <option value="">-- Select Type --</option>
+                                <option value="rotating">2-Week Rotation</option>
+                                <option value="fixed">Fixed Shifts</option>
+                            </select>
+                            <div class="form-text mt-2">
+                                <small><strong>2-Week Rotation:</strong> Rotate between days and nights every 2 weeks</small><br>
+                                <small><strong>Fixed Shifts:</strong> Crews A&B always days, C&D always nights (no rotation)</small>
+                            </div>
+                            <div class="alert alert-info mt-3">
+                                <ul class="mb-0">
+                                    <li>12-hour shifts: 06:00-18:00 / 18:00-06:00</li>
+                                    <li>Work pattern: 4 on, 3 off / 3 on, 4 off</li>
+                                    <li>7 working days per 14 days (50%)</li>
+                                    <li>Predictable schedule with good work-life balance</li>
+                                </ul>
+                            </div>
+                        </div>
                         {% elif pattern == 'dupont' %}
                         <!-- DuPont Configuration - SIMPLIFIED: Rotating Only -->
                         <div class="alert alert-info">
@@ -162,7 +189,7 @@
                         {% endif %}
                         
                         <div class="d-grid gap-2 mt-3">
-                            <button type="button" class="btn btn-primary btn-lg" id="generatePreviewBtn" {% if pattern in ['pitman', 'four_on_four_off', 'three_on_three_off', 'southern_swing'] %}style="display: none;"{% endif %}>
+                            <button type="button" class="btn btn-primary btn-lg" id="generatePreviewBtn" {% if pattern in ['pitman', 'four_on_four_off', 'three_on_three_off', 'southern_swing', 'fixed_fixed'] %}style="display: none;"{% endif %}>
                                 <i class="bi bi-calendar-check"></i> Generate Schedule Preview
                             </button>
                         </div>
@@ -502,6 +529,114 @@ function generateCrewAssignment(pattern, week, day, rotation) {
     switch(pattern) {
         case 'pitman':
             // Pitman logic (existing code unchanged)
+            break;
+            
+        case 'fixed_fixed':
+            // FIXED-FIXED PATTERN - 12-hour shifts
+            // Work pattern: 4 on, 3 off / 3 on, 4 off (repeating every 14 days)
+            
+            if (rotation === 'rotating' || rotation === '2week') {
+                // 2-Week Rotation: 28-day cycle, rotates days/nights every 2 weeks
+                
+                // 14-day work pattern (repeats twice in 28 days)
+                const workPattern = [
+                    'X', 'X', 'X', 'X', 'O', 'O', 'O',  // Week 1: Sun-Wed work, Thu-Sat off
+                    'X', 'X', 'X', 'O', 'O', 'O', 'O'   // Week 2: Sun-Tue work, Wed-Sat off
+                ];
+                
+                // Crew offsets
+                const crewOffsets = {
+                    'A': 0,   // Starts Week 1 (days)
+                    'B': 7,   // Starts Week 2 (days)
+                    'C': 14,  // Starts Week 3 (nights)
+                    'D': 21   // Starts Week 4 (nights)
+                };
+                
+                let dayCrews = [];
+                let nightCrews = [];
+                
+                // Convert Sunday-based to our indexing
+                let sundayBasedDay = day;
+                
+                const absoluteDay = (week - 1) * 7 + sundayBasedDay;
+                
+                for (const [crew, offset] of Object.entries(crewOffsets)) {
+                    const daysSinceCrewStart = absoluteDay - offset;
+                    
+                    if (daysSinceCrewStart < 0) continue;
+                    
+                    // Check work pattern (14-day cycle)
+                    const workPosition = daysSinceCrewStart % 14;
+                    
+                    if (workPattern[workPosition] === 'O') continue;
+                    
+                    // Determine if on days or nights (28-day cycle)
+                    const cyclePosition28 = daysSinceCrewStart % 28;
+                    
+                    if (cyclePosition28 < 14) {
+                        dayCrews.push(crew);
+                    } else {
+                        nightCrews.push(crew);
+                    }
+                }
+                
+                if (dayCrews.length > 0 || nightCrews.length > 0) {
+                    let display = [];
+                    if (dayCrews.length > 0) display.push(`Day: ${dayCrews.join('+')}`);
+                    if (nightCrews.length > 0) display.push(`Night: ${nightCrews.join('+')}`);
+                    assignment.crews = display.join('\n');
+                    assignment.cssClass = dayCrews.length > 0 ? 'shift-day' : 'shift-night';
+                }
+                
+            } else if (rotation === 'fixed') {
+                // Fixed Shifts: No rotation - A&B always days, C&D always nights
+                
+                // 14-day work pattern
+                const workPattern = [
+                    'X', 'X', 'X', 'X', 'O', 'O', 'O',  // Week 1: Sun-Wed work, Thu-Sat off
+                    'X', 'X', 'X', 'O', 'O', 'O', 'O'   // Week 2: Sun-Tue work, Wed-Sat off
+                ];
+                
+                // Crew offsets (A&C together, B&D together)
+                const crewOffsets = {
+                    'A': 0,   // Day shift, starts Week 1
+                    'B': 7,   // Day shift, starts Week 2
+                    'C': 0,   // Night shift, starts Week 1
+                    'D': 7    // Night shift, starts Week 2
+                };
+                
+                let dayCrews = [];
+                let nightCrews = [];
+                
+                let sundayBasedDay = day;
+                const absoluteDay = (week - 1) * 7 + sundayBasedDay;
+                
+                for (const [crew, offset] of Object.entries(crewOffsets)) {
+                    const daysSinceCrewStart = absoluteDay - offset;
+                    
+                    if (daysSinceCrewStart < 0) continue;
+                    
+                    // Check work pattern (14-day cycle)
+                    const workPosition = daysSinceCrewStart % 14;
+                    
+                    if (workPattern[workPosition] === 'O') continue;
+                    
+                    // Fixed shifts: A&B always days, C&D always nights
+                    if (crew === 'A' || crew === 'B') {
+                        dayCrews.push(crew);
+                    } else {
+                        nightCrews.push(crew);
+                    }
+                }
+                
+                if (dayCrews.length > 0 || nightCrews.length > 0) {
+                    let display = [];
+                    if (dayCrews.length > 0) display.push(`Day: ${dayCrews.join('+')}`);
+                    if (nightCrews.length > 0) display.push(`Night: ${nightCrews.join('+')}`);
+                    assignment.crews = display.join('\n');
+                    assignment.cssClass = dayCrews.length > 0 ? 'shift-day' : 'shift-night';
+                }
+            }
             break;
             
         case 'dupont':
@@ -902,6 +1037,7 @@ function generateSchedulePreview() {
         'four_on_four_off': document.getElementById('fourVariation'),
         'three_on_three_off': document.getElementById('threeVariation'),
         'southern_swing': document.getElementById('swingVariation'),
+        'fixed_fixed': document.getElementById('fixedVariation'),
         'dupont': document.getElementById('dupontVariation')
     };
     
@@ -1210,7 +1346,8 @@ function setupEventListeners() {
         'pitman': document.getElementById('pitmanVariation'),
         'four_on_four_off': document.getElementById('fourVariation'),
         'three_on_three_off': document.getElementById('threeVariation'),
-        'southern_swing': document.getElementById('swingVariation')
+        'southern_swing': document.getElementById('swingVariation'),
+        'fixed_fixed': document.getElementById('fixedVariation')
     };
     
     const currentSelector = variationSelectors[pattern];
@@ -1448,7 +1585,8 @@ document.addEventListener('DOMContentLoaded', function() {
         'pitman': document.getElementById('pitmanVariation'),
         'four_on_four_off': document.getElementById('fourVariation'),
         'three_on_three_off': document.getElementById('threeVariation'),
-        'southern_swing': document.getElementById('swingVariation')
+        'southern_swing': document.getElementById('swingVariation'),
+        'fixed_fixed': document.getElementById('fixedVariation')
     };
     
     if (variationSelectors[pattern]) {
