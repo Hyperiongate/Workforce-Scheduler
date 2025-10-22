@@ -1,8 +1,13 @@
 # utils/pattern_generators.py
 # COMPLETE FILE - Pattern Generators for Workforce Scheduler
-# Last Updated: 2025-10-22 - FIXED Southern Swing Clockwise AND Counter-Clockwise
+# Last Updated: 2025-10-22 - ADDED Fixed-Fixed patterns
 # 
 # Change Log:
+#   2025-10-22: ADDED Fixed-Fixed 2-Week Rotation and Fixed Shifts patterns
+#               - 2-Week Rotation: 28-day cycle, rotates days/nights every 2 weeks
+#               - Fixed Shifts: 14-day cycle, no rotation (A&B days, C&D nights)
+#               - Work pattern: 4 on, 3 off / 3 on, 4 off (repeating)
+#               - 12-hour shifts: 06:00-18:00 (days), 18:00-06:00 (nights)
 #   2025-10-22: FIXED Southern Swing Clockwise AND Counter-Clockwise patterns
 #               CLOCKWISE: Proper D→E→N rotation with 7-7-7 distribution
 #               COUNTER-CW: Proper D→N→E rotation with 7-7-7 distribution
@@ -1462,6 +1467,268 @@ class SouthernSwingFixed(PatternGenerator):
         return result
 
 
+class FixedFixedRotating(PatternGenerator):
+    """
+    Fixed-Fixed 2-Week Rotation Pattern
+    
+    28-day cycle (4 weeks) with 12-hour shifts
+    Work pattern: 3-4 on, 3-4 off (repeats every 2 weeks)
+    Shift rotation: 2 weeks days, then 2 weeks nights
+    
+    Crew rotation:
+    - Crew A starts Week 1 (days)
+    - Crew B starts Week 2 (days)
+    - Crew C starts Week 3 (nights)
+    - Crew D starts Week 4 (nights)
+    
+    Weekly pattern (repeats every 14 days):
+    Week 1: Sun-Wed work (4 days), Thu-Sat off (3 days)
+    Week 2: Sun-Tue work (3 days), Wed-Sat off (4 days)
+    
+    Total: 7 working days per 14-day period (50%)
+    Then shifts from Day to Night (or vice versa) for next 14 days
+    
+    Benefits:
+    - Predictable 3-4 on, 3-4 off pattern
+    - 2-week blocks on each shift type
+    - 50% working time (7 days per 14 days)
+    - Good work-life balance
+    """
+    
+    def __init__(self):
+        super().__init__()
+        self.pattern_name = "Fixed-Fixed 2-Week Rotation"
+        self.cycle_days = 28  # 4 weeks
+    
+    def generate(self, start_date, end_date, created_by_id=None, replace_existing=False):
+        """Generate Fixed-Fixed 2-week rotation schedule"""
+        logger.info(f"Generating Fixed-Fixed 2-Week Rotation: {start_date} to {end_date}")
+        
+        self.validate_date_range(start_date, end_date)
+        crews = self.get_crew_employees()
+        self.validate_crews(crews)
+        
+        if replace_existing:
+            self.clear_existing_schedules(start_date, end_date, crews)
+        
+        # 14-day work pattern (repeats twice in 28-day cycle)
+        # X = Work, O = Off
+        # Week 1: Sun-Wed work, Thu-Sat off
+        # Week 2: Sun-Tue work, Wed-Sat off
+        work_pattern = [
+            'X', 'X', 'X', 'X', 'O', 'O', 'O',  # Week 1: 4 on, 3 off
+            'X', 'X', 'X', 'O', 'O', 'O', 'O'   # Week 2: 3 on, 4 off
+        ]
+        
+        # Crew offsets (in days from schedule start)
+        crew_offsets = {
+            'A': 0,   # Starts Week 1 (days)
+            'B': 7,   # Starts Week 2 (days) 
+            'C': 14,  # Starts Week 3 (nights)
+            'D': 21   # Starts Week 4 (nights)
+        }
+        
+        # Shift times (12-hour shifts)
+        day_start = time(6, 0)    # 06:00
+        day_end = time(18, 0)     # 18:00
+        night_start = time(18, 0)  # 18:00
+        night_end = time(6, 0)     # 06:00 (next day)
+        
+        # Generate schedules
+        current_date = start_date
+        while current_date <= end_date:
+            day_offset = (current_date - start_date).days
+            
+            for crew_letter, employees in crews.items():
+                if not employees:
+                    continue
+                
+                crew_offset = crew_offsets[crew_letter]
+                
+                # Determine position in 14-day work pattern
+                days_since_crew_start = day_offset - crew_offset
+                if days_since_crew_start < 0:
+                    continue
+                
+                work_cycle_position = days_since_crew_start % 14
+                
+                # Check if working today
+                if work_pattern[work_cycle_position] == 'O':
+                    continue
+                
+                # Determine if on day or night shift
+                # First 14 days = days, second 14 days = nights
+                cycle_position_28 = days_since_crew_start % 28
+                if cycle_position_28 < 14:
+                    # First 2 weeks: Day shift
+                    shift_type = ShiftType.DAY
+                    start_time = day_start
+                    end_time = day_end
+                else:
+                    # Second 2 weeks: Night shift
+                    shift_type = ShiftType.NIGHT
+                    start_time = night_start
+                    end_time = night_end
+                
+                # Create schedule for each employee in this crew
+                for employee in employees:
+                    schedule = Schedule(
+                        employee_id=employee.id,
+                        date=current_date,
+                        shift_type=shift_type,
+                        start_time=start_time,
+                        end_time=end_time,
+                        hours=12.0,
+                        position_id=employee.position_id,
+                        created_by_id=created_by_id
+                    )
+                    self.schedules.append(schedule)
+            
+            current_date += timedelta(days=1)
+        
+        result = self.save_schedules(replace_existing=replace_existing)
+        result['statistics'] = {
+            'total_schedules': len(self.schedules),
+            'pattern_name': self.pattern_name,
+            'cycle_length': f"{self.cycle_days} days (4 weeks)",
+            'rotation_type': '2-week rotation (days/nights)',
+            'working_days_per_cycle': '14 days (50%)',
+            'pattern': '4 on, 3 off / 3 on, 4 off (repeating)'
+        }
+        
+        return result
+
+
+class FixedFixedShifts(PatternGenerator):
+    """
+    Fixed-Fixed Shifts (No Rotation)
+    
+    14-day cycle (2 weeks) with 12-hour shifts
+    Work pattern: 3-4 on, 3-4 off (repeats every 2 weeks)
+    NO rotation - crews stay on same shift permanently
+    
+    Shift assignment:
+    - Crew A: ALWAYS Day shifts
+    - Crew B: ALWAYS Day shifts (offset by 1 week)
+    - Crew C: ALWAYS Night shifts
+    - Crew D: ALWAYS Night shifts (offset by 1 week)
+    
+    Weekly pattern:
+    Week 1: Sun-Wed work (4 days), Thu-Sat off (3 days)
+    Week 2: Sun-Tue work (3 days), Wed-Sat off (4 days)
+    
+    Total: 7 working days per 14-day cycle (50%)
+    
+    Benefits:
+    - No rotation stress (stay on same shift)
+    - Predictable 3-4 on, 3-4 off pattern
+    - Good for those who prefer fixed schedules
+    - 50% working time (7 days per 14 days)
+    """
+    
+    def __init__(self):
+        super().__init__()
+        self.pattern_name = "Fixed-Fixed Shifts (No Rotation)"
+        self.cycle_days = 14  # 2 weeks
+    
+    def generate(self, start_date, end_date, created_by_id=None, replace_existing=False):
+        """Generate Fixed-Fixed fixed shifts schedule"""
+        logger.info(f"Generating Fixed-Fixed Shifts: {start_date} to {end_date}")
+        
+        self.validate_date_range(start_date, end_date)
+        crews = self.get_crew_employees()
+        self.validate_crews(crews)
+        
+        if replace_existing:
+            self.clear_existing_schedules(start_date, end_date, crews)
+        
+        # 14-day work pattern
+        # X = Work, O = Off
+        # Week 1: Sun-Wed work, Thu-Sat off
+        # Week 2: Sun-Tue work, Wed-Sat off
+        work_pattern = [
+            'X', 'X', 'X', 'X', 'O', 'O', 'O',  # Week 1: 4 on, 3 off
+            'X', 'X', 'X', 'O', 'O', 'O', 'O'   # Week 2: 3 on, 4 off
+        ]
+        
+        # Crew offsets
+        # A & C start together, B & D start 1 week later
+        crew_offsets = {
+            'A': 0,   # Day shift, starts Week 1
+            'B': 7,   # Day shift, starts Week 2
+            'C': 0,   # Night shift, starts Week 1
+            'D': 7    # Night shift, starts Week 2
+        }
+        
+        # Shift times (12-hour shifts)
+        day_start = time(6, 0)    # 06:00
+        day_end = time(18, 0)     # 18:00
+        night_start = time(18, 0)  # 18:00
+        night_end = time(6, 0)     # 06:00 (next day)
+        
+        # Generate schedules
+        current_date = start_date
+        while current_date <= end_date:
+            day_offset = (current_date - start_date).days
+            
+            for crew_letter, employees in crews.items():
+                if not employees:
+                    continue
+                
+                crew_offset = crew_offsets[crew_letter]
+                
+                # Determine position in 14-day work pattern
+                days_since_crew_start = day_offset - crew_offset
+                if days_since_crew_start < 0:
+                    continue
+                
+                work_cycle_position = days_since_crew_start % 14
+                
+                # Check if working today
+                if work_pattern[work_cycle_position] == 'O':
+                    continue
+                
+                # Determine shift type (FIXED - no rotation)
+                # A & B always days, C & D always nights
+                if crew_letter in ['A', 'B']:
+                    shift_type = ShiftType.DAY
+                    start_time = day_start
+                    end_time = day_end
+                else:  # C or D
+                    shift_type = ShiftType.NIGHT
+                    start_time = night_start
+                    end_time = night_end
+                
+                # Create schedule for each employee in this crew
+                for employee in employees:
+                    schedule = Schedule(
+                        employee_id=employee.id,
+                        date=current_date,
+                        shift_type=shift_type,
+                        start_time=start_time,
+                        end_time=end_time,
+                        hours=12.0,
+                        position_id=employee.position_id,
+                        created_by_id=created_by_id
+                    )
+                    self.schedules.append(schedule)
+            
+            current_date += timedelta(days=1)
+        
+        result = self.save_schedules(replace_existing=replace_existing)
+        result['statistics'] = {
+            'total_schedules': len(self.schedules),
+            'pattern_name': self.pattern_name,
+            'cycle_length': f"{self.cycle_days} days (2 weeks)",
+            'rotation_type': 'No rotation (fixed shifts)',
+            'working_days_per_cycle': '7 days (50%)',
+            'shift_assignment': 'A&B: Days, C&D: Nights',
+            'pattern': '4 on, 3 off / 3 on, 4 off (repeating)'
+        }
+        
+        return result
+
+
 # Factory function to get the right generator
 def get_pattern_generator(pattern, variation=None):
     """
@@ -1501,6 +1768,12 @@ def get_pattern_generator(pattern, variation=None):
             return SouthernSwingCounter()
         elif variation == 'fixed':
             return SouthernSwingFixed()
+    
+    elif pattern == 'fixed_fixed':
+        if variation == 'rotating' or variation == '2week':
+            return FixedFixedRotating()
+        elif variation == 'fixed':
+            return FixedFixedShifts()
     
     return None
 
