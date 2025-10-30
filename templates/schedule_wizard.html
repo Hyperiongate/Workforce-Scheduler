@@ -1,7 +1,12 @@
 {# templates/schedule_wizard.html #}
 {# Schedule Pattern Wizard - COMPLETE FILE #}
-{# Last Modified: 2025-10-22 - ADDED Fixed-Fixed pattern #}
+{# Last Modified: 2025-10-30 - RENAMED Fixed-Fixed to Consistent Days Off #}
 {# Change Log: #}
+{#   2025-10-30: RENAMED "Fixed-Fixed" to "Consistent Days Off" throughout entire file #}
+{#              - Changed pattern == 'fixed_fixed' to pattern == 'consistent_days_off' #}
+{#              - Updated all UI text from "Fixed-Fixed" to "Consistent Days Off" #}
+{#              - Updated JavaScript references to match #}
+{#              - Better marketing name that describes employee benefit #}
 {#   2025-10-22: ADDED Fixed-Fixed pattern with 2 variations #}
 {#              - 2-Week Rotation: 28-day cycle, rotates days/nights every 2 weeks #}
 {#              - Fixed Shifts: 14-day cycle, A&B days, C&D nights (no rotation) #}
@@ -152,25 +157,26 @@
                                 </ul>
                             </div>
                         </div>
-                        {% elif pattern == 'fixed_fixed' %}
-                        <!-- Fixed-Fixed Configuration -->
+                        {% elif pattern == 'consistent_days_off' %}
+                        <!-- Consistent Days Off Configuration (formerly Fixed-Fixed) -->
                         <div class="mb-3">
-                            <label for="fixedVariation" class="form-label fw-bold">Pattern Type:</label>
-                            <select class="form-select form-select-lg" id="fixedVariation" name="fixed_variation">
+                            <label for="consistentVariation" class="form-label fw-bold">Pattern Type:</label>
+                            <select class="form-select form-select-lg" id="consistentVariation" name="consistent_variation">
                                 <option value="">-- Select Type --</option>
-                                <option value="rotating">2-Week Rotation</option>
-                                <option value="fixed">Fixed Shifts</option>
+                                <option value="rotating">2-Week Rotation (Wednesday Swap)</option>
+                                <option value="fixed">Fixed Shifts (No Rotation)</option>
                             </select>
                             <div class="form-text mt-2">
-                                <small><strong>2-Week Rotation:</strong> Rotate between days and nights every 2 weeks</small><br>
-                                <small><strong>Fixed Shifts:</strong> Crews A&B always days, C&D always nights (no rotation)</small>
+                                <small><strong>2-Week Rotation:</strong> Rotate between days and nights every 2 weeks with Wednesday swap for better transition</small><br>
+                                <small><strong>Fixed Shifts:</strong> Crews A&B always days, C&D always nights (no rotation, maximum consistency)</small>
                             </div>
                             <div class="alert alert-info mt-3">
                                 <ul class="mb-0">
+                                    <li><strong>Predictable Days Off:</strong> Same days off each week</li>
                                     <li>12-hour shifts: 06:00-18:00 / 18:00-06:00</li>
                                     <li>Work pattern: 4 on, 3 off / 3 on, 4 off</li>
-                                    <li>7 working days per 14 days (50%)</li>
-                                    <li>Predictable schedule with good work-life balance</li>
+                                    <li>7 working days per 14 days (50% ratio)</li>
+                                    <li>Excellent work-life balance with consistent schedule</li>
                                 </ul>
                             </div>
                         </div>
@@ -189,7 +195,7 @@
                         {% endif %}
                         
                         <div class="d-grid gap-2 mt-3">
-                            <button type="button" class="btn btn-primary btn-lg" id="generatePreviewBtn" {% if pattern in ['pitman', 'four_on_four_off', 'three_on_three_off', 'southern_swing', 'fixed_fixed'] %}style="display: none;"{% endif %}>
+                            <button type="button" class="btn btn-primary btn-lg" id="generatePreviewBtn" {% if pattern in ['pitman', 'four_on_four_off', 'three_on_three_off', 'southern_swing', 'consistent_days_off'] %}style="display: none;"{% endif %}>
                                 <i class="bi bi-calendar-check"></i> Generate Schedule Preview
                             </button>
                         </div>
@@ -512,6 +518,15 @@ const patternData = {
         advantages: ['Shorter work stretches', 'Simple repeating pattern', 'Good for fatigue management', 'Flexible variations'],
         considerations: ['Split weekends in fixed version', 'Modified creates strategic distribution', 'Various cycle lengths'],
         explanation: '3-on-3-off: Work 3 days, then off 3 days. Fast rotation uses 12-week cycle where crews start at different weeks. Slow rotation uses 12-week cycle with shift swap at week 7. Fixed: Crew A/C work Mon-Tue-Wed, Crew B/D work Thu-Fri-Sat, repeating every 6 days. Modified: 6-week optimized pattern (work 3, off 4, work 2, off 3, etc.) for better work-life balance.'
+    },
+    'consistent_days_off': {
+        cycle: '14 days (2 weeks)',
+        avgHours: '42 hours/week',
+        maxConsecutive: '4 days',
+        weekendsOff: 'Same days off every week',
+        advantages: ['Predictable days off every week', 'Wednesday swap improves week transitions', 'Easy to plan personal life', 'Good work-life balance', 'Simple to understand'],
+        considerations: ['Same days off may not suit everyone', 'Fixed version has no shift variety', 'Requires discipline with 12-hour shifts'],
+        explanation: 'Consistent Days Off: 14-day cycle with predictable days off each week. Work pattern is 4 on, 3 off / 3 on, 4 off. The Wednesday swap in the 2-week rotation smooths the transition between weeks. Crews get the same days off every week, making it easy to plan appointments, childcare, and social activities.'
     }
 };
 
@@ -531,8 +546,8 @@ function generateCrewAssignment(pattern, week, day, rotation) {
             // Pitman logic (existing code unchanged)
             break;
             
-        case 'fixed_fixed':
-            // FIXED-FIXED PATTERN - 12-hour shifts
+        case 'consistent_days_off':
+            // CONSISTENT DAYS OFF PATTERN - 12-hour shifts
             // Work pattern: 4 on, 3 off / 3 on, 4 off (repeating every 14 days)
             
             if (rotation === 'rotating' || rotation === '2week') {
@@ -1037,7 +1052,7 @@ function generateSchedulePreview() {
         'four_on_four_off': document.getElementById('fourVariation'),
         'three_on_three_off': document.getElementById('threeVariation'),
         'southern_swing': document.getElementById('swingVariation'),
-        'fixed_fixed': document.getElementById('fixedVariation'),
+        'consistent_days_off': document.getElementById('consistentVariation'),
         'dupont': document.getElementById('dupontVariation')
     };
     
@@ -1093,6 +1108,8 @@ function generateSchedulePreview() {
         }
     } else if (pattern === 'southern_swing') {
         weeksToShow = 4;  // Always show 4 weeks for Southern Swing
+    } else if (pattern === 'consistent_days_off') {
+        weeksToShow = 4;  // Show 4 weeks for Consistent Days Off (2 complete cycles)
     }
     
     const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -1347,7 +1364,7 @@ function setupEventListeners() {
         'four_on_four_off': document.getElementById('fourVariation'),
         'three_on_three_off': document.getElementById('threeVariation'),
         'southern_swing': document.getElementById('swingVariation'),
-        'fixed_fixed': document.getElementById('fixedVariation')
+        'consistent_days_off': document.getElementById('consistentVariation')
     };
     
     const currentSelector = variationSelectors[pattern];
@@ -1447,7 +1464,7 @@ function showScheduleCreationModal(config) {
                             <div class="mb-3">
                                 <label class="form-label fw-bold">Number of Weeks:</label>
                                 <select class="form-select" id="scheduleWeeks">
-                                    <option value="4" ${pattern === 'southern_swing' ? 'selected' : ''}>4 weeks (Full Cycle for Southern Swing)</option>
+                                    <option value="4" ${pattern === 'southern_swing' || pattern === 'consistent_days_off' ? 'selected' : ''}>4 weeks (Full Cycle)</option>
                                     <option value="6" ${(config.rotation === 'modified' || config.rotation === 'fixed') && pattern === 'three_on_three_off' ? 'selected' : ''}>6 weeks</option>
                                     <option value="8" ${config.rotation === 'modified' && pattern === 'four_on_four_off' ? 'selected' : ''}>8 weeks</option>
                                     <option value="12" ${(config.rotation === 'fast' || config.rotation === 'slow') && pattern === 'three_on_three_off' ? 'selected' : ''}>12 weeks</option>
@@ -1586,7 +1603,7 @@ document.addEventListener('DOMContentLoaded', function() {
         'four_on_four_off': document.getElementById('fourVariation'),
         'three_on_three_off': document.getElementById('threeVariation'),
         'southern_swing': document.getElementById('swingVariation'),
-        'fixed_fixed': document.getElementById('fixedVariation')
+        'consistent_days_off': document.getElementById('consistentVariation')
     };
     
     if (variationSelectors[pattern]) {
