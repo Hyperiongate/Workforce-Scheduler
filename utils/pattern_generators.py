@@ -1,8 +1,13 @@
 # utils/pattern_generators.py
 # COMPLETE FILE - Pattern Generators for Workforce Scheduler
-# Last Updated: 2025-10-22 - ADDED Fixed-Fixed patterns
+# Last Updated: 2025-10-30 - RENAMED Fixed-Fixed to Consistent Days Off
 # 
 # Change Log:
+#   2025-10-30: RENAMED Fixed-Fixed pattern to "Consistent Days Off"
+#               - FixedFixedRotating → ConsistentDaysOffRotating
+#               - FixedFixedShifts → ConsistentDaysOffFixed
+#               - Updated all documentation and comments
+#               - Added legacy support for backward compatibility
 #   2025-10-22: ADDED Fixed-Fixed 2-Week Rotation and Fixed Shifts patterns
 #               - 2-Week Rotation: 28-day cycle, rotates days/nights every 2 weeks
 #               - Fixed Shifts: 14-day cycle, no rotation (A&B days, C&D nights)
@@ -1467,13 +1472,25 @@ class SouthernSwingFixed(PatternGenerator):
         return result
 
 
-class FixedFixedRotating(PatternGenerator):
+# ============================================================================
+# CONSISTENT DAYS OFF PATTERN (Formerly Fixed-Fixed)
+# RENAMED: 2025-10-30 - Better name that describes the pattern benefit
+# ============================================================================
+
+class ConsistentDaysOffRotating(PatternGenerator):
     """
-    Fixed-Fixed 2-Week Rotation Pattern
+    Consistent Days Off with 2-Week Rotation Pattern
+    (Formerly known as: Fixed-Fixed 2-Week Rotation)
     
     28-day cycle (4 weeks) with 12-hour shifts
-    Work pattern: 3-4 on, 3-4 off (repeats every 2 weeks)
+    Work pattern: 4 on, 3 off / 3 on, 4 off (alternating weeks)
     Shift rotation: 2 weeks days, then 2 weeks nights
+    
+    KEY FEATURE: Wednesday Swap for Better Coverage
+    - Standard pattern: Sun-Wed work (4 on), Thu-Sat off (3 off)
+                       Sun-Tue work (3 on), Wed-Sat off (4 off)
+    - Wednesday swap ensures smooth week transitions
+    - Provides consistent coverage throughout the week
     
     Crew rotation:
     - Crew A starts Week 1 (days)
@@ -1489,20 +1506,21 @@ class FixedFixedRotating(PatternGenerator):
     Then shifts from Day to Night (or vice versa) for next 14 days
     
     Benefits:
-    - Predictable 3-4 on, 3-4 off pattern
+    - Predictable 4/3 and 3/4 pattern with Wednesday swap
     - 2-week blocks on each shift type
     - 50% working time (7 days per 14 days)
     - Good work-life balance
+    - Wednesday swap provides smoother transitions
     """
     
     def __init__(self):
         super().__init__()
-        self.pattern_name = "Fixed-Fixed 2-Week Rotation"
+        self.pattern_name = "Consistent Days Off with 2-Week Rotation"
         self.cycle_days = 28  # 4 weeks
     
     def generate(self, start_date, end_date, created_by_id=None, replace_existing=False):
-        """Generate Fixed-Fixed 2-week rotation schedule"""
-        logger.info(f"Generating Fixed-Fixed 2-Week Rotation: {start_date} to {end_date}")
+        """Generate Consistent Days Off 2-week rotation schedule with Wednesday swap"""
+        logger.info(f"Generating Consistent Days Off 2-Week Rotation: {start_date} to {end_date}")
         
         self.validate_date_range(start_date, end_date)
         crews = self.get_crew_employees()
@@ -1511,13 +1529,13 @@ class FixedFixedRotating(PatternGenerator):
         if replace_existing:
             self.clear_existing_schedules(start_date, end_date, crews)
         
-        # 14-day work pattern (repeats twice in 28-day cycle)
+        # 14-day work pattern with Wednesday swap (repeats twice in 28-day cycle)
         # X = Work, O = Off
-        # Week 1: Sun-Wed work, Thu-Sat off
-        # Week 2: Sun-Tue work, Wed-Sat off
+        # Week 1: Sun-Wed work (4 on), Thu-Sat off (3 off)
+        # Week 2: Sun-Tue work (3 on), Wed-Sat off (4 off)
         work_pattern = [
-            'X', 'X', 'X', 'X', 'O', 'O', 'O',  # Week 1: 4 on, 3 off
-            'X', 'X', 'X', 'O', 'O', 'O', 'O'   # Week 2: 3 on, 4 off
+            'X', 'X', 'X', 'X', 'O', 'O', 'O',  # Week 1: Sun-Wed work, Thu-Sat off
+            'X', 'X', 'X', 'O', 'O', 'O', 'O'   # Week 2: Sun-Tue work, Wed-Sat off
         ]
         
         # Crew offsets (in days from schedule start)
@@ -1593,19 +1611,25 @@ class FixedFixedRotating(PatternGenerator):
             'cycle_length': f"{self.cycle_days} days (4 weeks)",
             'rotation_type': '2-week rotation (days/nights)',
             'working_days_per_cycle': '14 days (50%)',
-            'pattern': '4 on, 3 off / 3 on, 4 off (repeating)'
+            'pattern': '4 on, 3 off / 3 on, 4 off (with Wednesday swap)'
         }
         
         return result
 
 
-class FixedFixedShifts(PatternGenerator):
+class ConsistentDaysOffFixed(PatternGenerator):
     """
-    Fixed-Fixed Shifts (No Rotation)
+    Consistent Days Off with Fixed Shifts (No Rotation)
+    (Formerly known as: Fixed-Fixed Shifts)
     
     14-day cycle (2 weeks) with 12-hour shifts
-    Work pattern: 3-4 on, 3-4 off (repeats every 2 weeks)
+    Work pattern: 4 on, 3 off / 3 on, 4 off (alternating weeks)
     NO rotation - crews stay on same shift permanently
+    
+    KEY FEATURE: Wednesday Swap for Better Coverage
+    - Week 1: Sun-Wed work (4 on), Thu-Sat off (3 off)
+    - Week 2: Sun-Tue work (3 on), Wed-Sat off (4 off)
+    - Wednesday swap provides consistent weekly coverage
     
     Shift assignment:
     - Crew A: ALWAYS Day shifts
@@ -1613,27 +1637,24 @@ class FixedFixedShifts(PatternGenerator):
     - Crew C: ALWAYS Night shifts
     - Crew D: ALWAYS Night shifts (offset by 1 week)
     
-    Weekly pattern:
-    Week 1: Sun-Wed work (4 days), Thu-Sat off (3 days)
-    Week 2: Sun-Tue work (3 days), Wed-Sat off (4 days)
-    
     Total: 7 working days per 14-day cycle (50%)
     
     Benefits:
     - No rotation stress (stay on same shift)
-    - Predictable 3-4 on, 3-4 off pattern
+    - Predictable 4/3 and 3/4 pattern with Wednesday swap
     - Good for those who prefer fixed schedules
     - 50% working time (7 days per 14 days)
+    - Wednesday swap ensures smooth transitions
     """
     
     def __init__(self):
         super().__init__()
-        self.pattern_name = "Fixed-Fixed Shifts (No Rotation)"
+        self.pattern_name = "Consistent Days Off with Fixed Shifts"
         self.cycle_days = 14  # 2 weeks
     
     def generate(self, start_date, end_date, created_by_id=None, replace_existing=False):
-        """Generate Fixed-Fixed fixed shifts schedule"""
-        logger.info(f"Generating Fixed-Fixed Shifts: {start_date} to {end_date}")
+        """Generate Consistent Days Off fixed shifts schedule with Wednesday swap"""
+        logger.info(f"Generating Consistent Days Off Fixed Shifts: {start_date} to {end_date}")
         
         self.validate_date_range(start_date, end_date)
         crews = self.get_crew_employees()
@@ -1642,10 +1663,10 @@ class FixedFixedShifts(PatternGenerator):
         if replace_existing:
             self.clear_existing_schedules(start_date, end_date, crews)
         
-        # 14-day work pattern
+        # 14-day work pattern with Wednesday swap
         # X = Work, O = Off
-        # Week 1: Sun-Wed work, Thu-Sat off
-        # Week 2: Sun-Tue work, Wed-Sat off
+        # Week 1: Sun-Wed work (4 on), Thu-Sat off (3 off)
+        # Week 2: Sun-Tue work (3 on), Wed-Sat off (4 off)
         work_pattern = [
             'X', 'X', 'X', 'X', 'O', 'O', 'O',  # Week 1: 4 on, 3 off
             'X', 'X', 'X', 'O', 'O', 'O', 'O'   # Week 2: 3 on, 4 off
@@ -1723,20 +1744,25 @@ class FixedFixedShifts(PatternGenerator):
             'rotation_type': 'No rotation (fixed shifts)',
             'working_days_per_cycle': '7 days (50%)',
             'shift_assignment': 'A&B: Days, C&D: Nights',
-            'pattern': '4 on, 3 off / 3 on, 4 off (repeating)'
+            'pattern': '4 on, 3 off / 3 on, 4 off (with Wednesday swap)'
         }
         
         return result
 
 
-# Factory function to get the right generator
+# ============================================================================
+# FACTORY FUNCTION
+# ============================================================================
+
 def get_pattern_generator(pattern, variation=None):
     """
     Get the appropriate pattern generator
     
     Args:
-        pattern: Base pattern name (e.g., 'four_on_four_off', 'three_on_three_off', 'southern_swing')
-        variation: Pattern variation (e.g., 'weekly', 'fast', 'fixed', 'modified', 'slow', 'clockwise', 'counter')
+        pattern: Base pattern name (e.g., 'four_on_four_off', 'three_on_three_off', 
+                'southern_swing', 'consistent_days_off')
+        variation: Pattern variation (e.g., 'weekly', 'fast', 'fixed', 'modified', 
+                  'slow', 'clockwise', 'counter', 'rotating', '2week')
     
     Returns:
         PatternGenerator instance or None if not found
@@ -1769,11 +1795,19 @@ def get_pattern_generator(pattern, variation=None):
         elif variation == 'fixed':
             return SouthernSwingFixed()
     
+    elif pattern == 'consistent_days_off':
+        if variation == 'rotating' or variation == '2week':
+            return ConsistentDaysOffRotating()
+        elif variation == 'fixed':
+            return ConsistentDaysOffFixed()
+    
+    # Legacy support: map old "fixed_fixed" to new "consistent_days_off"
+    # This ensures backward compatibility with existing code
     elif pattern == 'fixed_fixed':
         if variation == 'rotating' or variation == '2week':
-            return FixedFixedRotating()
+            return ConsistentDaysOffRotating()
         elif variation == 'fixed':
-            return FixedFixedShifts()
+            return ConsistentDaysOffFixed()
     
     return None
 
